@@ -62,8 +62,16 @@ class LoginSerializer(serializers.Serializer):
         if phone and email:
             raise serializers.ValidationError("Provide either phone or email, not both.")
 
-        username = phone or email
-        user = authenticate(request=self.context.get('request'), username=username, password=password)
+        # If email provided, look up user by email first
+        if email:
+            try:
+                user = User.objects.get(email=email)
+                phone = user.phone
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Invalid credentials.")
+
+        # Authenticate with phone (USERNAME_FIELD)
+        user = authenticate(request=self.context.get('request'), username=phone, password=password)
         if not user:
             raise serializers.ValidationError("Invalid credentials.")
         if not user.is_active:
