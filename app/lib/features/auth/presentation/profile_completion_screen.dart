@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/auth/presentation/startup_gate.dart';
@@ -15,6 +16,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   final _emailController = TextEditingController();
   String? _selectedGender;
   bool _loading = false;
+  bool _googleLoading = false;
 
   static const List<String> _genders = ['male', 'female', 'other', 'prefer_not_to_say'];
 
@@ -89,9 +91,35 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   }
 
   Future<void> _fillFromGoogle() async {
-    // TODO: Implement Google Sign-In to fetch name and email
-    // For now, show a placeholder
-    _message('Google Sign-In integration coming soon.');
+    if (_googleLoading) return;
+    setState(() => _googleLoading = true);
+
+    try {
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+      );
+
+      final GoogleSignInAccount? account = await googleSignIn.signIn();
+
+      if (account == null) {
+        _message('Google Sign-In cancelled.');
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Fill the form with Google account info
+      _nameController.text = account.displayName ?? '';
+      _emailController.text = account.email;
+
+      // For gender, we can't get it from Google directly, so leave as is
+      _message('Name and email filled from Google account.');
+    } on Exception catch (e) {
+      if (!mounted) return;
+      _message('Google Sign-In failed: ${e.toString()}');
+    } finally {
+      if (mounted) setState(() => _googleLoading = false);
+    }
   }
 
   @override
@@ -177,13 +205,19 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                 width: double.infinity,
                 height: 54,
                 child: OutlinedButton.icon(
-                  icon: Image.asset(
-                    'assets/images/google_logo.png',
-                    height: 24,
-                    errorBuilder: (_, __, ____) => const Icon(Icons.g_mobiledata, size: 24),
-                  ),
+                  icon: _googleLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Image.asset(
+                          'assets/images/google_logo.png',
+                          height: 24,
+                          errorBuilder: (_, __, ____) => const Icon(Icons.g_mobiledata, size: 24),
+                        ),
                   label: const Text('Fill from Google Account'),
-                  onPressed: _fillFromGoogle,
+                  onPressed: _googleLoading ? null : _fillFromGoogle,
                 ),
               ),
               const SizedBox(height: 16),
