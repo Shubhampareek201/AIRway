@@ -16,7 +16,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   String? _selectedGender;
   bool _loading = false;
 
-  static const List<String> _genders = ['Male', 'Female', 'Other', 'Prefer not to say'];
+  static const List<String> _genders = ['male', 'female', 'other', 'prefer_not_to_say'];
 
   @override
   void dispose() {
@@ -145,7 +145,15 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                   labelText: 'Gender',
                   border: OutlineInputBorder(),
                 ),
-                items: _genders.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+                items: _genders
+                    .map((g) => DropdownMenuItem(
+                          value: g,
+                          child: Text(g
+                              .split('_')
+                              .map((w) => w[0].toUpperCase() + w.substring(1))
+                              .join(' ')),
+                        ))
+                    .toList(),
                 onChanged: (v) => setState(() => _selectedGender = v),
               ),
               const SizedBox(height: 24),
