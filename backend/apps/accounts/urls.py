@@ -14,6 +14,7 @@ from .views import (
     LocationReverseView,
     LocationSearchView,
     LoginView,
+    ProfileCompletionView,
     RegisterView,
     ResetPasswordView,
     SetDefaultAddressView,
@@ -24,6 +25,7 @@ from .views import (
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", LoginView.as_view(), name="login"),
+    path("profile-complete/", ProfileCompletionView.as_view(), name="profile-complete"),
     path("change-password/", ChangePasswordView.as_view(), name="change-password"),
     path("forgot-password/", ForgotPasswordView.as_view(), name="forgot-password"),
     path("verify-otp/", VerifyForgotOTPView.as_view(), name="verify-otp"),

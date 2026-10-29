@@ -16,16 +16,22 @@ User = get_user_model()
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ["phone", "name", "password", "confirm_password"]
+        fields = ["phone", "name", "email", "password", "confirm_password"]
 
     def validate_phone(self, value):
         if not re.match(r'^\+91[6-9]\d{9}$', value):
             raise serializers.ValidationError("Phone number must be in format +919876543210")
         if User.objects.filter(phone=value).exists():
             raise serializers.ValidationError("User with this phone number already exists.")
+        return value
+
+    def validate_email(self, value):
+        if value and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered.")
         return value
 
     def validate(self, attrs):
@@ -42,20 +48,24 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    phone = serializers.CharField()
+    phone = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True)
-
-    def validate_phone(self, value):
-        if not re.match(r'^\+91[6-9]\d{9}$', value):
-            raise serializers.ValidationError("Phone number must be in format +919876543210")
-        return value
 
     def validate(self, attrs):
         phone = attrs.get('phone')
+        email = attrs.get('email')
         password = attrs.get('password')
-        user = authenticate(username=phone, password=password)
+
+        if not phone and not email:
+            raise serializers.ValidationError("Either phone or email is required.")
+        if phone and email:
+            raise serializers.ValidationError("Provide either phone or email, not both.")
+
+        username = phone or email
+        user = authenticate(request=self.context.get('request'), username=username, password=password)
         if not user:
-            raise serializers.ValidationError("Invalid phone number or password.")
+            raise serializers.ValidationError("Invalid credentials.")
         if not user.is_active:
             raise serializers.ValidationError("Account disabled.")
         attrs['user'] = user
@@ -97,6 +107,22 @@ class VerifyOTPSerializer(serializers.Serializer):
         if not re.match(r'^\+91[6-9]\d{9}$', value):
             raise serializers.ValidationError("Phone number must be in format +919876543210")
         return value
+
+
+class ProfileCompletionSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    gender = serializers.ChoiceField(choices=User.Gender.choices, required=False)
+
+    def validate_email(self, value):
+        if value and self.context['request'].user.email != value:
+            if User.objects.filter(email=value).exists():
+                raise serializers.ValidationError("Email already in use.")
+        return value
+
+    def validate(self, attrs):
+        attrs['email'] = attrs.get('email', '') or ''
+        return attrs
 
 
 class ResetPasswordSerializer(serializers.Serializer):

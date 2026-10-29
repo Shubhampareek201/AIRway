@@ -14,6 +14,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _loading = false;
@@ -24,6 +25,7 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -39,6 +41,7 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _signup() async {
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
+    final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
@@ -48,6 +51,10 @@ class _SignupScreenState extends State<SignupScreen> {
     }
     if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
       _message('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (email.isNotEmpty && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      _message('Enter a valid email address.');
       return;
     }
     if (password.length < 6) {
@@ -68,6 +75,7 @@ class _SignupScreenState extends State<SignupScreen> {
         name: name,
         password: password,
         confirmPassword: confirmPassword,
+        email: email.isEmpty ? null : email,
       );
       await SecureSessionStorage.saveSession(
         accessToken: response['access'] as String,
@@ -130,6 +138,15 @@ class _SignupScreenState extends State<SignupScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Mobile Number',
                   prefixText: '+91 ',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email (Optional)',
                   border: OutlineInputBorder(),
                 ),
               ),

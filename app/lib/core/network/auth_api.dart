@@ -25,6 +25,7 @@ class AuthApi {
     required String name,
     required String password,
     required String confirmPassword,
+    String? email,
   }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
@@ -40,6 +41,7 @@ class AuthApi {
           'name': name,
           'password': password,
           'confirm_password': confirmPassword,
+          if (email != null && email.isNotEmpty) 'email': email,
         }),
       );
 
@@ -79,7 +81,8 @@ class AuthApi {
   }
 
   static Future<Map<String, dynamic>> login({
-    required String phone,
+    String? phone,
+    String? email,
     required String password,
   }) async {
     final client = HttpClient()
@@ -92,7 +95,8 @@ class AuthApi {
 
       final body = utf8.encode(
         jsonEncode({
-          'phone': phone,
+          if (phone != null) 'phone': phone,
+          if (email != null) 'email': email,
           'password': password,
         }),
       );
@@ -259,6 +263,58 @@ class AuthApi {
 
       if (response.statusCode != HttpStatus.ok) {
         throw AuthApiException(decoded['error']?.toString() ?? 'Password reset failed.');
+      }
+
+      return decoded;
+    } on SocketException {
+      throw const AuthApiException('Cannot connect to AIRway server.');
+    } on TimeoutException {
+      throw const AuthApiException('AIRway server did not respond in time.');
+    } on FormatException {
+      throw const AuthApiException('Invalid response from AIRway server.');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Future<Map<String, dynamic>> completeProfile({
+    required String accessToken,
+    required String name,
+    String? email,
+    String? gender,
+  }) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+
+    try {
+      final request = await client.postUrl(
+        Uri.parse('$baseUrl/api/v1/auth/profile-complete/'),
+      );
+
+      final body = utf8.encode(jsonEncode({
+        'name': name,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (gender != null && gender.isNotEmpty) 'gender': gender,
+      }));
+
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $accessToken');
+      request.contentLength = body.length;
+      request.add(body);
+
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+
+      final responseBody = await utf8.decoder.bind(response).join();
+      final decoded = jsonDecode(responseBody);
+
+      if (decoded is! Map<String, dynamic>) {
+        throw const AuthApiException('Unexpected server response.');
+      }
+
+      if (response.statusCode != HttpStatus.ok && response.statusCode != HttpStatus.created) {
+        throw AuthApiException(decoded['error']?.toString() ?? 'Profile completion failed.');
       }
 
       return decoded;

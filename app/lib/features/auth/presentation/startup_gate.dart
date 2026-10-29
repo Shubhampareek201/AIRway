@@ -5,9 +5,10 @@ import 'package:airway/features/location/data/location_api.dart';
 import 'package:airway/features/location/presentation/location_selection_screen.dart';
 import 'package:airway/features/customer/presentation/customer_home_screen.dart';
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
+import 'package:airway/features/auth/presentation/profile_completion_screen.dart';
 
-/// Determines whether the customer needs authentication, an address,
-/// or can continue into the app. It never treats network errors as logout.
+/// Determines whether the customer needs authentication, profile completion,
+/// an address, or can continue into the app. It never treats network errors as logout.
 class StartupGate extends StatefulWidget {
   const StartupGate({super.key});
 
@@ -39,6 +40,16 @@ class _StartupGateState extends State<StartupGate> {
         accessToken: refreshed['access'] as String,
         refreshToken: refreshed['refresh'] as String? ?? session.refreshToken,
       );
+    }
+
+    // Check if profile is complete via /me/ endpoint
+    try {
+      final meResponse = await LocationApi.request('/api/v1/auth/me/');
+      if (meResponse is Map && meResponse['profile_complete'] == false) {
+        return 3; // Profile completion needed
+      }
+    } catch (_) {
+      // If /me/ fails, continue to address check
     }
 
     final response = await LocationApi.request('/api/v1/auth/addresses/');
@@ -95,6 +106,8 @@ class _StartupGateState extends State<StartupGate> {
             return const LocationSelectionScreen();
           case 2:
             return const CustomerHomeScreen();
+          case 3:
+            return const ProfileCompletionScreen();
           default:
             return const Scaffold(body: Center(child: Text('Unable to start AIRway.')));
         }

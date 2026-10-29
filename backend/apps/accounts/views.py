@@ -114,9 +114,11 @@ class FirebaseLoginView(APIView):
                 "id": user.id,
                 "phone": user.phone,
                 "name": user.name,
+                "email": user.email,
                 "active_mode": user.active_mode,
             },
             "is_new_user": created,
+            "profile_complete": bool(user.name and user.name.strip()),
         })
 
 
@@ -168,8 +170,10 @@ class LoginView(APIView):
                 "id": user.id,
                 "phone": user.phone,
                 "name": user.name,
+                "email": user.email,
                 "active_mode": user.active_mode,
             },
+            "profile_complete": bool(user.name and user.name.strip()),
         })
 
 
@@ -183,7 +187,9 @@ class CurrentUserView(APIView):
             "id": user.id,
             "phone": user.phone,
             "name": user.name,
+            "email": user.email,
             "active_mode": user.active_mode,
+            "profile_complete": bool(user.name and user.name.strip()),
         })
 
 
@@ -202,6 +208,36 @@ class ChangePasswordView(APIView):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
         return Response({"message": "Password changed successfully."})
+
+
+class ProfileCompletionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ProfileCompletionSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            errors = serializer.errors
+            error_msg = next(iter(errors.values()))[0] if errors else "Invalid data."
+            if isinstance(error_msg, list):
+                error_msg = error_msg[0]
+            return Response({"error": error_msg}, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        user.name = serializer.validated_data['name']
+        user.email = serializer.validated_data.get('email', '') or ''
+        if 'gender' in serializer.validated_data and serializer.validated_data['gender']:
+            user.gender = serializer.validated_data['gender']
+        user.save(update_fields=['name', 'email', 'gender'])
+        return Response({
+            "message": "Profile completed successfully.",
+            "user": {
+                "id": user.id,
+                "phone": user.phone,
+                "name": user.name,
+                "email": user.email,
+                "active_mode": user.active_mode,
+            },
+            "profile_complete": True,
+        })
 
 
 class CityListView(APIView):

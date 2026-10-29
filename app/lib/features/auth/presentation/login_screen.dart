@@ -16,13 +16,16 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
+  bool _useEmail = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -36,10 +39,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     final phone = _phoneController.text.trim();
+    final email = _emailController.text.trim();
     final password = _passwordController.text;
 
-    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+    if (!_useEmail && !RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
       _message('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (_useEmail && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      _message('Enter a valid email address.');
       return;
     }
     if (password.isEmpty) {
@@ -52,7 +60,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final response = await AuthApi.login(
-        phone: '+91$phone',
+        phone: _useEmail ? null : '+91$phone',
+        email: _useEmail ? email : null,
         password: password,
       );
       await SecureSessionStorage.saveSession(
@@ -100,17 +109,53 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
               const SizedBox(height: 32),
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                maxLength: 10,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                  labelText: 'Mobile Number',
-                  prefixText: '+91 ',
-                  border: OutlineInputBorder(),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _useEmail ? Colors.grey : green,
+                        side: BorderSide(color: _useEmail ? Colors.grey : green),
+                      ),
+                      onPressed: () => setState(() => _useEmail = false),
+                      child: const Text('Phone'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _useEmail ? green : Colors.grey,
+                        side: BorderSide(color: _useEmail ? green : Colors.grey),
+                      ),
+                      onPressed: () => setState(() => _useEmail = true),
+                      child: const Text('Email'),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 16),
+              if (!_useEmail)
+                TextField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 10,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Mobile Number',
+                    prefixText: '+91 ',
+                    border: OutlineInputBorder(),
+                  ),
+                )
+              else
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email Address',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
