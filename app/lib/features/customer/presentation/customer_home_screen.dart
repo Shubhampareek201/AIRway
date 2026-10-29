@@ -1,0 +1,908 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart' as ll;
+import 'dart:ui' show ImageFilter;
+import 'package:airway/core/storage/secure_session_storage.dart';
+import 'package:airway/features/location/data/location_api.dart';
+import 'package:airway/features/location/presentation/address_picker_screen.dart';
+import 'package:airway/features/location/presentation/location_selection_screen.dart';
+import 'package:airway/features/welcome/presentation/welcome_screen.dart';
+import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/presentation/service_detail_screen.dart';
+
+// AIRway customer home. Addresses and nearby online partners use authenticated APIs.
+// Service cards and sample prices remain previews until the catalog API is connected.
+class _Ui {
+  static const violet = Color(0xFF6F4EF6);
+  static const ink = Color(0xFF201A33);
+  static const sub = Color(0xFF78718B);
+  static const bg = Color(0xFFF8F7FD);
+  static const pale = Color(0xFFF1EDFF);
+  static const line = Color(0xFFEAE5F5);
+}
+
+class _Service {
+  const _Service(this.name, this.icon, this.tint, this.description);
+  final String name;
+  final IconData icon;
+  final Color tint;
+  final String description;
+}
+
+const _services = <_Service>[
+  _Service('Men’s Grooming', Icons.content_cut_rounded, Color(0xFF357BDD), 'Haircuts, beard care and grooming'),
+  _Service('Women’s Beauty', Icons.spa_rounded, Color(0xFFE24B9A), 'Salon and beauty care at home'),
+  _Service('Home Cleaning', Icons.cleaning_services_rounded, Color(0xFF0F9F91), 'Kitchen, bathroom and deep cleaning'),
+  _Service('Electrician', Icons.electrical_services_rounded, Color(0xFFED981B), 'Switches, fittings and electrical repairs'),
+  _Service('Painting', Icons.format_paint_rounded, Color(0xFFE86B50), 'Painting and wall touch-ups'),
+  _Service('Civil Work', Icons.handyman_rounded, Color(0xFF8263DA), 'Repairs, masonry and installations'),
+  _Service('Car Wash', Icons.local_car_wash_rounded, Color(0xFF2A99DB), 'Exterior and interior cleaning'),
+  _Service('Mechanical', Icons.build_circle_rounded, Color(0xFF65758A), 'Equipment and household repairs'),
+  _Service('Tiffin', Icons.lunch_dining_rounded, Color(0xFFE26C38), 'Fresh home-style meal services'),
+];
+
+class CustomerHomeScreen extends StatefulWidget {
+  const CustomerHomeScreen({super.key});
+  @override
+  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
+}
+
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  List<Map<String, dynamic>> _addresses = [];
+  bool _loading = true;
+  String? _error;
+  int _tab = 0;
+  String _query = '';
+  String _customerName = 'there';
+  List<Map<String, dynamic>> _nearbyWorkers = [];
+  bool _workersLoading = false;
+  String? _workersError;
+  String? _workersMessage;
+  final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  final _offers = PageController(viewportFraction: 0.94);
+  Timer? _offerTimer;
+  int _offerIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _offerTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !_offers.hasClients || _tab != 0 || _query.isNotEmpty) return;
+      final next = (_offerIndex + 1) % 3;
+      _offers.animateToPage(next, duration: const Duration(milliseconds: 480), curve: Curves.easeInOutCubic);
+    });
+  }
+
+  @override
+  void dispose() {
+    _offerTimer?.cancel();
+    _offers.dispose();
+    _search.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic>? get _active {
+    for (final a in _addresses) {
+      if (a['is_default'] == true) return a;
+    }
+    return _addresses.isEmpty ? null : _addresses.first;
+  }
+
+  Future<void> _refresh() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      final result = await LocationApi.request('/api/v1/auth/addresses/');
+      final raw = result is List ? result : (result is Map ? result['results'] : null);
+      if (raw is! List) throw const FormatException('Unexpected address response');
+      final list = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      if (mounted) setState(() => _addresses = list);
+      await _loadCustomerName();
+      Map<String, dynamic>? selected;
+      for (final savedAddress in list) {
+        if (savedAddress['is_default'] == true) {
+          selected = savedAddress;
+          break;
+        }
+      }
+      selected ??= list.isEmpty ? null : list.first;
+      final addressId = selected?['id'];
+      if (addressId != null) {
+        await _loadNearbyWorkers(addressId.toString());
+      } else if (mounted) {
+        setState(() {
+          _nearbyWorkers = [];
+          _workersLoading = false;
+          _workersError = null;
+          _workersMessage = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load your addresses. Check the connection and retry.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadCustomerName() async {
+    try {
+      final response = await LocationApi.request('/api/v1/auth/me/');
+      if (!mounted || response is! Map) return;
+      final data = response['user'] is Map
+          ? Map<String, dynamic>.from(response['user'] as Map)
+          : Map<String, dynamic>.from(response);
+      final fullName = '${data['full_name'] ?? data['name'] ?? ''}'.trim();
+      final firstName = '${data['first_name'] ?? ''}'.trim();
+      final username = '${data['username'] ?? ''}'.trim();
+      final name = fullName.isNotEmpty
+          ? fullName
+          : firstName.isNotEmpty
+              ? firstName
+              : username;
+      if (name.isNotEmpty) {
+        setState(() => _customerName = name.split(RegExp(r'\s+')).first);
+      }
+    } catch (_) {
+      // The home screen remains usable if the profile endpoint is temporarily unavailable.
+    }
+  }
+
+  Future<void> _loadNearbyWorkers(String addressId) async {
+    if (mounted) {
+      setState(() {
+        _workersLoading = true;
+        _workersError = null;
+      });
+    }
+    try {
+      final response = await LocationApi.request(
+        '/api/v1/workers/nearby/?address_id=$addressId',
+      );
+      final raw = response is List
+          ? response
+          : response is Map
+              ? response['results']
+              : null;
+      if (raw is! List) throw const FormatException('Unexpected worker response');
+      final workers = raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      final message = response is Map ? response['message']?.toString() : null;
+      if (mounted) setState(() {
+        _nearbyWorkers = workers;
+        _workersMessage = message;
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _nearbyWorkers = [];
+        _workersError = 'Nearby partner availability could not be loaded.';
+        _workersMessage = null;
+      });
+    } finally {
+      if (mounted) setState(() => _workersLoading = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _startVoiceSearch() async {
+    _showMessage('Voice search is not available. Use the text search instead.');
+  }
+
+  void _showNotificationsInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Notifications'),
+        content: const Text(
+          'Booking updates and alerts will appear here when the booking and notification services are enabled.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it')),
+        ],
+      ),
+    );
+  }
+
+  void _showWalletInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('AIRway Wallet'),
+        content: const Text(
+          'Your real balance will appear here after wallet transactions, refunds and payment records are connected. No balance has been added yet.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  void _showReferralInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Invite & Earn'),
+        content: const Text(
+          'Referral tracking and rewards will activate after the referral rules and wallet ledger are connected. No reward is being promised or credited yet.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _selectAddress() async {
+    final current = _active;
+    final latitude = double.tryParse('${current?['latitude']}') ?? 24.93;
+    final longitude = double.tryParse('${current?['longitude']}') ?? 75.59;
+    final result = await Navigator.of(context).push<AddressPickerResult>(
+      MaterialPageRoute(builder: (_) => AddressPickerScreen(mapCenter: ll.LatLng(latitude, longitude))),
+    );
+    if (!mounted) return;
+    if (result?.location != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => LocationSelectionScreen(initialLocation: result!.location)),
+      );
+    }
+    if (mounted) await _refresh();
+  }
+
+  Future<void> _logout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('You can sign in again using your mobile number.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Log out')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await SecureSessionStorage.clearSession();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
+  }
+
+  void _openService(_Service s) {
+    _searchFocus.unfocus();
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceDetailScreen(
+          serviceId: _services.indexOf(s) + 1,
+          serviceTitle: s.name,
+        ),
+      ),
+    );
+  }
+
+  void _openServiceOld(_Service s) {
+    _searchFocus.unfocus();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(width: 70, height: 70, decoration: BoxDecoration(color: s.tint.withAlpha(25), borderRadius: BorderRadius.circular(23)),
+                child: Icon(s.icon, size: 36, color: s.tint)),
+            const SizedBox(height: 14),
+            Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: _Ui.ink)),
+            const SizedBox(height: 6),
+            Text(s.description, style: const TextStyle(color: _Ui.sub, fontSize: 15)),
+            const SizedBox(height: 16),
+            const Text('Service packages and confirmed prices will appear when the AIRway catalog is published for your area.',
+                style: TextStyle(color: _Ui.sub, height: 1.5)),
+            const SizedBox(height: 20),
+            SizedBox(width: double.infinity, child: FilledButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Continue exploring'),
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _showBeautyOptions() {
+    _searchFocus.unfocus();
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close beauty options',
+      barrierColor: Colors.black38,
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+        child: Center(
+          child: Material(
+            color: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 410),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      const Expanded(child: Text('Beauty at Home', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: _Ui.ink))),
+                      IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
+                    ]),
+                    const Text('Choose a category to explore', style: TextStyle(color: _Ui.sub)),
+                    const SizedBox(height: 18),
+                    _beautyOption(dialogContext, _services[0], 'Men', Icons.face_rounded),
+                    const SizedBox(height: 12),
+                    _beautyOption(dialogContext, _services[1], 'Women', Icons.spa_rounded),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: Tween<double>(begin: 0.83, end: 1).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutBack)), child: child),
+      ),
+    );
+  }
+
+  Widget _beautyOption(BuildContext dialogContext, _Service service, String title, IconData icon) => Material(
+    color: service.tint.withAlpha(16),
+    borderRadius: BorderRadius.circular(20),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        Navigator.pop(dialogContext);
+        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _openService(service); });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        child: Row(children: [
+          CircleAvatar(radius: 26, backgroundColor: Colors.white, child: Icon(icon, color: service.tint, size: 26)),
+          const SizedBox(width: 15),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _Ui.ink)),
+            Text(service.description, maxLines: 2, style: const TextStyle(color: _Ui.sub, fontSize: 12)),
+          ])),
+          const Icon(Icons.arrow_forward_ios_rounded, size: 17, color: _Ui.violet),
+        ]),
+      ),
+    ),
+  );
+
+  void _openAllServices() {
+    _searchFocus.unfocus();
+    Navigator.push<void>(context, MaterialPageRoute(builder: (_) => Scaffold(
+      backgroundColor: _Ui.bg,
+      appBar: AppBar(title: const Text('All Services'), backgroundColor: _Ui.bg),
+      body: SafeArea(child: ListView(padding: const EdgeInsets.fromLTRB(18, 8, 18, 24), children: [
+        const Text('Find the right service for your home', style: TextStyle(color: _Ui.sub)),
+        const SizedBox(height: 18),
+        _categoryGrid(_services, allServices: true),
+        const SizedBox(height: 20),
+        const Text('Services and final rates depend on your selected area and availability.',
+          style: TextStyle(color: _Ui.sub, fontSize: 12)),
+      ])),
+    )));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _active;
+    return Scaffold(
+      backgroundColor: _Ui.bg,
+      bottomNavigationBar: NavigationBar(
+        height: 70,
+        backgroundColor: Colors.white,
+        indicatorColor: _Ui.pale,
+        selectedIndex: _tab,
+        onDestinationSelected: (i) { _searchFocus.unfocus(); setState(() { _tab = i; }); },
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded, color: _Ui.violet), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded, color: _Ui.violet), label: 'My Bookings'),
+          NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded, color: _Ui.violet), label: 'Profile'),
+        ],
+      ),
+      body: SafeArea(
+        child: _loading
+            ? _skeleton()
+            : _error != null
+                ? _status(Icons.wifi_off_rounded, _error!, 'Retry', _refresh)
+                : active == null
+                    ? _status(Icons.add_location_alt_outlined, 'Add a service address to get started.', 'Choose location', _selectAddress)
+                    : IndexedStack(index: _tab, children: [
+                        _home(active),
+                        _bookings(),
+                        _profile(active),
+                      ]),
+      ),
+    );
+  }
+
+  Widget _status(IconData icon, String message, String action, VoidCallback callback) =>
+      Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: _Ui.violet, size: 52),
+        const SizedBox(height: 14),
+        Text(message, textAlign: TextAlign.center, style: const TextStyle(color: _Ui.sub, height: 1.5)),
+        const SizedBox(height: 16),
+        FilledButton(onPressed: callback, child: Text(action)),
+      ])));
+
+  Widget _skeleton() => ListView(padding: const EdgeInsets.all(20), children: [
+    for (final h in [60.0, 170.0, 56.0, 24.0, 260.0, 120.0, 150.0]) ...[
+      _PulseBlock(height: h), const SizedBox(height: 18),
+    ],
+  ]);
+
+  Widget _home(Map<String, dynamic> address) {
+    final hits = _services.where((s) => '${s.name} ${s.description}'.toLowerCase().contains(_query.trim().toLowerCase())).toList();
+    const featured = <int>[2, 3, 1, 6]; // Cleaning, Electrical, Beauty, Car Wash
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      color: _Ui.violet,
+      child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 28), children: [
+        _purpleHeader(address),
+        if (_query.isEmpty) ...[
+          _offerCarousel(),
+          _walletReferralCard(),
+          _nearbyWorkersSection(),
+        ],
+        if (_query.isNotEmpty) ...[
+          _heading('Search Results', '${hits.length} matching categories'),
+          if (hits.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No matching services. Try another search.', style: TextStyle(color: _Ui.sub))),
+          _categoryGrid(hits, allServices: true),
+          const SizedBox(height: 30),
+        ] else ...[
+          Padding(padding: const EdgeInsets.fromLTRB(20, 24, 20, 12), child: Row(children: [
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Our Services', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _Ui.ink)),
+              SizedBox(height: 3), Text('Explore our featured services', style: TextStyle(fontSize: 12, color: _Ui.sub)),
+            ])),
+            TextButton(onPressed: _openAllServices, child: const Text('All Services  →')),
+          ])),
+          _categoryGrid([for (final i in featured) _services[i]], featured: true),
+          const Padding(padding: EdgeInsets.fromLTRB(21, 8, 21, 0), child: Text('Illustrative prices only · final prices shown before booking', style: TextStyle(color: _Ui.sub, fontSize: 11))),
+          _trustStrip(),
+          _heading('Book Again', 'Your recent and frequent bookings'),
+          _emptyBookings(),
+          _heading('Popular Near You', 'Explore services for your area'),
+          _popularStrip(),
+          const SizedBox(height: 20),
+        ],
+      ]),
+    );
+  }
+
+  Widget _purpleHeader(Map<String, dynamic> a) {
+    final label = '${a['label'] ?? 'Home'}';
+    final full = '${a['house_details'] ?? ''}, ${a['full_address'] ?? ''}'.replaceFirst(RegExp(r'^,\s*'), '').trim();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF6F4EF6), Color(0xFF8138B8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+        boxShadow: [BoxShadow(color: _Ui.violet.withAlpha(45), blurRadius: 18, offset: const Offset(0, 7))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(color: Colors.white.withAlpha(35), borderRadius: BorderRadius.circular(15)),
+            child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 11),
+          Expanded(child: InkWell(
+            onTap: _selectAddress,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800))),
+                const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 18),
+              ]),
+              Text(full.isEmpty ? 'Choose your service address' : full, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.white.withAlpha(220), fontSize: 12.5)),
+            ])),
+          )),
+          const SizedBox(width: 6),
+          Container(
+            decoration: BoxDecoration(color: Colors.white.withAlpha(30), shape: BoxShape.circle),
+            child: IconButton(
+              tooltip: 'Notifications',
+              onPressed: _showNotificationsInfo,
+              icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 18),
+        RichText(text: TextSpan(style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900, height: 1.12, color: Colors.white), children: [
+          const TextSpan(text: 'Hi, '),
+          TextSpan(text: _customerName == 'there' ? 'there' : _customerName),
+        ])),
+        const SizedBox(height: 7),
+        Text('What do you need at home today?', style: TextStyle(color: Colors.white.withAlpha(230), fontSize: 14.5, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 17),
+        _searchBar(),
+      ]),
+    );
+  }
+
+  Widget _walletReferralCard() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _Ui.line),
+        boxShadow: [BoxShadow(color: _Ui.violet.withAlpha(12), blurRadius: 16, offset: const Offset(0, 5))],
+      ),
+      child: Column(children: [
+        Row(children: [
+          Container(width: 46, height: 46, decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(15)),
+            child: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet, size: 25)),
+          const SizedBox(width: 12),
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('AIRway Wallet', style: TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w900)),
+            SizedBox(height: 3),
+            Text('Your balance and refunds will appear here', style: TextStyle(color: _Ui.sub, fontSize: 11.5)),
+          ])),
+          TextButton(onPressed: _showWalletInfo, child: const Text('Details')),
+        ]),
+        Padding(padding: const EdgeInsets.symmetric(vertical: 13), child: Divider(height: 1, color: _Ui.line)),
+        Row(children: [
+          Container(width: 46, height: 46, decoration: BoxDecoration(color: const Color(0xFFFFF0F8), borderRadius: BorderRadius.circular(15)),
+            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFD94691), size: 25)),
+          const SizedBox(width: 12),
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Invite friends & earn', style: TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w900)),
+            SizedBox(height: 3),
+            Text('Referral rewards are being prepared', style: TextStyle(color: _Ui.sub, fontSize: 11.5)),
+          ])),
+          OutlinedButton(onPressed: _showReferralInfo, style: OutlinedButton.styleFrom(
+            foregroundColor: _Ui.violet, side: const BorderSide(color: _Ui.violet), padding: const EdgeInsets.symmetric(horizontal: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+          ), child: const Text('Invite')),
+        ]),
+      ]),
+    ),
+  );
+
+  Widget _nearbyWorkersSection() => Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _heading('Available Partners Near You', 'Verified workers currently online in your service zone'),
+      if (_workersLoading)
+        const Padding(padding: EdgeInsets.fromLTRB(20, 4, 20, 8), child: LinearProgressIndicator(minHeight: 3))
+      else if (_workersError != null)
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Row(children: [
+          const Expanded(child: Text('Partner availability could not be loaded.', style: TextStyle(color: _Ui.sub, fontSize: 12))),
+          TextButton(onPressed: () { final id = _active?['id']; if (id != null) _loadNearbyWorkers(id.toString()); }, child: const Text('Retry')),
+        ]))
+      else if (_nearbyWorkers.isEmpty)
+        Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 4), child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _Ui.line)),
+          child: Row(children: [
+            const Icon(Icons.support_agent_rounded, color: _Ui.violet, size: 30),
+            const SizedBox(width: 12),
+            Expanded(child: Text(_workersMessage ?? 'No verified partners are online in this service zone right now. Availability updates when approved workers go online.',
+              style: const TextStyle(color: _Ui.sub, fontSize: 12, height: 1.4))),
+          ]),
+        ))
+      else
+        SizedBox(height: 150, child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          scrollDirection: Axis.horizontal,
+          itemCount: _nearbyWorkers.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final worker = _nearbyWorkers[index];
+            final services = worker['services'] is List ? (worker['services'] as List).map((e) => e.toString()).join(' · ') : 'Home services';
+            final rating = double.tryParse('${worker['rating'] ?? ''}');
+            return Container(width: 215, padding: const EdgeInsets.all(14), decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: _Ui.line),
+            ), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                CircleAvatar(backgroundColor: _Ui.pale, child: const Icon(Icons.person_rounded, color: _Ui.violet)),
+                const SizedBox(width: 9),
+                Expanded(child: Text('${worker['name'] ?? 'Verified partner'}', maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _Ui.ink, fontWeight: FontWeight.w800, fontSize: 13))),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Container(width: 7, height: 7, decoration: const BoxDecoration(color: Color(0xFF20B779), shape: BoxShape.circle)),
+                const SizedBox(width: 5),
+                const Text('Online', style: TextStyle(color: Color(0xFF159A64), fontSize: 11, fontWeight: FontWeight.w800)),
+                if (rating != null && rating > 0) ...[
+                  const Spacer(), const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFB020)),
+                  Text(rating.toStringAsFixed(1), style: const TextStyle(color: _Ui.ink, fontSize: 11, fontWeight: FontWeight.w700)),
+                ],
+              ]),
+              const Spacer(),
+              Text(services, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _Ui.sub, fontSize: 11.5, height: 1.25)),
+            ]));
+          },
+        )),
+    ]),
+  );
+
+  Widget _searchBar() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 0),
+    child: TextField(
+      controller: _search,
+      focusNode: _searchFocus,
+      textInputAction: TextInputAction.search,
+      onChanged: (v) => setState(() => _query = v),
+      decoration: InputDecoration(
+        hintText: 'Search cleaning, electrician, salon…',
+        hintStyle: const TextStyle(fontSize: 13.5, color: _Ui.sub),
+        prefixIcon: const Icon(Icons.search_rounded, color: _Ui.violet),
+        suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (_query.isNotEmpty)
+            IconButton(tooltip: 'Clear search', onPressed: () {
+              _search.clear();
+              _searchFocus.unfocus();
+              setState(() => _query = '');
+            }, icon: const Icon(Icons.close_rounded, size: 19, color: _Ui.sub)),
+          IconButton(
+            tooltip: 'Search by voice',
+            onPressed: _startVoiceSearch,
+            icon: const Icon(Icons.mic_none_rounded, color: _Ui.violet),
+          ),
+        ]),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: const BorderSide(color: _Ui.violet, width: 1.5)),
+        contentPadding: const EdgeInsets.symmetric(vertical: 15),
+      ),
+    ),
+  );
+
+  Widget _heading(String title, String subtitle) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 26, 20, 13),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _Ui.ink)),
+      const SizedBox(height: 3),
+      Text(subtitle, style: const TextStyle(fontSize: 12.5, color: _Ui.sub)),
+    ]),
+  );
+
+  // Prices below are sample UI illustrations, not published AIRway rates.
+  Widget _categoryGrid(List<_Service> items, {bool featured = false, bool allServices = false}) =>
+      Padding(padding: EdgeInsets.symmetric(horizontal: allServices ? 0 : 20),
+        child: LayoutBuilder(builder: (context, box) {
+          final columns = box.maxWidth < 290 ? 1 : 2;
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns, mainAxisExtent: 192, mainAxisSpacing: 13, crossAxisSpacing: 13,
+            ),
+            itemBuilder: (context, i) {
+              final s = items[i];
+              final isBeauty = s.name == 'Women’s Beauty' || s.name == 'Men’s Grooming';
+              final title = featured && isBeauty ? 'Beauty at Home' : s.name;
+              final price = switch (s.name) {
+                'Home Cleaning' => ('₹599', '₹799'),
+                'Electrician' => ('₹99', '₹149'),
+                'Women’s Beauty' => ('₹299', '₹399'),
+                'Car Wash' => ('₹249', '₹349'),
+                _ => ('View rates', ''),
+              };
+              return Material(
+                color: Colors.white, borderRadius: BorderRadius.circular(23),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(23),
+                  onTap: isBeauty ? _showBeautyOptions : () => _openService(s),
+                  child: Padding(padding: const EdgeInsets.all(13), child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Container(width: 60, height: 60,
+                          decoration: BoxDecoration(color: s.tint.withAlpha(24), borderRadius: BorderRadius.circular(20)),
+                          child: Icon(s.icon, color: s.tint, size: 32)),
+                        const Spacer(),
+                        Icon(Icons.arrow_outward_rounded, size: 18, color: s.tint),
+                      ]),
+                      const SizedBox(height: 12),
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _Ui.ink)),
+                      const SizedBox(height: 4),
+                      Expanded(child: Text(s.description, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11.5, height: 1.25, color: _Ui.sub))),
+                      Row(children: [
+                        Flexible(child: Text(price.$1, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _Ui.violet))),
+                        if (price.$2.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Flexible(child: Text(price.$2, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, decoration: TextDecoration.lineThrough, color: _Ui.sub))),
+                        ],
+                      ]),
+                    ],
+                  )),
+                ),
+              );
+            },
+          );
+        }),
+      );
+
+  Widget _trustStrip() => Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), child: Container(
+    decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(20)),
+    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 5),
+    child: Row(children: [
+      _trustItem(Icons.location_on_outlined, 'Local focus'),
+      _trustItem(Icons.receipt_long_outlined, 'Clear pricing'),
+      _trustItem(Icons.support_agent_outlined, 'Support'),
+    ]),
+  ));
+
+  Widget _trustItem(IconData icon, String title) => Expanded(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    Icon(icon, color: _Ui.violet, size: 25), const SizedBox(height: 6),
+    Text(title, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _Ui.ink)),
+  ]));
+
+  Widget _emptyBookings() => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Container(
+    padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
+    child: Row(children: [
+      Container(width: 55, height: 55, decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(18)),
+          child: const Icon(Icons.history_rounded, color: _Ui.violet, size: 29)),
+      const SizedBox(width: 13),
+      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Your favorites will appear here', style: TextStyle(color: _Ui.ink, fontWeight: FontWeight.w800, fontSize: 13.5)),
+        SizedBox(height: 5),
+        Text('After your first completed booking, you can quickly book again.',
+            style: TextStyle(color: _Ui.sub, fontSize: 12, height: 1.3)),
+      ])),
+    ]),
+  ));
+
+  Widget _popularStrip() => SizedBox(height: 194, child: ListView.separated(
+    scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 20),
+    itemCount: 4, separatorBuilder: (_, __) => const SizedBox(width: 12),
+    itemBuilder: (context, i) {
+      final s = [_services[2], _services[3], _services[6], _services[1]][i];
+      return SizedBox(width: 184, child: Material(color: Colors.white, borderRadius: BorderRadius.circular(21), child: InkWell(
+        onTap: () => _openService(s), borderRadius: BorderRadius.circular(21), child: Padding(
+          padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(width: 52, height: 52, decoration: BoxDecoration(color: s.tint.withAlpha(26), borderRadius: BorderRadius.circular(17)),
+                child: Icon(s.icon, color: s.tint, size: 27)),
+            const Spacer(),
+            Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text(s.description, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _Ui.sub, fontSize: 11, height: 1.25)),
+            const SizedBox(height: 6),
+            const Text('Explore service  ›', style: TextStyle(color: _Ui.violet, fontSize: 11.5, fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      )));
+    },
+  ));
+
+  Widget _offerCarousel() {
+    const captions = ['A fresher home', 'Small fixes, less stress', 'Care at your doorstep'];
+    const subtitles = ['Explore cleaning services', 'Find an electrician', 'Discover salon services'];
+    const icons = [Icons.auto_awesome_rounded, Icons.bolt_rounded, Icons.spa_rounded];
+    const colors = [Color(0xFF6F4EF6), Color(0xFF2879BC), Color(0xFFE15798)];
+    return Column(children: [
+      const Padding(padding: EdgeInsets.fromLTRB(20, 12, 20, 8), child: Align(alignment: Alignment.centerLeft, child: Text('Discover More', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _Ui.ink)))),
+      SizedBox(height: 152, child: PageView.builder(
+        controller: _offers, itemCount: 3, onPageChanged: (v) => setState(() => _offerIndex = v),
+        itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 5), child: Material(
+          borderRadius: BorderRadius.circular(22), color: colors[i], child: InkWell(
+            borderRadius: BorderRadius.circular(22), onTap: () => i == 2 ? _showBeautyOptions() : _openService([_services[2], _services[3]][i]),
+            child: Padding(padding: const EdgeInsets.all(19), child: Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(captions[i], maxLines: 2, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                Text(subtitles[i], maxLines: 2, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
+                const SizedBox(height: 8),
+                const Text('Explore  →', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+              ])),
+              Icon(icons[i], size: 74, color: Colors.white.withAlpha(180)),
+            ])),
+          ),
+        )),
+      )),
+      const SizedBox(height: 10),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (i) => AnimatedContainer(
+        duration: const Duration(milliseconds: 260), width: i == _offerIndex ? 22 : 7, height: 7,
+        margin: const EdgeInsets.symmetric(horizontal: 3), decoration: BoxDecoration(
+          color: i == _offerIndex ? _Ui.violet : _Ui.line, borderRadius: BorderRadius.circular(9)),
+      ))),
+    ]);
+  }
+
+  Widget _bookings() => const BookingListScreen();
+
+  Widget _bookingsOld() => RefreshIndicator(
+    onRefresh: _refresh,
+    child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(24), children: [
+      const Text('My Bookings', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink)),
+      const SizedBox(height: 60),
+      const Icon(Icons.calendar_month_outlined, size: 72, color: _Ui.violet),
+      const SizedBox(height: 16),
+      const Text('Bookings are coming soon', textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: _Ui.ink)),
+      const SizedBox(height: 8),
+      const Text('Your real booking history will show here when booking is enabled.', textAlign: TextAlign.center,
+          style: TextStyle(color: _Ui.sub, height: 1.5)),
+      const SizedBox(height: 20),
+      Center(child: OutlinedButton(onPressed: () => setState(() => _tab = 0), child: const Text('Explore services'))),
+    ]),
+  );
+
+  Widget _profile(Map<String, dynamic> address) => ListView(padding: const EdgeInsets.all(20), children: [
+    const Text('Profile', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink)),
+    const SizedBox(height: 16),
+    Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(22)),
+      child: Row(children: [
+        const CircleAvatar(radius: 24, backgroundColor: Colors.white, child: Icon(Icons.person_outline, color: _Ui.violet)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Your AIRway account', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _Ui.ink)),
+          Text('${_addresses.length} saved addresses', style: const TextStyle(color: _Ui.sub)),
+        ])),
+      ]),
+    ),
+    const SizedBox(height: 16),
+    Card(color: Colors.white, elevation: 0, child: Column(children: [
+      ListTile(leading: const Icon(Icons.location_on_outlined, color: _Ui.violet), title: const Text('Manage addresses'),
+          subtitle: Text('${address['full_address'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
+          trailing: const Icon(Icons.chevron_right), onTap: _selectAddress),
+      const Divider(height: 1, indent: 16, endIndent: 16),
+      ListTile(leading: const Icon(Icons.refresh, color: _Ui.violet), title: const Text('Refresh account data'), onTap: _refresh),
+      const Divider(height: 1, indent: 16, endIndent: 16),
+      ListTile(leading: const Icon(Icons.logout_rounded, color: _Ui.violet), title: const Text('Log out'), onTap: _logout),
+    ])),
+  ]);
+}
+
+class _PulseBlock extends StatefulWidget {
+  const _PulseBlock({required this.height});
+  final double height;
+  @override
+  State<_PulseBlock> createState() => _PulseBlockState();
+}
+
+class _PulseBlockState extends State<_PulseBlock> with SingleTickerProviderStateMixin {
+  late final AnimationController _animation = AnimationController(
+    vsync: this, duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+  @override
+  void dispose() { _animation.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(animation: _animation, builder: (context, _) => Container(
+    height: widget.height, decoration: BoxDecoration(
+      color: Color.lerp(const Color(0xFFE9E5F3), const Color(0xFFF6F3FA), _animation.value),
+      borderRadius: BorderRadius.circular(21),
+    ),
+  ));
+}

@@ -19,9 +19,22 @@ class CityAdmin(ModelAdmin):
 
 @admin.register(Zone)
 class ZoneAdmin(ModelAdmin):
-    list_display = ("name", "city", "is_active")
+    list_display = (
+        "name",
+        "city",
+        "latitude",
+        "longitude",
+        "is_active",
+    )
     list_filter = ("city", "is_active")
-    search_fields = ("name",)
+    search_fields = ("name", "city__name")
+    fields = (
+        "city",
+        "name",
+        "latitude",
+        "longitude",
+        "is_active",
+    )
 
 
 @admin.register(AppSetting)

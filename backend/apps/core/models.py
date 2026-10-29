@@ -26,6 +26,19 @@ class Zone(TimeStampedModel):
     """City ke andar area/colony. Worker aur matching isi se hoti hai."""
     city = models.ForeignKey(City, on_delete=models.PROTECT, related_name="zones")
     name = models.CharField(max_length=100)
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
+
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:

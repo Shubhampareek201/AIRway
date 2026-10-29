@@ -1,0 +1,203 @@
+from django.conf import settings
+from django.db import models
+from django.db.models import F, Q, Sum
+from simple_history.models import HistoricalRecords
+
+from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
+from apps.core.models import TimeStampedModel
+from apps.accounts.models import Address
+
+
+class Booking(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        CONFIRMED = "confirmed", "Confirmed"
+        ASSIGNED = "assigned", "Assigned"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+        DISPUTED = "disputed", "Disputed"
+
+    class BookingMode(models.TextChoices):
+        SCHEDULED = "scheduled", "Scheduled"
+        INSPECTION = "inspection", "Inspection"
+        PICKUP_DROP = "pickup_drop", "Pickup & Drop"
+
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="bookings",
+    )
+    address = models.ForeignKey(
+        Address,
+        on_delete=models.PROTECT,
+        related_name="bookings",
+    )
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.PROTECT,
+        related_name="bookings",
+    )
+    variant = models.ForeignKey(
+        ServiceVariant,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="bookings",
+    )
+
+    booking_mode = models.CharField(
+        max_length=15,
+        choices=BookingMode.choices,
+        default=BookingMode.SCHEDULED,
+    )
+
+    scheduled_at = models.DateTimeField(
+        help_text="For scheduled: service time. For inspection: visit time. For pickup_drop: pickup time."
+    )
+    drop_scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Only for pickup_drop: drop-off time."
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+
+    pricing_snapshot = models.JSONField(
+        default=dict,
+        help_text="Snapshot of variant/addon prices at booking time: {variant_price, addon_prices[], total, tax, discount}"
+    )
+
+    notes = models.TextField(blank=True, help_text="Customer notes")
+    worker_notes = models.TextField(blank=True, help_text="Worker notes during service")
+
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.TextField(blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_bookings",
+    )
+
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["customer", "status"]),
+            models.Index(fields=["scheduled_at", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Booking #{self.pk} - {self.customer.phone} - {self.service.title}"
+
+    @property
+    def total_amount(self):
+        return self.pricing_snapshot.get("total", 0)
+
+    @property
+    def can_cancel(self):
+        return self.status in [self.Status.PENDING, self.Status.CONFIRMED, self.Status.ASSIGNED]
+
+
+class BookingAddOn(TimeStampedModel):
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="booking_addons",
+    )
+    addon = models.ForeignKey(
+        AddOn,
+        on_delete=models.PROTECT,
+        related_name="booking_addons",
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["booking", "addon"], name="unique_booking_addon")
+        ]
+
+    def __str__(self):
+        return f"{self.booking} - {self.addon.title} x{self.quantity}"
+
+
+class BookingFormResponse(TimeStampedModel):
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="form_responses",
+    )
+    form_field = models.ForeignKey(
+        FormField,
+        on_delete=models.PROTECT,
+        related_name="booking_responses",
+    )
+    value = models.JSONField(help_text="Answer value: string, number, boolean, or file URL")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["booking", "form_field"], name="unique_booking_form_response")
+        ]
+
+    def __str__(self):
+        return f"{self.booking} - {self.form_field.key}: {self.value}"
+
+
+class BookingStatusHistory(TimeStampedModel):
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="status_history",
+    )
+    from_status = models.CharField(max_length=20, choices=Booking.Status.choices, blank=True)
+    to_status = models.CharField(max_length=20, choices=Booking.Status.choices)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="booking_status_changes",
+    )
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name_plural = "Booking status histories"
+
+    def __str__(self):
+        return f"{self.booking}: {self.from_status} -> {self.to_status}"
+
+
+class BookingAssignment(TimeStampedModel):
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="assignment",
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile",
+        on_delete=models.PROTECT,
+        related_name="assignments",
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-assigned_at"]
+
+    def __str__(self):
+        return f"{self.booking} -> {self.worker.user.phone}"

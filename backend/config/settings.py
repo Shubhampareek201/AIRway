@@ -25,7 +25,7 @@ SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
 ALLOWED_HOSTS = os.environ.get(
-    "DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost"
+    "DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,192.168.1.4"
 ).split(",")
 
 
@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.catalog",
     "apps.workers.apps.WorkersConfig",
+    "apps.bookings",
+    "apps.payments",
 ]
 
 MIDDLEWARE = [
@@ -170,3 +172,7 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'Home Services Booking Platform API',
     'VERSION': '1.0.0',
 }
+
+# Razorpay (set via environment variables in production)
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_dummy")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "dummy_secret")
