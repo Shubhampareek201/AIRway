@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/auth/presentation/startup_gate.dart';
+import 'package:airway/features/auth/data/google_sign_in_service.dart';
 import 'package:airway/features/auth/presentation/signup_screen.dart';
 import 'package:airway/features/auth/presentation/forgot_password_screen.dart';
 import 'package:airway/features/auth/presentation/phone_login_screen.dart';
@@ -36,7 +37,46 @@ class _LoginScreenState extends State<LoginScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
+  Future<void> _loginWithGoogle() async {
+  if (_loading) return;
 
+  setState(() => _loading = true);
+
+  try {
+    final idToken = await GoogleSignInService.signIn();
+
+    if (idToken == null) return;
+
+    final response = await AuthApi.firebaseLogin(
+      idToken: idToken,
+    );
+
+    await SecureSessionStorage.saveSession(
+      accessToken: response['access'] as String,
+      refreshToken: response['refresh'] as String,
+    );
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const StartupGate()),
+      (route) => false,
+    );
+  } on AuthApiException catch (error) {
+    if (!mounted) return;
+    _message(error.message);
+  } catch (error, stackTrace) {
+  debugPrint('Google Sign-In error: $error');
+  debugPrintStack(stackTrace: stackTrace);
+
+  if (!mounted) return;
+  _message('Google Sign-In failed: $error');
+} finally {
+    if (mounted) {
+      setState(() => _loading = false);
+    }
+  }
+}
   Future<void> _login() async {
     final phone = _phoneController.text.trim();
     final email = _emailController.text.trim();
@@ -239,6 +279,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                 ),
               ),
+              const SizedBox(height: 16),
+
+SizedBox(
+  width: double.infinity,
+  height: 54,
+  child: OutlinedButton.icon(
+    icon: Image.asset(
+      'assets/images/google_logo.png',
+      height: 24,
+      errorBuilder: (_, _, _) => const Icon(Icons.g_mobiledata, size: 24),
+    ),
+    label: const Text('Continue with Google'),
+    onPressed: _loading ? null : _loginWithGoogle,
+  ),
+),
             ],
           ),
         ),
