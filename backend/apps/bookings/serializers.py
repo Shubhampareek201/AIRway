@@ -44,7 +44,9 @@ class BookingStatusHistorySerializer(serializers.ModelSerializer):
 
     def get_changed_by_name(self, obj):
         if obj.changed_by:
-            return obj.changed_by.get_full_name() or obj.changed_by.phone
+            if obj.changed_by.name:
+                return obj.changed_by.name
+            return obj.changed_by.phone
         return "System"
 
 
@@ -63,7 +65,9 @@ class BookingAssignmentSerializer(serializers.ModelSerializer):
 
     def get_worker_name(self, obj):
         user = obj.worker.user
-        return user.get_full_name() or user.phone
+        if user.name:
+            return user.name
+        return user.phone
 
     def get_worker_phone(self, obj):
         return obj.worker.user.phone
@@ -143,7 +147,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         # Validate addons belong to service
         addon_ids = attrs.get("addon_ids", [])
         if addon_ids:
-            valid_addon_ids = set(AddOn.objects.filter(service=service, is_active=True).values_list("id", flat=True))
+            valid_addon_ids = set(AddOn.objects.filter(service=service).values_list("id", flat=True))
             invalid = set(addon_ids) - valid_addon_ids
             if invalid:
                 raise serializers.ValidationError({"addon_ids": f"Invalid addon IDs: {invalid}"})
@@ -216,8 +220,9 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         pricing["visit_fee"] = str(visit_fee)
 
         # Calculate totals
-        subtotal = variant_price + addon_total + visit_fee
-        tax = subtotal * 0.18  # 18% GST
+        from decimal import Decimal
+        subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total)) + Decimal(str(visit_fee))
+        tax = subtotal * Decimal("0.18")  # 18% GST
         total = subtotal + tax
 
         pricing["subtotal"] = str(subtotal)
@@ -296,7 +301,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     address_detail = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     booking_mode_display = serializers.CharField(source="get_booking_mode_display", read_only=True)
-    addons = BookingAddOnSerializer(many=True, read_only=True)
+    addons = BookingAddOnSerializer(many=True, read_only=True, source="booking_addons")
     form_responses = BookingFormResponseSerializer(many=True, read_only=True)
     status_history = BookingStatusHistorySerializer(many=True, read_only=True)
     assignment = BookingAssignmentSerializer(read_only=True)
@@ -332,6 +337,35 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "latitude": str(addr.latitude) if addr.latitude else None,
             "longitude": str(addr.longitude) if addr.longitude else None,
         }
+
+
+class BookingAvailabilitySerializer(serializers.Serializer):
+    """Serializer for checking booking slot availability."""
+    service = serializers.IntegerField()
+    scheduled_at = serializers.DateTimeField()
+    drop_scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+    variant_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    booking_mode = serializers.CharField(required=False, default="scheduled")
+    audience = serializers.CharField(required=False, default="all")
+    address_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+
+    def validate_scheduled_at(self, value):
+        from django.utils import timezone
+        if value <= timezone.now():
+            raise serializers.ValidationError("Scheduled time must be in the future.")
+        return value
+
+    def validate(self, attrs):
+        from apps.catalog.models import Service, ServiceVariant
+
+        service = Service.objects.filter(pk=attrs.get("service")).first()
+        if not service:
+            raise serializers.ValidationError({"service": "Invalid service ID."})
+
+        attrs["service_obj"] = service
+        attrs["variant"] = ServiceVariant.objects.filter(pk=attrs.get("variant_id")).first() if attrs.get("variant_id") else None
+
+        return attrs
 
 
 class BookingCancelSerializer(serializers.Serializer):

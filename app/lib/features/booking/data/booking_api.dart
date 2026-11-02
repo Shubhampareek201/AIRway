@@ -177,4 +177,33 @@ class BookingApi {
 
     return Map<String, dynamic>.from(result);
   }
+
+  static Future<bool> checkSlotAvailability({
+    required int serviceId,
+    required DateTime scheduledAt,
+    DateTime? dropScheduledAt,
+    int? variantId,
+    String bookingMode = 'scheduled',
+  }) async {
+    final data = {
+      'service': serviceId,
+      'scheduled_at': scheduledAt.toIso8601String(),
+      'booking_mode': bookingMode,
+    };
+
+    if (dropScheduledAt != null) {
+      data['drop_scheduled_at'] = dropScheduledAt.toIso8601String();
+    }
+    if (variantId != null) {
+      data['variant_id'] = variantId;
+    }
+
+    final result = await request(
+      '/api/v1/bookings/check_availability/',
+      method: 'POST',
+      data: data,
+    );
+
+    return result['available'] == true;
+  }
 }

@@ -10,7 +10,9 @@ from .serializers import (
     BookingListSerializer,
     BookingDetailSerializer,
     BookingCancelSerializer,
+    BookingAvailabilitySerializer,
 )
+from .services import check_slot_availability, check_service_available, SlotConflictError, ServiceUnavailableError
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -70,7 +72,50 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
 
-    @action(detail=True, methods=["get"])
+    @action(detail=False, methods=["post"])
+    def check_availability(self, request, pk=None):
+        """Check if a slot is available for booking."""
+        serializer = BookingAvailabilitySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        service = data["service_obj"]
+        variant = data["variant"]
+        booking_mode = data["booking_mode"]
+        scheduled_at = data["scheduled_at"]
+        drop_scheduled_at = data.get("drop_scheduled_at")
+
+        try:
+            check_service_available(
+                service=service,
+                address=None,
+                audience=data.get("audience", "all"),
+            )
+
+            duration = variant.duration_minutes if variant else service.duration_minutes
+
+            check_slot_availability(
+                service=service,
+                scheduled_at=scheduled_at,
+                duration_minutes=duration or 60,
+                booking_mode=booking_mode,
+                drop_scheduled_at=drop_scheduled_at,
+            )
+
+            return Response({"available": True, "message": "Slot is available for booking."})
+
+        except SlotConflictError as e:
+            return Response(
+                {"available": False, "message": str(e)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except ServiceUnavailableError as e:
+            return Response(
+                {"available": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=True, methods=["get", "post"])
     def track(self, request, pk=None):
         booking = self.get_object()
 
@@ -87,7 +132,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         return Response({
             "is_assigned": True,
             "worker_id": worker.id,
-            "worker_name": worker.user.get_full_name() or worker.user.phone,
+            "worker_name": worker.user.name or worker.user.phone,
             "worker_phone": worker.user.phone,
             "worker_rating": float(worker.rating_avg) if worker.rating_avg else None,
             "status": booking.status,
