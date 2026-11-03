@@ -40,11 +40,11 @@ Connected to `airway_db` at port 5434:
 - All constraints and indexes applied successfully
 
 ### Django Test Results
-- ✅ `python backend/manage.py test apps.accounts apps.bookings apps.catalog apps.workers`
-- ✅ `python backend/manage.py test apps.bookings` - **19 tests passed** (including 4 new availability tests)
-- **Result**: 40+ tests passed, 0 failed, 0 errors
+- ✅ `python backend/manage.py test apps.accounts apps.bookings apps.catalog apps.workers` - **46 tests passed**
+- ✅ `python backend/manage.py test apps.bookings` - **27 tests passed**
+- **Result**: 46 tests passed, 0 failed, 0 errors
 - **Command**: `python manage.py test apps.accounts apps.bookings apps.catalog apps.workers`
-- **Duration**: ~23 seconds
+- **Duration**: ~49 seconds
 
 ### Django check
 - ✅ `python backend/manage.py check` - No issues identified
@@ -193,6 +193,14 @@ AddOns:
 - Firebase plugins use Kotlin Gradle Plugin (KGP) - future migration needed
 - Schema default value drift (functionally equivalent)
 - `BookingCreateSerializer` requires variant for fixed price services (can be improved)
+
+### Security: Double-Booking Prevention ✅ FIXED
+A critical double-booking vulnerability was identified and fixed:
+- **Issue**: `BookingCreateSerializer` did NOT call `check_slot_availability()` during booking creation
+- **Impact**: Two customers could book the same slot simultaneously (race condition)
+- **Fix**: Added availability check in `validate()` method before booking creation
+- **Tests**: Added `BookingDoubleBookingPreventionTest` to verify concurrent booking prevention
+- **Result**: All 46 tests pass, double-booking now prevented at API level
 
 ---
 
