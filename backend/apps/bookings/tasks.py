@@ -135,142 +135,133 @@ def retry_failed_dispatches():
 @shared_task
 def timeout_pending_payments():
     """
-    Enforce payment timeout window. Mark payments as FAILED if PENDING
-    past the timeout threshold.
+    Mark expired booking-linked PENDING payments as FAILED.
 
-    For ASSIGNED bookings with timeout:
-    1. Mark payment as FAILED
-    2. Withdraw the accepted offer
-    3. Delete the BookingAssignment
-    4. Revert booking to PENDING
-    5. Notify customer
-    6. Trigger re-dispatch for this booking
-
-    Payment lifecycle vs Booking lifecycle:
-    - PENDING payment for CONFIRMED booking: customer hasn't paid yet before worker assignment
-    - PENDING payment for ASSIGNED booking: customer needs to pay after worker accepted
-    - PAID payment: payment complete, booking status managed separately
-    - TIMEOUT applies only to PENDING payments, never PAID
+    Lock the payment row separately from its booking. Payment.booking is
+    nullable now that payments can belong to parent orders, and PostgreSQL
+    cannot apply FOR UPDATE to the nullable side of an outer join.
     """
     from django.conf import settings
     from apps.payments.models import Payment
-    from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingStatusHistory
+    from apps.bookings.models import Booking, WorkerOffer, BookingStatusHistory
     from apps.notifications.models import Notification
 
     timeout_minutes = getattr(settings, 'PAYMENT_TIMEOUT_MINUTES', PAYMENT_TIMEOUT_MINUTES)
     timeout_ago = timezone.now() - timedelta(minutes=timeout_minutes)
 
-    # Find PENDING payments that have timed out
-    timed_out_payments = Payment.objects.filter(
-        status=Payment.Status.PENDING,
-        created_at__lt=timeout_ago
-    ).select_related('booking').select_for_update()
+    payment_ids = list(
+        Payment.objects.filter(
+            status=Payment.Status.PENDING,
+            created_at__lt=timeout_ago,
+            booking__isnull=False,
+        ).values_list("id", flat=True)
+    )
 
     count = 0
-    for payment in timed_out_payments:
-        # Double-check status after acquiring lock
-        if payment.status == Payment.Status.PAID:
-            logger.info(f"Payment {payment.id} already PAID, skipping timeout")
-            continue
+    for payment_id in payment_ids:
+        with transaction.atomic():
+            payment = Payment.objects.select_for_update().filter(
+                pk=payment_id,
+                status=Payment.Status.PENDING,
+                created_at__lt=timeout_ago,
+                booking__isnull=False,
+            ).first()
+            if payment is None:
+                continue
 
-        if payment.status != Payment.Status.PENDING:
-            continue
+            booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+            if booking.status in [
+                Booking.Status.CANCELLED,
+                Booking.Status.COMPLETED,
+                Booking.Status.DISPUTED,
+            ]:
+                logger.info(
+                    f"Skipping payment {payment.id}: booking already in terminal state {booking.status}"
+                )
+                continue
 
-        booking = payment.booking
+            payment.status = Payment.Status.FAILED
+            payment.failed_at = timezone.now()
+            payment.save(update_fields=["status", "failed_at", "updated_at"])
 
-        # Safety checks for booking status
-        if booking.status in [Booking.Status.CANCELLED, Booking.Status.COMPLETED, Booking.Status.DISPUTED]:
-            logger.info(
-                f"Skipping payment {payment.id}: booking already in terminal state {booking.status}"
-            )
-            continue
-
-        # Update payment to FAILED
-        payment.status = Payment.Status.FAILED
-        payment.failed_at = timezone.now()
-        payment.save()
-
-        # Handle ASSIGNED bookings - release worker and re-dispatch
-        if booking.status == Booking.Status.ASSIGNED:
-            with transaction.atomic():
-                # Find and withdraw the accepted offer
+            if booking.status == Booking.Status.ASSIGNED:
                 accepted_offer = WorkerOffer.objects.filter(
                     booking=booking,
-                    status=WorkerOffer.Status.ACCEPTED
-                ).first()
+                    status=WorkerOffer.Status.ACCEPTED,
+                ).select_related("worker__user").first()
 
                 if accepted_offer:
                     accepted_offer.status = WorkerOffer.Status.WITHDRAWN
                     accepted_offer.responded_at = timezone.now()
                     accepted_offer.save()
 
-                    # Notify worker
                     Notification.objects.create(
                         user=accepted_offer.worker.user,
                         type=Notification.Type.WORKER_OFFER_WITHDRAWN,
                         title="Offer Withdrawn",
                         body="The job has been released due to payment timeout.",
                         channel=Notification.Channel.IN_APP,
-                        data={"booking_id": booking.id}
+                        data={"booking_id": booking.id},
                     )
 
-                # Delete the assignment
-                assignment = getattr(booking, 'assignment', None)
+                assignment = getattr(booking, "assignment", None)
                 if assignment:
                     assignment.delete()
 
-                # Revert booking to PENDING
                 old_status = booking.status
                 booking.status = Booking.Status.PENDING
-                booking.save(update_fields=['status'])
+                booking.save(update_fields=["status"])
 
                 BookingStatusHistory.objects.create(
                     booking=booking,
                     from_status=old_status,
                     to_status=Booking.Status.PENDING,
                     changed_by=None,
-                    note="Payment timeout - worker released"
+                    note="Payment timeout - worker released",
                 )
 
-                # Notify customer
                 Notification.objects.create(
                     user=booking.customer,
                     type=Notification.Type.PAYMENT_TIMEOUT,
                     title="Payment Timed Out",
                     body="Your payment timed out. We're reassigning a worker.",
                     channel=Notification.Channel.IN_APP,
-                    data={"booking_id": booking.id}
+                    data={"booking_id": booking.id},
                 )
 
-                # Trigger re-dispatch for this booking
                 from apps.bookings.dispatcher import DispatcherService
 
-                # Count existing offers to check retry limit
                 existing_offers = WorkerOffer.objects.filter(booking=booking).count()
                 batch_limit = MAX_BATCHES * BATCH_SIZE
-
                 if existing_offers < batch_limit:
-                    offers = DispatcherService.dispatch_offers(booking, batch_size=BATCH_SIZE)
+                    offers = DispatcherService.dispatch_offers(
+                        booking,
+                        batch_size=BATCH_SIZE,
+                    )
                     if offers:
                         logger.info(
                             f"Re-dispatched booking {booking.id} after payment timeout: "
                             f"created {len(offers)} new offers"
                         )
                     else:
-                        logger.info(f"No eligible workers for re-dispatch of booking {booking.id}")
+                        logger.info(
+                            f"No eligible workers for re-dispatch of booking {booking.id}"
+                        )
                 else:
                     logger.info(
                         f"Skipping re-dispatch for booking {booking.id}: "
                         f"already has {existing_offers} offers (max {batch_limit})"
                     )
 
-                logger.info(f"Released assignment for booking {booking.id} due to payment timeout")
+                logger.info(
+                    f"Released assignment for booking {booking.id} due to payment timeout"
+                )
 
-        count += 1
-        logger.info(
-            f"Timed out payment {payment.id} for booking {booking.id}: "
-            f"payment FAILED, booking now PENDING"
-        )
+            count += 1
+            logger.info(
+                f"Timed out payment {payment.id} for booking {booking.id}: "
+                f"payment FAILED, booking now {booking.status}"
+            )
 
     logger.info(f"Timeout batch: timed out {count} payments")
     return count
