@@ -934,20 +934,23 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 data={"booking_id": booking.id, "worker_id": worker.id},
             )
 
-        # Phase 2: Create payment OUTSIDE transaction (Razorpay API call)
-        # This allows customer to retry if Razorpay is temporarily unavailable
-        try:
-            from apps.payments.views import create_or_get_payment
-            payment, payment_order_id, already_existed = create_or_get_payment(
-                booking=booking,
-                customer=booking.customer,
-                trigger_source="worker_accept",
-            )
-        except Exception as exc:
-            logger.warning(
-                "Payment creation failed for booking %s after worker accept: %s",
-                booking.id, exc,
-            )
+        # For a booking inside a multi-service order, the customer pays
+        # once at the parent order after every service has an assigned worker.
+        # Keep the existing one-booking payment flow unchanged.
+        payment_order_id = None
+        if not hasattr(booking, "order_item"):
+            try:
+                from apps.payments.views import create_or_get_payment
+                payment, payment_order_id, already_existed = create_or_get_payment(
+                    booking=booking,
+                    customer=booking.customer,
+                    trigger_source="worker_accept",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Payment creation failed for booking %s after worker accept: %s",
+                    booking.id, exc,
+                )
 
         response_data = {
             "status": "accepted",
