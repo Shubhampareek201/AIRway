@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
-from rest_framework.response import Response\nfrom rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
@@ -14,7 +15,8 @@ from .serializers import (
     BookingAvailabilitySerializer,
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
-from apps.notifications.models import Notification\nfrom apps.accounts.models import Address
+from apps.notifications.models import Notification
+from apps.accounts.models import Address
 
 
 class BookingViewSet(viewsets.ModelViewSet):
