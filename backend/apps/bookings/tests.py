@@ -7,7 +7,7 @@ import pytz
 import datetime as dt_module
 
 from apps.accounts.models import User, Address
-from apps.catalog.models import Category, Service, ServiceVariant, AddOn, FormField
+from apps.catalog.models import Category, Service, ServiceVariant, AddOn, FormField, CityService
 from apps.core.models import City, Zone
 from apps.workers.models import (
     WorkerProfile,
@@ -15,7 +15,7 @@ from apps.workers.models import (
     WorkerZone,
     WorkerSchedule,
 )
-from apps.bookings.models import Booking, WorkerOffer, BookingAssignment
+from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, CustomerCart, CartItem, Order
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
 
@@ -2605,3 +2605,57 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(notification.data.get("late_webhook"), True)
         self.assertEqual(notification.data.get("booking_id"), booking.id)
         self.assertEqual(notification.data.get("payment_id"), payment.id)
+
+
+class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = self._create_user("+919876543288")
+        self.client.force_authenticate(user=self.customer)
+        self.category = Category.objects.create(title="Cleaning", slug="checkout-cleaning")
+        self.service = self._create_service(self.category, title="Deep Home Cleaning")
+        self.variant = self._create_variant(self.service, price=1000, mrp=1200)
+        self.address = self._create_address(self.customer)
+        CityService.objects.create(city=self.address.zone.city, service=self.service, is_active=True)
+        self.cart = CustomerCart.objects.create(customer=self.customer, address=self.address)
+        self.cart_item = CartItem.objects.create(
+            cart=self.cart,
+            service=self.service,
+            variant=self.variant,
+            quantity=2,
+            pricing_snapshot={"line_total": "2000.00"},
+        )
+
+    def test_checkout_creates_one_parent_order_and_booking_line(self):
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {
+                        "cart_item_id": self.cart_item.id,
+                        "scheduled_at": scheduled_at,
+                    }
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"], customer=self.customer)
+        self.assertEqual(order.items.count(), 1)
+        order_item = order.items.select_related("booking").get()
+        self.assertEqual(order_item.quantity, 2)
+        self.assertEqual(order_item.booking.service, self.service)
+        self.assertEqual(order_item.booking.address, self.address)
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+        self.assertFalse(self.cart.items.exists())
+
+    def test_checkout_requires_schedule_for_every_cart_item(self):
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": []},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(self.cart.items.exists())
