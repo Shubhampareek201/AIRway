@@ -160,7 +160,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         # Validate address belongs to user and is active
         user = self.context["request"].user
         try:
-            address = Address.objects.get(pk=address_id, user=user, deleted_at__isnull=True)
+            address = Address.objects.select_related("zone__city").get(
+                pk=address_id, user=user, deleted_at__isnull=True
+            )
+            check_service_available(service=service, address=address, audience="all")
             attrs["_address"] = address
         except Address.DoesNotExist:
             raise serializers.ValidationError({"address_id": "Invalid address."})
