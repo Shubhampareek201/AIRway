@@ -256,6 +256,76 @@ class WorkerOffer(TimeStampedModel):
     def __str__(self):
         return f"Offer #{self.pk}: {self.worker.user.phone} -> Booking #{self.booking_id}"
 
+class Order(TimeStampedModel):
+    """Parent checkout record that groups multiple independent service bookings."""
+
+    class Status(models.TextChoices):
+        AWAITING_ASSIGNMENT = "awaiting_assignment", "Awaiting Assignment"
+        AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
+        PAID = "paid", "Paid"
+        PARTIALLY_CANCELLED = "partially_cancelled", "Partially Cancelled"
+        CANCELLED = "cancelled", "Cancelled"
+
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="service_orders",
+    )
+    address = models.ForeignKey(
+        Address,
+        on_delete=models.PROTECT,
+        related_name="service_orders",
+    )
+    status = models.CharField(
+        max_length=24,
+        choices=Status.choices,
+        default=Status.AWAITING_ASSIGNMENT,
+        db_index=True,
+    )
+    currency = models.CharField(max_length=3, default="INR")
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["customer", "status"]),
+            models.Index(fields=["created_at", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Order #{self.pk} - {self.customer.phone} - ₹{self.total_amount}"
+
+
+class OrderItem(TimeStampedModel):
+    """Immutable checkout snapshot linking one order line to one service booking."""
+
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="items")
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.PROTECT,
+        related_name="order_item",
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    service_snapshot = models.JSONField(default=dict, blank=True)
+    pricing_snapshot = models.JSONField(default=dict, blank=True)
+    line_subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(quantity__gte=1), name="order_item_quantity_gte_1"),
+        ]
+
+    def __str__(self):
+        return f"Order #{self.order_id} - Booking #{self.booking_id}"
+
+
 class CustomerCart(TimeStampedModel):
     """One active cart per customer; cart is separate from confirmed bookings."""
     customer = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="service_cart")
