@@ -13,6 +13,8 @@ from .serializers import (
     BookingDetailSerializer,
     BookingCancelSerializer,
     BookingAvailabilitySerializer,
+    CartItemSerializer,
+    CustomerCartSerializer,
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.notifications.models import Notification
