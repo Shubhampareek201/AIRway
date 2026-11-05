@@ -157,3 +157,72 @@ class CatalogServiceDetailTest(TestCase):
         """Non-existent service ID should return 404."""
         response = self.client.get(f"/api/v1/catalog/services/{self.nonexistent_id}/")
         self.assertEqual(response.status_code, 404)
+
+class CityFilteredCategoryTreeTest(TestCase):
+    def setUp(self):
+        from apps.accounts.models import User, Address
+        from apps.core.models import City, Zone
+        from apps.catalog.models import CityService
+
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            phone="+919876543299",
+            password="password123",
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.city = City.objects.create(name="Jaipur", state="Rajasthan")
+        self.zone = Zone.objects.create(
+            name="Vaishali Nagar",
+            city=self.city,
+            is_active=True,
+        )
+        self.address = Address.objects.create(
+            user=self.user,
+            label="Home",
+            house_details="House 1",
+            full_address="Vaishali Nagar, Jaipur",
+            zone=self.zone,
+        )
+
+        self.root = Category.objects.create(title="Home Services", slug="home-services")
+        self.visible_child = Category.objects.create(
+            title="Cleaning",
+            slug="city-cleaning",
+            parent=self.root,
+        )
+        self.hidden_child = Category.objects.create(
+            title="Electrical",
+            slug="city-electrical",
+            parent=self.root,
+        )
+        self.visible_service = Service.objects.create(
+            category=self.visible_child,
+            title="Home Deep Cleaning",
+            booking_mode="scheduled",
+            pricing_type="fixed",
+            is_active=True,
+        )
+        self.hidden_service = Service.objects.create(
+            category=self.hidden_child,
+            title="Electrician Visit",
+            booking_mode="scheduled",
+            pricing_type="fixed",
+            is_active=True,
+        )
+        CityService.objects.create(
+            city=self.city,
+            service=self.visible_service,
+            is_active=True,
+        )
+
+    def test_category_tree_only_includes_categories_with_city_services(self):
+        response = self.client.get(
+            f"/api/v1/catalog/categories/?address_id={self.address.id}"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.root.id)
+        child_ids = [child["id"] for child in response.data[0]["children"]]
+        self.assertEqual(child_ids, [self.visible_child.id])
