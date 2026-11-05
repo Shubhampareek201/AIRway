@@ -7,6 +7,8 @@ from .models import (
     BookingFormResponse,
     BookingStatusHistory,
     BookingAssignment,
+    CustomerCart,
+    CartItem,
 )
 
 
@@ -31,6 +33,21 @@ class BookingStatusHistoryInline(TabularInline):
 class BookingAssignmentInline(TabularInline):
     model = BookingAssignment
     extra = 0
+
+
+class CartItemInline(TabularInline):
+    model = CartItem
+    extra = 0
+    readonly_fields = ('pricing_snapshot', 'created_at', 'updated_at')
+
+
+@admin.register(CustomerCart)
+class CustomerCartAdmin(ModelAdmin):
+    list_display = ('customer', 'address', 'updated_at')
+    search_fields = ('customer__phone', 'customer__name')
+    list_filter = ('address__zone__city',)
+    readonly_fields = ('created_at', 'updated_at')
+    inlines = [CartItemInline]
 
 
 @admin.register(Booking)
