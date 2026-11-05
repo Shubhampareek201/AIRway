@@ -498,102 +498,105 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ]);
 
   Widget _home(Map<String, dynamic> address) {
-    final hits = _services.where((s) => '${s.name} ${s.description}'.toLowerCase().contains(_query.trim().toLowerCase())).toList();
-    const featured = <int>[2, 3, 1, 6]; // Cleaning, Electrical, Beauty, Car Wash
+    final hits = _services.where((s) => '\${s.name} \${s.description}'.toLowerCase().contains(_query.trim().toLowerCase())).toList();
     return RefreshIndicator(
       onRefresh: _refresh,
       color: _Ui.violet,
-      child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 28), children: [
+      child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 30), children: [
         _purpleHeader(address),
         if (_query.isEmpty) ...[
           _offerCarousel(),
+          _heading('Service Categories', 'Explore services for your everyday needs'),
+          _categoryStrip(),
+          _heading('Popular Services', 'Frequently booked services near you'),
+          _popularStrip(),
           _walletReferralCard(),
           _nearbyWorkersSection(),
-        ],
-        if (_query.isNotEmpty) ...[
-          _heading('Search Results', '${hits.length} matching categories'),
+          _trustStrip(),
+        ] else ...[
+          _heading('Search Results', '\${hits.length} matching categories'),
           if (hits.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No matching services. Try another search.', style: TextStyle(color: _Ui.sub))),
           _categoryGrid(hits, allServices: true),
-          const SizedBox(height: 30),
-        ] else ...[
-          Padding(padding: const EdgeInsets.fromLTRB(20, 24, 20, 12), child: Row(children: [
-            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Our Services', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _Ui.ink)),
-              SizedBox(height: 3), Text('Explore our featured services', style: TextStyle(fontSize: 12, color: _Ui.sub)),
-            ])),
-            TextButton(onPressed: _openAllServices, child: const Text('All Services  →')),
-          ])),
-          _categoryGrid([for (final i in featured) _services[i]], featured: true),
-          const Padding(padding: EdgeInsets.fromLTRB(21, 8, 21, 0), child: Text('Illustrative prices only · final prices shown before booking', style: TextStyle(color: _Ui.sub, fontSize: 11))),
-          _trustStrip(),
-          _heading('Book Again', 'Your recent and frequent bookings'),
-          _emptyBookings(),
-          _heading('Popular Near You', 'Explore services for your area'),
-          _popularStrip(),
-          const SizedBox(height: 20),
         ],
       ]),
     );
   }
 
   Widget _purpleHeader(Map<String, dynamic> a) {
-    final label = '${a['label'] ?? 'Home'}';
-    final full = '${a['house_details'] ?? ''}, ${a['full_address'] ?? ''}'.replaceFirst(RegExp(r'^,\s*'), '').trim();
+    final label = '\${a['label'] ?? 'Home'}';
+    final full = '\${a['house_details'] ?? ''}, \${a['full_address'] ?? ''}'.replaceFirst(RegExp(r'^,\\s*'), '').trim();
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6F4EF6), Color(0xFF8138B8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-        boxShadow: [BoxShadow(color: _Ui.violet.withAlpha(45), blurRadius: 18, offset: const Offset(0, 7))],
-      ),
+      color: _Ui.bg,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(color: Colors.white.withAlpha(35), borderRadius: BorderRadius.circular(15)),
-            child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 24),
-          ),
-          const SizedBox(width: 11),
+          const Icon(Icons.location_on_rounded, color: _Ui.violet, size: 22),
+          const SizedBox(width: 8),
           Expanded(child: InkWell(
             onTap: _selectAddress,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800))),
-                const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 18),
+                Text(label, style: const TextStyle(color: _Ui.ink, fontSize: 13, fontWeight: FontWeight.w800)),
+                const Icon(Icons.keyboard_arrow_down_rounded, color: _Ui.ink, size: 18),
               ]),
               Text(full.isEmpty ? 'Choose your service address' : full, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.white.withAlpha(220), fontSize: 12.5)),
+                style: const TextStyle(color: _Ui.sub, fontSize: 11.5)),
             ])),
           )),
-          const SizedBox(width: 6),
-          Container(
-            decoration: BoxDecoration(color: Colors.white.withAlpha(30), shape: BoxShape.circle),
-            child: IconButton(
-              tooltip: 'Notifications',
-              onPressed: _showNotificationsInfo,
-              icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
-            ),
-          ),
+          IconButton(tooltip: 'Notifications', onPressed: _showNotificationsInfo,
+            icon: const Icon(Icons.notifications_none_rounded, color: _Ui.ink, size: 25)),
         ]),
         const SizedBox(height: 18),
-        RichText(text: TextSpan(style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900, height: 1.12, color: Colors.white), children: [
-          const TextSpan(text: 'Hi, '),
-          TextSpan(text: _customerName == 'there' ? 'there' : _customerName),
-        ])),
-        const SizedBox(height: 7),
-        Text('What do you need at home today?', style: TextStyle(color: Colors.white.withAlpha(230), fontSize: 14.5, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 17),
-        _searchBar(),
+        Text('Good $greeting, \${_customerName == 'there' ? 'there' : _customerName}!',
+          style: const TextStyle(color: _Ui.ink, fontSize: 25, fontWeight: FontWeight.w900, height: 1.15)),
+        const SizedBox(height: 5),
+        const Text('What service do you need today?', style: TextStyle(color: _Ui.sub, fontSize: 13)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: _searchBar()),
+          const SizedBox(width: 10),
+          Material(color: _Ui.violet, borderRadius: BorderRadius.circular(16), child: InkWell(
+            borderRadius: BorderRadius.circular(16), onTap: _openAllServices,
+            child: const SizedBox(width: 52, height: 52, child: Icon(Icons.tune_rounded, color: Colors.white, size: 23)),
+          )),
+        ]),
       ]),
     );
   }
 
-  Widget _walletReferralCard() => Padding(
+  Widget _categoryStrip() {
+    final visible = _services.take(4).toList();
+    return SizedBox(height: 112, child: ListView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      children: [
+        for (final service in visible)
+          _categoryTile(service.name, service.icon, service.tint, () =>
+            service.name == 'Women’s Beauty' || service.name == 'Men’s Grooming'
+              ? _showBeautyOptions() : _openService(service)),
+        _categoryTile('More', Icons.grid_view_rounded, _Ui.violet, _openAllServices),
+      ],
+    ));
+  }
+
+  Widget _categoryTile(String title, IconData icon, Color tint, VoidCallback onTap) => SizedBox(
+    width: 76,
+    child: Padding(padding: const EdgeInsets.only(right: 10), child: InkWell(
+      onTap: onTap, borderRadius: BorderRadius.circular(17),
+      child: Column(children: [
+        Container(width: 62, height: 62, decoration: BoxDecoration(color: tint.withAlpha(22), borderRadius: BorderRadius.circular(18)),
+          child: Icon(icon, color: tint, size: 29)),
+        const SizedBox(height: 7),
+        Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+          style: const TextStyle(color: _Ui.ink, fontSize: 10.5, fontWeight: FontWeight.w700)),
+      ]),
+    )),
+  );
+
+    Widget _walletReferralCard() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
     child: Container(
       padding: const EdgeInsets.all(16),
@@ -697,41 +700,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ]),
   );
 
-  Widget _searchBar() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 0),
-    child: TextField(
-      controller: _search,
-      focusNode: _searchFocus,
-      textInputAction: TextInputAction.search,
-      onChanged: (v) => setState(() => _query = v),
-      decoration: InputDecoration(
-        hintText: 'Search cleaning, electrician, salon…',
-        hintStyle: const TextStyle(fontSize: 13.5, color: _Ui.sub),
-        prefixIcon: const Icon(Icons.search_rounded, color: _Ui.violet),
-        suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (_query.isNotEmpty)
-            IconButton(tooltip: 'Clear search', onPressed: () {
-              _search.clear();
-              _searchFocus.unfocus();
-              setState(() => _query = '');
-            }, icon: const Icon(Icons.close_rounded, size: 19, color: _Ui.sub)),
-          IconButton(
-            tooltip: 'Search by voice',
-            onPressed: _startVoiceSearch,
-            icon: const Icon(Icons.mic_none_rounded, color: _Ui.violet),
-          ),
-        ]),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: const BorderSide(color: _Ui.violet, width: 1.5)),
-        contentPadding: const EdgeInsets.symmetric(vertical: 15),
-      ),
+  Widget _searchBar() => TextField(
+    controller: _search, focusNode: _searchFocus, textInputAction: TextInputAction.search,
+    onChanged: (v) => setState(() => _query = v),
+    decoration: InputDecoration(
+      hintText: 'Search services…',
+      hintStyle: const TextStyle(fontSize: 12.5, color: _Ui.sub),
+      prefixIcon: const Icon(Icons.search_rounded, color: _Ui.sub),
+      suffixIcon: _query.isEmpty
+        ? IconButton(tooltip: 'Search by voice', onPressed: _startVoiceSearch, icon: const Icon(Icons.mic_none_rounded, color: _Ui.sub))
+        : IconButton(tooltip: 'Clear search', onPressed: () { _search.clear(); _searchFocus.unfocus(); setState(() => _query = ''); },
+            icon: const Icon(Icons.close_rounded, size: 19, color: _Ui.sub)),
+      filled: true, fillColor: Colors.white,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _Ui.line)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: _Ui.violet, width: 1.3)),
+      contentPadding: const EdgeInsets.symmetric(vertical: 15),
     ),
   );
 
-  Widget _heading(String title, String subtitle) => Padding(
+    Widget _heading(String title, String subtitle) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 26, 20, 13),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _Ui.ink)),
@@ -832,65 +820,78 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ]),
   ));
 
-  Widget _popularStrip() => SizedBox(height: 194, child: ListView.separated(
+  Widget _popularStrip() => SizedBox(height: 206, child: ListView.separated(
     scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 20),
-    itemCount: 4, separatorBuilder: (_, __) => const SizedBox(width: 12),
+    itemCount: 4, separatorBuilder: (_, __) => const SizedBox(width: 13),
     itemBuilder: (context, i) {
       final s = [_services[2], _services[3], _services[6], _services[1]][i];
-      return SizedBox(width: 184, child: Material(color: Colors.white, borderRadius: BorderRadius.circular(21), child: InkWell(
-        onTap: () => _openService(s), borderRadius: BorderRadius.circular(21), child: Padding(
-          padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(width: 52, height: 52, decoration: BoxDecoration(color: s.tint.withAlpha(26), borderRadius: BorderRadius.circular(17)),
-                child: Icon(s.icon, color: s.tint, size: 27)),
-            const Spacer(),
+      final bg = [const Color(0xFFE8F4F2), const Color(0xFFFFF1E4), const Color(0xFFEAF1FF), const Color(0xFFFFEDF5)][i];
+      return SizedBox(width: 174, child: Material(
+        color: Colors.white, borderRadius: BorderRadius.circular(19), clipBehavior: Clip.antiAlias,
+        child: InkWell(onTap: () => _openService(s), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(height: 112, width: double.infinity, color: bg, child: Stack(children: [
+            Positioned(right: -8, bottom: -12, child: Icon(s.icon, size: 112, color: s.tint.withAlpha(45))),
+            Positioned(left: 13, top: 13, child: Container(padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.white.withAlpha(220), borderRadius: BorderRadius.circular(13)),
+              child: Icon(s.icon, color: s.tint, size: 25))),
+          ])),
+          Padding(padding: const EdgeInsets.fromLTRB(12, 10, 10, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w800)),
+              style: const TextStyle(color: _Ui.ink, fontSize: 13, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            Text(s.description, maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _Ui.sub, fontSize: 11, height: 1.25)),
-            const SizedBox(height: 6),
-            const Text('Explore service  ›', style: TextStyle(color: _Ui.violet, fontSize: 11.5, fontWeight: FontWeight.w800)),
-          ]),
-        ),
-      )));
+            Row(children: [
+              const Expanded(child: Text('Explore service', style: TextStyle(color: _Ui.sub, fontSize: 10.5))),
+              const Icon(Icons.arrow_forward_rounded, color: _Ui.violet, size: 17),
+            ]),
+          ])),
+        ])),
+      ));
     },
   ));
 
-  Widget _offerCarousel() {
-    const captions = ['A fresher home', 'Small fixes, less stress', 'Care at your doorstep'];
-    const subtitles = ['Explore cleaning services', 'Find an electrician', 'Discover salon services'];
-    const icons = [Icons.auto_awesome_rounded, Icons.bolt_rounded, Icons.spa_rounded];
-    const colors = [Color(0xFF6F4EF6), Color(0xFF2879BC), Color(0xFFE15798)];
+    Widget _offerCarousel() {
+    const captions = ['Clean Spaces,', 'Repairs Made', 'Beauty at Your'];
+    const secondLines = ['Happier Days', 'Simple', 'Doorstep'];
+    const subtitles = ['A cleaner home starts here', 'Reliable help for everyday fixes', 'Feel your best, right at home'];
+    const icons = [Icons.cleaning_services_rounded, Icons.handyman_rounded, Icons.spa_rounded];
+    const colors = [Color(0xFF5E45D8), Color(0xFF267D91), Color(0xFFB94F89)];
+    final services = [_services[2], _services[3], _services[1]];
     return Column(children: [
-      const Padding(padding: EdgeInsets.fromLTRB(20, 12, 20, 8), child: Align(alignment: Alignment.centerLeft, child: Text('Discover More', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _Ui.ink)))),
-      SizedBox(height: 152, child: PageView.builder(
+      SizedBox(height: 174, child: PageView.builder(
         controller: _offers, itemCount: 3, onPageChanged: (v) => setState(() => _offerIndex = v),
-        itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 5), child: Material(
-          borderRadius: BorderRadius.circular(22), color: colors[i], child: InkWell(
-            borderRadius: BorderRadius.circular(22), onTap: () => i == 2 ? _showBeautyOptions() : _openService([_services[2], _services[3]][i]),
-            child: Padding(padding: const EdgeInsets.all(19), child: Row(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text(captions[i], maxLines: 2, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 7),
-                Text(subtitles[i], maxLines: 2, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
-                const SizedBox(height: 8),
-                const Text('Explore  →', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+        itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Material(
+          color: colors[i], borderRadius: BorderRadius.circular(22), clipBehavior: Clip.antiAlias,
+          child: InkWell(onTap: () => i == 2 ? _showBeautyOptions() : _openService(services[i]),
+            child: Stack(children: [
+              Positioned(right: -18, bottom: -25, child: Icon(icons[i], size: 190, color: Colors.white.withAlpha(32))),
+              Padding(padding: const EdgeInsets.fromLTRB(19, 17, 12, 15), child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(captions[i], style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800)),
+                  Text(secondLines[i], style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  Text(subtitles[i], maxLines: 2, style: TextStyle(color: Colors.white.withAlpha(225), fontSize: 11.5)),
+                  const SizedBox(height: 11),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+                    child: const Text('Book Now', style: TextStyle(color: _Ui.ink, fontSize: 11.5, fontWeight: FontWeight.w800))),
+                ])),
+                const SizedBox(width: 8),
+                Icon(icons[i], size: 76, color: Colors.white.withAlpha(210)),
               ])),
-              Icon(icons[i], size: 74, color: Colors.white.withAlpha(180)),
-            ])),
+            ]),
           ),
         )),
       )),
       const SizedBox(height: 10),
       Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (i) => AnimatedContainer(
-        duration: const Duration(milliseconds: 260), width: i == _offerIndex ? 22 : 7, height: 7,
-        margin: const EdgeInsets.symmetric(horizontal: 3), decoration: BoxDecoration(
-          color: i == _offerIndex ? _Ui.violet : _Ui.line, borderRadius: BorderRadius.circular(9)),
+        duration: const Duration(milliseconds: 260), width: i == _offerIndex ? 21 : 7, height: 7,
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(color: i == _offerIndex ? _Ui.violet : _Ui.line, borderRadius: BorderRadius.circular(9)),
       ))),
     ]);
   }
 
-  Widget _bookings() => const BookingListScreen();
+    Widget _bookings() => const BookingListScreen();
 
   Widget _bookingsOld() => RefreshIndicator(
     onRefresh: _refresh,
