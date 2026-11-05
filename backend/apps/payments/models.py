@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from simple_history.models import HistoricalRecords
 
-from apps.bookings.models import Booking
+from apps.bookings.models import Booking, Order
 from apps.core.models import TimeStampedModel
 
 
@@ -21,6 +21,15 @@ class Payment(TimeStampedModel):
         Booking,
         on_delete=models.PROTECT,
         related_name="payment",
+        null=True,
+        blank=True,
+    )
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="payment",
+        null=True,
+        blank=True,
     )
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -43,6 +52,16 @@ class Payment(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(booking__isnull=False) & models.Q(order__isnull=True))
+                    | (models.Q(booking__isnull=True) & models.Q(order__isnull=False))
+                ),
+                name="payment_exactly_one_booking_or_order",
+            ),
+        ]
 
     def __str__(self):
-        return f"Payment #{self.pk} - Booking #{self.booking_id} - ₹{self.amount} ({self.status})"
+        target = f"Order #{self.order_id}" if self.order_id else f"Booking #{self.booking_id}"
+        return f"Payment #{self.pk} - {target} - ₹{self.amount} ({self.status})"
