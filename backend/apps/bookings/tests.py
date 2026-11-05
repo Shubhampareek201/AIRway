@@ -2689,7 +2689,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.service = self._create_service(self.category, title="Deep Home Cleaning")
         self.variant = self._create_variant(self.service, price=1000, mrp=1200)
         self.address = self._create_address(self.customer)
-        CityService.objects.create(city=self.address.zone.city, service=self.service, is_active=True)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=self.service,
+            defaults={"is_active": True},
+        )
         self.cart = CustomerCart.objects.create(customer=self.customer, address=self.address)
         self.cart_item = CartItem.objects.create(
             cart=self.cart,
