@@ -255,3 +255,37 @@ class WorkerOffer(TimeStampedModel):
 
     def __str__(self):
         return f"Offer #{self.pk}: {self.worker.user.phone} -> Booking #{self.booking_id}"
+
+class CustomerCart(TimeStampedModel):
+    """One active cart per customer; cart is separate from confirmed bookings."""
+    customer = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="service_cart")
+    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_carts")
+
+    def __str__(self):
+        return f"Cart - {self.customer.phone}"
+
+    @property
+    def subtotal(self):
+        return sum((item.line_total for item in self.items.all()), 0)
+
+
+class CartItem(TimeStampedModel):
+    cart = models.ForeignKey(CustomerCart, on_delete=models.CASCADE, related_name="items")
+    service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name="cart_items")
+    variant = models.ForeignKey(ServiceVariant, on_delete=models.PROTECT, null=True, blank=True, related_name="cart_items")
+    quantity = models.PositiveIntegerField(default=1)
+    addon_selections = models.JSONField(default=list, blank=True)
+    form_answers = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True)
+    pricing_snapshot = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.service.title} x{self.quantity}"
+
+    @property
+    def line_total(self):
+        from decimal import Decimal
+        return Decimal(str(self.pricing_snapshot.get("line_total", "0")))
