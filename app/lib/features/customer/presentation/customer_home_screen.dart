@@ -587,11 +587,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   );
 
   Widget _categoryStrip() {
-    final items = <({String title, _Service service, IconData icon})>[
-      (title: 'Cleaning', service: _services[2], icon: Icons.cleaning_services_rounded),
-      (title: 'Repairing', service: _services[3], icon: Icons.handyman_rounded),
-      (title: 'Painting', service: _services[4], icon: Icons.format_paint_rounded),
-      (title: 'Car Care', service: _services[6], icon: Icons.local_car_wash_rounded),
+    final items = <({String title, _Service service, IconData icon, String image})>[
+      (title: 'Cleaning', service: _services[2], icon: Icons.cleaning_services_rounded,
+        image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=240&q=80'),
+      (title: 'Repairing', service: _services[3], icon: Icons.handyman_rounded,
+        image: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=240&q=80'),
+      (title: 'Painting', service: _services[4], icon: Icons.format_paint_rounded,
+        image: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=240&q=80'),
+      (title: 'Car Care', service: _services[6], icon: Icons.local_car_wash_rounded,
+        image: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=240&q=80'),
     ];
     return SizedBox(
       height: 96,
@@ -604,6 +608,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               items[i].title,
               items[i].icon,
               () => _openService(items[i].service),
+              image: items[i].image,
               selected: i == 0,
             ),
           _categoryTile('More', Icons.grid_view_rounded, _openAllServices),
@@ -616,6 +621,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     String title,
     IconData icon,
     VoidCallback onTap, {
+    String? image,
     bool selected = false,
   }) => SizedBox(
     width: 66,
@@ -628,12 +634,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           Container(
             width: 54,
             height: 54,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: selected ? _Ui.violet : const Color(0xFFF0F4F1),
+              color: selected ? _Ui.pale : const Color(0xFFF0F4F1),
               borderRadius: BorderRadius.circular(13),
               border: Border.all(color: selected ? _Ui.violet : _Ui.line),
             ),
-            child: Icon(icon, color: selected ? Colors.white : _Ui.violet, size: 27),
+            child: image == null
+              ? Icon(icon, color: _Ui.violet, size: 27)
+              : Image.network(image, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Icon(icon, color: _Ui.violet, size: 27)),
           ),
           const SizedBox(height: 6),
           Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
