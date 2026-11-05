@@ -2614,7 +2614,6 @@ class PaymentWebhookTest(TestCase):
             customer=self.customer,
             address=self.address,
             service=self.service,
-            variant=self.variant,
             scheduled_at=timezone.now() + timedelta(days=3),
             status=Booking.Status.ASSIGNED,
             pricing_snapshot={"total": "2360.00"},
