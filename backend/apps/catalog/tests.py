@@ -216,13 +216,22 @@ class CityFilteredCategoryTreeTest(TestCase):
             is_active=True,
         )
 
+    
     def test_category_tree_only_includes_categories_with_city_services(self):
         response = self.client.get(
             f"/api/v1/catalog/categories/?address_id={self.address.id}"
         )
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.root.id)
-        child_ids = [child["id"] for child in response.data[0]["children"]]
+
+        categories = response.data["results"]
+
+        self.assertEqual(len(categories), 1)
+        self.assertEqual(categories[0]["id"], self.root.id)
+
+        child_ids = [
+            child["id"] for child in categories[0]["children"]
+        ]
+
         self.assertEqual(child_ids, [self.visible_child.id])
+
