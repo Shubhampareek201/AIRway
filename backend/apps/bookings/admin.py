@@ -9,6 +9,8 @@ from .models import (
     BookingAssignment,
     CustomerCart,
     CartItem,
+    Order,
+    OrderItem,
 )
 
 
@@ -48,6 +50,27 @@ class CustomerCartAdmin(ModelAdmin):
     list_filter = ('address__zone__city',)
     readonly_fields = ('created_at', 'updated_at')
     inlines = [CartItemInline]
+
+
+class OrderItemInline(TabularInline):
+    model = OrderItem
+    extra = 0
+    readonly_fields = (
+        "booking", "quantity", "service_snapshot", "pricing_snapshot",
+        "line_subtotal", "tax_amount", "line_total", "created_at",
+    )
+
+
+@admin.register(Order)
+class OrderAdmin(ModelAdmin):
+    list_display = ("id", "customer", "status", "total_amount", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("customer__phone", "customer__name", "id")
+    readonly_fields = (
+        "created_at", "updated_at", "subtotal", "tax_amount",
+        "discount_amount", "total_amount", "metadata",
+    )
+    inlines = [OrderItemInline]
 
 
 @admin.register(Booking)
