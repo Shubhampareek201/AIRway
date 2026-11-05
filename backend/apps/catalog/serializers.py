@@ -11,7 +11,11 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         read_only_fields = ["slug", "children"]
 
     def get_children(self, obj):
-        children = obj.children.filter(is_active=True).order_by("sort_order", "title")
+        children = obj.children.filter(is_active=True)
+        visible_ids = self.context.get("visible_category_ids")
+        if visible_ids is not None:
+            children = children.filter(id__in=visible_ids)
+        children = children.order_by("sort_order", "title")
         return CategoryTreeSerializer(children, many=True, context=self.context).data
 
 
