@@ -163,7 +163,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             address = Address.objects.select_related("zone__city").get(
                 pk=address_id, user=user, deleted_at__isnull=True
             )
-            check_service_available(service=service, address=address, audience="all")
+            try:
+                check_service_available(service=service, address=address, audience="all")
+            except ServiceUnavailableError as e:
+                raise serializers.ValidationError({"service": str(e)})
             attrs["_address"] = address
         except Address.DoesNotExist:
             raise serializers.ValidationError({"address_id": "Invalid address."})
