@@ -19,12 +19,12 @@ import 'package:airway/features/worker/data/worker_app_api.dart';
 // AIRway customer home. Addresses and nearby online partners use authenticated APIs.
 // Service cards and sample prices remain previews until the catalog API is connected.
 class _Ui {
-  static const violet = Color(0xFF6F4EF6);
-  static const ink = Color(0xFF201A33);
-  static const sub = Color(0xFF78718B);
-  static const bg = Color(0xFFF8F7FD);
-  static const pale = Color(0xFFF1EDFF);
-  static const line = Color(0xFFEAE5F5);
+  static const violet = Color(0xFF075B43);
+  static const ink = Color(0xFF17231E);
+  static const sub = Color(0xFF77827C);
+  static const bg = Color(0xFFF7F9F7);
+  static const pale = Color(0xFFE7F1EC);
+  static const line = Color(0xFFE2EAE5);
 }
 
 class _Service {
@@ -506,9 +506,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _purpleHeader(address),
         if (_query.isEmpty) ...[
           _offerCarousel(),
-          _heading('Service Categories', 'Explore services for your everyday needs'),
+          _sectionHeading('Service Categories', onSeeAll: _openAllServices),
           _categoryStrip(),
-          _heading('Popular Services', 'Frequently booked services near you'),
+          _sectionHeading('Popular Services', onSeeAll: _openAllServices),
           _popularStrip(),
           _walletReferralCard(),
           _nearbyWorkersSection(),
@@ -567,33 +567,81 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  Widget _sectionHeading(String title, {required VoidCallback onSeeAll}) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
+    child: Row(children: [
+      Expanded(child: Text(title, style: const TextStyle(
+        color: _Ui.ink, fontSize: 16, fontWeight: FontWeight.w900,
+      ))),
+      TextButton(
+        onPressed: onSeeAll,
+        style: TextButton.styleFrom(
+          foregroundColor: _Ui.violet,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: const Text('See All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+      ),
+    ]),
+  );
+
   Widget _categoryStrip() {
-    final visible = _services.take(4).toList();
-    return SizedBox(height: 112, child: ListView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      children: [
-        for (final service in visible)
-          _categoryTile(service.name, service.icon, service.tint, () =>
-            service.name == 'Women’s Beauty' || service.name == 'Men’s Grooming'
-              ? _showBeautyOptions() : _openService(service)),
-        _categoryTile('More', Icons.grid_view_rounded, _Ui.violet, _openAllServices),
-      ],
-    ));
+    final items = <({String title, _Service service, IconData icon})>[
+      (title: 'Cleaning', service: _services[2], icon: Icons.cleaning_services_rounded),
+      (title: 'Repairing', service: _services[3], icon: Icons.handyman_rounded),
+      (title: 'Painting', service: _services[4], icon: Icons.format_paint_rounded),
+      (title: 'Car Care', service: _services[6], icon: Icons.local_car_wash_rounded),
+    ];
+    return SizedBox(
+      height: 96,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        children: [
+          for (var i = 0; i < items.length; i++)
+            _categoryTile(
+              items[i].title,
+              items[i].icon,
+              () => _openService(items[i].service),
+              selected: i == 0,
+            ),
+          _categoryTile('More', Icons.grid_view_rounded, _openAllServices),
+        ],
+      ),
+    );
   }
 
-  Widget _categoryTile(String title, IconData icon, Color tint, VoidCallback onTap) => SizedBox(
-    width: 76,
-    child: Padding(padding: const EdgeInsets.only(right: 10), child: InkWell(
-      onTap: onTap, borderRadius: BorderRadius.circular(17),
-      child: Column(children: [
-        Container(width: 62, height: 62, decoration: BoxDecoration(color: tint.withAlpha(22), borderRadius: BorderRadius.circular(18)),
-          child: Icon(icon, color: tint, size: 29)),
-        const SizedBox(height: 7),
-        Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
-          style: const TextStyle(color: _Ui.ink, fontSize: 10.5, fontWeight: FontWeight.w700)),
-      ]),
-    )),
+  Widget _categoryTile(
+    String title,
+    IconData icon,
+    VoidCallback onTap, {
+    bool selected = false,
+  }) => SizedBox(
+    width: 66,
+    child: Padding(
+      padding: const EdgeInsets.only(right: 9),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Column(children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: selected ? _Ui.violet : const Color(0xFFF0F4F1),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: selected ? _Ui.violet : _Ui.line),
+            ),
+            child: Icon(icon, color: selected ? Colors.white : _Ui.violet, size: 27),
+          ),
+          const SizedBox(height: 6),
+          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _Ui.ink, fontSize: 10, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    ),
   );
 
     Widget _walletReferralCard() => Padding(
@@ -820,41 +868,77 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ]),
   ));
 
-  Widget _popularStrip() => SizedBox(height: 206, child: ListView.separated(
-    scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 20),
-    itemCount: 4, separatorBuilder: (_, __) => const SizedBox(width: 13),
-    itemBuilder: (context, i) {
-      final s = [_services[2], _services[3], _services[6], _services[1]][i];
-      final bg = [const Color(0xFFE8F4F2), const Color(0xFFFFF1E4), const Color(0xFFEAF1FF), const Color(0xFFFFEDF5)][i];
-      return SizedBox(width: 174, child: Material(
-        color: Colors.white, borderRadius: BorderRadius.circular(19), clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: () => _openService(s), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(height: 112, width: double.infinity, color: bg, child: Stack(children: [
-            Positioned(right: -8, bottom: -12, child: Icon(s.icon, size: 112, color: s.tint.withAlpha(45))),
-            Positioned(left: 13, top: 13, child: Container(padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white.withAlpha(220), borderRadius: BorderRadius.circular(13)),
-              child: Icon(s.icon, color: s.tint, size: 25))),
-          ])),
-          Padding(padding: const EdgeInsets.fromLTRB(12, 10, 10, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _Ui.ink, fontSize: 13, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 4),
-            Row(children: [
-              const Expanded(child: Text('Explore service', style: TextStyle(color: _Ui.sub, fontSize: 10.5))),
-              const Icon(Icons.arrow_forward_rounded, color: _Ui.violet, size: 17),
-            ]),
-          ])),
-        ])),
-      ));
-    },
-  ));
+  Widget _popularStrip() {
+    final items = <({ _Service service, String image, String title, String subtitle })>[
+      (service: _services[2], title: 'Home Cleaning', subtitle: 'Fresh, spotless spaces',
+        image: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=700&q=85'),
+      (service: _services[2], title: 'Kitchen Cleaning', subtitle: 'A cleaner cooking space',
+        image: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=700&q=85'),
+      (service: _services[2], title: 'Bathroom Cleaning', subtitle: 'Deep-cleaned bathrooms',
+        image: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=700&q=85'),
+      (service: _services[2], title: 'Sofa & Living Room', subtitle: 'Care for your furniture',
+        image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=700&q=85'),
+    ];
+    return SizedBox(
+      height: 190,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return SizedBox(
+            width: 164,
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _openService(item.service),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(
+                    height: 112,
+                    width: double.infinity,
+                    child: Image.network(
+                      item.image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: _Ui.pale,
+                        child: const Icon(Icons.home_work_rounded, color: _Ui.violet, size: 42),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 9, 8, 7),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _Ui.ink, fontSize: 12, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 3),
+                      Text(item.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _Ui.sub, fontSize: 10)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
     Widget _offerCarousel() {
-    const captions = ['Clean Spaces,', 'Repairs Made', 'Beauty at Your'];
+    const captions = ['Clean Spaces,', 'Repairs Made', 'Care at Your'];
     const secondLines = ['Happier Days', 'Simple', 'Doorstep'];
-    const subtitles = ['A cleaner home starts here', 'Reliable help for everyday fixes', 'Feel your best, right at home'];
-    const icons = [Icons.cleaning_services_rounded, Icons.handyman_rounded, Icons.spa_rounded];
-    const colors = [Color(0xFF5E45D8), Color(0xFF267D91), Color(0xFFB94F89)];
+    const subtitles = ['A cleaner home starts here', 'Reliable help for everyday fixes', 'Home services made easy'];
+    const icons = [Icons.cleaning_services_rounded, Icons.handyman_rounded, Icons.home_repair_service_rounded];
+    const colors = [Color(0xFF075B43), Color(0xFF0C6B4D), Color(0xFF174F3D)];
+    const images = [
+      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1100&q=85',
+      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1100&q=85',
+      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1100&q=85',
+    ];
     final services = [_services[2], _services[3], _services[1]];
     return Column(children: [
       SizedBox(height: 174, child: PageView.builder(
@@ -862,21 +946,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Material(
           color: colors[i], borderRadius: BorderRadius.circular(22), clipBehavior: Clip.antiAlias,
           child: InkWell(onTap: () => i == 2 ? _showBeautyOptions() : _openService(services[i]),
-            child: Stack(children: [
-              Positioned(right: -18, bottom: -25, child: Icon(icons[i], size: 190, color: Colors.white.withAlpha(32))),
+            child: Stack(fit: StackFit.expand, children: [
+              Image.network(images[i], fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(color: colors[i])),
+              DecoratedBox(decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [const Color(0xE6003D2C), const Color(0xA6003D2C), Colors.transparent],
+                  begin: Alignment.centerLeft, end: Alignment.centerRight,
+                ),
+              )),
               Padding(padding: const EdgeInsets.fromLTRB(19, 17, 12, 15), child: Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text(captions[i], style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800)),
                   Text(secondLines[i], style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 6),
-                  Text(subtitles[i], maxLines: 2, style: TextStyle(color: Colors.white.withAlpha(225), fontSize: 11.5)),
+                  Text(subtitles[i], maxLines: 2, style: TextStyle(color: Colors.white.withAlpha(235), fontSize: 11.5)),
                   const SizedBox(height: 11),
                   Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                    child: const Text('Book Now', style: TextStyle(color: _Ui.ink, fontSize: 11.5, fontWeight: FontWeight.w800))),
+                    child: const Text('Book Now', style: TextStyle(color: _Ui.violet, fontSize: 11.5, fontWeight: FontWeight.w800))),
                 ])),
                 const SizedBox(width: 8),
-                Icon(icons[i], size: 76, color: Colors.white.withAlpha(210)),
               ])),
             ]),
           ),
