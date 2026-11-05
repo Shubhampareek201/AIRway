@@ -30,13 +30,22 @@ class BookingAPITestMixin:
         return Category.objects.create(title=title, slug="cleaning")
 
     def _create_service(self, category, title="Home Cleaning"):
-        return Service.objects.create(
+        service = Service.objects.create(
             category=category,
             title=title,
             booking_mode=Service.BookingMode.SCHEDULED,
             pricing_type=Service.PricingType.FIXED,
             is_active=True,
         )
+        # Support both fixture creation orders: service-before-address and
+        # address-before-service.
+        for city in City.objects.all():
+            CityService.objects.get_or_create(
+                city=city,
+                service=service,
+                defaults={"is_active": True},
+            )
+        return service
 
     def _create_variant(self, service, title="Premium", price=500, mrp=600, duration_minutes=60):
         return ServiceVariant.objects.create(
