@@ -52,7 +52,7 @@ class BookingAPITestMixin:
         city, _ = City.objects.get_or_create(name="Mumbai", defaults={"state": "Maharashtra"})
         zone, _ = Zone.objects.get_or_create(name="Dadar", defaults={"city": city, "is_active": True})
 
-        return Address.objects.create(
+        address = Address.objects.create(
             user=user,
             label=label,
             house_details="Floor 2, Apt 301",
@@ -62,6 +62,16 @@ class BookingAPITestMixin:
             longitude=72.8777,
             zone=zone,
         )
+
+        # Make fixture services available in the address city, as required
+        # by the production serviceability validation.
+        for service in Service.objects.filter(is_active=True):
+            CityService.objects.get_or_create(
+                city=city,
+                service=service,
+                defaults={"is_active": True},
+            )
+        return address
 
 
 class BookingCreateTest(BookingAPITestMixin, TestCase):
