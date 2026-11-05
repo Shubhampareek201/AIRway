@@ -27,7 +27,7 @@ class Migration(migrations.Migration):
                 ("address", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="service_orders", to="accounts.address")),
                 ("customer", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="service_orders", to=settings.AUTH_USER_MODEL)),
             ],
-            options={"ordering": ["-created_at"], "indexes": [models.Index(fields=["customer", "status"], name="bookings_or_customer_4c9b6d_idx"), models.Index(fields=["created_at", "status"], name="bookings_or_created_3ad7c2_idx")]},
+            options={"ordering": ["-created_at"], "indexes": [models.Index(fields=["customer", "status"], name="book_ord_cust_stat_idx"), models.Index(fields=["created_at", "status"], name="book_ord_created_stat_idx")]},
         ),
         migrations.CreateModel(
             name="OrderItem",
