@@ -368,6 +368,19 @@ class CustomerCartView(APIView):
         cart = self.get_cart(request.user)
         serializer = CartItemSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
+
+        # Once an address is selected, only allow services available in that
+        # address's city to be added to the cart.
+        if cart.address:
+            try:
+                check_service_available(
+                    service=serializer.validated_data["service"],
+                    address=cart.address,
+                    audience="all",
+                )
+            except ServiceUnavailableError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         serializer.save(cart=cart)
         return Response(
             CustomerCartSerializer(cart, context={"request": request}).data,
@@ -381,9 +394,31 @@ class CustomerCartView(APIView):
             if address_id in (None, ""):
                 cart.address = None
             else:
-                cart.address = get_object_or_404(
-                    Address, pk=address_id, user=request.user, deleted_at__isnull=True
+                address = get_object_or_404(
+                    Address.objects.select_related("zone__city"),
+                    pk=address_id,
+                    user=request.user,
+                    deleted_at__isnull=True,
                 )
+                # Changing Jaipur to another city must not leave unavailable
+                # services silently attached to the cart.
+                for item in cart.items.select_related("service"):
+                    try:
+                        check_service_available(
+                            service=item.service,
+                            address=address,
+                            audience="all",
+                        )
+                    except ServiceUnavailableError as exc:
+                        return Response(
+                            {
+                                "detail": str(exc),
+                                "unavailable_cart_item_id": item.id,
+                                "service_id": item.service_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                cart.address = address
             cart.save(update_fields=["address", "updated_at"])
         return Response(CustomerCartSerializer(cart, context={"request": request}).data)
 
