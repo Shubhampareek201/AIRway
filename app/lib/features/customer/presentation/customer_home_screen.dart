@@ -498,7 +498,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ]);
 
   Widget _home(Map<String, dynamic> address) {
-    final hits = _services.where((s) => '\${s.name} \${s.description}'.toLowerCase().contains(_query.trim().toLowerCase())).toList();
+    final hits = _services.where((s) => '${s.name} ${s.description}'.toLowerCase().contains(_query.trim().toLowerCase())).toList();
     return RefreshIndicator(
       onRefresh: _refresh,
       color: _Ui.violet,
@@ -514,7 +514,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _nearbyWorkersSection(),
           _trustStrip(),
         ] else ...[
-          _heading('Search Results', '\${hits.length} matching categories'),
+          _heading('Search Results', '${hits.length} matching categories'),
           if (hits.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No matching services. Try another search.', style: TextStyle(color: _Ui.sub))),
           _categoryGrid(hits, allServices: true),
         ],
@@ -523,8 +523,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Widget _purpleHeader(Map<String, dynamic> a) {
-    final label = '\${a['label'] ?? 'Home'}';
-    final full = '\${a['house_details'] ?? ''}, \${a['full_address'] ?? ''}'.replaceFirst(RegExp(r'^,\\s*'), '').trim();
+    final label = '${a['label'] ?? 'Home'}';
+    final full = '${a['house_details'] ?? ''}, ${a['full_address'] ?? ''}'.replaceFirst(RegExp(r'^,\s*'), '').trim();
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
     return Container(
@@ -550,7 +550,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             icon: const Icon(Icons.notifications_none_rounded, color: _Ui.ink, size: 25)),
         ]),
         const SizedBox(height: 18),
-        Text('Good $greeting, \${_customerName == 'there' ? 'there' : _customerName}!',
+        Text('Good $greeting, ${_customerName == 'there' ? 'there' : _customerName}!',
           style: const TextStyle(color: _Ui.ink, fontSize: 25, fontWeight: FontWeight.w900, height: 1.15)),
         const SizedBox(height: 5),
         const Text('What service do you need today?', style: TextStyle(color: _Ui.sub, fontSize: 13)),
