@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from apps.bookings.models import Booking, BookingStatusHistory
+from apps.bookings.models import Booking, BookingStatusHistory, Order
 from apps.notifications.models import Notification
 from .models import Payment
 
@@ -47,6 +47,71 @@ def _process_verified_payment(
             "source": source,
         }
         payment.save()
+
+        # Parent-order payment: settle each service booking atomically while
+        # retaining the legacy single-booking verification path below.
+        if payment.order_id:
+            parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            order_bookings = list(
+                parent_order.items.select_related("booking").order_by("id")
+            )
+            for order_item in order_bookings:
+                booking = order_item.booking
+                if booking.status == Booking.Status.ASSIGNED:
+                    old_status = booking.status
+                    booking.status = Booking.Status.CONFIRMED
+                    booking.save(update_fields=["status", "updated_at"])
+                    BookingStatusHistory.objects.create(
+                        booking=booking,
+                        from_status=old_status,
+                        to_status=Booking.Status.CONFIRMED,
+                        changed_by=payment.customer,
+                        note=f"Parent order #{parent_order.id} payment confirmed via {source}.",
+                    )
+                elif booking.status == Booking.Status.PENDING:
+                    old_status = booking.status
+                    booking.status = Booking.Status.CONFIRMED
+                    booking.save(update_fields=["status", "updated_at"])
+                    BookingStatusHistory.objects.create(
+                        booking=booking,
+                        from_status=old_status,
+                        to_status=Booking.Status.CONFIRMED,
+                        changed_by=payment.customer,
+                        note=f"Late parent order #{parent_order.id} payment received.",
+                    )
+                    from apps.bookings.dispatcher import DispatcherService
+                    DispatcherService.dispatch_offers(booking)
+
+            parent_order.status = Order.Status.PAID
+            parent_order.save(update_fields=["status", "updated_at"])
+            Notification.objects.create(
+                user=payment.customer,
+                type=Notification.Type.PAYMENT_SUCCESS,
+                title="Payment Successful",
+                body=f"Payment for AIRway order #{parent_order.id} was successful.",
+                channel=Notification.Channel.IN_APP,
+                data={
+                    "order_id": parent_order.id,
+                    "payment_id": payment.id,
+                    "booking_ids": [row.booking_id for row in order_bookings],
+                },
+            )
+            logger.info(
+                "Parent order payment %s verified for order %s",
+                payment.id, parent_order.id,
+            )
+            return Response(
+                {
+                    "detail": "Order payment verified successfully.",
+                    "status": payment.status,
+                    "payment_id": payment.id,
+                    "airway_order_id": parent_order.id,
+                    "booking_ids": [row.booking_id for row in order_bookings],
+                    "razorpay_payment_id": razorpay_payment_id,
+                    "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         booking = payment.booking
         notification_created = False
