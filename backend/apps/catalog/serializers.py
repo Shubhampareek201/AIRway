@@ -2,10 +2,23 @@ from rest_framework import serializers
 from .models import Category, Service, ServiceVariant, AddOn, FormField, ServiceImage
 
 
+class CategoryTreeSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ["id", "title", "title_hi", "slug", "image", "is_active", "parent", "children"]
+        read_only_fields = ["slug", "children"]
+
+    def get_children(self, obj):
+        children = obj.children.filter(is_active=True).order_by("sort_order", "title")
+        return CategoryTreeSerializer(children, many=True, context=self.context).data
+
+
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "title", "title_hi", "slug", "image", "is_active"]
+        fields = ["id", "title", "title_hi", "slug", "image", "is_active", "parent"]
         read_only_fields = ["slug"]
 
 
