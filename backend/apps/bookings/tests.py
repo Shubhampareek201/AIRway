@@ -15,7 +15,7 @@ from apps.workers.models import (
     WorkerZone,
     WorkerSchedule,
 )
-from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, CustomerCart, CartItem, Order
+from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, CustomerCart, CartItem, Order, OrderItem
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
 
