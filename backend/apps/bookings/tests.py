@@ -2607,6 +2607,61 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(notification.data.get("payment_id"), payment.id)
 
 
+    def test_parent_order_webhook_marks_every_booking_paid_and_confirmed(self):
+        from apps.payments.models import Payment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            scheduled_at=timezone.now() + timedelta(days=3),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "2360.00"},
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_PAYMENT,
+            subtotal="2000.00",
+            tax_amount="360.00",
+            total_amount="2360.00",
+        )
+        OrderItem.objects.create(
+            order=order,
+            booking=booking,
+            quantity=2,
+            line_subtotal="2000.00",
+            tax_amount="360.00",
+            line_total="2360.00",
+        )
+        payment = Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            amount="2360.00",
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+            razorpay_order_id="order_parent_checkout",
+        )
+
+        payload = self._make_webhook_payload(
+            "payment.captured",
+            "order_parent_checkout",
+            "pay_parent_checkout",
+            236000,
+            "INR",
+        )
+        response = self._post_webhook(payload)
+
+        self.assertEqual(response.status_code, 200)
+        payment.refresh_from_db()
+        order.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(order.status, Order.Status.PAID)
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+
+
 class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
     def setUp(self):
         self.client = APIClient()
