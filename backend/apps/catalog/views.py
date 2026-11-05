@@ -35,6 +35,32 @@ class CategoryListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = CategoryTreeSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        city = _city_from_address(self.request)
+        if city is None:
+            context["visible_category_ids"] = None
+            return context
+
+        service_ids = _city_service_ids(city)
+        visible_ids = set(
+            Service.objects.filter(
+                pk__in=service_ids,
+                category__is_active=True,
+            ).values_list("category_id", flat=True)
+        )
+        all_categories = list(
+            Category.objects.filter(is_active=True).values("id", "parent_id")
+        )
+        parent_by_id = {row["id"]: row["parent_id"] for row in all_categories}
+        for category_id in list(visible_ids):
+            parent_id = parent_by_id.get(category_id)
+            while parent_id is not None:
+                visible_ids.add(parent_id)
+                parent_id = parent_by_id.get(parent_id)
+        context["visible_category_ids"] = visible_ids
+        return context
+
     def get_queryset(self):
         city = _city_from_address(self.request)
         queryset = Category.objects.filter(is_active=True, parent__isnull=True)
