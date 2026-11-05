@@ -1,0 +1,217 @@
+// Standalone model file - no part directive
+
+class WorkerProfile {
+  final int? id;
+  final String status;
+  final String? name;
+  final String? phone;
+  final String? upiId;
+  final bool isOnline;
+  final double? ratingAvg;
+  final int? experienceYears;
+  final String? rejectionReason;
+
+  WorkerProfile({
+    this.id,
+    required this.status,
+    this.name,
+    this.phone,
+    this.upiId,
+    required this.isOnline,
+    this.ratingAvg,
+    this.experienceYears,
+    this.rejectionReason,
+  });
+
+  factory WorkerProfile.fromMap(Map<String, dynamic> map) {
+    return WorkerProfile(
+      id: map['id'] as int?,
+      status: map['status'] as String? ?? 'pending',
+      name: map['name'] as String?,
+      phone: map['phone'] as String?,
+      upiId: map['upi_id'] as String?,
+      isOnline: map['is_online'] as bool? ?? false,
+      ratingAvg: map['rating_avg'] != null ? (map['rating_avg'] as num).toDouble() : null,
+      experienceYears: map['experience_years'] as int?,
+      rejectionReason: map['rejection_reason'] as String?,
+    );
+  }
+}
+
+class WorkerOffer {
+  static const pending = 'pending';
+  static const accepted = 'accepted';
+  static const declined = 'declined';
+  static const expired = 'expired';
+  static const withdrawn = 'withdrawn';
+
+  final int id;
+  final int bookingId;
+  final String status;
+  final String statusDisplay;
+  final DateTime offeredAt;
+  final DateTime? expiresAt;
+  final String? workerName;
+  final String? workerPhone;
+  final bool canAccept;
+  final bool canDecline;
+  final bool canWithdraw;
+
+  WorkerOffer({
+    required this.id,
+    required this.bookingId,
+    required this.status,
+    required this.statusDisplay,
+    required this.offeredAt,
+    this.expiresAt,
+    this.workerName,
+    this.workerPhone,
+    required this.canAccept,
+    required this.canDecline,
+    required this.canWithdraw,
+  });
+
+  factory WorkerOffer.fromMap(Map<String, dynamic> map) {
+    return WorkerOffer(
+      id: map['id'] as int,
+      bookingId: map['booking'] as int,
+      status: map['status'] as String? ?? '',
+      statusDisplay: map['status_display'] as String? ?? '',
+      offeredAt: DateTime.parse(map['offered_at'] as String),
+      expiresAt: map['expires_at'] != null ? DateTime.parse(map['expires_at'] as String) : null,
+      workerName: map['worker_name'] as String?,
+      workerPhone: map['worker_phone'] as String?,
+      canAccept: map['can_accept'] as bool? ?? false,
+      canDecline: map['can_decline'] as bool? ?? false,
+      canWithdraw: map['can_withdraw'] as bool? ?? false,
+    );
+  }
+}
+
+class WorkerJob {
+  final int id;
+  final int bookingId;
+  final String status;
+  final String serviceTitle;
+  final String customerName;
+  final String? customerPhone;
+  final String? address;
+  final DateTime scheduledAt;
+  final DateTime? dropScheduledAt;
+  final double amount;
+  final DateTime? assignedAt;
+
+  WorkerJob({
+    required this.id,
+    required this.bookingId,
+    required this.status,
+    required this.serviceTitle,
+    required this.customerName,
+    this.customerPhone,
+    this.address,
+    required this.scheduledAt,
+    this.dropScheduledAt,
+    required this.amount,
+    this.assignedAt,
+  });
+
+  factory WorkerJob.fromMap(Map<String, dynamic> map) {
+    return WorkerJob(
+      id: map['id'],
+      bookingId: map['booking_id'],
+      status: map['status'] ?? '',
+      serviceTitle: map['service_title'] ?? '',
+      customerName: map['customer_name'] ?? '',
+      customerPhone: map['customer_phone'],
+      address: map['address'],
+      scheduledAt: DateTime.parse(map['scheduled_at']),
+      dropScheduledAt: map['drop_scheduled_at'] != null ? DateTime.parse(map['drop_scheduled_at']) : null,
+      amount: double.tryParse(map['amount'].toString()) ?? 0.0,
+      assignedAt: map['assigned_at'] != null ? DateTime.parse(map['assigned_at']) : null,
+    );
+  }
+}
+
+class WorkerAssignmentDetail {
+  final int bookingId;
+  final String bookingIdStr;
+  final String status;
+  final String serviceTitle;
+  final String customerName;
+  final String? customerPhone;
+  final String? address;
+  final DateTime scheduledAt;
+  final DateTime? dropScheduledAt;
+  final double amount;
+  final String? notes;
+  final String? workerNotes;
+  final List<Map<String, dynamic>> formResponses;
+  final WorkerAssignmentInfo assignment;
+
+  WorkerAssignmentDetail({
+    required this.bookingId,
+    required this.bookingIdStr,
+    required this.status,
+    required this.serviceTitle,
+    required this.customerName,
+    this.customerPhone,
+    this.address,
+    required this.scheduledAt,
+    this.dropScheduledAt,
+    required this.amount,
+    this.notes,
+    this.workerNotes,
+    required this.formResponses,
+    required this.assignment,
+  });
+
+  factory WorkerAssignmentDetail.fromMap(Map<String, dynamic> map) {
+    return WorkerAssignmentDetail(
+      bookingId: map['booking_id'],
+      bookingIdStr: map['id'].toString(),
+      status: map['status'] ?? '',
+      serviceTitle: map['service_title'] ?? '',
+      customerName: map['customer_name'] ?? '',
+      customerPhone: map['customer_phone'],
+      address: map['address'],
+      scheduledAt: DateTime.parse(map['scheduled_at']),
+      dropScheduledAt: map['drop_scheduled_at'] != null ? DateTime.parse(map['drop_scheduled_at']) : null,
+      amount: double.tryParse(map['amount'].toString()) ?? 0.0,
+      notes: map['notes'],
+      workerNotes: map['worker_notes'],
+      formResponses: (map['form_responses'] as List).map((e) => Map<String, dynamic>.from(e)).toList(),
+      assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
+    );
+  }
+}
+
+class WorkerAssignmentInfo {
+  final DateTime? assignedAt;
+  final DateTime? acceptedAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+
+  WorkerAssignmentInfo({
+    this.assignedAt,
+    this.acceptedAt,
+    this.startedAt,
+    this.completedAt,
+  });
+
+  factory WorkerAssignmentInfo.fromMap(Map<String, dynamic> map) {
+    return WorkerAssignmentInfo(
+      assignedAt: map['assigned_at'] != null ? DateTime.parse(map['assigned_at']) : null,
+      acceptedAt: map['accepted_at'] != null ? DateTime.parse(map['accepted_at']) : null,
+      startedAt: map['started_at'] != null ? DateTime.parse(map['started_at']) : null,
+      completedAt: map['completed_at'] != null ? DateTime.parse(map['completed_at']) : null,
+    );
+  }
+
+  String get statusDisplay {
+    if (completedAt != null) return 'Completed';
+    if (startedAt != null) return 'In Progress';
+    if (acceptedAt != null) return 'Accepted';
+    if (assignedAt != null) return 'Assigned';
+    return 'Pending';
+  }
+}

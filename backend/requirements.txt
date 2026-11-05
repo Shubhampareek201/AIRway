@@ -15,3 +15,8 @@ psycopg[binary]==3.3.6
 pillow==13.0.0
 razorpay==2.0.1
 pytz==2024.1
+
+# Celery (background task processing)
+celery[redis]==5.6.3
+redis==8.1.0
+django-celery-beat>=2.7.0

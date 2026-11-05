@@ -18,6 +18,7 @@ from .views import (
     RegisterView,
     ResetPasswordView,
     SetDefaultAddressView,
+    SwitchModeView,
     VerifyForgotOTPView,
     ZoneListView,
 )
@@ -84,5 +85,10 @@ urlpatterns = [
         "locations/search/",
         LocationSearchView.as_view(),
         name="location-search",
+    ),
+    path(
+        "switch-mode/",
+        SwitchModeView.as_view(),
+        name="switch-mode",
     ),
 ]

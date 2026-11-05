@@ -14,6 +14,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.utils import timezone
+from apps.workers.models import WorkerProfile
 
 from firebase_admin import auth
 from rest_framework import status
@@ -24,6 +25,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import City, Zone
+from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
 from .models import Address
@@ -184,14 +186,68 @@ class CurrentUserView(APIView):
     def get(self, request):
         user = request.user
 
-        return Response({
+        data = {
             "id": user.id,
             "phone": user.phone,
             "name": user.name,
             "email": user.email,
             "active_mode": user.active_mode,
             "profile_complete": bool(user.name and user.name.strip()),
-        })
+            "can_switch_to_worker": user.active_mode == User.Mode.WORKER,
+            "worker_application_status": self._get_worker_application_status(user),
+        }
+
+        # Add worker profile if exists
+        try:
+            profile = user.worker_profile
+            data["worker_profile"] = {
+                "id": profile.id,
+                "status": profile.status,
+                "upi_id": profile.upi_id,
+                "is_online": profile.is_online,
+                "rating_avg": float(profile.rating_avg) if profile.rating_avg else None,
+                "experience_years": profile.experience_years,
+                "rejection_reason": profile.rejection_reason,
+                "photo_url": self._get_worker_photo_url(profile, request),
+            }
+        except WorkerProfile.DoesNotExist:
+            pass
+
+        # Add customer profile if exists (placeholder for future implementation)
+        # customer_profile relationship not yet defined in User model
+        if hasattr(user, 'customer_profile'):
+            data["customer_profile"] = {}
+
+        return Response(data)
+
+    def _get_worker_application_status(self, user):
+        """Return worker application status for customers who applied."""
+        try:
+            profile = user.worker_profile
+            return {
+                "has_application": True,
+                "status": profile.status,
+                "rejection_reason": profile.rejection_reason,
+            }
+        except WorkerProfile.DoesNotExist:
+            return {
+                "has_application": False,
+                "status": None,
+                "rejection_reason": None,
+            }
+
+    def _get_worker_photo_url(self, profile, request):
+        """Return the photo URL from WorkerDocument if available."""
+        try:
+            photo_doc = profile.documents.filter(
+                doc_type=WorkerDocument.DocumentType.PHOTO,
+                status=WorkerDocument.Status.VERIFIED
+            ).first()
+            if photo_doc and photo_doc.file:
+                return request.build_absolute_uri(photo_doc.file.url)
+        except Exception:
+            pass
+        return None
 
 
 class ChangePasswordView(APIView):
@@ -265,27 +321,29 @@ class ZoneListView(APIView):
     def get(self, request):
         city_id = request.query_params.get("city_id")
 
-        if (
-            not city_id
-            or not city_id.isascii()
-            or not city_id.isdecimal()
-        ):
-            return Response(
-                {"error": "A valid city_id is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        # Build base queryset
         zones = Zone.objects.filter(
-            city_id=int(city_id),
             city__is_active=True,
             is_active=True,
-        ).order_by("name")
+        )
+
+        # Filter by city if provided
+        if city_id:
+            if not city_id.isascii() or not city_id.isdecimal():
+                return Response(
+                    {"error": "A valid city_id is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            zones = zones.filter(city_id=int(city_id))
+
+        zones = zones.order_by("city", "name")
 
         return Response([
             {
                 "id": zone.id,
                 "name": zone.name,
                 "city_id": zone.city_id,
+                "city_name": zone.city.name,
             }
             for zone in zones
         ])
@@ -775,10 +833,53 @@ class GeoapifyAutocompleteView(APIView):
 
         return Response({"results": results})
 
+class SwitchModeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        mode = request.data.get('mode')
+
+        if mode not in [User.Mode.CUSTOMER, User.Mode.WORKER]:
+            return Response(
+                {"error": "Invalid mode. Must be 'customer' or 'worker'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if mode == User.Mode.WORKER:
+            if not hasattr(user, 'worker_profile'):
+                return Response(
+                    {"error": "You must have an approved worker profile to switch to worker mode."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                profile = user.worker_profile
+                if profile.status != WorkerProfile.Status.APPROVED:
+                    return Response(
+                        {"error": f"Your worker profile is not approved yet. Status: {profile.status}."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except WorkerProfile.DoesNotExist:
+                return Response(
+                    {"error": "Worker profile not found. Apply to become a worker first."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        user.active_mode = mode
+        user.save(update_fields=['active_mode'])
+
+        return Response({
+            "message": "Mode switched successfully.",
+            "active_mode": user.active_mode,
+        })
+
+
 class LocationReverseView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        import math
+
         try:
             lat = float(request.query_params["lat"])
             lon = float(request.query_params["lon"])
@@ -787,8 +888,6 @@ class LocationReverseView(APIView):
                 {"error": "Valid coordinates are required."},
                 status=400,
             )
-
-        import math
 
         if not (
             math.isfinite(lat)

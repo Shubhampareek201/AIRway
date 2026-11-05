@@ -36,3 +36,13 @@ app/ios/Runner/GoogleService-Info.plist
 # OS
 .DS_Store
 Thumbs.db
+# Local databases and backups
+*.sqlite3
+*.sqlite
+backend/backups/
+
+# Generated diagnostics
+backend/AIRway_diagnostics.txt
+
+# Temporary configuration backups
+*.backup

@@ -9,6 +9,12 @@ import 'package:airway/features/location/presentation/location_selection_screen.
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/service_detail_screen.dart';
+import 'package:airway/features/notification/presentation/notification_list_screen.dart';
+import 'package:airway/features/ratings/presentation/ratings_screen.dart';
+import 'package:airway/features/wallet/presentation/wallet_screen.dart';
+import 'package:airway/features/worker/presentation/worker_application_screen.dart';
+import 'package:airway/features/worker/presentation/worker_dashboard_screen.dart';
+import 'package:airway/features/worker/data/worker_app_api.dart';
 
 // AIRway customer home. Addresses and nearby online partners use authenticated APIs.
 // Service cards and sample prices remain previews until the catalog API is connected.
@@ -63,6 +69,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _offers = PageController(viewportFraction: 0.94);
   Timer? _offerTimer;
   int _offerIndex = 0;
+
+  Map<String, dynamic>? _workerProfile;
+  String? _workerStatus;
+  String? _workerRejectionReason;
 
   @override
   void initState() {
@@ -144,6 +154,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (name.isNotEmpty) {
         setState(() => _customerName = name.split(RegExp(r'\s+')).first);
       }
+
+      // Load worker profile status
+      final workerProfile = response['worker_profile'];
+      if (workerProfile is Map) {
+        setState(() {
+          _workerProfile = Map<String, dynamic>.from(workerProfile);
+          _workerStatus = workerProfile['status'] as String?;
+          _workerRejectionReason = workerProfile['rejection_reason'] as String?;
+        });
+      }
     } catch (_) {
       // The home screen remains usable if the profile endpoint is temporarily unavailable.
     }
@@ -198,17 +218,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _showNotificationsInfo() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Notifications'),
-        content: const Text(
-          'Booking updates and alerts will appear here when the booking and notification services are enabled.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it')),
-        ],
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const NotificationListScreen()),
     );
   }
 
@@ -239,6 +250,41 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it')),
         ],
       ),
+    );
+  }
+
+  Future<void> _switchToWorkerMode() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Switching to Worker mode...')),
+    );
+    try {
+      await WorkerAppApi.switchToWorkerMode(accessToken: (await SecureSessionStorage.readSession())?.accessToken ?? '');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Successfully switched to Worker mode!')),
+      );
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WorkerDashboardScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to switch mode: $e')),
+      );
+    }
+  }
+
+  void _goToWorkerApplication() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WorkerApplicationScreen()),
+    );
+  }
+
+  void _viewWorkerStatus() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WorkerApplicationScreen()),
     );
   }
 
@@ -565,9 +611,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('AIRway Wallet', style: TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w900)),
             SizedBox(height: 3),
-            Text('Your balance and refunds will appear here', style: TextStyle(color: _Ui.sub, fontSize: 11.5)),
+            Text('Your balance and transactions', style: TextStyle(color: _Ui.sub, fontSize: 11.5)),
           ])),
-          TextButton(onPressed: _showWalletInfo, child: const Text('Details')),
+          TextButton(onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const WalletScreen()),
+            );
+          }, child: const Text('View')),
         ]),
         Padding(padding: const EdgeInsets.symmetric(vertical: 13), child: Divider(height: 1, color: _Ui.line)),
         Row(children: [
@@ -873,16 +923,126 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ]),
     ),
     const SizedBox(height: 16),
+
+    // Worker profile status card
+    if (_workerProfile != null) ...[
+      _buildWorkerStatusCard(),
+      const SizedBox(height: 16),
+    ],
+
+    // Become a Worker button (shown when not approved as worker)
+    if (_workerProfile == null || (_workerStatus != 'approved' && _workerStatus != 'rejected')) ...[
+      Card(
+        color: Colors.white,
+        elevation: 2,
+        child: ListTile(
+          leading: const Icon(Icons.work, color: _Ui.violet),
+          title: const Text('Become a Worker'),
+          subtitle: const Text('Earn money providing services in your area'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _goToWorkerApplication,
+        ),
+      ),
+      const SizedBox(height: 8),
+    ],
+
     Card(color: Colors.white, elevation: 0, child: Column(children: [
       ListTile(leading: const Icon(Icons.location_on_outlined, color: _Ui.violet), title: const Text('Manage addresses'),
           subtitle: Text('${address['full_address'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
           trailing: const Icon(Icons.chevron_right), onTap: _selectAddress),
       const Divider(height: 1, indent: 16, endIndent: 16),
+      ListTile(leading: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet), title: const Text('Wallet'),
+          subtitle: const Text('View balance and transactions'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const WalletScreen()),
+            );
+          }),
+      const Divider(height: 1, indent: 16, endIndent: 16),
       ListTile(leading: const Icon(Icons.refresh, color: _Ui.violet), title: const Text('Refresh account data'), onTap: _refresh),
+      const Divider(height: 1, indent: 16, endIndent: 16),
+      ListTile(leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet), title: const Text('My Ratings'),
+          subtitle: const Text('Rate your service providers'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const RatingsScreen()),
+            );
+          }),
       const Divider(height: 1, indent: 16, endIndent: 16),
       ListTile(leading: const Icon(Icons.logout_rounded, color: _Ui.violet), title: const Text('Log out'), onTap: _logout),
     ])),
   ]);
+
+  Widget _buildWorkerStatusCard() {
+    final status = _workerStatus ?? 'no_profile';
+    final isApproved = status == 'approved';
+    final isPending = status == 'pending';
+    final isRejected = status == 'rejected';
+
+    Color cardColor;
+    Color iconColor;
+    IconData statusIcon;
+    String statusText;
+
+    if (isApproved) {
+      cardColor = Colors.green[50]!;
+      iconColor = Colors.green;
+      statusIcon = Icons.check_circle;
+      statusText = 'Approved Worker';
+    } else if (isPending) {
+      cardColor = Colors.orange[100]!;
+      iconColor = Colors.orange;
+      statusIcon = Icons.pending_actions;
+      statusText = 'Application Pending';
+    } else if (isRejected) {
+      cardColor = Colors.red[100]!;
+      iconColor = Colors.red;
+      statusIcon = Icons.cancel;
+      statusText = 'Application Rejected';
+    } else {
+      cardColor = _Ui.pale;
+      iconColor = _Ui.violet;
+      statusIcon = Icons.work_outline;
+      statusText = 'Not registered as Worker';
+    }
+
+    return Card(
+      color: cardColor,
+      elevation: 2,
+      child: ListTile(
+        leading: Icon(statusIcon, color: iconColor, size: 28),
+        title: Text(
+          isApproved ? 'Switch to Worker Mode' : statusText,
+          style: TextStyle(fontWeight: FontWeight.w800, color: iconColor),
+        ),
+        subtitle: isApproved
+            ? const Text('You can accept jobs as a verified worker')
+            : isPending
+                ? const Text('Awaiting admin verification')
+                : isRejected
+                    ? Text(_workerRejectionReason?.isNotEmpty == true
+                        ? 'Reason: $_workerRejectionReason'
+                        : 'Your application was not approved')
+                    : const Text('Register to earn by providing services'),
+        trailing: isApproved
+            ? Switch(
+                value: true,
+                onChanged: (_) => _switchToWorkerMode(),
+              )
+            : isRejected
+                ? TextButton(
+                    onPressed: _viewWorkerStatus,
+                    child: const Text('Reapply'),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _goToWorkerApplication,
+                  ),
+      ),
+    );
+  }
 }
 
 class _PulseBlock extends StatefulWidget {

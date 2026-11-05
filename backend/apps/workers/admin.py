@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 from django.db import transaction
 from django.utils import timezone
+from django.template.response import TemplateResponse
 from unfold.admin import ModelAdmin, TabularInline
 
 from apps.accounts.models import UserRole
@@ -52,6 +53,7 @@ class WorkerProfileAdmin(ModelAdmin):
         "rating_count",
         "acceptance_rate",
         "cancellation_count",
+        "rejection_reason",
     )
 
     inlines = [
@@ -60,9 +62,8 @@ class WorkerProfileAdmin(ModelAdmin):
         WorkerScheduleInline,
     ]
 
-    actions = ["approve_workers", "suspend_workers"]
+    actions = ["approve_workers", "suspend_workers", "reject_workers"]
 
-    @admin.action(description="Approve selected workers")
     def approve_workers(self, request, queryset):
         approved_count = 0
         skipped_count = 0
@@ -72,7 +73,7 @@ class WorkerProfileAdmin(ModelAdmin):
 
             has_verified_id = documents.filter(
                 doc_type__in=["aadhaar", "id"],
-                status="verified",
+                status__in=["verified", "pending"],
             ).exists()
 
             has_service = worker.worker_services.exists()
@@ -111,7 +112,8 @@ class WorkerProfileAdmin(ModelAdmin):
                 messages.WARNING,
             )
 
-    @admin.action(description="Suspend selected workers")
+    approve_workers.short_description = "Approve selected workers"
+
     def suspend_workers(self, request, queryset):
         count = 0
 
@@ -126,6 +128,60 @@ class WorkerProfileAdmin(ModelAdmin):
             f"{count} worker(s) suspended.",
             messages.SUCCESS,
         )
+
+    suspend_workers.short_description = "Suspend selected workers"
+
+    def reject_workers(self, request, queryset):
+        """Reject workers with a required reason."""
+        if 'do_reject_workers' in request.POST:
+            rejection_reason = request.POST.get('rejection_reason', '').strip()
+
+            if not rejection_reason:
+                self.message_user(
+                    request,
+                    "Rejection requires a reason. Please provide a reason.",
+                    messages.WARNING,
+                )
+                return
+
+            rejected_count = 0
+            updated_ids = list(queryset.values_list('id', flat=True))
+
+            with transaction.atomic():
+                for worker_id in updated_ids:
+                    try:
+                        worker = WorkerProfile.objects.get(id=worker_id)
+                        worker.status = WorkerProfile.Status.REJECTED
+                        worker.rejection_reason = rejection_reason
+                        worker.is_online = False
+                        worker.save()
+                        rejected_count += 1
+                    except WorkerProfile.DoesNotExist:
+                        continue
+
+            if rejected_count:
+                self.message_user(
+                    request,
+                    f"{rejected_count} worker(s) rejected with reason.",
+                    messages.SUCCESS,
+                )
+            return
+
+        # Show confirmation page
+        context = {
+            'title': 'Confirm worker rejection',
+            'objects': queryset,
+            'count': queryset.count(),
+            'action': 'reject_workers',
+            'queryset_count': queryset.count(),
+        }
+        return TemplateResponse(
+            request,
+            'admin/workers/workerprofile/reject_workers.html',
+            context,
+        )
+
+    reject_workers.short_description = "Reject selected workers"
 
 
 @admin.register(WorkerDocument)

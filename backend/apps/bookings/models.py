@@ -201,3 +201,57 @@ class BookingAssignment(TimeStampedModel):
 
     def __str__(self):
         return f"{self.booking} -> {self.worker.user.phone}"
+
+
+class WorkerOffer(TimeStampedModel):
+    """
+    Tracks each worker's offer for a booking. One-offer-per-worker-per-booking.
+
+    A booking is created without a BookingAssignment. Multiple WorkerOffer
+    records are created for eligible workers. Only after a worker successfully
+    accepts does a BookingAssignment get created with a required worker.
+
+    The existing OneToOne booking relationship on BookingAssignment remains
+    the protection against multiple final assignments.
+    """
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+        EXPIRED = "expired", "Expired"
+        WITHDRAWN = "withdrawn", "Withdrawn"
+
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="worker_offers",
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile",
+        on_delete=models.PROTECT,
+        related_name="worker_offers",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    offered_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        help_text="Offer expires at this time if not accepted or declined.",
+    )
+    responded_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["offered_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking", "worker"],
+                name="unique_offer_per_booking_worker",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Offer #{self.pk}: {self.worker.user.phone} -> Booking #{self.booking_id}"

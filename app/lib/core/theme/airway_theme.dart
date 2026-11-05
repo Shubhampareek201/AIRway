@@ -1,43 +1,38 @@
 import 'package:flutter/material.dart';
+import 'airway_colors.dart';
 
-class AirwayColors {
-  AirwayColors._();
-
-  static const primary = Color(0xFF7154E8);
-  static const primaryDark = Color(0xFF5135C5);
-  static const lavender = Color(0xFFF0EDFF);
-  static const background = Color(0xFFF8F7FC);
-  static const surface = Colors.white;
-  static const text = Color(0xFF211B35);
-  static const muted = Color(0xFF756F85);
-  static const border = Color(0xFFE8E4F1);
-}
 class AirwayTheme {
   AirwayTheme._();
 
-  static ThemeData get light {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: AirwayColors.primary,
-      brightness: Brightness.light,
-    ).copyWith(
-      primary: AirwayColors.primary,
-      onPrimary: Colors.white,
-      surface: AirwayColors.surface,
-      onSurface: AirwayColors.text,
-      outline: AirwayColors.border,
-      surfaceContainerLowest: AirwayColors.surface,
-      surfaceContainerLow: AirwayColors.background,
-    );
+  static final ColorScheme _scheme = ColorScheme.fromSeed(
+    seedColor: AirwayColors.sage,
+    brightness: Brightness.light,
+  ).copyWith(
+    primary: AirwayColors.sage,
+    onPrimary: Colors.white,
+    secondary: AirwayColors.clay,
+    onSecondary: Colors.white,
+    surface: AirwayColors.surface,
+    onSurface: AirwayColors.text,
+    outline: AirwayColors.border,
+    surfaceContainerLowest: AirwayColors.surface,
+    surfaceContainerLow: AirwayColors.background,
+  );
 
+  static ThemeData get light {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      colorScheme: scheme,
+      colorScheme: _scheme,
       scaffoldBackgroundColor: AirwayColors.background,
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      hoverColor: AirwayColors.surfaceVariant,
       appBarTheme: const AppBarTheme(
-        backgroundColor: AirwayColors.background,
+        backgroundColor: Colors.transparent,
         foregroundColor: AirwayColors.text,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
           fontSize: 20,
@@ -47,11 +42,26 @@ class AirwayTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AirwayColors.primary,
+          backgroundColor: AirwayColors.sage,
           foregroundColor: Colors.white,
           minimumSize: const Size(0, 52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+          shape: const ContinuousRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AirwayColors.sage,
+          minimumSize: const Size(0, 52),
+          side: const BorderSide(color: AirwayColors.border),
+          shape: const ContinuousRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16)),
           ),
           textStyle: const TextStyle(
             fontSize: 15,
@@ -59,65 +69,47 @@ class AirwayTheme {
           ),
         ),
       ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AirwayColors.primary,
-          minimumSize: const Size(0, 52),
-          side: const BorderSide(color: AirwayColors.border),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AirwayColors.sage,
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: AirwayColors.surface,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(
-            color: AirwayColors.border,
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(
-            color: AirwayColors.border,
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(
-            color: AirwayColors.primary,
-            width: 1.5,
-          ),
-        ),
-      ),
+      inputDecorationTheme: const InputDecorationTheme(),
       cardTheme: CardThemeData(
         color: AirwayColors.surface,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(
-            color: AirwayColors.border,
-          ),
+        shape: const ContinuousRectangleBorder(
+          side: BorderSide(color: AirwayColors.border),
         ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AirwayColors.surface,
         showDragHandle: true,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(24),
-          ),
+        shape: ContinuousRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
-      navigationBarTheme: const NavigationBarThemeData(
+      navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AirwayColors.surface,
-        indicatorColor: AirwayColors.lavender,
+        indicatorColor: AirwayColors.clay.withValues(alpha: 0.18),
+        iconTheme: const WidgetStatePropertyAll<IconThemeData?>(
+  IconThemeData(color: AirwayColors.textTertiary),
+),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        showCloseIcon: true,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AirwayColors.surface,
+        shape: const ContinuousRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(24)),
+        ),
       ),
     );
   }

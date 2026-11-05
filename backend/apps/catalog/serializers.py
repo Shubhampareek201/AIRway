@@ -52,11 +52,12 @@ class ServiceSerializer(serializers.ModelSerializer):
     addons = AddOnSerializer(many=True, read_only=True)
     form_fields = FormFieldSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source="category.title", read_only=True)
+    category_slug = serializers.CharField(source="category.slug", read_only=True)
 
     class Meta:
         model = Service
         fields = [
-            "id", "category", "category_name", "title", "title_hi", "description",
+            "id", "category", "category_name", "category_slug", "title", "title_hi", "description",
             "image", "booking_mode", "booking_mode_display", "pricing_type", "pricing_type_display",
             "unit_label", "visit_fee", "duration_minutes", "buffer_minutes",
             "audience", "audience_display", "requires_female_worker",

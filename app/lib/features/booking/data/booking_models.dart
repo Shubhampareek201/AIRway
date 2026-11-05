@@ -82,6 +82,16 @@ class Booking {
     required this.canCancel,
   });
 
+  double get totalAmount {
+    final total = pricingSnapshot['total'];
+    if (total == null) return 0.0;
+    return double.tryParse(total.toString()) ?? 0.0;
+  }
+
+  String get scheduledAtDisplay {
+    return scheduledAt.toLocal().toString().substring(0, 16).replaceAll('T', ' ');
+  }
+
   factory Booking.fromMap(Map<String, dynamic> map) {
     return Booking(
       id: map['id'],

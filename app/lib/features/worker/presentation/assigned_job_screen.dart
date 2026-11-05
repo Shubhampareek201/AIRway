@@ -1,0 +1,398 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:airway/core/theme/airway_colors.dart';
+import 'package:airway/features/worker/data/worker_api.dart';
+import 'package:airway/features/worker/data/worker_models.dart';
+import 'package:airway/features/booking/data/booking_models.dart';
+
+class AssignedJobScreen extends StatefulWidget {
+  const AssignedJobScreen({super.key});
+
+  @override
+  State<AssignedJobScreen> createState() => _AssignedJobScreenState();
+}
+
+class _AssignedJobScreenState extends State<AssignedJobScreen> {
+  WorkerAssignmentDetail? _jobDetail;
+  bool _loading = true;
+  String? _error;
+  bool _isActionInProgress = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAssignedJob();
+  }
+
+  Future<void> _loadAssignedJob() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final jobs = await WorkerApi.getAssignedJobs();
+
+      if (jobs.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+          });
+        }
+        return;
+      }
+
+      // Get the first assigned job
+      final firstJob = jobs.first;
+
+      // Get full job details
+      final detail = await WorkerApi.getJobDetail(firstJob['id']);
+      if (mounted) {
+        _jobDetail = WorkerAssignmentDetail.fromMap(detail);
+        setState(() {
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Could not load assigned job: $e';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _startJob() async {
+    if (!mounted || _jobDetail == null) return;
+
+    setState(() {
+      _isActionInProgress = true;
+    });
+
+    try {
+      await WorkerApi.startJob(_jobDetail!.bookingId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job started')),
+        );
+        await _loadAssignedJob();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start job: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _completeJob() async {
+    if (!mounted || _jobDetail == null) return;
+
+    setState(() {
+      _isActionInProgress = true;
+    });
+
+    try {
+      await WorkerApi.completeJob(_jobDetail!.bookingId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job completed')),
+        );
+        await _loadAssignedJob();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to complete job: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Assigned Job')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Assigned Job')),
+        body: _errorWidget(_error!),
+      );
+    }
+
+    if (_jobDetail == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Assigned Job')),
+        body: const Center(child: Text('No assigned job')),
+      );
+    }
+
+    final job = _jobDetail!;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Assigned Job'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadAssignedJob,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _buildServiceInfo(job),
+            const SizedBox(height: 16),
+            _buildScheduleInfo(job),
+            const SizedBox(height: 16),
+            _buildCustomerInfo(job),
+            const SizedBox(height: 16),
+            _buildAssignmentInfo(job),
+            const SizedBox(height: 16),
+            _buildPaymentInfo(job),
+            const SizedBox(height: 16),
+            _buildActions(job),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServiceInfo(WorkerAssignmentDetail job) {
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          Icons.book,
+          color: AirwayColors.primary,
+        ),
+        title: Text(job.serviceTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Service details'),
+      ),
+    );
+  }
+
+  Widget _buildScheduleInfo(WorkerAssignmentDetail job) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.schedule),
+        title: const Text('Scheduled Time'),
+        subtitle: Text(_formatDateTime(job.scheduledAt)),
+        trailing: Icon(
+          job.dropScheduledAt != null ? Icons.inventory_2 : Icons.schedule,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomerInfo(WorkerAssignmentDetail job) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.person),
+        title: Text(job.customerName),
+        subtitle: Text(job.customerPhone ?? 'No phone'),
+        trailing: Text(
+          '₹${job.amount.toStringAsFixed(0)}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssignmentInfo(WorkerAssignmentDetail job) {
+    final assignment = job.assignment;
+
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.people),
+            title: const Text('Assignment'),
+            subtitle: Text(
+              'Assigned: ${_formatDateTimeIfNotNull(assignment.assignedAt)}',
+            ),
+            trailing: Chip(
+              label: Text(assignment.statusDisplay),
+              backgroundColor: _getStatusColor(assignment.statusDisplay),
+            ),
+          ),
+          if (job.address != null && job.address!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Address: ${job.address}',
+                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentInfo(WorkerAssignmentDetail job) {
+    final status = job.status;
+
+    // Check if payment is expected based on status
+    final isPaid = status == BookingStatus.inProgress ||
+        status == BookingStatus.completed ||
+        status == BookingStatus.confirmed;
+
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.payment),
+        title: const Text('Payment'),
+        subtitle: isPaid
+            ? const Text('Payment completed')
+            : const Text('Payment pending'),
+        trailing: Chip(
+          label: Text(isPaid ? 'Paid' : 'Pending'),
+          backgroundColor:
+              isPaid ? Colors.green.shade100 : Colors.orange.shade100,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActions(WorkerAssignmentDetail job) {
+    final status = job.status;
+
+    if (status == BookingStatus.assigned) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : () => _startJob(),
+              icon: _isActionInProgress
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.play_arrow),
+              label: _isActionInProgress
+                  ? const Text('Starting...')
+                  : const Text('Start Job'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _isActionInProgress ? null : () => _completeJob(),
+              icon: const Icon(Icons.check),
+              label: const Text('Complete'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (status == BookingStatus.inProgress) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : () => _completeJob(),
+              icon: _isActionInProgress
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check),
+              label: _isActionInProgress
+                  ? const Text('Completing...')
+                  : const Text('Complete Job'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (status == BookingStatus.completed) {
+      return Card(
+        child: const ListTile(
+          leading: Icon(Icons.check_circle),
+          title: Text('Job Status'),
+          subtitle: Text('This job has been completed'),
+        ),
+      );
+    }
+
+    if (status == BookingStatus.confirmed) {
+      return Card(
+        child: const ListTile(
+          leading: Icon(Icons.pending_outlined),
+          title: Text('Job Status'),
+          subtitle: Text('Payment pending - awaiting worker assignment'),
+        ),
+      );
+    }
+
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.info),
+        title: const Text('Job Status'),
+        subtitle: Text('Status: ${BookingStatus.display(status)}'),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Completed':
+        return Colors.green.shade800;
+      case 'In Progress':
+        return Colors.blue.shade800;
+      case 'Accepted':
+      case 'Assigned':
+        return Colors.orange.shade800;
+      default:
+        return Colors.grey.shade800;
+    }
+  }
+
+  String _formatDateTime(DateTime dt) {
+    return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+  }
+
+  String _formatDateTimeIfNotNull(DateTime? dt) {
+    if (dt == null) return 'Not assigned';
+    return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+  }
+
+  Widget _errorWidget(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.redAccent, size: 52),
+            const SizedBox(height: 14),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AirwayColors.textSecondary)),
+            const SizedBox(height: 20),
+            FilledButton(onPressed: _loadAssignedJob, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}

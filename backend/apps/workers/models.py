@@ -282,3 +282,30 @@ class WorkerLeave(TimeStampedModel):
 
     def __str__(self):
         return f"{self.worker.user.phone} - Leave"
+
+class WorkerJobStreak(TimeStampedModel):
+    """Tracks milestone bonuses awarded to workers for completed job streaks."""
+
+    worker = models.ForeignKey(
+        WorkerProfile,
+        on_delete=models.CASCADE,
+        related_name="job_streaks",
+    )
+
+    jobs_completed = models.PositiveIntegerField(
+        help_text="Number of completed jobs at time of bonus",
+    )
+    bonus_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    awarded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-awarded_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("worker", "jobs_completed"),
+                name="unique_worker_streak_per_threshold",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.worker.user.phone} - {self.jobs_completed} jobs"

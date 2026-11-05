@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.core.exceptions import ObjectDoesNotExist
 
 from .models import Booking, BookingStatusHistory
 from .serializers import (
@@ -12,7 +13,8 @@ from .serializers import (
     BookingCancelSerializer,
     BookingAvailabilitySerializer,
 )
-from .services import check_slot_availability, check_service_available, SlotConflictError, ServiceUnavailableError
+from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
+from apps.notifications.models import Notification
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -49,6 +51,8 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
+        from apps.bookings.models import WorkerOffer
+
         booking = self.get_object()
         serializer = BookingCancelSerializer(data=request.data, context={"booking": booking})
         serializer.is_valid(raise_exception=True)
@@ -70,7 +74,72 @@ class BookingViewSet(viewsets.ModelViewSet):
             note=f"Cancelled by customer. Reason: {reason}",
         )
 
+        # Cancel all pending worker offers for this booking
+        WorkerOffer.objects.filter(booking=booking, status=WorkerOffer.Status.PENDING).update(
+            status=WorkerOffer.Status.EXPIRED,
+            responded_at=timezone.now(),
+        )
+
+        Notification.objects.create(
+            user=request.user,
+            type=Notification.Type.BOOKING_CANCELLED,
+            title="Booking Cancelled",
+            body="Your booking has been cancelled.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": booking.id},
+        )
+
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
+
+    @action(detail=True, methods=["post"], url_path="confirm")
+    def confirm_booking(self, request, pk=None):
+        """Confirm a booking and trigger worker offer creation."""
+        from apps.notifications.models import Notification
+
+        booking = self.get_object()
+
+        if booking.customer != request.user:
+            return Response(
+                {"detail": "Only the booking owner can confirm this booking."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if booking.status != Booking.Status.PENDING:
+            return Response(
+                {"detail": f"Booking cannot be confirmed in {booking.get_status_display()} state."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        old_status = booking.status
+        booking.status = Booking.Status.CONFIRMED
+        booking.save()
+
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=old_status,
+            to_status=Booking.Status.CONFIRMED,
+            changed_by=request.user,
+            note="Customer confirmed booking",
+        )
+
+        # Create worker offers for this booking
+        offers = create_worker_offers_for_booking(booking)
+
+        # Notify customer about confirm
+        Notification.objects.create(
+            user=booking.customer,
+            type=Notification.Type.BOOKING_CONFIRMED,
+            title="Booking Confirmed",
+            body="Your booking is confirmed. A worker will be assigned soon.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": booking.id},
+        )
+
+        return Response({
+            "detail": "Booking confirmed and worker offers created.",
+            "status": booking.status,
+            "offers_count": len(offers),
+        })
 
     @action(detail=False, methods=["post"])
     def check_availability(self, request, pk=None):
@@ -141,4 +210,140 @@ class BookingViewSet(viewsets.ModelViewSet):
             # In a production app with WebSockets / Redis / FCM, live lat/lng would come here
             "worker_latitude": float(booking.address.latitude) + 0.005 if booking.address.latitude else None,
             "worker_longitude": float(booking.address.longitude) + 0.005 if booking.address.longitude else None,
+        })
+    @action(detail=True, methods=["post"], url_path="start")
+    def start_job(self, request, pk=None):
+        """Mark booking as in progress (worker started the job)."""
+        from apps.notifications.models import Notification
+
+        booking = Booking.objects.filter(pk=pk).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment = getattr(booking, "assignment", None)
+
+        if not assignment:
+            return Response(
+                {"detail": "This booking has no assignment. Worker must accept offer first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user_worker_profile = request.user.worker_profile
+        except ObjectDoesNotExist:
+            return Response(
+                {"detail": "User is not a worker."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if assignment.worker != user_worker_profile:
+            return Response(
+                {"detail": "Only the assigned worker can start this job."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if booking.status != Booking.Status.ASSIGNED:
+            return Response(
+                {"detail": f"Cannot start job in {booking.get_status_display()} state."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        old_status = booking.status
+        booking.status = Booking.Status.IN_PROGRESS
+        booking.save()
+
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=old_status,
+            to_status=Booking.Status.IN_PROGRESS,
+            changed_by=request.user,
+            note="Worker started the job",
+        )
+
+        if assignment:
+            assignment.started_at = timezone.now()
+            assignment.save()
+
+        Notification.objects.create(
+            user=booking.customer,
+            type=Notification.Type.BOOKING_STARTED,
+            title="Service Started",
+            body="The service has started. You'll receive updates.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": booking.id},
+        )
+
+        return Response({
+            "detail": "Job marked as started.",
+            "status": booking.status,
+            "started_at": assignment.started_at,
+        })
+
+    @action(detail=True, methods=["post"], url_path="complete")
+    def complete_job(self, request, pk=None):
+        """Mark booking as completed (worker finished the job)."""
+        from apps.notifications.models import Notification
+
+        booking = Booking.objects.filter(pk=pk).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment = getattr(booking, "assignment", None)
+
+        if not assignment:
+            return Response(
+                {"detail": "This booking has no assignment."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user_worker_profile = request.user.worker_profile
+        except ObjectDoesNotExist:
+            return Response(
+                {"detail": "User is not a worker."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if assignment.worker != user_worker_profile:
+            return Response(
+                {"detail": "Only the assigned worker can complete this job."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if booking.status != Booking.Status.IN_PROGRESS:
+            return Response(
+                {"detail": f"Cannot complete job in {booking.get_status_display()} state."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        old_status = booking.status
+        booking.status = Booking.Status.COMPLETED
+        booking.completed_at = timezone.now()
+        booking.save()
+
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=old_status,
+            to_status=Booking.Status.COMPLETED,
+            changed_by=request.user,
+            note="Worker completed the job",
+        )
+
+        if assignment:
+            assignment.completed_at = timezone.now()
+            assignment.save()
+
+        Notification.objects.create(
+            user=booking.customer,
+            type=Notification.Type.BOOKING_COMPLETED,
+            title="Service Completed",
+            body="The service has been completed successfully.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": booking.id},
+        )
+
+        return Response({
+            "detail": "Job marked as completed.",
+            "status": booking.status,
+            "completed_at": assignment.completed_at,
         })

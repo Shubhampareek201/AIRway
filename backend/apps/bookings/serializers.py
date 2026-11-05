@@ -8,8 +8,10 @@ from .models import (
     BookingStatusHistory,
     BookingAssignment,
 )
+from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
 from apps.accounts.models import Address
+from apps.notifications.models import Notification
 
 
 class BookingAddOnSerializer(serializers.ModelSerializer):
@@ -135,6 +137,25 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         else:
             if drop_scheduled_at:
                 raise serializers.ValidationError({"drop_scheduled_at": "Drop time only allowed for Pickup & Drop booking."})
+
+        # Check service availability
+        try:
+            check_service_available(service=service, address=None, audience="all")
+        except ServiceUnavailableError as e:
+            raise serializers.ValidationError({"service": str(e)})
+
+        # Validate slot availability
+        try:
+            duration = variant.duration_minutes if variant else service.duration_minutes
+            check_slot_availability(
+                service=service,
+                scheduled_at=scheduled_at,
+                duration_minutes=duration or 60,
+                booking_mode=booking_mode,
+                drop_scheduled_at=drop_scheduled_at,
+            )
+        except SlotConflictError as e:
+            raise serializers.ValidationError({"detail": str(e)})
 
         # Validate address belongs to user and is active
         user = self.context["request"].user
@@ -265,6 +286,20 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             note="Booking created",
         )
 
+        # Create worker offers for this booking
+        offers = create_worker_offers_for_booking(booking)
+
+        # Notify customer about offers
+        if offers:
+            Notification.objects.create(
+                user=user,
+                type=Notification.Type.BOOKING_CONFIRMED,
+                title="Booking Request Submitted",
+                body=f"Your booking for {service.title} has been submitted. We're finding a worker.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id, "offers_sent": len(offers)},
+            )
+
         return booking
 
 
@@ -365,6 +400,12 @@ class BookingAvailabilitySerializer(serializers.Serializer):
         attrs["service_obj"] = service
         attrs["variant"] = ServiceVariant.objects.filter(pk=attrs.get("variant_id")).first() if attrs.get("variant_id") else None
 
+        booking_mode = attrs.get("booking_mode", "scheduled")
+
+        # Validate drop_scheduled_at is provided for pickup_drop mode
+        if booking_mode == "pickup_drop" and not attrs.get("drop_scheduled_at"):
+            raise serializers.ValidationError({"drop_scheduled_at": "Drop time is required for Pickup & Drop booking."})
+
         return attrs
 
 
@@ -376,3 +417,16 @@ class BookingCancelSerializer(serializers.Serializer):
         if not booking.can_cancel:
             raise serializers.ValidationError("This booking cannot be cancelled at its current status.")
         return attrs
+
+
+class WorkerOfferSerializer(serializers.ModelSerializer):
+    booking_status = serializers.CharField(source='booking.status', read_only=True)
+    worker_name = serializers.CharField(source='worker.user.name', read_only=True)
+    worker_phone = serializers.CharField(source='worker.user.phone', read_only=True)
+
+    class Meta:
+        model = __import__('apps.bookings.models', fromlist=['WorkerOffer']).WorkerOffer
+        fields = [
+            'id', 'booking', 'worker', 'status', 'expires_at', 'accepted_at',
+            'responded_at', 'booking_status', 'worker_name', 'worker_phone',
+        ]

@@ -21,6 +21,7 @@ version: 1.0.0+1
 environment:
   sdk: ^3.13.7
 
+
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
 # consider running `flutter pub upgrade --major-versions`. Alternatively,
@@ -51,6 +52,9 @@ dependencies:
   # Google Sign-In
   google_sign_in: ^6.2.1
 
+  # Image picker for photo capture
+  image_picker: ^1.0.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -67,12 +71,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
+
   assets:
+    - assets/images/airway_logo.png
     - assets/images/google_logo.png
   # To add assets to your application, add an assets section, like this:
   # assets:

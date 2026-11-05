@@ -36,6 +36,7 @@ class Payment(TimeStampedModel):
     razorpay_signature = models.CharField(max_length=255, blank=True)
 
     paid_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
     raw_response = models.JSONField(default=dict, blank=True)
 
     history = HistoricalRecords()

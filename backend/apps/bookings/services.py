@@ -53,10 +53,15 @@ def check_slot_availability(
         status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED, Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS]
     )
 
+    # Calculate end time for pickup
+    pickup_end = scheduled_at + timedelta(minutes=duration_minutes) + buffer
+
     # Check pickup slot overlap
+    # Two bookings overlap if: booking2.start < booking1.end AND booking2.end > booking1.start
+    # For existing bookings, we need to check if their slot [scheduled_at, scheduled_at + duration + buffer]
+    # overlaps with new booking's slot [scheduled_at, pickup_end]
     if queryset.filter(
-        Q(scheduled_at__lt=end_at) &
-        (Q(scheduled_at__gt=scheduled_at - buffer) | Q(scheduled_at__gte=scheduled_at))
+        Q(scheduled_at__lt=pickup_end)
     ).exclude(pk=exclude_booking_id).exists():
         raise SlotConflictError("Slot is already booked. Please choose another time.")
 
@@ -144,3 +149,32 @@ def get_available_slots(
             available_slots.append(hour)
 
     return available_slots[:count]
+
+
+def create_worker_offers_for_booking(booking: Booking) -> list:
+    """
+    Create worker offers for eligible workers for a given booking.
+
+    Delegates to DispatcherService for the actual dispatch logic.
+
+    Eligibility criteria:
+    - Worker profile is approved
+    - Worker is online
+    - Worker offers the required service
+    - Worker is in the same zone as the booking address
+    - Worker doesn't have blocking leave for the scheduled time
+    - Worker schedule covers the scheduled time
+
+    Uses DispatcherService which supports batch dispatch:
+    - Max 5 workers per batch
+    - Max 3 batches (15 total offers)
+    - 5-minute offer expiry
+
+    Works with PENDING and CONFIRMED booking statuses to support
+    auto-dispatch on booking creation.
+
+    Returns list of created WorkerOffer instances.
+    """
+    from apps.bookings.dispatcher import DispatcherService
+
+    return DispatcherService.dispatch_offers(booking)

@@ -1,0 +1,1 @@
+# Ratings app for customer and worker evaluations

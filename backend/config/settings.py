@@ -48,14 +48,19 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "drf_spectacular",
     "simple_history",
+    "django_celery_beat",
 
     # AIRway
-    "apps.core",
+    "apps.core.apps.CoreConfig",
     "apps.accounts",
     "apps.catalog",
+    "apps.availability",
     "apps.workers.apps.WorkersConfig",
     "apps.bookings",
+    "apps.notifications",
     "apps.payments",
+    "apps.wallet.apps.WalletConfig",
+    "apps.ratings.apps.RatingsConfig",
 ]
 
 MIDDLEWARE = [
@@ -164,6 +169,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
 }
 
 # API documentation
@@ -176,3 +183,19 @@ SPECTACULAR_SETTINGS = {
 # Razorpay (set via environment variables in production)
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_dummy")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "dummy_secret")
+RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "dummy_webhook_secret")
+
+# Celery (background task processing)
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Payment timeout configuration (in minutes)
+PAYMENT_TIMEOUT_MINUTES = int(os.environ.get('PAYMENT_TIMEOUT_MINUTES', '5'))
+
+# Dispatch configuration
+DISPATCH_BATCH_SIZE = int(os.environ.get('DISPATCH_BATCH_SIZE', '5'))
+DISPATCH_MAX_RETRY_BATCHES = int(os.environ.get('DISPATCH_MAX_RETRY_BATCHES', '3'))
+OFFER_EXPIRY_MINUTES = int(os.environ.get('OFFER_EXPIRY_MINUTES', '30'))
