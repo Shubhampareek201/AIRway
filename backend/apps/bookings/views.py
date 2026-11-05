@@ -441,18 +441,37 @@ class CustomerCheckoutView(APIView):
             quantity = item.quantity
             base_snapshot = dict(booking.pricing_snapshot or {})
             unit_subtotal = Decimal(str(base_snapshot.get("subtotal", "0")))
-            unit_tax = Decimal(str(base_snapshot.get("tax", "0")))
-            line_subtotal = unit_subtotal * quantity
-            line_tax = unit_tax * quantity
-            line_total = line_subtotal + line_tax
 
-            # Preserve add-on quantities chosen in the cart on the booking line.
+            # Preserve add-on quantities chosen in the cart and make the
+            # immutable booking/order price snapshots reflect those quantities.
             addon_quantities = {row["id"]: int(row.get("quantity", 1)) for row in item.addon_selections}
+            adjusted_addons = []
+            adjusted_addons_total = Decimal("0")
             for booking_addon in booking.booking_addons.select_related("addon"):
                 addon_quantity = addon_quantities.get(booking_addon.addon_id, 1)
                 booking_addon.quantity = addon_quantity
                 booking_addon.total_price = booking_addon.unit_price * addon_quantity
                 booking_addon.save(update_fields=["quantity", "total_price", "updated_at"])
+                adjusted_addons_total += booking_addon.total_price
+                adjusted_addons.append({
+                    "id": booking_addon.addon_id,
+                    "title": booking_addon.addon.title,
+                    "title_hi": booking_addon.addon.title_hi,
+                    "unit_price": str(booking_addon.unit_price),
+                    "quantity": addon_quantity,
+                    "total": str(booking_addon.total_price),
+                })
+
+            base_snapshot["addons"] = adjusted_addons
+            base_snapshot["addon_total"] = str(adjusted_addons_total)
+            # Recalculate from the variant/visit base plus the selected add-ons.
+            variant_base = Decimal(str(base_snapshot.get("variant_price", "0")))
+            visit_fee = Decimal(str(base_snapshot.get("visit_fee", "0")))
+            unit_subtotal = variant_base + visit_fee + adjusted_addons_total
+            unit_tax = unit_subtotal * Decimal("0.18")
+            line_subtotal = unit_subtotal * quantity
+            line_tax = unit_tax * quantity
+            line_total = line_subtotal + line_tax
 
             base_snapshot.update({
                 "cart_item_id": item.id,
