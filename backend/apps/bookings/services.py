@@ -91,13 +91,15 @@ def check_service_available(
     if not service.is_active:
         raise ServiceUnavailableError(f"Service '{service.title}' is not active.")
 
-    # Check if service is available in user's city (when address is provided)
-    # This requires CityService model to be linked to address
-    if address and hasattr(address, 'city') and address.city:
+    # Address stores its service city through Address.zone.city.
+    if address and address.zone_id:
         from apps.catalog.models import CityService
-        if not CityService.objects.filter(city=address.city, service=service, is_active=True).exists():
+        city = address.zone.city
+        if not city.is_active or not CityService.objects.filter(
+            city=city, service=service, is_active=True
+        ).exists():
             raise ServiceUnavailableError(
-                f"Service '{service.title}' is not available in your area."
+                f"Service '{service.title}' is not available in {city.name}."
             )
 
     return True
