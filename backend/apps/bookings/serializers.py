@@ -430,3 +430,126 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             'id', 'booking', 'worker', 'status', 'expires_at', 'accepted_at',
             'responded_at', 'booking_status', 'worker_name', 'worker_phone',
         ]
+
+
+from decimal import Decimal
+from .models import CustomerCart, CartItem
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    service_title = serializers.CharField(source="service.title", read_only=True)
+    variant_title = serializers.CharField(source="variant.title", read_only=True)
+    line_total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CartItem
+        fields = [
+            "id", "service", "service_title", "variant", "variant_title",
+            "quantity", "addon_selections", "form_answers", "notes",
+            "pricing_snapshot", "line_total",
+        ]
+        read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
+
+    def get_line_total(self, obj):
+        return str(obj.line_total)
+
+    def validate(self, attrs):
+        instance = self.instance
+        service = attrs.get("service", instance.service if instance else None)
+        variant = attrs.get("variant", instance.variant if instance else None)
+        quantity = attrs.get("quantity", instance.quantity if instance else 1)
+        addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
+        answers = attrs.get("form_answers", instance.form_answers if instance else {})
+
+        if quantity < 1 or quantity > 20:
+            raise serializers.ValidationError({"quantity": "Quantity must be between 1 and 20."})
+        if not service.is_active:
+            raise serializers.ValidationError({"service": "This service is not available."})
+        if variant and (variant.service_id != service.id or not variant.is_active):
+            raise serializers.ValidationError({"variant": "Choose an active package for this service."})
+        if not isinstance(addons, list) or not isinstance(answers, dict):
+            raise serializers.ValidationError("Add-ons must be a list and answers must be an object.")
+
+        addon_ids = []
+        for row in addons:
+            if not isinstance(row, dict) or "id" not in row:
+                raise serializers.ValidationError({"addon_selections": "Each add-on needs an id."})
+            addon_ids.append(row["id"])
+        if len(addon_ids) != len(set(addon_ids)):
+            raise serializers.ValidationError({"addon_selections": "Duplicate add-ons are not allowed."})
+        addon_map = {
+            obj.id: obj for obj in AddOn.objects.filter(
+                service=service, is_active=True, id__in=addon_ids
+            )
+        }
+        if set(addon_ids) != set(addon_map):
+            raise serializers.ValidationError({"addon_selections": "An add-on does not belong to this service."})
+
+        fields = {obj.key: obj for obj in service.form_fields.filter(is_active=True)}
+        if set(answers) - set(fields):
+            raise serializers.ValidationError({"form_answers": "An unknown question was supplied."})
+        for key, field in fields.items():
+            if field.is_required and answers.get(key) in (None, ""):
+                raise serializers.ValidationError({"form_answers": f"{field.label} is required."})
+
+        if variant:
+            base = Decimal(variant.price)
+            base_title = variant.title
+        elif service.variants.filter(is_active=True).exists():
+            raise serializers.ValidationError({"variant": "Please select a package."})
+        else:
+            base = Decimal(service.visit_fee)
+            base_title = service.title
+
+        addon_rows = []
+        addon_total = Decimal("0")
+        for row in addons:
+            addon = addon_map[row["id"]]
+            count = int(row.get("quantity", 1))
+            if count < 1 or count > 20:
+                raise serializers.ValidationError({"addon_selections": "Add-on quantity must be 1–20."})
+            total = Decimal(addon.price) * count
+            addon_total += total
+            addon_rows.append({
+                "id": addon.id, "title": addon.title,
+                "unit_price": str(addon.price), "quantity": count, "total": str(total),
+            })
+
+        attrs["_cart_snapshot"] = {
+            "base_title": base_title,
+            "base_price": str(base),
+            "addons": addon_rows,
+            "addons_total": str(addon_total),
+            "unit_total": str(base + addon_total),
+            "line_total": str((base + addon_total) * quantity),
+        }
+        return attrs
+
+    def create(self, validated_data):
+        snapshot = validated_data.pop("_cart_snapshot")
+        return CartItem.objects.create(pricing_snapshot=snapshot, **validated_data)
+
+    def update(self, instance, validated_data):
+        snapshot = validated_data.pop("_cart_snapshot")
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.pricing_snapshot = snapshot
+        instance.save()
+        return instance
+
+
+class CustomerCartSerializer(serializers.ModelSerializer):
+    items = CartItemSerializer(many=True, read_only=True)
+    subtotal = serializers.SerializerMethodField()
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomerCart
+        fields = ["id", "address", "items", "item_count", "subtotal", "updated_at"]
+        read_only_fields = fields
+
+    def get_subtotal(self, obj):
+        return str(obj.subtotal)
+
+    def get_item_count(self, obj):
+        return sum(item.quantity for item in obj.items.all())
