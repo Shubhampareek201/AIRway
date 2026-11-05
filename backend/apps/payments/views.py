@@ -112,6 +112,13 @@ def create_or_get_order_payment(order, customer, trigger_source="checkout"):
     """Create one Razorpay payment for all service bookings in an order."""
     if order.customer_id != customer.id:
         raise ValueError("Order not found or access denied.")
+
+    existing = Payment.objects.filter(order=order).first()
+    if existing and existing.status == Payment.Status.PAID and existing.razorpay_order_id:
+        return existing, existing.razorpay_order_id, True
+    if existing and existing.razorpay_order_id:
+        return existing, existing.razorpay_order_id, True
+
     bookings = list(order.items.select_related("booking").values_list("booking__status", flat=True))
     if not bookings:
         raise ValueError("This order has no service bookings.")
@@ -119,10 +126,6 @@ def create_or_get_order_payment(order, customer, trigger_source="checkout"):
         raise ValueError("Payment is available only after every service has an assigned worker.")
     if order.status not in [Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT]:
         raise ValueError("This order is not awaiting payment.")
-
-    existing = Payment.objects.filter(order=order).first()
-    if existing and existing.razorpay_order_id:
-        return existing, existing.razorpay_order_id, True
 
     amount_paise = int(order.total_amount * 100)
     if amount_paise <= 0:
