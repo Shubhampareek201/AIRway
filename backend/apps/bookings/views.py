@@ -436,6 +436,15 @@ class CustomerCartItemView(APIView):
             item, data=request.data, partial=True, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
+        if item.cart.address:
+            try:
+                check_service_available(
+                    service=serializer.validated_data.get("service", item.service),
+                    address=item.cart.address,
+                    audience="all",
+                )
+            except ServiceUnavailableError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()
         return Response(CustomerCartSerializer(item.cart, context={"request": request}).data)
 
