@@ -3,10 +3,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.db import transaction
+from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
 
-from .models import Booking, BookingStatusHistory, CustomerCart, CartItem
+from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -350,6 +352,213 @@ class BookingViewSet(viewsets.ModelViewSet):
             "detail": "Job marked as completed.",
             "status": booking.status,
             "completed_at": assignment.completed_at,
+        })
+
+
+class CustomerCheckoutView(APIView):
+    """Convert a customer's cart into one parent order with independent bookings."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        cart = get_object_or_404(
+            CustomerCart.objects.select_for_update().prefetch_related(
+                "items__service", "items__variant"
+            ),
+            customer=request.user,
+        )
+        items = list(cart.items.all())
+        if not items:
+            return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+        if not cart.address_id:
+            return Response({"detail": "Select a service address before checkout."}, status=status.HTTP_400_BAD_REQUEST)
+
+        requested = request.data.get("items")
+        if not isinstance(requested, list) or not requested:
+            return Response(
+                {"detail": "items must contain cart_item_id, scheduled_at and optional drop_scheduled_at for every cart item."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        requested_by_id = {}
+        for row in requested:
+            if not isinstance(row, dict) or not row.get("cart_item_id"):
+                return Response({"detail": "Each checkout item needs a cart_item_id."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                item_id = int(row["cart_item_id"])
+            except (TypeError, ValueError):
+                return Response({"detail": "cart_item_id must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+            if item_id in requested_by_id:
+                return Response({"detail": "Duplicate cart_item_id values are not allowed."}, status=status.HTTP_400_BAD_REQUEST)
+            requested_by_id[item_id] = row
+
+        if set(requested_by_id) != {item.id for item in items}:
+            return Response(
+                {"detail": "Checkout must include every current cart item exactly once."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        prepared = []
+        for item in items:
+            try:
+                check_service_available(service=item.service, address=cart.address, audience="all")
+            except ServiceUnavailableError as exc:
+                return Response(
+                    {"detail": str(exc), "cart_item_id": item.id},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            schedule = requested_by_id[item.id]
+            booking_data = {
+                "service": item.service_id,
+                "variant": item.variant_id,
+                "booking_mode": item.service.booking_mode,
+                "scheduled_at": schedule.get("scheduled_at"),
+                "drop_scheduled_at": schedule.get("drop_scheduled_at"),
+                "address_id": cart.address_id,
+                "addon_ids": [row["id"] for row in item.addon_selections],
+                "form_responses": item.form_answers,
+                "notes": item.notes,
+            }
+            serializer = BookingCreateSerializer(
+                data=booking_data,
+                context={"request": request},
+            )
+            serializer.is_valid(raise_exception=True)
+            prepared.append((item, serializer))
+
+        order = Order.objects.create(
+            customer=request.user,
+            address=cart.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+        )
+        subtotal = Decimal("0")
+        tax_total = Decimal("0")
+        grand_total = Decimal("0")
+
+        for item, serializer in prepared:
+            booking = serializer.save()
+            quantity = item.quantity
+            base_snapshot = dict(booking.pricing_snapshot or {})
+            unit_subtotal = Decimal(str(base_snapshot.get("subtotal", "0")))
+            unit_tax = Decimal(str(base_snapshot.get("tax", "0")))
+            line_subtotal = unit_subtotal * quantity
+            line_tax = unit_tax * quantity
+            line_total = line_subtotal + line_tax
+
+            # Preserve add-on quantities chosen in the cart on the booking line.
+            addon_quantities = {row["id"]: int(row.get("quantity", 1)) for row in item.addon_selections}
+            for booking_addon in booking.booking_addons.select_related("addon"):
+                addon_quantity = addon_quantities.get(booking_addon.addon_id, 1)
+                booking_addon.quantity = addon_quantity
+                booking_addon.total_price = booking_addon.unit_price * addon_quantity
+                booking_addon.save(update_fields=["quantity", "total_price", "updated_at"])
+
+            base_snapshot.update({
+                "cart_item_id": item.id,
+                "quantity": quantity,
+                "unit_subtotal": str(unit_subtotal),
+                "unit_tax": str(unit_tax),
+                "subtotal": str(line_subtotal),
+                "tax": str(line_tax),
+                "total": str(line_total),
+                "currency": "INR",
+            })
+            booking.pricing_snapshot = base_snapshot
+            booking.save(update_fields=["pricing_snapshot", "updated_at"])
+
+            OrderItem.objects.create(
+                order=order,
+                booking=booking,
+                quantity=quantity,
+                service_snapshot={
+                    "service_id": item.service_id,
+                    "service_title": item.service.title,
+                    "variant_id": item.variant_id,
+                    "variant_title": item.variant.title if item.variant else None,
+                    "cart_item_id": item.id,
+                    "form_answers": item.form_answers,
+                    "notes": item.notes,
+                },
+                pricing_snapshot=base_snapshot,
+                line_subtotal=line_subtotal,
+                tax_amount=line_tax,
+                line_total=line_total,
+            )
+            subtotal += line_subtotal
+            tax_total += line_tax
+            grand_total += line_total
+
+        order.subtotal = subtotal
+        order.tax_amount = tax_total
+        order.total_amount = grand_total
+        order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
+
+        cart.items.all().delete()
+        return Response({
+            "order_id": order.id,
+            "status": order.status,
+            "address_id": order.address_id,
+            "currency": order.currency,
+            "subtotal": str(order.subtotal),
+            "tax_amount": str(order.tax_amount),
+            "total_amount": str(order.total_amount),
+            "items": [
+                {
+                    "order_item_id": row.id,
+                    "booking_id": row.booking_id,
+                    "service": row.service_snapshot,
+                    "quantity": row.quantity,
+                    "line_total": str(row.line_total),
+                }
+                for row in order.items.all()
+            ],
+            "next_step": "Wait until every service has an assigned worker, then create one payment using order_id.",
+        }, status=status.HTTP_201_CREATED)
+
+
+class CustomerOrderDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, order_id):
+        order = get_object_or_404(
+            Order.objects.prefetch_related("items__booking__assignment__worker__user"),
+            pk=order_id,
+            customer=request.user,
+        )
+        items = []
+        for row in order.items.all():
+            booking = row.booking
+            assignment = getattr(booking, "assignment", None)
+            items.append({
+                "order_item_id": row.id,
+                "booking_id": booking.id,
+                "service": row.service_snapshot,
+                "booking_status": booking.status,
+                "scheduled_at": booking.scheduled_at,
+                "worker": (
+                    {
+                        "id": assignment.worker_id,
+                        "name": assignment.worker.user.name or assignment.worker.user.phone,
+                    }
+                    if assignment else None
+                ),
+                "quantity": row.quantity,
+                "line_total": str(row.line_total),
+            })
+        if order.items.exists() and all(row["booking_status"] == Booking.Status.ASSIGNED for row in items):
+            if order.status != Order.Status.AWAITING_PAYMENT:
+                order.status = Order.Status.AWAITING_PAYMENT
+                order.save(update_fields=["status", "updated_at"])
+        return Response({
+            "id": order.id,
+            "status": order.status,
+            "currency": order.currency,
+            "subtotal": str(order.subtotal),
+            "tax_amount": str(order.tax_amount),
+            "total_amount": str(order.total_amount),
+            "items": items,
+            "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
         })
 
 
