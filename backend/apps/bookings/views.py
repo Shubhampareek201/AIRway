@@ -1,11 +1,11 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
-from rest_framework.response import Response
+from rest_framework.response import Response\nfrom rest_framework.views import APIView
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
 
-from .models import Booking, BookingStatusHistory
+from .models import Booking, BookingStatusHistory, CustomerCart, CartItem
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -14,7 +14,7 @@ from .serializers import (
     BookingAvailabilitySerializer,
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
-from apps.notifications.models import Notification
+from apps.notifications.models import Notification\nfrom apps.accounts.models import Address
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -347,3 +347,61 @@ class BookingViewSet(viewsets.ModelViewSet):
             "status": booking.status,
             "completed_at": assignment.completed_at,
         })
+
+
+class CustomerCartView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_cart(self, user):
+        cart, _ = CustomerCart.objects.get_or_create(customer=user)
+        return cart
+
+    def get(self, request):
+        cart = self.get_cart(request.user)
+        return Response(CustomerCartSerializer(cart, context={"request": request}).data)
+
+    def post(self, request):
+        cart = self.get_cart(request.user)
+        serializer = CartItemSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(cart=cart)
+        return Response(
+            CustomerCartSerializer(cart, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def patch(self, request):
+        cart = self.get_cart(request.user)
+        if "address_id" in request.data:
+            address_id = request.data.get("address_id")
+            if address_id in (None, ""):
+                cart.address = None
+            else:
+                cart.address = get_object_or_404(
+                    Address, pk=address_id, user=request.user, deleted_at__isnull=True
+                )
+            cart.save(update_fields=["address", "updated_at"])
+        return Response(CustomerCartSerializer(cart, context={"request": request}).data)
+
+
+class CustomerCartItemView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_item(self, request, item_id):
+        cart = get_object_or_404(CustomerCart, customer=request.user)
+        return get_object_or_404(CartItem, cart=cart, pk=item_id)
+
+    def patch(self, request, item_id):
+        item = self.get_item(request, item_id)
+        serializer = CartItemSerializer(
+            item, data=request.data, partial=True, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(CustomerCartSerializer(item.cart, context={"request": request}).data)
+
+    def delete(self, request, item_id):
+        item = self.get_item(request, item_id)
+        cart = item.cart
+        item.delete()
+        return Response(CustomerCartSerializer(cart, context={"request": request}).data)
