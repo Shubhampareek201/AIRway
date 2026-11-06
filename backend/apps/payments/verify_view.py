@@ -49,10 +49,15 @@ def _process_verified_payment(
             from apps.wallet.services import capture_wallet_reservation
 
             try:
-                capture_wallet_reservation(
+                captured_reservation = capture_wallet_reservation(
                     payment,
                     razorpay_payment_id=razorpay_payment_id,
                 )
+                if (
+                    captured_reservation is None
+                    or captured_reservation.status != "captured"
+                ):
+                    raise ValueError("Wallet reservation is missing or not captured.")
             except ValueError as exc:
                 logger.error(
                     "Cannot settle wallet component for payment %s: %s",
