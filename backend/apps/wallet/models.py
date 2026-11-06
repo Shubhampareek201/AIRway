@@ -70,3 +70,44 @@ class WalletTransaction(TimeStampedModel):
 
     def __str__(self):
         return f"{self.wallet.user.phone} - {self.type} - ₹{self.amount}"
+
+
+class WalletReservation(TimeStampedModel):
+    """Wallet funds held for a parent-order payment until it succeeds or expires."""
+
+    class Status(models.TextChoices):
+        RESERVED = "reserved", "Reserved"
+        CAPTURED = "captured", "Captured"
+        RELEASED = "released", "Released"
+
+    wallet = models.ForeignKey(
+        Wallet,
+        on_delete=models.PROTECT,
+        related_name="reservations",
+    )
+    payment = models.OneToOneField(
+        "payments.Payment",
+        on_delete=models.PROTECT,
+        related_name="wallet_reservation",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.RESERVED,
+        db_index=True,
+    )
+    captured_at = models.DateTimeField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="wallet_reservation_amount_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Wallet reservation #{self.pk}: ₹{self.amount} ({self.status})"
