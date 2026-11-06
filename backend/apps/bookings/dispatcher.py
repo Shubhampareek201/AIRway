@@ -152,9 +152,8 @@ class DispatcherService:
         requested_intervals = _booking_intervals(
             scheduled_at, duration_minutes, service.buffer_minutes, drop_scheduled_at,
         )
-        visit_windows = [(scheduled_at, scheduled_at + duration)]
-        if drop_scheduled_at is not None:
-            visit_windows.append((drop_scheduled_at, drop_scheduled_at + duration))
+        # Worker shift must cover the visit plus configured turnaround buffer.
+        visit_windows = requested_intervals
 
         active_statuses = [
             Booking.Status.ASSIGNED,

@@ -289,6 +289,61 @@ class JobOfferAPITest(TestCase):
         offer.refresh_from_db()
         self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
 
+    def test_accept_rejects_worker_after_service_skill_is_removed(self):
+        self.client.force_authenticate(user=self.worker_user)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        WorkerService.objects.filter(
+            worker=self.worker_profile,
+            service=self.service,
+        ).delete()
+
+        response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
+
+    def test_accept_rejects_worker_after_zone_is_removed(self):
+        self.client.force_authenticate(user=self.worker_user)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        WorkerZone.objects.filter(
+            worker=self.worker_profile,
+            zone=self.zone,
+        ).delete()
+
+        response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
+
+    def test_accept_rejects_worker_with_blocked_slot(self):
+        from apps.availability.models import WorkerBlockedSlot
+
+        self.client.force_authenticate(user=self.worker_user)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        WorkerBlockedSlot.objects.create(
+            worker=self.worker_user,
+            start_at=self.booking.scheduled_at - timedelta(minutes=15),
+            end_at=self.booking.scheduled_at + timedelta(minutes=90),
+            reason="Emergency",
+        )
+
+        response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
+
     def test_accept_marks_expired_offer_and_rejects_it(self):
         self.client.force_authenticate(user=self.worker_user)
         offer = WorkerOffer.objects.create(
