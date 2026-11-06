@@ -524,129 +524,6 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     );
   }
 
-  Widget _schedulePicker() {
-    final now = DateTime.now();
-    final dates = List.generate(7, (index) {
-      return now.add(Duration(days: index));
-    });
-
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Select Date',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _Ui.sub),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 70,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: dates.length,
-                itemBuilder: (context, index) {
-                  final date = dates[index];
-                  final isSelected = _selectedScheduleTime?['date']?.day == date.day;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedScheduleTime = {
-                          'date': date,
-                          'hour': now.hour < 20 ? now.hour + 1 : 10,
-                          'minute': 0,
-                        };
-                      });
-                                      },
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: isSelected ? _Ui.violet : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '${date.day}',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: isSelected ? Colors.white : _Ui.ink,
-                            ),
-                          ),
-                          Text(
-                            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.weekday - 1],
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isSelected ? Colors.white70 : _Ui.sub,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Select Time',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _Ui.sub),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'].map((time) {
-                final hour = int.parse(time.split(':')[0]);
-                final isSelected = _selectedScheduleTime?['hour'] == hour;
-                return ChoiceChip(
-                  label: Text(time),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedScheduleTime!['hour'] = hour;
-                    });
-                    _checkSlotAvailability();
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _dropTimePicker() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: ['14:00', '16:00', '18:00', '20:00', '22:00'].map((time) {
-            final hour = int.parse(time.split(':')[0]);
-            final isSelected = _selectedDropTime?['hour'] == hour;
-            return ChoiceChip(
-              label: Text(time),
-              selected: isSelected,
-              onSelected: (selected) {
-                setState(() {
-                  _selectedDropTime = {'hour': hour};
-                });
-                _checkSlotAvailability();
-              },
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
   Widget _summaryCard() {
     final service = _service!;
     return SliverToBoxAdapter(
@@ -742,7 +619,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           ? ServiceVariant(id: 0, title: '', mrp: 0, price: 0, discountPercent: 0, sortOrder: 0, isActive: false)
           : service.variants.first,
     );
-    double total = variant.price;
+    double total = service.variants.isEmpty ? service.visitFee : variant.price;
 
     for (final addonId in _selectedAddonIds) {
       final addon = service.addons.firstWhere(
@@ -754,7 +631,6 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
     _subtotal = total;
     _estimatedTotal = total * 1.18; // Estimate only; backend confirms final amount
-    _checkSlotAvailability();
   }
 
   Future<void> _addToCart() async {
