@@ -233,6 +233,16 @@ class WalletTopUpConfirmView(APIView):
             razorpay_order_id=razorpay_order_id,
         )
         if transaction_obj is None:
+            latest = WalletTransaction.objects.filter(
+                pk=transaction_id,
+                wallet__user=request.user,
+                reference_id=razorpay_order_id,
+                type=WalletTransaction.Type.CREDIT,
+                status=WalletTransaction.Status.COMPLETED,
+                razorpay_payment_id=razorpay_payment_id,
+            ).first()
+            if latest is not None:
+                return Response(WalletTransactionSerializer(latest).data)
             return Response(
                 {"detail": "Top-up is already completed or no longer available."},
                 status=status.HTTP_409_CONFLICT,
