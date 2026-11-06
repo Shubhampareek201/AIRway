@@ -1331,9 +1331,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     SizedBox(
                       height: 112,
                       width: double.infinity,
-                      child: service.image?.isNotEmpty == true
+                      child: (service.image?.isNotEmpty == true ||
+                              service.images.isNotEmpty)
                           ? Image.network(
-                              service.image!,
+                              service.image?.isNotEmpty == true
+                                  ? service.image!
+                                  : service.images.first.image,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
                                 color: _Ui.pale,
