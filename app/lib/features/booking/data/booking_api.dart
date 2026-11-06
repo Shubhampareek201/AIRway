@@ -218,6 +218,11 @@ class BookingApi {
         .toList();
   }
 
+  static Future<Map<String, dynamic>> trackBooking(int bookingId) async {
+    final result = await request('/api/v1/bookings/$bookingId/track/');
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Booking> getBooking(int id) async {
     final result = await request('/api/v1/bookings/$id/');
     return Booking.fromMap(Map<String, dynamic>.from(result));
