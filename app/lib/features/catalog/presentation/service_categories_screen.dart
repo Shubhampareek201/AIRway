@@ -6,11 +6,17 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 
-/// Service category selection screen.
-/// Lists all active categories from the backend.
-/// Tapping a category navigates to the service listing screen.
 class ServiceCategoriesScreen extends StatefulWidget {
-  const ServiceCategoriesScreen({super.key});
+  final List<Category>? initialCategories;
+  final int? addressId;
+  final String title;
+
+  const ServiceCategoriesScreen({
+    super.key,
+    this.initialCategories,
+    this.addressId,
+    this.title = 'Browse Services',
+  });
 
   @override
   State<ServiceCategoriesScreen> createState() =>
@@ -25,7 +31,12 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCategories();
+    if (widget.initialCategories != null) {
+      _categories = widget.initialCategories!;
+      _loading = false;
+    } else {
+      _loadCategories();
+    }
   }
 
   Future<void> _loadCategories() async {
@@ -33,23 +44,10 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       _loading = true;
       _error = null;
     });
-
     try {
-      final result = await CatalogApi.request('/api/v1/catalog/categories/');
-      final list = result is List
-          ? result
-          : (result is Map ? result['results'] : null);
-
-      if (list is! List) {
-        throw const FormatException('Unexpected categories response');
-      }
-
-      final categories = list
-          .whereType<Map>()
-          .map((e) => Category.fromMap(Map<String, dynamic>.from(e)))
-          .where((c) => c.isActive)
-          .toList();
-
+      final categories = await CatalogApi.listCategories(
+        addressId: widget.addressId,
+      );
       if (!mounted) return;
       setState(() {
         _categories = categories;
@@ -64,12 +62,39 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     }
   }
 
+  void _openCategory(Category category) {
+    if (category.children.isNotEmpty) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceCategoriesScreen(
+            initialCategories: category.children,
+            addressId: widget.addressId,
+            title: category.title,
+          ),
+        ),
+      );
+      return;
+    }
+
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceListScreen(
+          categoryId: category.id,
+          categoryTitle: category.title,
+          addressId: widget.addressId,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AirwayColors.background,
       appBar: AppBar(
-        title: const Text('Browse Services'),
+        title: Text(widget.title),
         backgroundColor: AirwayColors.background,
       ),
       body: _loading
@@ -88,9 +113,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     return ListView(
       padding: AirwaySpacing.screenPadding,
       children: [
-        const Text(
-          'Choose a category',
-          style: TextStyle(
+        Text(
+          widget.title == 'Browse Services'
+              ? 'Choose a category'
+              : 'Choose a service',
+          style: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
             color: AirwayColors.text,
@@ -98,7 +125,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Find home services by category',
+          'Explore services available in your selected area',
           style: TextStyle(
             fontSize: 14,
             color: AirwayColors.textSecondary,
@@ -118,16 +145,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         Row(
           children: [
             for (final category in pair) ...[
-              Expanded(
-                child: _categoryCard(category),
-              ),
-              if (pair.length == 2 && category != pair.last) ...[
+              Expanded(child: _categoryCard(category)),
+              if (pair.length == 2 && category != pair.last)
                 const SizedBox(width: 12),
-              ],
             ],
-            if (pair.length < 2) ...[
-              const Expanded(child: SizedBox()),
-            ],
+            if (pair.length < 2) const Expanded(child: SizedBox()),
           ],
         ),
       );
@@ -139,34 +161,37 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   }
 
   Widget _categoryCard(Category category) {
+    final imageUrl = category.image;
     return Ingram(
-      onTap: () {
-        Navigator.push<void>(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ServiceListScreen(categoryId: category.id),
-          ),
-        );
-      },
+      onTap: () => _openCategory(category),
       child: Container(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 58,
+              height: 58,
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: AirwayColors.primarySoft,
-                borderRadius: const BorderRadius.all(
-                  Radius.circular(AirwaySpacing.imageRadius),
-                ),
+                borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
               ),
-              child: const Icon(
-                Icons.design_services_rounded,
-                color: AirwayColors.primary,
-                size: 26,
-              ),
+              child: imageUrl != null && imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.design_services_rounded,
+                        color: AirwayColors.primary,
+                        size: 28,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.design_services_rounded,
+                      color: AirwayColors.primary,
+                      size: 28,
+                    ),
             ),
             const SizedBox(height: 14),
             Text(
@@ -179,16 +204,28 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                 color: AirwayColors.text,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              category.titleHi ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AirwayColors.textSecondary,
+            if (category.titleHi?.isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              Text(
+                category.titleHi!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AirwayColors.textSecondary,
+                ),
               ),
-            ),
+            ],
+            if (category.children.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${category.children.length} subcategories',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AirwayColors.textSecondary,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -217,7 +254,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Service categories will appear here once they are added.',
+                'Services for this area will appear here once they are available.',
                 style: TextStyle(color: AirwayColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
