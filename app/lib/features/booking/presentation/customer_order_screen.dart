@@ -154,6 +154,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => paying = false);
+        loadWalletBalance();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start payment: ' + e.toString())));
       }
     }
