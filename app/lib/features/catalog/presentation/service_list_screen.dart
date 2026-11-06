@@ -172,7 +172,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _openService(service),
+          onTap: service.isAvailable ? () => _openService(service) : null,
           child: Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
@@ -223,6 +223,17 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                         ),
                       ),
                       const SizedBox(height: 5),
+                      if (!service.isAvailable) ...[
+                        const Text(
+                          'Currently unavailable',
+                          style: TextStyle(
+                            color: AirwayColors.textSecondary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
                       Text(
                         price > 0
                             ? '₹${price.toStringAsFixed(0)}'
@@ -237,8 +248,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Icon(
-                  Icons.chevron_right_rounded,
+                Icon(
+                  service.isAvailable
+                      ? Icons.chevron_right_rounded
+                      : Icons.lock_clock_outlined,
                   color: AirwayColors.textSecondary,
                 ),
               ],
