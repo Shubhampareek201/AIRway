@@ -273,3 +273,79 @@ class WalletTopUpConfirmTest(TestCase):
         self.assertEqual(response.status_code, 404)
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance, Decimal("0.00"))
+
+@override_settings(RAZORPAY_WEBHOOK_SECRET="wallet-webhook-test-secret")
+class WalletTopUpWebhookTest(TestCase):
+    """Only a valid Razorpay capture webhook may settle a pending top-up."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(phone="9876543215", password="test123456")
+        self.wallet = Wallet.objects.get(user=self.user)
+        self.wallet_tx = WalletTransaction.objects.create(
+            wallet=self.wallet,
+            type=WalletTransaction.Type.CREDIT,
+            amount=Decimal("500.00"),
+            description="Wallet top-up",
+            status=WalletTransaction.Status.PENDING,
+            reference_id="order_wallet_webhook",
+        )
+
+    def _post_capture(self, amount=50000, currency="INR"):
+        import json
+        from django.test import Client
+
+        payload = {
+            "event": "payment.captured",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_wallet_webhook",
+                        "order_id": "order_wallet_webhook",
+                        "amount": amount,
+                        "currency": currency,
+                        "status": "captured",
+                    }
+                }
+            },
+        }
+        raw_body = json.dumps(payload).encode("utf-8")
+        signature = hmac.new(
+            b"wallet-webhook-test-secret", raw_body, hashlib.sha256
+        ).hexdigest()
+        return Client().post(
+            "/api/v1/payments/webhook/",
+            data=raw_body,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+
+    def test_captured_webhook_credits_wallet(self):
+        response = self._post_capture()
+        self.assertEqual(response.status_code, 200)
+        self.wallet.refresh_from_db()
+        self.wallet_tx.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("500.00"))
+        self.assertEqual(self.wallet_tx.status, WalletTransaction.Status.COMPLETED)
+        self.assertEqual(self.wallet_tx.razorpay_payment_id, "pay_wallet_webhook")
+
+    def test_wallet_webhook_amount_mismatch_does_not_credit(self):
+        response = self._post_capture(amount=60000)
+        self.assertEqual(response.status_code, 400)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.wallet_tx.refresh_from_db()
+        self.assertEqual(self.wallet_tx.status, WalletTransaction.Status.PENDING)
+
+    def test_wallet_webhook_currency_mismatch_does_not_credit(self):
+        response = self._post_capture(currency="USD")
+        self.assertEqual(response.status_code, 400)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+
+    def test_duplicate_wallet_capture_webhook_does_not_double_credit(self):
+        first = self._post_capture()
+        second = self._post_capture()
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("500.00"))
