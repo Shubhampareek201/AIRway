@@ -37,6 +37,12 @@ class Payment(TimeStampedModel):
         related_name="payments",
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    wallet_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Amount reserved from the customer wallet for this order payment.",
+    )
     method = models.CharField(max_length=20, choices=Method.choices, default=Method.COD)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
 
