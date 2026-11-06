@@ -61,6 +61,7 @@ class FormFieldSerializer(serializers.ModelSerializer):
 
 
 class ServiceSerializer(serializers.ModelSerializer):
+    is_available = serializers.SerializerMethodField()
     booking_mode_display = serializers.CharField(source="get_booking_mode_display", read_only=True)
     pricing_type_display = serializers.CharField(source="get_pricing_type_display", read_only=True)
     audience_display = serializers.CharField(source="get_audience_display", read_only=True)
@@ -71,10 +72,17 @@ class ServiceSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.title", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
 
+    def get_is_available(self, obj):
+        available_ids = self.context.get("available_service_ids")
+        # Requests without a selected address retain the existing general
+        # catalogue behaviour; address-scoped requests get a real availability flag.
+        return True if available_ids is None else obj.id in available_ids
+
     class Meta:
         model = Service
         fields = [
             "id", "category", "category_name", "category_slug", "title", "title_hi", "description",
+            "is_available",
             "image", "booking_mode", "booking_mode_display", "pricing_type", "pricing_type_display",
             "unit_label", "visit_fee", "duration_minutes", "buffer_minutes",
             "audience", "audience_display", "requires_female_worker",
