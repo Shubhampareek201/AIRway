@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' as ll;
-import 'dart:ui' show ImageFilter;
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/location/data/location_api.dart';
 import 'package:airway/features/location/presentation/address_picker_screen.dart';
@@ -32,26 +31,6 @@ class _Ui {
   static const pale = Color(0xFFEDE7F5);
   static const line = Color(0xFFE8E0ED);
 }
-
-class _Service {
-  const _Service(this.name, this.icon, this.tint, this.description);
-  final String name;
-  final IconData icon;
-  final Color tint;
-  final String description;
-}
-
-const _services = <_Service>[
-  _Service('Men’s Grooming', Icons.content_cut_rounded, Color(0xFF357BDD), 'Haircuts, beard care and grooming'),
-  _Service('Women’s Beauty', Icons.spa_rounded, Color(0xFFE24B9A), 'Salon and beauty care at home'),
-  _Service('Home Cleaning', Icons.cleaning_services_rounded, Color(0xFF0F9F91), 'Kitchen, bathroom and deep cleaning'),
-  _Service('Electrician', Icons.electrical_services_rounded, Color(0xFFED981B), 'Switches, fittings and electrical repairs'),
-  _Service('Painting', Icons.format_paint_rounded, Color(0xFFE86B50), 'Painting and wall touch-ups'),
-  _Service('Civil Work', Icons.handyman_rounded, Color(0xFF8263DA), 'Repairs, masonry and installations'),
-  _Service('Car Wash', Icons.local_car_wash_rounded, Color(0xFF2A99DB), 'Exterior and interior cleaning'),
-  _Service('Mechanical', Icons.build_circle_rounded, Color(0xFF65758A), 'Equipment and household repairs'),
-  _Service('Tiffin', Icons.lunch_dining_rounded, Color(0xFFE26C38), 'Fresh home-style meal services'),
-];
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -401,117 +380,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
   }
-
-  void _openService(_Service s) {
-    _searchFocus.unfocus();
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ServiceDetailScreen(
-          serviceId: _services.indexOf(s) + 1,
-          serviceTitle: s.name,
-        ),
-      ),
-    );
-  }
-
-  void _openServiceOld(_Service s) {
-    _searchFocus.unfocus();
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(width: 70, height: 70, decoration: BoxDecoration(color: s.tint.withAlpha(25), borderRadius: BorderRadius.circular(23)),
-                child: Icon(s.icon, size: 36, color: s.tint)),
-            const SizedBox(height: 14),
-            Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: _Ui.ink)),
-            const SizedBox(height: 6),
-            Text(s.description, style: const TextStyle(color: _Ui.sub, fontSize: 15)),
-            const SizedBox(height: 16),
-            const Text('Service packages and confirmed prices will appear when the AIRway catalog is published for your area.',
-                style: TextStyle(color: _Ui.sub, height: 1.5)),
-            const SizedBox(height: 20),
-            SizedBox(width: double.infinity, child: FilledButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Continue exploring'),
-            )),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  void _showBeautyOptions() {
-    _searchFocus.unfocus();
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Close beauty options',
-      barrierColor: Colors.black38,
-      transitionDuration: const Duration(milliseconds: 320),
-      pageBuilder: (dialogContext, animation, secondaryAnimation) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
-        child: Center(
-          child: Material(
-            color: Colors.transparent,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 410),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Container(
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
-                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      const Expanded(child: Text('Beauty at Home', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: _Ui.ink))),
-                      IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
-                    ]),
-                    const Text('Choose a category to explore', style: TextStyle(color: _Ui.sub)),
-                    const SizedBox(height: 18),
-                    _beautyOption(dialogContext, _services[0], 'Men', Icons.face_rounded),
-                    const SizedBox(height: 12),
-                    _beautyOption(dialogContext, _services[1], 'Women', Icons.spa_rounded),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-      transitionBuilder: (context, animation, secondaryAnimation, child) => FadeTransition(
-        opacity: animation,
-        child: ScaleTransition(scale: Tween<double>(begin: 0.83, end: 1).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutBack)), child: child),
-      ),
-    );
-  }
-
-  Widget _beautyOption(BuildContext dialogContext, _Service service, String title, IconData icon) => Material(
-    color: service.tint.withAlpha(16),
-    borderRadius: BorderRadius.circular(20),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        Navigator.pop(dialogContext);
-        WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _openService(service); });
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        child: Row(children: [
-          CircleAvatar(radius: 26, backgroundColor: Colors.white, child: Icon(icon, color: service.tint, size: 26)),
-          const SizedBox(width: 15),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _Ui.ink)),
-            Text(service.description, maxLines: 2, style: const TextStyle(color: _Ui.sub, fontSize: 12)),
-          ])),
-          const Icon(Icons.arrow_forward_ios_rounded, size: 17, color: _Ui.violet),
-        ]),
-      ),
-    ),
-  );
 
   void _openAllServices() {
     _searchFocus.unfocus();
@@ -1029,68 +897,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       Text(subtitle, style: const TextStyle(fontSize: 12.5, color: _Ui.sub)),
     ]),
   );
-
-  // Prices below are sample UI illustrations, not published AIRway rates.
-  Widget _categoryGrid(List<_Service> items, {bool featured = false, bool allServices = false}) =>
-      Padding(padding: EdgeInsets.symmetric(horizontal: allServices ? 0 : 20),
-        child: LayoutBuilder(builder: (context, box) {
-          final columns = box.maxWidth < 290 ? 1 : 2;
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: items.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns, mainAxisExtent: 192, mainAxisSpacing: 13, crossAxisSpacing: 13,
-            ),
-            itemBuilder: (context, i) {
-              final s = items[i];
-              final isBeauty = s.name == 'Women’s Beauty' || s.name == 'Men’s Grooming';
-              final title = featured && isBeauty ? 'Beauty at Home' : s.name;
-              final price = switch (s.name) {
-                'Home Cleaning' => ('₹599', '₹799'),
-                'Electrician' => ('₹99', '₹149'),
-                'Women’s Beauty' => ('₹299', '₹399'),
-                'Car Wash' => ('₹249', '₹349'),
-                _ => ('View rates', ''),
-              };
-              return Material(
-                color: Colors.white, borderRadius: BorderRadius.circular(23),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(23),
-                  onTap: isBeauty ? _showBeautyOptions : () => _openService(s),
-                  child: Padding(padding: const EdgeInsets.all(13), child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Container(width: 60, height: 60,
-                          decoration: BoxDecoration(color: s.tint.withAlpha(24), borderRadius: BorderRadius.circular(20)),
-                          child: Icon(s.icon, color: s.tint, size: 32)),
-                        const Spacer(),
-                        Icon(Icons.arrow_outward_rounded, size: 18, color: s.tint),
-                      ]),
-                      const SizedBox(height: 12),
-                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _Ui.ink)),
-                      const SizedBox(height: 4),
-                      Expanded(child: Text(s.description, maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11.5, height: 1.25, color: _Ui.sub))),
-                      Row(children: [
-                        Flexible(child: Text(price.$1, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _Ui.violet))),
-                        if (price.$2.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Flexible(child: Text(price.$2, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11, decoration: TextDecoration.lineThrough, color: _Ui.sub))),
-                        ],
-                      ]),
-                    ],
-                  )),
-                ),
-              );
-            },
-          );
-        }),
-      );
 
   Widget _trustStrip() => Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), child: Container(
     decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(20)),
