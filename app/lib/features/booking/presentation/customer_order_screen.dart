@@ -165,7 +165,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       return;
     }
     try {
-      await PaymentApi.verifyPayment(
+      final verification = await PaymentApi.verifyPayment(
         razorpayOrderId: orderId,
         razorpayPaymentId: paymentId,
         razorpaySignature: signature,
@@ -174,12 +174,21 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       setState(() => paying = false);
       await loadOrder();
       if (!mounted) return;
+      final refunded = verification['status'] == 'refunded';
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          icon: const Icon(Icons.verified_rounded, color: violet, size: 48),
-          title: const Text('Payment successful'),
-          content: const Text('Your AIRway order has been paid and confirmed.'),
+          icon: Icon(
+            refunded ? Icons.currency_rupee_rounded : Icons.verified_rounded,
+            color: refunded ? sub : violet,
+            size: 48,
+          ),
+          title: Text(refunded ? 'Payment refunded' : 'Payment successful'),
+          content: Text(
+            refunded
+                ? 'The late payment was refunded because the wallet funds were no longer available. You can retry checkout.'
+                : 'Your AIRway order has been paid and confirmed.',
+          ),
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
         ),
       );
