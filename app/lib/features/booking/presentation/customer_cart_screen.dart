@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
+import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 
 class CustomerCartScreen extends StatefulWidget {
   const CustomerCartScreen({super.key});
@@ -127,7 +128,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Continue'))],
         ),
       );
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const BookingListScreen()),
+          (route) => route.isFirst,
+        );
+      }
     } catch (e) {
       if (mounted) {
         setState(() => busy = false);
