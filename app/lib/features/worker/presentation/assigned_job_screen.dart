@@ -6,7 +6,9 @@ import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
 
 class AssignedJobScreen extends StatefulWidget {
-  const AssignedJobScreen({super.key});
+  const AssignedJobScreen({super.key, this.assignmentId});
+
+  final int? assignmentId;
 
   @override
   State<AssignedJobScreen> createState() => _AssignedJobScreenState();
@@ -43,11 +45,23 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         return;
       }
 
-      // Get the first assigned job
-      final firstJob = jobs.first;
+      // Open the selected assignment when launched from a job card;
+      // otherwise keep the existing first-job fallback.
+      final selectedJob = widget.assignmentId == null
+          ? jobs.first
+          : jobs.where((job) => job['id'] == widget.assignmentId).firstOrNull;
+      if (selectedJob == null) {
+        if (mounted) {
+          setState(() {
+            _error = 'This job is no longer assigned to your account.';
+            _loading = false;
+          });
+        }
+        return;
+      }
 
-      // Get full job details
-      final detail = await WorkerApi.getJobDetail(firstJob['id']);
+      // Get full job details for this exact assignment.
+      final detail = await WorkerApi.getJobDetail(selectedJob['id'] as int);
       if (mounted) {
         _jobDetail = WorkerAssignmentDetail.fromMap(detail);
         setState(() {
@@ -272,33 +286,20 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
   Widget _buildActions(WorkerAssignmentDetail job) {
     final status = job.status;
 
-    if (status == BookingStatus.assigned) {
-      return Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _isActionInProgress ? null : () => _startJob(),
-              icon: _isActionInProgress
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.play_arrow),
-              label: _isActionInProgress
-                  ? const Text('Starting...')
-                  : const Text('Start Job'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: _isActionInProgress ? null : () => _completeJob(),
-              icon: const Icon(Icons.check),
-              label: const Text('Complete'),
-            ),
-          ),
-        ],
+    if (status == BookingStatus.assigned || status == BookingStatus.confirmed) {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: _isActionInProgress ? null : _startJob,
+          icon: _isActionInProgress
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.play_arrow_rounded),
+          label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
+        ),
       );
     }
 
