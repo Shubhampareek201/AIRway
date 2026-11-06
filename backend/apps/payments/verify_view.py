@@ -39,10 +39,24 @@ def _process_verified_payment(
         if payment.order_id and payment.wallet_amount > 0:
             from apps.wallet.services import capture_wallet_reservation
 
-            capture_wallet_reservation(
-                payment,
-                razorpay_payment_id=razorpay_payment_id,
-            )
+            try:
+                capture_wallet_reservation(
+                    payment,
+                    razorpay_payment_id=razorpay_payment_id,
+                )
+            except ValueError as exc:
+                logger.error(
+                    "Cannot settle wallet component for payment %s: %s",
+                    payment.id, exc,
+                )
+                return Response(
+                    {
+                        "detail": "The wallet reservation expired before payment confirmation. Please contact AIRway support for payment reconciliation.",
+                        "status": payment.status,
+                        "payment_id": payment.id,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         payment.status = Payment.Status.PAID
         payment.razorpay_payment_id = razorpay_payment_id
