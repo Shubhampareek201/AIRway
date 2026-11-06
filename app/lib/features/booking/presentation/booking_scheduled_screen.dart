@@ -68,7 +68,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       setState(() {
         _service = service;
         _addresses = addresses;
-        _selectedAddressId = addresses.isNotEmpty ? addresses[0]['id'] : null;
+        final defaultAddress = addresses.where((a) => a['is_default'] == true).firstOrNull;
+        _selectedAddressId = defaultAddress?['id'] ?? (addresses.isNotEmpty ? addresses[0]['id'] : null);
         _loading = false;
 
         // Auto-select first variant if exactly one exists
@@ -77,7 +78,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         }
 
       });
-
+      _updateSummary();
     } catch (e) {
       if (!mounted) return;
       setState(() {
