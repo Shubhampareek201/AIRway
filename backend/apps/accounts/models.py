@@ -48,6 +48,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         MALE = "male", "Male"
         FEMALE = "female", "Female"
         OTHER = "other", "Other"
+        PREFER_NOT_TO_SAY = "prefer_not_to_say", "Prefer not to say"
 
     class Language(models.TextChoices):
         HINDI = "hi", "Hindi"
@@ -66,7 +67,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     )
     name = models.CharField(max_length=150, blank=True)
     email = models.EmailField(blank=True)
-    gender = models.CharField(max_length=10, choices=Gender.choices, blank=True)
+    gender = models.CharField(max_length=20, choices=Gender.choices, blank=True)
     photo = models.ImageField(upload_to="users/", blank=True)
     language = models.CharField(max_length=2, choices=Language.choices, default=Language.HINDI)
     active_mode = models.CharField(max_length=10, choices=Mode.choices, default=Mode.CUSTOMER)
