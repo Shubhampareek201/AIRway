@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
-import 'package:airway/features/auth/presentation/welcome_screen.dart';
+import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/customer/presentation/customer_home_screen.dart';
 import 'package:airway/features/worker/data/worker_app_api.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
