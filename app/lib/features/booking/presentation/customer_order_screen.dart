@@ -359,6 +359,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
+          const SizedBox(height: 14),
+          orderProgress(rows, paid),
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
@@ -456,6 +458,41 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     ]);
   }
 
+
+  Widget orderProgress(List<Map<String, dynamic>> rows, bool paid) {
+    final assigned = rows.isNotEmpty && rows.every((row) {
+      final status = row['booking_status']?.toString();
+      return status == 'assigned' || status == 'in_progress' || status == 'completed';
+    });
+    final completed = rows.isNotEmpty &&
+        rows.every((row) => row['booking_status']?.toString() == 'completed');
+    final steps = <(String, String, bool)>[
+      ('Order placed', 'Your service request is received.', true),
+      ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+      ('Payment', paid ? 'Payment verified successfully.' : assigned ? 'Payment is now available.' : 'Payment unlocks after assignment.', paid),
+      ('Service completed', completed ? 'All services are completed.' : 'Updates appear as work progresses.', completed),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Order progress', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+        const SizedBox(height: 12),
+        for (var i = 0; i < steps.length; i++) ...[
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(steps[i].$3 ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 20, color: steps[i].$3 ? const Color(0xFF2E7D52) : sub),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(steps[i].$1, style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
+              Text(steps[i].$2, style: const TextStyle(color: sub, fontSize: 12)),
+            ])),
+          ]),
+          if (i != steps.length - 1) const SizedBox(height: 12),
+        ],
+      ]),
+    );
+  }
 
   Widget serviceRow(Map<String, dynamic> row) {
     final snapshot = Map<String, dynamic>.from(row['service'] ?? {});
