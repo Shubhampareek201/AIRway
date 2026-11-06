@@ -16,11 +16,13 @@ class _Ui {
 class BookingScheduledScreen extends StatefulWidget {
   final int serviceId;
   final String serviceTitle;
+  final int? addressId;
 
   const BookingScheduledScreen({
     super.key,
     required this.serviceId,
     required this.serviceTitle,
+    this.addressId,
   });
 
   @override
@@ -72,7 +74,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           (a) => a['is_default'] == true,
           orElse: () => addresses.isNotEmpty ? addresses[0] : <String, dynamic>{},
         );
-        _selectedAddressId = defaultAddress.isEmpty ? null : defaultAddress['id'];
+        _selectedAddressId = widget.addressId ?? (defaultAddress.isEmpty ? null : defaultAddress['id']);
         _loading = false;
 
         // Auto-select first variant if exactly one exists
