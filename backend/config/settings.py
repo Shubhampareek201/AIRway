@@ -199,3 +199,44 @@ PAYMENT_TIMEOUT_MINUTES = int(os.environ.get('PAYMENT_TIMEOUT_MINUTES', '5'))
 DISPATCH_BATCH_SIZE = int(os.environ.get('DISPATCH_BATCH_SIZE', '5'))
 DISPATCH_MAX_RETRY_BATCHES = int(os.environ.get('DISPATCH_MAX_RETRY_BATCHES', '3'))
 OFFER_EXPIRY_MINUTES = int(os.environ.get('OFFER_EXPIRY_MINUTES', '30'))
+
+# Django Unfold: keep a clear route back to the AIRway operations dashboard.
+from django.urls import reverse_lazy
+
+UNFOLD = {
+    "SITE_TITLE": "AIRway Advanced Admin",
+    "SITE_HEADER": "AIRway",
+    "SITE_SUBHEADER": "Advanced administration",
+    "SITE_URL": "/control/",
+    "SITE_DROPDOWN": [
+        {
+            "title": "AIRway Operations Dashboard",
+            "icon": "dashboard",
+            "link": reverse_lazy("admin_dashboard:dashboard"),
+        },
+    ],
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "AIRway Workspace",
+                "separator": True,
+                "collapsible": False,
+                "items": [
+                    {
+                        "title": "Back to Operations Dashboard",
+                        "icon": "arrow_back",
+                        "link": reverse_lazy("admin_dashboard:dashboard"),
+                        "permission": lambda request: (
+                            request.user.is_authenticated
+                            and request.user.is_active
+                            and request.user.is_staff
+                            and request.user.is_superuser
+                        ),
+                    },
+                ],
+            },
+        ],
+    },
+}
