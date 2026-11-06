@@ -131,6 +131,7 @@ class DispatcherService:
         """
         Get list of eligible workers sorted by rating (desc), then proximity.
         """
+        from apps.workers.models import WorkerProfile
         from apps.workers.eligibility import eligible_workers_for_service
         from apps.availability.models import WorkerBlockedSlot
         from datetime import timedelta
