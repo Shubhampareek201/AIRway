@@ -12,19 +12,19 @@ class AirwayColors {
   AirwayColors._();
 
   // === Brand (from logo) ===
-  static const cream = Color(0xFFF3EFAE); // logo ground
-  static const clay = Color(0xFFA9856A); // roof / warm wood
-  static const sage = Color(0xFF7C8A6E); // arch + leaf
+  static const cream = Color(0xFFF7F3EC); // warm cream
+  static const clay = Color(0xFFA9856A); // warm wood accent
+  static const sage = Color(0xFF7861A8); // violet brand
   static const ink = Color(0xFF24201C); // wordmark + lines
     // === Compatibility aliases ===
   static const primary = sage;
-  static const primarySoft = Color(0xFFE9EDE6);
+  static const primarySoft = Color(0xFFEDE7F5);
   static const muted = textTertiary;
   static const textMuted = textSecondary;
 
   // === Surfaces ===
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceVariant = Color(0xFFF4F1EA);
+  static const surfaceVariant = Color(0xFFF1EBF7);
   static const background = Color(0xFFF7F3EC);
   static const backgroundSolid = Color(0xFFFBF8F3);
 
@@ -32,8 +32,8 @@ class AirwayColors {
   static const textSecondary = Color(0xFF6B655C);
   static const textTertiary = Color(0xFF9B9588);
 
-  static const border = Color(0xFFE7E0D4);
-  static const borderStrong = Color(0xFFD8CDBB);
+  static const border = Color(0xFFE8E0ED);
+  static const borderStrong = Color(0xFFD8CBE2);
 
   // === Semantic ===
   static const success = Color(0xFF2E7D52);
@@ -52,13 +52,13 @@ class AirwayColors {
 
   // === Gradients ===
   static const primaryGradient = LinearGradient(
-    colors: [Color(0xFFA9856A), Color(0xFF7C8A6E)],
+    colors: [Color(0xFF7861A8), Color(0xFFA9856A)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const heroGradient = LinearGradient(
-    colors: [Color(0xFFF3EFAE), Color(0xFFE7DFCF)],
+    colors: [Color(0xFFF1EAF7), Color(0xFFF7F3EC)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
