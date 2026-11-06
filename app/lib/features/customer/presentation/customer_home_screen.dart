@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/theme/airway_colors.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/location/data/location_api.dart';
@@ -22,12 +23,12 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 
 // AIRway customer home. Address, catalogue, pricing and nearby partners are loaded from authenticated APIs.
 class _Ui {
-  static const violet = Color(0xFF075B43);
-  static const ink = Color(0xFF1E2923);
-  static const sub = Color(0xFF748078);
-  static const bg = Color(0xFFFFFFFF);
-  static const pale = Color(0xFFE7F2EC);
-  static const line = Color(0xFFE5ECE7);
+  static const violet = Color(0xFF987451);
+  static const ink = AirwayColors.text;
+  static const sub = AirwayColors.textSecondary;
+  static const bg = AirwayColors.background;
+  static const pale = Color(0xFFEAF1EA);
+  static const line = Color(0xFFEAE6DE);
 }
 
 class CustomerHomeScreen extends StatefulWidget {
