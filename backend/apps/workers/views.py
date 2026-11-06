@@ -905,14 +905,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            if booking.status not in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
-                return Response(
-                    {"detail": f"Cannot accept offer for booking in {booking.get_status_display()} state."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            # Check the assignment first so retries by other workers get a
+            # precise conflict response instead of a generic status message.
             if BookingAssignment.objects.filter(booking=booking).exists():
                 return Response(
                     {"detail": "Booking already assigned."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if booking.status not in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
+                return Response(
+                    {"detail": f"Cannot accept offer for booking in {booking.get_status_display()} state."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
