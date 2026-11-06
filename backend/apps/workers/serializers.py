@@ -13,11 +13,15 @@ from .models import (
 
 class WorkerProfileSerializer(serializers.ModelSerializer):
     photo_url = serializers.SerializerMethodField()
+    name = serializers.CharField(source="user.name", read_only=True)
+    phone = serializers.CharField(source="user.phone", read_only=True)
 
     class Meta:
         model = WorkerProfile
         fields = [
             "id",
+            "name",
+            "phone",
             "status",
             "is_online",
             "rating_avg",
