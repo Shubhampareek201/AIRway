@@ -57,7 +57,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         CUSTOMER = "customer", "Customer"
         WORKER = "worker", "Worker"
 
-    phone = models.CharField(max_length=15, unique=True, validators=[phone_validator])
+    phone = models.CharField(
+        max_length=15,
+        blank=True,
+        null=True,
+        unique=True,
+        validators=[phone_validator],
+    )
     name = models.CharField(max_length=150, blank=True)
     email = models.EmailField(blank=True)
     gender = models.CharField(max_length=10, choices=Gender.choices, blank=True)
