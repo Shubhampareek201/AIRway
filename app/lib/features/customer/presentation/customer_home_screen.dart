@@ -1089,10 +1089,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ],
 
     // Become a Worker button (shown when not approved as worker)
-    if (_workerProfile == null ||
-        (_workerStatus != 'approved' &&
-            _workerStatus != 'pending' &&
-            _workerStatus != 'rejected')) ...[
+    if (_workerStatus == null || _workerStatus == 'no_profile') ...[
       Card(
         color: Colors.white,
         elevation: 2,
