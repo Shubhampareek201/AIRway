@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_theme.dart';
 
 class _Ui {
-  static const violet = Color(0xFF6F4EF6);
-  static const ink = Color(0xFF201A33);
-  static const sub = Color(0xFF78718B);
-  static const bg = Color(0xFFF8F7FD);
-  static const pale = Color(0xFFF1EDFF);
-  static const line = Color(0xFFEAE5F5);
+  static const violet = Color(0xFF7861A8);
+  static const ink = Color(0xFF292331);
+  static const sub = Color(0xFF81788A);
+  static const bg = Color(0xFFF7F3EC);
+  static const pale = Color(0xFFEDE7F5);
+  static const line = Color(0xFFE8E0ED);
 }
 
 class BookingListScreen extends StatefulWidget {
