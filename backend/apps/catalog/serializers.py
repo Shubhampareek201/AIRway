@@ -4,11 +4,39 @@ from .models import Category, Service, ServiceVariant, AddOn, FormField, Service
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = ["id", "title", "title_hi", "slug", "image", "is_active", "parent", "children"]
         read_only_fields = ["slug", "children"]
+
+    def get_image(self, obj):
+        # Prefer an explicitly uploaded category image. If the admin has not
+        # added one, use a real uploaded service image from this category tree.
+        if obj.image:
+            request = self.context.get("request")
+            url = obj.image.url
+            return request.build_absolute_uri(url) if request else url
+
+        category_ids = [obj.id, *obj.children.filter(is_active=True).values_list("id", flat=True)]
+        services = Service.objects.filter(
+            category_id__in=category_ids,
+            is_active=True,
+            category__is_active=True,
+        ).order_by("sort_order", "title")
+
+        for service in services:
+            if service.image:
+                request = self.context.get("request")
+                url = service.image.url
+                return request.build_absolute_uri(url) if request else url
+            gallery_image = service.images.order_by("sort_order").first()
+            if gallery_image:
+                request = self.context.get("request")
+                url = gallery_image.image.url
+                return request.build_absolute_uri(url) if request else url
+        return None
 
     def get_children(self, obj):
         children = obj.children.filter(is_active=True)
