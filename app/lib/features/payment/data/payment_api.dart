@@ -71,6 +71,14 @@ class PaymentApi {
     return Map<String, dynamic>.from(result.body as Map);
   }
 
+  static Future<Map<String, dynamic>> createOrderForParent(int orderId) async {
+    return _request(
+      '/api/v1/payments/create-order/',
+      method: 'POST',
+      data: {'order_id': orderId},
+    );
+  }
+
   static Future<Map<String, dynamic>> verifyPayment({
     required String razorpayOrderId,
     required String razorpayPaymentId,
