@@ -187,6 +187,14 @@ def timeout_pending_payments():
             payment.status = Payment.Status.FAILED
             payment.failed_at = timezone.now()
             payment.save(update_fields=["status", "failed_at", "updated_at"])
+            Notification.objects.create(
+                user=payment.customer,
+                type=Notification.Type.PAYMENT_TIMEOUT,
+                title="Order Payment Timed Out",
+                body="Your payment timed out. The wallet amount has been released; you can retry checkout.",
+                channel=Notification.Channel.IN_APP,
+                data={"order_id": payment.order_id, "payment_id": payment.id},
+            )
             count += 1
             logger.info("Timed out parent-order payment %s; wallet hold released", payment.id)
 
