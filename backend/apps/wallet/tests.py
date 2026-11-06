@@ -586,6 +586,70 @@ class ParentOrderWalletPaymentTest(TestCase):
 
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
+    @patch("razorpay.Client")
+    @patch("apps.payments.views.client.order.create")
+    def test_late_capture_refunds_gateway_amount_if_released_wallet_funds_were_spent(
+        self, create_order, razorpay_client
+    ):
+        import json
+        from django.test import Client
+
+        create_order.return_value = {"id": "order_wallet_refund_late"}
+        gateway = razorpay_client.return_value
+        gateway.payment.fetch.return_value = {"amount_refunded": 0}
+        gateway.payment.refund.return_value = {"id": "rfnd_wallet_late"}
+        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        started = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            format="json",
+        )
+        self.assertEqual(started.status_code, 200, started.data)
+
+        payment = Payment.objects.get(order=self.order)
+        Payment.objects.filter(pk=payment.pk).update(
+            updated_at=timezone.now() - timezone.timedelta(minutes=20)
+        )
+        from apps.bookings.tasks import timeout_pending_payments
+        timeout_pending_payments()
+        self.wallet.refresh_from_db()
+        self.wallet.debit(Decimal("400.00"), description="Spent after reservation release")
+
+        payload = {
+            "event": "payment.captured",
+            "payload": {"payment": {"entity": {
+                "id": "pay_order_wallet_refund_late",
+                "order_id": "order_wallet_refund_late",
+                "amount": 70000,
+                "currency": "INR",
+                "status": "captured",
+            }}},
+        }
+        raw_body = json.dumps(payload).encode("utf-8")
+        signature = hmac.new(
+            b"order-wallet-webhook-secret", raw_body, hashlib.sha256
+        ).hexdigest()
+        webhook_response = Client().post(
+            "/api/v1/payments/webhook/",
+            data=raw_body,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+
+        self.assertEqual(webhook_response.status_code, 200)
+        payment.refresh_from_db()
+        self.order.refresh_from_db()
+        self.wallet.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUNDED)
+        self.assertEqual(self.order.status, Order.Status.AWAITING_PAYMENT)
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        gateway.payment.refund.assert_called_once()
+        self.assertEqual(
+            gateway.payment.refund.call_args.args[1]["amount"],
+            70000,
+        )
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
     @patch("apps.payments.views.client.order.create")
     def test_late_capture_re_reserves_released_wallet_funds_when_available(self, create_order):
         import json
