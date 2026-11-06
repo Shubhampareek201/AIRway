@@ -10,7 +10,7 @@ class AirwayColors {
   static const sage = Color(0xFF66846F); // muted sage green
   static const ink = Color(0xFF29251F);
 
-  static const primary = clay;
+  static const primary = Color(0xFF315C46);
   static const primarySoft = Color(0xFFEAF1EA);
   static const muted = textTertiary;
   static const textMuted = textSecondary;
@@ -44,7 +44,7 @@ class AirwayColors {
   static const gold = Color(0xFFB8863A);
 
   static const primaryGradient = LinearGradient(
-    colors: [Color(0xFF987451), Color(0xFFB99A78)],
+    colors: [Color(0xFF315C46), Color(0xFF66846F)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
