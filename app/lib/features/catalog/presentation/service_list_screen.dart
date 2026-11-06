@@ -177,7 +177,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: service.isAvailable ? () => _openService(service) : null,
+          // Browsing must not be blocked just because a worker is currently offline.
+          // Real slot availability is checked during booking and dispatch.
+          onTap: () => _openService(service),
           child: Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
@@ -230,7 +232,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       const SizedBox(height: 5),
                       if (!service.isAvailable) ...[
                         const Text(
-                          'Currently unavailable',
+                          'Check available slots',
                           style: TextStyle(
                             color: AirwayColors.textSecondary,
                             fontSize: 11.5,
@@ -254,10 +256,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 ),
                 const SizedBox(width: 6),
                 Icon(
-                  service.isAvailable
-                      ? Icons.chevron_right_rounded
-                      : Icons.lock_clock_outlined,
-                  color: AirwayColors.textSecondary,
+                  Icons.chevron_right_rounded,
+                  color: AirwayColors.primary,
                 ),
               ],
             ),
