@@ -7,7 +7,6 @@ import 'package:airway/features/location/presentation/location_selection_screen.
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
-import 'package:airway/features/booking/presentation/service_detail_screen.dart';
 import 'package:airway/features/notification/presentation/notification_list_screen.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/wallet/presentation/wallet_screen.dart';
@@ -267,21 +266,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void _showNotificationsInfo() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const NotificationListScreen()),
-    );
-  }
-
-  void _showWalletInfo() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('AIRway Wallet'),
-        content: const Text(
-          'Your real balance will appear here after wallet transactions, refunds and payment records are connected. No balance has been added yet.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-        ],
-      ),
     );
   }
 
@@ -717,44 +701,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _categoryTile(
-    String title,
-    IconData icon,
-    VoidCallback onTap, {
-    String? image,
-    bool selected = false,
-  }) => SizedBox(
-    width: 66,
-    child: Padding(
-      padding: const EdgeInsets.only(right: 9),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Column(children: [
-          Container(
-            width: 54,
-            height: 54,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: selected ? _Ui.pale : const Color(0xFFF1EBF7),
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: selected ? _Ui.violet : _Ui.line),
-            ),
-            child: image == null
-              ? Icon(icon, color: _Ui.violet, size: 27)
-              : Image.network(image, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Icon(icon, color: _Ui.violet, size: 27)),
-          ),
-          const SizedBox(height: 6),
-          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: _Ui.ink, fontSize: 10, fontWeight: FontWeight.w700)),
-        ]),
-      ),
-    ),
-  );
-
-    Widget _walletReferralCard() => Padding(
+  Widget _walletReferralCard() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
     child: Container(
       padding: const EdgeInsets.all(16),
@@ -900,21 +847,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     Icon(icon, color: _Ui.violet, size: 25), const SizedBox(height: 6),
     Text(title, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _Ui.ink)),
   ]));
-
-  Widget _emptyBookings() => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Container(
-    padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
-    child: Row(children: [
-      Container(width: 55, height: 55, decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(18)),
-          child: const Icon(Icons.history_rounded, color: _Ui.violet, size: 29)),
-      const SizedBox(width: 13),
-      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Your favorites will appear here', style: TextStyle(color: _Ui.ink, fontWeight: FontWeight.w800, fontSize: 13.5)),
-        SizedBox(height: 5),
-        Text('After your first completed booking, you can quickly book again.',
-            style: TextStyle(color: _Ui.sub, fontSize: 12, height: 1.3)),
-      ])),
-    ]),
-  ));
 
   Widget _popularStrip(int? addressId) {
     if (_catalogLoading && _popularCatalogServices.isEmpty) {
@@ -1116,23 +1048,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
     Widget _bookings() => const BookingListScreen();
-
-  Widget _bookingsOld() => RefreshIndicator(
-    onRefresh: _refresh,
-    child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(24), children: [
-      const Text('My Bookings', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink)),
-      const SizedBox(height: 60),
-      const Icon(Icons.calendar_month_outlined, size: 72, color: _Ui.violet),
-      const SizedBox(height: 16),
-      const Text('Bookings are coming soon', textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: _Ui.ink)),
-      const SizedBox(height: 8),
-      const Text('Your real booking history will show here when booking is enabled.', textAlign: TextAlign.center,
-          style: TextStyle(color: _Ui.sub, height: 1.5)),
-      const SizedBox(height: 20),
-      Center(child: OutlinedButton(onPressed: () => setState(() => _tab = 0), child: const Text('Explore services'))),
-    ]),
-  );
 
   Widget _profile(Map<String, dynamic> address) => ListView(padding: const EdgeInsets.all(20), children: [
     const Text('Profile', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink)),
