@@ -163,6 +163,7 @@ class CityFilteredCategoryTreeTest(TestCase):
         from apps.accounts.models import User, Address
         from apps.core.models import City, Zone
         from apps.catalog.models import CityService
+        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
 
         self.client = APIClient()
         self.user = User.objects.create_user(
@@ -215,9 +216,33 @@ class CityFilteredCategoryTreeTest(TestCase):
             service=self.visible_service,
             is_active=True,
         )
+        # A city mapping alone is not enough: at least one approved, online,
+        # skilled worker with an active schedule must cover the selected zone.
+        CityService.objects.create(
+            city=self.city,
+            service=self.hidden_service,
+            is_active=True,
+        )
+        worker_user = User.objects.create_user(
+            phone="+919876543298",
+            password="password123",
+        )
+        self.worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        WorkerService.objects.create(worker=self.worker, service=self.visible_service)
+        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
+        WorkerSchedule.objects.create(
+            worker=self.worker,
+            weekday=0,
+            start_time="09:00:00",
+            end_time="18:00:00",
+            is_active=True,
+        )
 
-    
-    def test_category_tree_only_includes_categories_with_city_services(self):
+    def test_category_tree_only_includes_categories_with_eligible_workers(self):
         response = self.client.get(
             f"/api/v1/catalog/categories/?address_id={self.address.id}"
         )
@@ -235,3 +260,28 @@ class CityFilteredCategoryTreeTest(TestCase):
 
         self.assertEqual(child_ids, [self.visible_child.id])
 
+
+
+    def test_city_service_is_hidden_when_no_eligible_worker_is_online(self):
+        self.worker.is_online = False
+        self.worker.save(update_fields=["is_online", "updated_at"])
+
+        response = self.client.get(
+            f"/api/v1/catalog/categories/?address_id={self.address.id}"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["results"], [])
+
+    def test_service_list_and_detail_require_eligible_worker_in_selected_zone(self):
+        list_response = self.client.get(
+            f"/api/v1/catalog/services/?address_id={self.address.id}"
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.data)
+        listed_ids = [item["id"] for item in list_response.data]
+        self.assertEqual(listed_ids, [self.visible_service.id])
+
+        detail_response = self.client.get(
+            f"/api/v1/catalog/services/{self.hidden_service.id}/?address_id={self.address.id}"
+        )
+        self.assertEqual(detail_response.status_code, 404)

@@ -73,7 +73,7 @@ class WorkerProfileAdmin(ModelAdmin):
 
             has_verified_id = documents.filter(
                 doc_type__in=["aadhaar", "id"],
-                status__in=["verified", "pending"],
+                status=WorkerDocument.Status.VERIFIED,
             ).exists()
 
             has_service = worker.worker_services.exists()

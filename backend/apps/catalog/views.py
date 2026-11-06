@@ -2,33 +2,73 @@ from rest_framework import generics, permissions
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Address
+from apps.workers.eligibility import eligible_worker_profiles
 from .models import Category, CityService, Service
 from .serializers import CategoryTreeSerializer, ServiceSerializer
 
 
-def _city_from_address(request):
+def _location_from_address(request):
     address_id = request.query_params.get("address_id")
     if not address_id:
         return None
+
     address = Address.objects.filter(
         pk=address_id,
         user=request.user,
         deleted_at__isnull=True,
         zone__isnull=False,
+        zone__is_active=True,
+        zone__city__is_active=True,
     ).select_related("zone__city").first()
     if address is None:
-        raise ValidationError({"address_id": "Select a valid saved service address."})
-    if not address.zone.city.is_active:
-        raise ValidationError({"address_id": "Services are not available in this city yet."})
-    return address.zone.city
+        raise ValidationError({"address_id": "Select a valid saved service address in an active service zone."})
+
+    return address.zone.city, address.zone
 
 
-def _city_service_ids(city):
+def _city_service_ids(city, zone=None):
+    """
+    Return city-enabled services that have at least one approved, online,
+    service-skilled worker with an active schedule in the requested area.
+    If a zone is supplied, serviceability is checked for that exact zone.
+    """
     if city is None:
         return None
+
+    eligible_service_ids = eligible_worker_profiles(
+        city=city,
+        zone=zone,
+    ).values_list("worker_services__service_id", flat=True)
+
     return CityService.objects.filter(
-        city=city, is_active=True, service__is_active=True
+        city=city,
+        is_active=True,
+        service__is_active=True,
+        service__category__is_active=True,
+        service_id__in=eligible_service_ids,
     ).values_list("service_id", flat=True)
+
+
+def _visible_category_ids(service_ids):
+    category_ids = set(
+        Service.objects.filter(
+            pk__in=service_ids,
+            category__is_active=True,
+        ).values_list("category_id", flat=True)
+    )
+    all_categories = list(
+        Category.objects.filter(is_active=True).values("id", "parent_id")
+    )
+    parent_by_id = {row["id"]: row["parent_id"] for row in all_categories}
+    visible_ids = set(category_ids)
+
+    for category_id in list(category_ids):
+        parent_id = parent_by_id.get(category_id)
+        while parent_id is not None and parent_id not in visible_ids:
+            visible_ids.add(parent_id)
+            parent_id = parent_by_id.get(parent_id)
+
+    return visible_ids
 
 
 class CategoryListView(generics.ListAPIView):
@@ -37,50 +77,25 @@ class CategoryListView(generics.ListAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        city = _city_from_address(self.request)
-        if city is None:
+        location = _location_from_address(self.request)
+        if location is None:
             context["visible_category_ids"] = None
             return context
 
-        service_ids = _city_service_ids(city)
-        visible_ids = set(
-            Service.objects.filter(
-                pk__in=service_ids,
-                category__is_active=True,
-            ).values_list("category_id", flat=True)
+        city, zone = location
+        context["visible_category_ids"] = _visible_category_ids(
+            _city_service_ids(city, zone=zone)
         )
-        all_categories = list(
-            Category.objects.filter(is_active=True).values("id", "parent_id")
-        )
-        parent_by_id = {row["id"]: row["parent_id"] for row in all_categories}
-        for category_id in list(visible_ids):
-            parent_id = parent_by_id.get(category_id)
-            while parent_id is not None:
-                visible_ids.add(parent_id)
-                parent_id = parent_by_id.get(parent_id)
-        context["visible_category_ids"] = visible_ids
         return context
 
     def get_queryset(self):
-        city = _city_from_address(self.request)
+        location = _location_from_address(self.request)
         queryset = Category.objects.filter(is_active=True, parent__isnull=True)
-        if city is not None:
-            service_ids = _city_service_ids(city)
-            available_category_ids = set(
-                Service.objects.filter(
-                    pk__in=service_ids,
-                    category__is_active=True,
-                ).values_list("category_id", flat=True)
+        if location is not None:
+            city, zone = location
+            visible_ids = _visible_category_ids(
+                _city_service_ids(city, zone=zone)
             )
-            # Include each active ancestor so nested category paths remain navigable.
-            all_categories = list(Category.objects.filter(is_active=True).values("id", "parent_id"))
-            parent_by_id = {row["id"]: row["parent_id"] for row in all_categories}
-            visible_ids = set(available_category_ids)
-            for category_id in list(available_category_ids):
-                parent_id = parent_by_id.get(category_id)
-                while parent_id is not None and parent_id not in visible_ids:
-                    visible_ids.add(parent_id)
-                    parent_id = parent_by_id.get(parent_id)
             queryset = queryset.filter(id__in=visible_ids)
         return queryset.prefetch_related("children")
 
@@ -96,10 +111,11 @@ class ServiceListView(generics.ListAPIView):
             "images", "variants", "addons", "form_fields"
         )
 
-        city = _city_from_address(self.request)
-        if city is not None:
+        location = _location_from_address(self.request)
+        if location is not None:
+            city, zone = location
             queryset = queryset.filter(
-                pk__in=_city_service_ids(city)
+                pk__in=_city_service_ids(city, zone=zone)
             )
 
         category_id = self.request.query_params.get("category")
@@ -123,7 +139,8 @@ class ServiceDetailView(generics.RetrieveAPIView):
         ).select_related("category").prefetch_related(
             "images", "variants", "addons", "form_fields"
         )
-        city = _city_from_address(self.request)
-        if city is not None:
-            queryset = queryset.filter(pk__in=_city_service_ids(city))
+        location = _location_from_address(self.request)
+        if location is not None:
+            city, zone = location
+            queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
         return queryset

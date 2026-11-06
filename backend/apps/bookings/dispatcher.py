@@ -131,62 +131,56 @@ class DispatcherService:
         """
         Get list of eligible workers sorted by rating (desc), then proximity.
         """
-        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
+        from apps.workers.eligibility import eligible_workers_for_service
         from apps.availability.models import WorkerBlockedSlot
-        from datetime import time as dtime, timedelta
+        from datetime import timedelta
         from django.utils import timezone
 
-        # Get online, approved workers in the zone
-        eligible_workers = WorkerProfile.objects.filter(
-            status=WorkerProfile.Status.APPROVED,
-            is_online=True,
-            worker_zones__zone=zone,
-        ).select_related('user').prefetch_related(
-            'worker_services', 'worker_zones', 'schedules', 'leaves'
-        )
+        # Use the same approved/online/skill/zone/schedule gates as the
+        # customer catalogue. Booking-specific availability is checked below.
+        eligible_workers = eligible_workers_for_service(
+            service,
+            zone=zone,
+        ).prefetch_related("schedules", "leaves")
 
         # Convert to local timezone for schedule matching
         local_scheduled_at = timezone.localtime(scheduled_at)
         weekday = local_scheduled_at.weekday()
         booking_time = local_scheduled_at.time()
         booking_end = scheduled_at + timedelta(minutes=duration_minutes)
+        local_booking_end = timezone.localtime(booking_end)
 
         eligible_ids = []
         worker_ratings = {}
 
         for worker in eligible_workers:
-            # Check if worker offers this service
-            if not worker.worker_services.filter(service=service, service__is_active=True).exists():
-                continue
-
-            # Check worker schedule
-            schedule_match = WorkerSchedule.objects.filter(
-                worker=worker,
+            # The full service duration must fit inside one active weekday shift.
+            schedule_match = worker.schedules.filter(
                 weekday=weekday,
-                is_active=True
-            ).first()
+                is_active=True,
+                start_time__lte=booking_time,
+                end_time__gte=local_booking_end.time(),
+            ).order_by("start_time").first()
 
-            if not schedule_match:
+            # Overnight jobs are not supported by the current schedule model.
+            if not schedule_match or local_booking_end.date() != local_scheduled_at.date():
                 continue
 
-            start_time = schedule_match.start_time
-            end_time = schedule_match.end_time
-
-            # Check if booking time falls within worker schedule
-            if not (start_time <= booking_time < end_time):
-                continue
-
-            # Check for blocking leaves (overlap check)
-            overlap = WorkerBlockedSlot.objects.filter(
+            # Check both ad-hoc blocked slots and worker-entered leave periods.
+            blocked = WorkerBlockedSlot.objects.filter(
                 worker=worker.user,
                 start_at__lt=booking_end,
-                end_at__gt=scheduled_at
+                end_at__gt=scheduled_at,
+            ).exists()
+            on_leave = worker.leaves.filter(
+                start_at__lt=booking_end,
+                end_at__gt=scheduled_at,
             ).exists()
 
-            if overlap:
+            if blocked or on_leave:
                 continue
 
-            # Collect rating for sorting
+            # Collect rating for sorting.
             rating = worker.rating_avg or 0
             worker_ratings[worker.id] = rating
             eligible_ids.append(worker.id)
