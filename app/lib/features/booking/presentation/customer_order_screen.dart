@@ -67,8 +67,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   double amount(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 
-  double get selectedWalletAmount =>
-      double.tryParse(walletAmountController.text.trim()) ?? 0;
+  double get selectedWalletAmount {
+    final value = double.tryParse(walletAmountController.text.trim());
+    return value == null || !value.isFinite ? 0 : value;
+  }
 
   Future<void> loadWalletBalance() async {
     try {
