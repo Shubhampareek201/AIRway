@@ -88,6 +88,74 @@ class BookingApi {
     return result.body;
   }
 
+
+  static Future<Map<String, dynamic>> getCart() async {
+    final result = await request('/api/v1/bookings/cart/');
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> addCartItem({
+    required int serviceId,
+    int? variantId,
+    int quantity = 1,
+    required List<Map<String, dynamic>> addonSelections,
+    required Map<String, dynamic> formAnswers,
+  }) async {
+    final data = <String, dynamic>{
+      'service': serviceId,
+      'quantity': quantity,
+      'addon_selections': addonSelections,
+      'form_answers': formAnswers,
+    };
+    if (variantId != null) data['variant'] = variantId;
+    final result = await request(
+      '/api/v1/bookings/cart/',
+      method: 'POST',
+      data: data,
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> updateCartAddress(int? addressId) async {
+    final result = await request(
+      '/api/v1/bookings/cart/',
+      method: 'PATCH',
+      data: {'address_id': addressId},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> updateCartItem({
+    required int itemId,
+    required Map<String, dynamic> data,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/cart/items/$itemId/',
+      method: 'PATCH',
+      data: data,
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> deleteCartItem(int itemId) async {
+    final result = await request(
+      '/api/v1/bookings/cart/items/$itemId/',
+      method: 'DELETE',
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> checkoutCart({
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/cart/checkout/',
+      method: 'POST',
+      data: {'items': items},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Booking> createBooking({
     required int serviceId,
     int? variantId,
