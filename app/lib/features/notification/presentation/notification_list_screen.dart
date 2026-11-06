@@ -16,7 +16,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   List<Notification> _notifications = [];
   bool _loading = true;
   String? _error;
-  static const _pageSize = 20;
 
   @override
   void initState() {
