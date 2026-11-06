@@ -120,15 +120,15 @@ class WorkerApi {
     );
   }
 
-  static Future<Booking> startJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> startJob(int assignmentId) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/start/',
       method: 'POST',
     );
-    return Booking.fromMap(Map<String, dynamic>.from(result));
+    return Map<String, dynamic>.from(result as Map);
   }
 
-  static Future<Booking> completeJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> completeJob(int assignmentId) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/complete/',
       method: 'POST',
