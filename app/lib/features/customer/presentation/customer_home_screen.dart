@@ -515,7 +515,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ServiceCategoriesScreen(
-          initialCategories: _catalogCategories,
+          initialCategories: _catalogCategories.isEmpty ? null : _catalogCategories,
           addressId: int.tryParse('${_active?['id']}'),
         ),
       ),
@@ -1232,13 +1232,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1100&q=85',
       'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1100&q=85',
     ];
-    final services = [_services[2], _services[3], _services[1]];
     return Column(children: [
       SizedBox(height: 174, child: PageView.builder(
         controller: _offers, itemCount: 3, onPageChanged: (v) => setState(() => _offerIndex = v),
         itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Material(
           color: colors[i], borderRadius: BorderRadius.circular(22), clipBehavior: Clip.antiAlias,
-          child: InkWell(onTap: () => i == 2 ? _showBeautyOptions() : _openService(services[i]),
+          child: InkWell(onTap: _openAllServices,
             child: Stack(fit: StackFit.expand, children: [
               Image.network(images[i], fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(color: colors[i])),
