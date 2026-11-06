@@ -1035,13 +1035,28 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             height: 174,
             child: Stack(
               children: [
-                Positioned(
-                  right: -18,
-                  bottom: -22,
-                  child: Icon(
-                    Icons.chair_alt_rounded,
-                    size: 170,
-                    color: const Color(0xFF075B43).withAlpha(24),
+                if (_popularCatalogServices.isNotEmpty &&
+                    _popularCatalogServices.first.image?.isNotEmpty == true)
+                  Positioned.fill(
+                    child: Image.network(
+                      _popularCatalogServices.first.image!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xE6FFFFFF),
+                          const Color(0xBFFFFFFF),
+                          Colors.transparent,
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
                   ),
                 ),
                 Padding(
