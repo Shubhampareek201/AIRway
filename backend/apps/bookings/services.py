@@ -136,46 +136,32 @@ def get_available_slots(
     count: int = 5,
 ) -> list:
     """
-    Get available time slots for a given date.
-    Returns list of available hour slots (e.g., [10, 11, 12, 13, 14]).
+    Return standard local-hour slots that pass the same interval validation
+    used by booking creation and the availability endpoint.
     """
-    from django.db.models import Q
     from datetime import time
 
-    # Get existing bookings for the date
     start_of_day = timezone.make_aware(
         timezone.datetime.combine(date, time(0, 0))
     )
-    end_of_day = start_of_day + timedelta(days=1)
-
-    existing_bookings = Booking.objects.filter(
-        service=service,
-        scheduled_at__gte=start_of_day,
-        scheduled_at__lt=end_of_day,
-        status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED, Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS]
-    ).values_list('scheduled_at', flat=True)
-
-    # Define standard slots (10:00 - 21:00)
-    slots = []
     available_slots = []
 
     for hour in range(10, 22):
         slot_time = start_of_day.replace(hour=hour)
+        try:
+            check_slot_availability(
+                service=service,
+                scheduled_at=slot_time,
+                duration_minutes=service.duration_minutes or 60,
+                booking_mode=Booking.BookingMode.SCHEDULED,
+            )
+        except SlotConflictError:
+            continue
+        available_slots.append(hour)
+        if len(available_slots) >= count:
+            break
 
-        # Check if this slot conflicts
-        slot_end = slot_time + timedelta(minutes=service.duration_minutes or 60) + timedelta(minutes=service.buffer_minutes)
-
-        conflicts = False
-        for booking_time in existing_bookings:
-            booking_end = booking_time + timedelta(minutes=service.duration_minutes or 60) + timedelta(minutes=service.buffer_minutes)
-            if slot_time < booking_end and booking_time < slot_end:
-                conflicts = True
-                break
-
-        if not conflicts:
-            available_slots.append(hour)
-
-    return available_slots[:count]
+    return available_slots
 
 
 def create_worker_offers_for_booking(booking: Booking) -> list:
