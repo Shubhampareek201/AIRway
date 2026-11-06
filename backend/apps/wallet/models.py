@@ -85,10 +85,10 @@ class WalletReservation(TimeStampedModel):
         on_delete=models.PROTECT,
         related_name="reservations",
     )
-    payment = models.OneToOneField(
+    payment = models.ForeignKey(
         "payments.Payment",
         on_delete=models.PROTECT,
-        related_name="wallet_reservation",
+        related_name="wallet_reservations",
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(
