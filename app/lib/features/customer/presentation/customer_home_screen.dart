@@ -1663,7 +1663,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: isApproved ? null : _viewWorkerStatus,
+        // Pending is informational only; never send a submitted application back to the form.
+        onTap: isApproved || isPending ? null : _viewWorkerStatus,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -1700,7 +1701,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         height: 1.4,
                       ),
                     ),
-                    if (!isApproved) ...[
+                    if (isRejected) ...[
                       const SizedBox(height: 7),
                       Text(
                         isRejected
@@ -1778,6 +1779,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             : const Text('Register to earn by providing services'),
         trailing: isApproved
             ? Switch(value: true, onChanged: (_) => _switchToWorkerMode())
+            : isPending
+            ? null
             : isRejected
             ? TextButton(
                 onPressed: _viewWorkerStatus,
