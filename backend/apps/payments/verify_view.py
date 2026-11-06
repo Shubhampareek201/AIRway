@@ -353,6 +353,55 @@ class PaymentWebhookView(APIView):
                 elif payment_id:
                     payment = Payment.objects.get(razorpay_payment_id=payment_id)
             except Payment.DoesNotExist:
+                # Wallet top-ups use their own ledger rather than a Booking
+                # Payment row. Only captured events may settle wallet funds.
+                if event_type == "payment.captured" and order_id:
+                    from apps.wallet.models import WalletTransaction
+                    from apps.wallet.views import complete_top_up_transaction
+
+                    wallet_top_up = WalletTransaction.objects.filter(
+                        reference_id=order_id,
+                        type=WalletTransaction.Type.CREDIT,
+                        status=WalletTransaction.Status.PENDING,
+                    ).first()
+                    if wallet_top_up is not None:
+                        payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+                        razorpay_amount = payment_entity.get("amount")
+                        razorpay_currency = payment_entity.get("currency", "").upper()
+                        expected_amount_paise = int(wallet_top_up.amount * 100)
+
+                        if razorpay_amount != expected_amount_paise:
+                            logger.warning(
+                                "Wallet top-up webhook amount mismatch for transaction %s",
+                                wallet_top_up.id,
+                            )
+                            return Response({"detail": "Amount mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                        if razorpay_currency != "INR":
+                            logger.warning(
+                                "Wallet top-up webhook currency mismatch for transaction %s",
+                                wallet_top_up.id,
+                            )
+                            return Response({"detail": "Currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+                        completed = complete_top_up_transaction(
+                            wallet_top_up.id,
+                            razorpay_payment_id=payment_id,
+                            razorpay_order_id=order_id,
+                        )
+                        if completed is not None:
+                            Notification.objects.create(
+                                user=completed.wallet.user,
+                                type=Notification.Type.PAYMENT_SUCCESS,
+                                title="Wallet Top-up Successful",
+                                body=f"₹{completed.amount} has been added to your AIRway wallet.",
+                                channel=Notification.Channel.IN_APP,
+                                data={
+                                    "wallet_transaction_id": completed.id,
+                                    "razorpay_payment_id": payment_id,
+                                },
+                            )
+                        return Response({"status": "ok"})
+
                 logger.warning(f"Payment not found for webhook: payment_id={payment_id}, order_id={order_id}")
                 return Response({"status": "ok"})  # Idempotent: don't fail on unknown payment
 
