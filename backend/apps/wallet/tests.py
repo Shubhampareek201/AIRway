@@ -1,5 +1,10 @@
+import hashlib
+import hmac
+from decimal import Decimal
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.wallet.models import Wallet, WalletTransaction
@@ -50,16 +55,37 @@ class WalletAPITest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["balance"], "0.00")
 
-    def test_top_up_creates_pending_transaction(self):
+    @patch("apps.wallet.views.razorpay_client.order.create")
+    def test_top_up_creates_server_side_razorpay_order(self, create_order):
+        create_order.return_value = {"id": "order_wallet_123"}
         response = self.client.post(
             "/api/v1/wallet/top-up/",
-            {"amount": 500, "reference_id": "order_123"},
+            {"amount": "500.00", "reference_id": "client_cannot_choose_order"},
             format="json",
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["type"], "credit")
         self.assertEqual(response.data["status"], "pending")
         self.assertEqual(response.data["amount"], "500.00")
+        self.assertEqual(response.data["order_id"], "order_wallet_123")
+        self.assertEqual(response.data["reference_id"], "order_wallet_123")
+        create_order.assert_called_once()
+        self.assertEqual(create_order.call_args.kwargs["data"]["amount"], 50000)
+
+    @patch("apps.wallet.views.razorpay_client.order.create")
+    def test_top_up_does_not_create_pending_credit_if_gateway_fails(self, create_order):
+        create_order.side_effect = RuntimeError("gateway unavailable")
+        response = self.client.post(
+            "/api/v1/wallet/top-up/", {"amount": 500}, format="json"
+        )
+        self.assertEqual(response.status_code, 502)
+        self.assertFalse(WalletTransaction.objects.filter(wallet__user=self.user).exists())
+
+    def test_top_up_rejects_more_than_two_decimal_places(self):
+        response = self.client.post(
+            "/api/v1/wallet/top-up/", {"amount": "10.999"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_top_up_rejects_invalid_amount(self):
         response = self.client.post(
@@ -77,17 +103,14 @@ class WalletAPITest(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    def test_refund_creates_completed_transaction(self):
+    def test_customer_cannot_mint_wallet_refund_credit(self):
         response = self.client.post(
             "/api/v1/wallet/refund/",
             {"booking_id": 42, "amount": 250, "reason": "Cancelled booking"},
             format="json",
         )
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["type"], "refund")
-        self.assertEqual(response.data["status"], "completed")
-        self.assertEqual(response.data["amount"], "250.00")
-        self.assertEqual(response.data["reference_id"], "42")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Wallet.objects.get(user=self.user).balance, Decimal("0.00"))
 
     def test_transactions_list_returns_user_transactions(self):
         wallet = Wallet.objects.get(user=self.user)
@@ -163,63 +186,90 @@ class WalletCreditViewAdminTest(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+@override_settings(RAZORPAY_KEY_SECRET="wallet-test-secret")
 class WalletTopUpConfirmTest(TestCase):
-    """Test top-up confirmation flow."""
+    """Top-up confirmation must be owner-scoped and signature-verified."""
 
     def setUp(self):
         self.user = User.objects.create_user(phone="9876543213", password="test123456")
+        self.other_user = User.objects.create_user(phone="9876543214", password="test123456")
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-
-    def test_confirm_top_up_completes_transaction(self):
-        """Confirming a pending top-up should mark it completed and update balance."""
-        # Create a pending top-up transaction
-        response = self.client.post(
-            "/api/v1/wallet/top-up/",
-            {"amount": 1000, "reference_id": "order_abc"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 201)
-        transaction_id = response.data["id"]
-        wallet = Wallet.objects.get(user=self.user)
-        self.assertEqual(wallet.balance, 0)  # Balance still 0 (pending)
-
-        # Confirm the top-up
-        confirm_response = self.client.post(
-            f"/api/v1/wallet/top-up/{transaction_id}/confirm/",
-            {"razorpay_payment_id": "pay_xyz"},
-            format="json",
-        )
-        self.assertEqual(confirm_response.status_code, 200)
-        self.assertEqual(confirm_response.data["status"], "completed")
-
-        wallet.refresh_from_db()
-        self.assertEqual(wallet.balance, 1000)  # Balance now updated
-
-    def test_confirm_nonexistent_transaction(self):
-        """Confirming non-existent transaction should return 404."""
-        response = self.client.post(
-            "/api/v1/wallet/top-up/99999/confirm/",
-            {"razorpay_payment_id": "pay_xyz"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 404)
-
-    def test_confirm_already_completed_transaction(self):
-        """Confirming an already completed transaction should return 404."""
-        # Create and complete a transaction via credit
-        wallet = Wallet.objects.get_or_create(user=self.user)[0]
-        WalletTransaction.objects.create(
-            wallet=wallet,
+        self.wallet = Wallet.objects.get(user=self.user)
+        self.pending = WalletTransaction.objects.create(
+            wallet=self.wallet,
             type=WalletTransaction.Type.CREDIT,
-            amount=500,
-            description="Bonus",
-            status=WalletTransaction.Status.COMPLETED,
+            amount=Decimal("1000.00"),
+            description="Wallet top-up",
+            status=WalletTransaction.Status.PENDING,
+            reference_id="order_wallet_abc",
         )
-        transaction_id = wallet.transactions.first().id
 
-        response = self.client.post(
-            f"/api/v1/wallet/top-up/{transaction_id}/confirm/",
+    def _signature(self, order_id="order_wallet_abc", payment_id="pay_xyz"):
+        message = f"{order_id}|{payment_id}".encode()
+        return hmac.new(b"wallet-test-secret", message, hashlib.sha256).hexdigest()
+
+    def _confirm(self, client=None, **overrides):
+        data = {
+            "razorpay_order_id": "order_wallet_abc",
+            "razorpay_payment_id": "pay_xyz",
+            "razorpay_signature": self._signature(),
+        }
+        data.update(overrides)
+        return (client or self.client).post(
+            f"/api/v1/wallet/top-up/{self.pending.id}/confirm/",
+            data,
             format="json",
         )
+
+    def test_valid_signature_credits_wallet_once(self):
+        response = self._confirm()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.wallet.refresh_from_db()
+        self.pending.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("1000.00"))
+        self.assertEqual(self.pending.status, WalletTransaction.Status.COMPLETED)
+        self.assertEqual(self.pending.razorpay_payment_id, "pay_xyz")
+
+        duplicate = self._confirm()
+        self.assertEqual(duplicate.status_code, 404)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("1000.00"))
+
+    def test_invalid_signature_does_not_credit_wallet(self):
+        response = self._confirm(razorpay_signature="invalid")
+        self.assertEqual(response.status_code, 400)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.pending.refresh_from_db()
+        self.assertEqual(self.pending.status, WalletTransaction.Status.PENDING)
+
+    def test_another_customer_cannot_confirm_top_up(self):
+        other_client = APIClient()
+        other_client.force_authenticate(user=self.other_user)
+        response = self._confirm(client=other_client)
         self.assertEqual(response.status_code, 404)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+
+    def test_wrong_razorpay_order_cannot_confirm_top_up(self):
+        response = self._confirm(razorpay_order_id="order_someone_elses")
+        self.assertEqual(response.status_code, 404)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+
+    def test_confirm_requires_all_gateway_signature_fields(self):
+        response = self.client.post(
+            f"/api/v1/wallet/top-up/{self.pending.id}/confirm/",
+            {"razorpay_payment_id": "pay_xyz"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_completed_credit_transaction_cannot_be_confirmed(self):
+        self.pending.status = WalletTransaction.Status.COMPLETED
+        self.pending.save(update_fields=["status"])
+        response = self._confirm()
+        self.assertEqual(response.status_code, 404)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
