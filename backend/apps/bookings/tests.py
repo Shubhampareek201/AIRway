@@ -1,4 +1,5 @@
 from django.test import TestCase
+from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
 from django.db import IntegrityError
