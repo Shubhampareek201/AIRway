@@ -37,6 +37,14 @@ def _process_verified_payment(
         })
 
     with transaction.atomic():
+        payment = Payment.objects.select_for_update().get(pk=payment.pk)
+        if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
+            return Response({
+                "detail": "Payment already settled.",
+                "status": payment.status,
+                "payment_id": payment.id,
+            })
+
         if payment.order_id and payment.wallet_amount > 0:
             from apps.wallet.services import capture_wallet_reservation
 
