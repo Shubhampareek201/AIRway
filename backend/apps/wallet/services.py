@@ -69,7 +69,12 @@ def capture_wallet_reservation(payment, razorpay_payment_id=""):
             status=WalletReservation.Status.RESERVED,
         ).order_by("-created_at").first()
         if reservation is None:
-            return WalletReservation.objects.filter(payment=payment).order_by("-created_at").first()
+            latest = WalletReservation.objects.filter(payment=payment).order_by("-created_at").first()
+            if latest and latest.status == WalletReservation.Status.RELEASED:
+                raise ValueError(
+                    "Wallet reservation expired before gateway capture; payment must be reconciled."
+                )
+            return latest
 
         wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
         if wallet.pending_balance < reservation.amount:
