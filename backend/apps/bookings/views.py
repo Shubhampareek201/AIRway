@@ -437,6 +437,7 @@ class CustomerCheckoutView(APIView):
         subtotal = Decimal("0")
         tax_total = Decimal("0")
         grand_total = Decimal("0")
+        dispatch_results = []
 
         for item, serializer in prepared:
             booking = serializer.save()
@@ -510,6 +511,14 @@ class CustomerCheckoutView(APIView):
             tax_total += line_tax
             grand_total += line_total
 
+            # Dispatch the newly created booking immediately. Without this,
+            # checkout leaves every order permanently awaiting assignment.
+            offers = create_worker_offers_for_booking(booking)
+            dispatch_results.append({
+                "booking_id": booking.id,
+                "offers_sent": len(offers),
+            })
+
         order.subtotal = subtotal
         order.tax_amount = tax_total
         order.total_amount = grand_total
@@ -534,7 +543,12 @@ class CustomerCheckoutView(APIView):
                 }
                 for row in order.items.all()
             ],
-            "next_step": "Wait until every service has an assigned worker, then create one payment using order_id.",
+            "dispatch": dispatch_results,
+            "next_step": (
+                "Worker offers sent. Track assignment in the order; payment unlocks after every service is assigned."
+                if any(row["offers_sent"] for row in dispatch_results)
+                else "No eligible online worker was available at checkout. The order is waiting for worker assignment."
+            ),
         }, status=status.HTTP_201_CREATED)
 
 
