@@ -301,6 +301,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: walletAmountController,
+                    enabled: !walletLoading,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
