@@ -69,12 +69,34 @@ def capture_wallet_reservation(payment, razorpay_payment_id=""):
             status=WalletReservation.Status.RESERVED,
         ).order_by("-created_at").first()
         if reservation is None:
-            latest = WalletReservation.objects.filter(payment=payment).order_by("-created_at").first()
-            if latest and latest.status == WalletReservation.Status.RELEASED:
-                raise ValueError(
-                    "Wallet reservation expired before gateway capture; payment must be reconciled."
+            latest = WalletReservation.objects.select_for_update().filter(
+                payment=payment
+            ).order_by("-created_at").first()
+            if latest is None or latest.status == WalletReservation.Status.CAPTURED:
+                return latest
+            if latest.status == WalletReservation.Status.RELEASED:
+                wallet = Wallet.objects.select_for_update().get(pk=latest.wallet_id)
+                if wallet.balance < latest.amount:
+                    raise ValueError(
+                        "Wallet funds were released and are no longer available; payment must be reconciled."
+                    )
+                wallet.balance -= latest.amount
+                wallet.pending_balance += latest.amount
+                wallet.save(update_fields=["balance", "pending_balance", "updated_at"])
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    type=WalletTransaction.Type.DEBIT,
+                    amount=latest.amount,
+                    description=f"Wallet amount re-reserved for late capture of AIRway order #{payment.order_id}",
+                    status=WalletTransaction.Status.PENDING,
+                    reference_id=f"payment:{payment.pk}",
                 )
-            return latest
+                reservation = WalletReservation.objects.create(
+                    wallet=wallet,
+                    payment=payment,
+                    amount=latest.amount,
+                    status=WalletReservation.Status.RESERVED,
+                )
 
         wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
         if wallet.pending_balance < reservation.amount:
