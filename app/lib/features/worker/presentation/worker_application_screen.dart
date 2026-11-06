@@ -15,14 +15,6 @@ class WorkerApplicationScreen extends StatefulWidget {
 }
 
 class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
-  static const Map<WorkerApplicationStep, String> _stepLabels = {
-    WorkerApplicationStep.photo: 'Photo',
-    WorkerApplicationStep.services: 'Services',
-    WorkerApplicationStep.zones: 'Zones',
-    WorkerApplicationStep.idDocument: 'ID Document',
-    WorkerApplicationStep.review: 'Review',
-  };
-
   WorkerApplicationStep _currentStep = WorkerApplicationStep.photo;
 
   List<Service> _services = [];
