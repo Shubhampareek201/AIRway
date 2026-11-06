@@ -36,6 +36,14 @@ def _process_verified_payment(
         })
 
     with transaction.atomic():
+        if payment.order_id and payment.wallet_amount > 0:
+            from apps.wallet.services import capture_wallet_reservation
+
+            capture_wallet_reservation(
+                payment,
+                razorpay_payment_id=razorpay_payment_id,
+            )
+
         payment.status = Payment.Status.PAID
         payment.razorpay_payment_id = razorpay_payment_id
         payment.razorpay_signature = "verified"
