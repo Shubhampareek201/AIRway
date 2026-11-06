@@ -123,6 +123,13 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
     if order.customer_id != customer.id:
         raise ValueError("Order not found or access denied.")
 
+    already_paid_payment = Payment.objects.filter(
+        order=order,
+        status=Payment.Status.PAID,
+    ).first()
+    if already_paid_payment:
+        return already_paid_payment, already_paid_payment.razorpay_order_id, True
+
     booking_statuses = list(
         order.items.select_related("booking").values_list("booking__status", flat=True)
     )
@@ -245,6 +252,8 @@ class CreateOrderView(APIView):
                 "currency": parent_order.currency,
                 "payment_exists": already_existed,
                 "fully_paid_by_wallet": payment.status == Payment.Status.PAID and payment.method == Payment.Method.WALLET,
+                "already_paid": payment.status == Payment.Status.PAID,
+                "payment_status": payment.status,
                 "airway_order_id": parent_order.id,
                 "payment_id": payment.id,
             }
