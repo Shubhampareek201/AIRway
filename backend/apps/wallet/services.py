@@ -49,7 +49,7 @@ def reserve_wallet_amount(payment, amount):
         wallet.pending_balance += amount
         wallet.save(update_fields=["balance", "pending_balance", "updated_at"])
 
-        wallet_tx = WalletTransaction.objects.create(
+        WalletTransaction.objects.create(
             wallet=wallet,
             type=WalletTransaction.Type.DEBIT,
             amount=amount,
