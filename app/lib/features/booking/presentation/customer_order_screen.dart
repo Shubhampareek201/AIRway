@@ -351,7 +351,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           if (ready && !paid)
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: paying ? null : startPayment,
-              child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('Pay ₹' + (total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2)),
+              child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(
+                  selectedWalletAmount > 0 && selectedWalletAmount >= total
+                      ? 'Pay with AIRway wallet'
+                      : 'Pay ₹' + (total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2),
+                ),
             )),
           if (!ready && !paid)
             const Text('Payment will unlock after every service has a professional assigned.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
