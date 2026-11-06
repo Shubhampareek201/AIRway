@@ -1653,7 +1653,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final message = isPending
         ? 'Your application is with our admin team for review. We’ll update this status when a decision is made.'
         : isApproved
-        ? 'Your worker profile is approved. You can switch to Worker mode from your Profile.'
+        ? 'Your application is approved. Continue to your Worker Dashboard to start managing jobs.'
         : (_workerRejectionReason?.isNotEmpty == true
               ? 'Reason: $_workerRejectionReason'
               : 'Your application was not approved. Open your application to review the next step.');
@@ -1701,12 +1701,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         height: 1.4,
                       ),
                     ),
+                    if (isApproved) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.icon(
+                          onPressed: _switchToWorkerMode,
+                          icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                          label: const Text('Continue as Worker'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _Ui.violet,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (isRejected) ...[
                       const SizedBox(height: 7),
                       Text(
-                        isRejected
-                            ? 'View application  ›'
-                            : 'Application status  ›',
+                        'View application  ›',
                         style: TextStyle(
                           color: accent,
                           fontSize: 11,
