@@ -865,7 +865,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
-            booking = Booking.objects.select_for_update().select_related(
+            booking = Booking.objects.select_for_update(of=("self",)).select_related(
                 "service", "service__category", "variant", "address__zone__city",
             ).get(pk=offer.booking_id)
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
