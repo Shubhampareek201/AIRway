@@ -218,6 +218,13 @@ class BookingApi {
         .toList();
   }
 
+  static Future<List<Map<String, dynamic>>> listOrders() async {
+    final result = await request('/api/v1/bookings/orders/');
+    final list = result is List ? result : (result is Map ? result['results'] : null);
+    if (list is! List) throw const FormatException('Unexpected order list response');
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
   static Future<Map<String, dynamic>> trackBooking(int bookingId) async {
     final result = await request('/api/v1/bookings/$bookingId/track/');
     return Map<String, dynamic>.from(result);
