@@ -208,6 +208,15 @@ class JobOfferAPITest(TestCase):
             scheduled_at=timezone.now() + timedelta(days=1),
             status=Booking.Status.PENDING,
         )
+        booking_local = timezone.localtime(self.booking.scheduled_at)
+        WorkerSchedule.objects.create(
+            worker=self.worker_profile,
+            weekday=booking_local.weekday(),
+            start_time="00:00:00",
+            end_time="23:59:00",
+            is_active=True,
+        )
+
 
     def test_offers_requires_authentication(self):
         """Should return 401 for unauthenticated request."""
@@ -262,6 +271,60 @@ class JobOfferAPITest(TestCase):
 
         assignment = BookingAssignment.objects.get(booking=self.booking)
         self.assertEqual(assignment.worker, self.worker_profile)
+
+    def test_accept_rejects_worker_who_went_offline_after_offer(self):
+        self.client.force_authenticate(user=self.worker_user)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        self.worker_profile.is_online = False
+        self.worker_profile.save(update_fields=["is_online", "updated_at"])
+
+        response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
+        offer.refresh_from_db()
+        self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
+
+    def test_accept_marks_expired_offer_and_rejects_it(self):
+        self.client.force_authenticate(user=self.worker_user)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
+
+        self.assertEqual(response.status_code, 410)
+        offer.refresh_from_db()
+        self.assertEqual(offer.status, WorkerOffer.Status.EXPIRED)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
+
+    def test_accept_rejects_worker_with_overlapping_active_assignment(self):
+        self.client.force_authenticate(user=self.worker_user)
+        overlapping = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=self.booking.scheduled_at,
+            status=Booking.Status.ASSIGNED,
+        )
+        BookingAssignment.objects.create(booking=overlapping, worker=self.worker_profile)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+        response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
 
     def test_decline_offer(self):
         """Should decline an offer."""
@@ -558,6 +621,16 @@ class JobOfferConcurrencyTest(TestCase):
             status=Booking.Status.PENDING,
         )
 
+    def _schedule_for_booking(self, worker):
+        booking_local = timezone.localtime(self.booking.scheduled_at)
+        WorkerSchedule.objects.create(
+            worker=worker,
+            weekday=booking_local.weekday(),
+            start_time="00:00:00",
+            end_time="23:59:00",
+            is_active=True,
+        )
+
     def test_accept_offer_assigns_worker(self):
         """Accepting an offer creates booking assignment."""
         worker_user = User.objects.create_user(phone="+919876543220", name="Worker")
@@ -568,6 +641,7 @@ class JobOfferConcurrencyTest(TestCase):
         )
         WorkerService.objects.create(worker=worker_profile, service=self.service)
         WorkerZone.objects.create(worker=worker_profile, zone=self.zone)
+        self._schedule_for_booking(worker_profile)
 
         offer = WorkerOffer.objects.create(
             booking=self.booking,
@@ -598,6 +672,7 @@ class JobOfferConcurrencyTest(TestCase):
         )
         WorkerService.objects.create(worker=worker1_profile, service=self.service)
         WorkerZone.objects.create(worker=worker1_profile, zone=self.zone)
+        self._schedule_for_booking(worker1_profile)
 
         offer1 = WorkerOffer.objects.create(
             booking=self.booking,
@@ -614,6 +689,7 @@ class JobOfferConcurrencyTest(TestCase):
         )
         WorkerService.objects.create(worker=worker2_profile, service=self.service)
         WorkerZone.objects.create(worker=worker2_profile, zone=self.zone)
+        self._schedule_for_booking(worker2_profile)
 
         offer2 = WorkerOffer.objects.create(
             booking=self.booking,
@@ -1172,6 +1248,14 @@ class WorkerAcceptancePaymentTest(TestCase):
         )
         WorkerService.objects.create(worker=self.worker_profile, service=self.service)
         WorkerZone.objects.create(worker=self.worker_profile, zone=self.zone)
+        booking_weekday = timezone.localtime(timezone.now() + timedelta(days=1)).weekday()
+        WorkerSchedule.objects.create(
+            worker=self.worker_profile,
+            weekday=booking_weekday,
+            start_time="00:00:00",
+            end_time="23:59:00",
+            is_active=True,
+        )
 
         self.other_worker_profile = WorkerProfile.objects.create(
             user=self.other_worker_user,
@@ -1180,6 +1264,13 @@ class WorkerAcceptancePaymentTest(TestCase):
         )
         WorkerService.objects.create(worker=self.other_worker_profile, service=self.service)
         WorkerZone.objects.create(worker=self.other_worker_profile, zone=self.zone)
+        WorkerSchedule.objects.create(
+            worker=self.other_worker_profile,
+            weekday=booking_weekday,
+            start_time="00:00:00",
+            end_time="23:59:00",
+            is_active=True,
+        )
 
         self.client.force_authenticate(user=self.customer_user)
 
