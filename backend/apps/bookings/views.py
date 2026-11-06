@@ -581,6 +581,34 @@ class CustomerOrderDetailView(APIView):
         })
 
 
+class CustomerOrderListView(APIView):
+    """List the authenticated customer's multi-service orders."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        orders = Order.objects.filter(customer=request.user).prefetch_related(
+            "items__booking"
+        ).order_by("-created_at")
+        results = []
+        for order in orders:
+            statuses = [row.booking.status for row in order.items.all()]
+            ready = bool(statuses) and all(
+                value == Booking.Status.ASSIGNED for value in statuses
+            )
+            if ready and order.status == Order.Status.AWAITING_ASSIGNMENT:
+                order.status = Order.Status.AWAITING_PAYMENT
+                order.save(update_fields=["status", "updated_at"])
+            results.append({
+                "id": order.id,
+                "status": order.status,
+                "total_amount": str(order.total_amount),
+                "created_at": order.created_at,
+                "item_count": len(statuses),
+                "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
+            })
+        return Response(results)
+
+
 class CustomerCartView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
