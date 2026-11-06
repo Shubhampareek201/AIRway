@@ -195,6 +195,7 @@ class CreateOrderView(APIView):
                 "currency": parent_order.currency,
                 "payment_exists": already_existed,
                 "airway_order_id": parent_order.id,
+                "key_id": settings.RAZORPAY_KEY_ID,
             })
 
         if not booking_id:
@@ -231,7 +232,7 @@ class CreateOrderView(APIView):
             )
 
         amount_paise = int(float(booking.total_amount) * 100)
-        response_data = {"order_id": order_id, "amount": amount_paise}
+        response_data = {"order_id": order_id, "amount": amount_paise, "key_id": settings.RAZORPAY_KEY_ID}
         if already_existed:
             response_data["payment_exists"] = True
         return Response(response_data)
