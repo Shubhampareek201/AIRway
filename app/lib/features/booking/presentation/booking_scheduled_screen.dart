@@ -68,8 +68,11 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       setState(() {
         _service = service;
         _addresses = addresses;
-        final defaultAddress = addresses.where((a) => a['is_default'] == true).firstOrNull;
-        _selectedAddressId = defaultAddress?['id'] ?? (addresses.isNotEmpty ? addresses[0]['id'] : null);
+        final defaultAddress = addresses.firstWhere(
+          (a) => a['is_default'] == true,
+          orElse: () => addresses.isNotEmpty ? addresses[0] : <String, dynamic>{},
+        );
+        _selectedAddressId = defaultAddress.isEmpty ? null : defaultAddress['id'];
         _loading = false;
 
         // Auto-select first variant if exactly one exists
