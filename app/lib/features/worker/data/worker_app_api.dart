@@ -275,6 +275,15 @@ class WorkerAppApi {
     }
   }
 
+  static Future<void> switchToCustomerMode() async {
+    final result = await _authenticatedRequest('/api/v1/auth/switch-mode/', method: 'POST', data: {'mode': 'customer'});
+    if (result['status'] == 401) throw Exception('Session expired. Please sign in again.');
+    if (result['status'] < 200 || result['status'] >= 300) {
+      final body = result['body'];
+      final message = body is Map ? body['error']?.toString() ?? body['detail']?.toString() : null;
+      throw Exception(message ?? 'Mode switch failed.');
+    }
+  }
   static Future<List<Service>> fetchServicesForWorkerApplication() async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
