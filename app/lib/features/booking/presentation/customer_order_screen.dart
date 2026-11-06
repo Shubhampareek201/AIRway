@@ -14,12 +14,12 @@ class CustomerOrderScreen extends StatefulWidget {
 }
 
 class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
-  static const violet = Color(0xFF7861A8);
-  static const ink = Color(0xFF292331);
-  static const sub = Color(0xFF81788A);
-  static const bg = Color(0xFFF7F3EC);
-  static const pale = Color(0xFFEDE7F5);
-  static const line = Color(0xFFE8E0ED);
+  static const violet = Color(0xFF075B43);
+  static const ink = Color(0xFF1E2923);
+  static const sub = Color(0xFF748078);
+  static const bg = Color(0xFFFFFFFF);
+  static const pale = Color(0xFFE7F2EC);
+  static const line = Color(0xFFE5ECE7);
 
   final Razorpay razorpay = Razorpay();
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
@@ -151,7 +151,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         'name': 'AIRway',
         'description': 'Service order #' + widget.orderId.toString(),
         'order_id': gatewayOrderId,
-        'theme': {'color': '#7861A8'},
+        'theme': {'color': '#075B43'},
       });
     } catch (e) {
       if (mounted) {
