@@ -2817,3 +2817,98 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertTrue(self.cart.items.exists())
+
+    def test_checkout_rejects_duplicate_cart_item_ids(self):
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": scheduled_at},
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": scheduled_at},
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Duplicate cart_item_id", response.data["detail"])
+        self.assertTrue(self.cart.items.filter(pk=self.cart_item.id).exists())
+        self.assertFalse(Order.objects.filter(customer=self.customer).exists())
+
+    def test_checkout_reprices_addon_quantities_on_server(self):
+        addon = AddOn.objects.create(
+            service=self.service,
+            title="Extra room",
+            mrp=150,
+            price=100,
+        )
+        self.cart_item.addon_selections = [{"id": addon.id, "quantity": 3}]
+        self.cart_item.save(update_fields=["addon_selections", "updated_at"])
+
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [{
+                    "cart_item_id": self.cart_item.id,
+                    "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                }]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        order_item = order.items.select_related("booking").get()
+        # (variant 1000 + 3 x addon 100) x quantity 2, plus 18% GST.
+        self.assertEqual(order_item.line_subtotal, Decimal("2600.00"))
+        self.assertEqual(order_item.tax_amount, Decimal("468.00"))
+        self.assertEqual(order_item.line_total, Decimal("3068.00"))
+        booking_addon = order_item.booking.booking_addons.get(addon=addon)
+        self.assertEqual(booking_addon.quantity, 3)
+        self.assertEqual(booking_addon.total_price, Decimal("300.00"))
+
+    def test_checkout_creates_multiple_service_lines_in_one_order(self):
+        second_service = self._create_service(
+            self.category,
+            title="Bathroom Cleaning",
+        )
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            quantity=1,
+            pricing_snapshot={"line_total": "500.00"},
+        )
+
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {
+                        "cart_item_id": self.cart_item.id,
+                        "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                    },
+                    {
+                        "cart_item_id": second_item.id,
+                        "scheduled_at": (timezone.now() + timedelta(days=3)).isoformat(),
+                    },
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        self.assertEqual(order.items.count(), 2)
+        self.assertEqual(
+            set(order.items.values_list("booking__service_id", flat=True)),
+            {self.service.id, second_service.id},
+        )
+        self.assertFalse(self.cart.items.exists())
