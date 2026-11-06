@@ -248,6 +248,69 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
           for (final row in rows) serviceRow(row),
+          if (ready && !paid) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('AIRway wallet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+                  const SizedBox(height: 5),
+                  Text(
+                    walletLoading
+                        ? 'Loading available balance…'
+                        : 'Available balance: ₹${walletBalance.toStringAsFixed(2)}',
+                    style: const TextStyle(color: sub, fontSize: 13),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: walletAmountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Use wallet amount (₹)',
+                      hintText: '0.00',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Order total', style: TextStyle(color: sub)),
+                      Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Wallet applied', style: TextStyle(color: sub)),
+                      Text('− ₹${selectedWalletAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
+                    ],
+                  ),
+                  const Divider(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Pay online', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+                      Text(
+                        '₹${(total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       )),
       Container(
@@ -257,7 +320,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           if (ready && !paid)
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: paying ? null : startPayment,
-              child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('Pay ₹' + total.toStringAsFixed(0)),
+              child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('Pay ₹' + (total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2)),
             )),
           if (!ready && !paid)
             const Text('Payment will unlock after every service has a professional assigned.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
