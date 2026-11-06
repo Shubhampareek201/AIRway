@@ -83,7 +83,15 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Future<void> startPayment() async {
     if (order?['ready_for_payment'] != true || paying) return;
     final total = amount(order?['total_amount']);
-    final walletAmount = selectedWalletAmount;
+    final rawWalletAmount = walletAmountController.text.trim();
+    final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
+    if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid wallet amount.')),
+      );
+      return;
+    }
+    final walletAmount = parsedWalletAmount;
     if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > total) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a wallet amount within your available balance and order total.')),
