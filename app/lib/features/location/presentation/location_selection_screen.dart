@@ -5,7 +5,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
-import 'package:airway/core/theme/airway_theme.dart';
 import 'package:airway/features/location/data/location_api.dart';
 import 'package:airway/features/location/presentation/address_details_screen.dart';
 import 'package:airway/features/location/presentation/address_picker_screen.dart';
