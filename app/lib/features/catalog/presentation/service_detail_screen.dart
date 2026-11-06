@@ -4,12 +4,12 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 
 class _Ui {
-  static const violet = Color(0xFF075B43);
-  static const ink = Color(0xFF17231E);
-  static const sub = Color(0xFF77827C);
-  static const bg = Color(0xFFF7F9F7);
-  static const pale = Color(0xFFE7F1EC);
-  static const line = Color(0xFFE2EAE5);
+  static const violet = Color(0xFF7861A8);
+  static const ink = Color(0xFF292331);
+  static const sub = Color(0xFF81788A);
+  static const bg = Color(0xFFF7F3EC);
+  static const pale = Color(0xFFEDE7F5);
+  static const line = Color(0xFFE8E0ED);
 }
 
 class ServiceDetailScreen extends StatefulWidget {
@@ -327,7 +327,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F9F91)),
+                        color: Color(0xFF7861A8)),
                   ),
               ],
             ),
