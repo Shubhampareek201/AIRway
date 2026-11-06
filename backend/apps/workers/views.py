@@ -71,7 +71,7 @@ class NearbyWorkersView(APIView):
                 zone_id=address.zone_id,
                 worker__status="approved",
                 worker__is_online=True,
-            )
+            ).exclude(worker__user=request.user)
             .select_related("worker__user")
             .distinct()
         )
