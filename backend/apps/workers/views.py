@@ -870,6 +870,14 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             ).get(pk=offer.booking_id)
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
 
+            # Recheck ownership after locking in case the offer changed after
+            # the initial permission-scoped get_object() query.
+            if worker.user_id != request.user.id:
+                return Response(
+                    {"detail": "This offer does not belong to you."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
             if offer.status != WorkerOffer.Status.PENDING:
                 return Response(
                     {"detail": f"Offer is already {offer.get_status_display().lower()}."},
