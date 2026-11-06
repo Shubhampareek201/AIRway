@@ -634,7 +634,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           (_formAnswers[field.key] == null ||
               _formAnswers[field.key].toString().trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please complete: \${field.label}')),
+          SnackBar(content: Text('Please complete: ${field.label}')),
         );
         return;
       }
