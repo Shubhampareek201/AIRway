@@ -10,6 +10,7 @@ class Payment(TimeStampedModel):
     class Method(models.TextChoices):
         COD = "cod", "Cash on Delivery"
         RAZORPAY = "razorpay", "Razorpay"
+        WALLET = "wallet", "AIRway Wallet"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
