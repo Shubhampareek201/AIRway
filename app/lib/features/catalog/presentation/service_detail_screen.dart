@@ -14,10 +14,12 @@ class _Ui {
 
 class ServiceDetailScreen extends StatefulWidget {
   final int serviceId;
+  final int? addressId;
 
   const ServiceDetailScreen({
     super.key,
     required this.serviceId,
+    this.addressId,
   });
 
   @override
@@ -41,7 +43,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       _error = null;
     });
     try {
-      final service = await CatalogApi.getService(widget.serviceId);
+      final service = await CatalogApi.getService(
+        widget.serviceId,
+        addressId: widget.addressId,
+      );
       if (mounted) setState(() => _service = service);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
