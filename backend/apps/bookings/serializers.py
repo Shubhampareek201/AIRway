@@ -426,16 +426,40 @@ class BookingCancelSerializer(serializers.Serializer):
 
 
 class WorkerOfferSerializer(serializers.ModelSerializer):
-    booking_status = serializers.CharField(source='booking.status', read_only=True)
-    worker_name = serializers.CharField(source='worker.user.name', read_only=True)
-    worker_phone = serializers.CharField(source='worker.user.phone', read_only=True)
+    booking_status = serializers.CharField(source="booking.status", read_only=True)
+    worker_name = serializers.CharField(source="worker.user.name", read_only=True)
+    worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
+    offered_at = serializers.DateTimeField(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    can_accept = serializers.SerializerMethodField()
+    can_decline = serializers.SerializerMethodField()
+    can_withdraw = serializers.SerializerMethodField()
 
     class Meta:
-        model = __import__('apps.bookings.models', fromlist=['WorkerOffer']).WorkerOffer
+        model = __import__("apps.bookings.models", fromlist=["WorkerOffer"]).WorkerOffer
         fields = [
-            'id', 'booking', 'worker', 'status', 'expires_at', 'accepted_at',
-            'responded_at', 'booking_status', 'worker_name', 'worker_phone',
+            "id", "booking", "worker", "status", "status_display",
+            "offered_at", "expires_at", "accepted_at", "responded_at",
+            "booking_status", "worker_name", "worker_phone",
+            "can_accept", "can_decline", "can_withdraw",
         ]
+        read_only_fields = fields
+
+    def get_can_accept(self, obj):
+        from django.utils import timezone
+        return (
+            obj.status == obj.Status.PENDING
+            and obj.expires_at > timezone.now()
+            and obj.booking.status in ("pending", "confirmed")
+            and obj.worker.status == "approved"
+            and obj.worker.is_online
+        )
+
+    def get_can_decline(self, obj):
+        return obj.status == obj.Status.PENDING
+
+    def get_can_withdraw(self, obj):
+        return obj.status in (obj.Status.PENDING, obj.Status.ACCEPTED)
 
 
 from decimal import Decimal
