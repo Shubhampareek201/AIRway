@@ -106,28 +106,47 @@ class CatalogApi {
         .toList();
   }
 
+  static Future<List<Category>> listCategories({
+    int? addressId,
+  }) async {
+    final query = <String, String>{};
+    if (addressId != null) query['address_id'] = addressId.toString();
+    final uri = Uri(
+      path: '/api/v1/catalog/categories/',
+      queryParameters: query.isEmpty ? null : query,
+    );
+    final result = await request(uri.toString());
+    return _parseList(result, Category.fromMap);
+  }
+
   static Future<List<Service>> listServices({
     int? category,
     bool? popular,
+    int? addressId,
   }) async {
-    var path = '/api/v1/catalog/services/';
-    final query = <String>[];
-    if (category != null) {
-      query.add('category=$category');
-    }
-    if (popular == true) {
-      query.add('is_popular=true');
-    }
-    if (query.isNotEmpty) {
-      path += '?${query.join('&')}';
-    }
-
-    final result = await request(path);
+    final query = <String, String>{};
+    if (category != null) query['category'] = category.toString();
+    if (popular == true) query['is_popular'] = 'true';
+    if (addressId != null) query['address_id'] = addressId.toString();
+    final uri = Uri(
+      path: '/api/v1/catalog/services/',
+      queryParameters: query.isEmpty ? null : query,
+    );
+    final result = await request(uri.toString());
     return _parseList(result, Service.fromMap);
   }
 
-  static Future<Service> getService(int id) async {
-    final result = await request('/api/v1/catalog/services/$id/');
+  static Future<Service> getService(
+    int id, {
+    int? addressId,
+  }) async {
+    final uri = Uri(
+      path: '/api/v1/catalog/services/$id/',
+      queryParameters: addressId == null
+          ? null
+          : {'address_id': addressId.toString()},
+    );
+    final result = await request(uri.toString());
     if (result is! Map<String, dynamic>) {
       throw const FormatException('Unexpected service detail response');
     }
