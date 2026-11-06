@@ -292,8 +292,8 @@ class Order(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["customer", "status"]),
-            models.Index(fields=["created_at", "status"]),
+            models.Index(fields=["customer", "status"], name="book_ord_cust_stat_idx"),
+            models.Index(fields=["created_at", "status"], name="book_ord_created_stat_idx"),
         ]
 
     def __str__(self):
