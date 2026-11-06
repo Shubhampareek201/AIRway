@@ -223,6 +223,91 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     );
   }
 
+
+  Future<void> trackService(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    try {
+      final tracking = await BookingApi.trackBooking(bookingId);
+      if (!mounted) return;
+      final assigned = tracking['is_assigned'] == true;
+      final status = tracking['status']?.toString() ??
+          row['booking_status']?.toString() ?? 'pending';
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: Colors.white,
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Service tracking', style: TextStyle(
+                fontSize: 20, fontWeight: FontWeight.w900, color: ink,
+              )),
+              const SizedBox(height: 6),
+              Text('Booking #$bookingId', style: const TextStyle(color: sub)),
+              const SizedBox(height: 16),
+              _trackingStep('Booking placed', true, 'Your request has been received.'),
+              _trackingStep('Professional assigned',
+                  assigned || status == 'in_progress' || status == 'completed',
+                  assigned ? (tracking['worker_name']?.toString() ?? 'Professional confirmed')
+                      : 'We are finding an available professional.'),
+              _trackingStep('Service started',
+                  status == 'in_progress' || status == 'completed',
+                  status == 'in_progress' || status == 'completed'
+                      ? 'The professional has started the service.'
+                      : 'This step updates when the professional starts the job.'),
+              _trackingStep('Service completed', status == 'completed',
+                  status == 'completed' ? 'Your service is complete.' : 'Waiting for completion.'),
+              const SizedBox(height: 10),
+              if (assigned) ...[
+                Text(tracking['worker_name']?.toString() ?? 'Assigned professional',
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
+                if (tracking['worker_phone'] != null)
+                  Text(tracking['worker_phone'].toString(), style: const TextStyle(color: sub)),
+              ],
+              const SizedBox(height: 8),
+              const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.info_outline, size: 17, color: sub),
+                SizedBox(width: 8),
+                Expanded(child: Text(
+                  'Live map location is not available yet. AIRway will show it once worker GPS sharing is connected.',
+                  style: TextStyle(color: sub, fontSize: 12, height: 1.35),
+                )),
+              ]),
+              const SizedBox(height: 16),
+              SizedBox(width: double.infinity, child: FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Done'),
+              )),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load tracking: $e')),
+      );
+    }
+  }
+
+  Widget _trackingStep(String title, bool complete, String detail) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(complete ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: complete ? const Color(0xFF2E7D52) : sub, size: 21),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
+          Text(detail, style: const TextStyle(color: sub, fontSize: 12)),
+        ])),
+      ]),
+    );
+  }
+
   String statusLabel(String value) {
     switch (value) {
       case 'pending': return 'Finding professional';
@@ -371,6 +456,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     ]);
   }
 
+
   Widget serviceRow(Map<String, dynamic> row) {
     final snapshot = Map<String, dynamic>.from(row['service'] ?? {});
     final status = row['booking_status']?.toString() ?? 'pending';
@@ -381,13 +467,23 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(snapshot['service_title']?.toString() ?? 'Service', style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
+        Row(children: [
+          Expanded(child: Text(snapshot['service_title']?.toString() ?? 'Service',
+              style: const TextStyle(fontWeight: FontWeight.w800, color: ink))),
+          Text('₹' + amount(row['line_total']).toStringAsFixed(0),
+              style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+        ]),
         if (snapshot['variant_title'] != null) Text(snapshot['variant_title'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 6),
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
         if (scheduled.isNotEmpty) Text(scheduled, style: const TextStyle(color: sub, fontSize: 12)),
         if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
-        Align(alignment: Alignment.centerRight, child: Text('₹' + amount(row['line_total']).toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w900, color: ink))),
+        const SizedBox(height: 8),
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(
+          onPressed: () => trackService(row),
+          icon: const Icon(Icons.location_searching_rounded, size: 17),
+          label: const Text('Track this service'),
+        )),
       ]),
     );
   }
