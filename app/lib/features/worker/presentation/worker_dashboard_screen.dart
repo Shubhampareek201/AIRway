@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
 import 'package:airway/core/theme/airway_colors.dart';
-import 'package:airway/features/worker/presentation/job_offers_screen.dart';
-import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
-import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
+import 'package:airway/features/worker/data/worker_models.dart';
+import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
+import 'package:airway/features/worker/presentation/job_offers_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -14,286 +16,489 @@ class WorkerDashboardScreen extends StatefulWidget {
 
 class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   WorkerProfile? _profile;
-  WorkerAssignmentDetail? _assignedJob;
+  List<Map<String, dynamic>> _assignedJobs = [];
   List<WorkerOffer> _offers = [];
+  List<Map<String, dynamic>> _earnings = [];
   bool _loading = true;
+  bool _availabilitySaving = false;
   String? _error;
+  int _selectedTab = 0;
+
+  static const _tabTitles = ['Home', 'Jobs', 'Earnings', 'Profile'];
 
   @override
   void initState() {
     super.initState();
-    _loadAll();
+    _loadDashboard();
   }
 
-  Future<void> _loadAll() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+  Future<void> _loadDashboard({bool showLoader = true}) async {
+    if (mounted) {
+      setState(() {
+        if (showLoader) _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final profile = await WorkerApi.getMyProfile();
-      final offers = await WorkerApi.getJobOffers();
-      final assignedJobs = await WorkerApi.getAssignedJobs();
-
-      WorkerAssignmentDetail? assignedJob;
-      if (assignedJobs.isNotEmpty) {
-        final jobId = int.tryParse('${assignedJobs.first['id']}');
-        if (jobId != null) {
-          final jobDetail = await WorkerApi.getJobDetail(jobId);
-          assignedJob = WorkerAssignmentDetail.fromMap(jobDetail);
-        }
+      final results = await Future.wait<dynamic>([
+        WorkerApi.getMyProfile(),
+        WorkerApi.getJobOffers(),
+        WorkerApi.getAssignedJobs(),
+        WorkerApi.getEarnings(),
+      ]);
+      final profile = results[0] as WorkerProfile;
+      if (profile.status != 'approved') {
+        throw Exception('Your worker profile is ${profile.status}. Contact AIRway support.');
       }
-
-      if (mounted) {
-        setState(() {
-          _profile = profile;
-          _offers = offers;
-          _assignedJob = assignedJob;
-          if (profile.status != 'approved') {
-            _error = 'Your worker profile is ${profile.status}. Contact support.';
-          }
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _offers = results[1] as List<WorkerOffer>;
+        _assignedJobs = results[2] as List<Map<String, dynamic>>;
+        _earnings = results[3] as List<Map<String, dynamic>>;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Could not load dashboard. Check connection.';
-        });
-      }
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) setState(() { _loading = false; });
+      if (mounted && showLoader) setState(() => _loading = false);
     }
   }
 
-  Future<void> _refresh() async {
-    await _loadAll();
+  Future<void> _refresh() => _loadDashboard(showLoader: false);
+
+  Future<void> _toggleAvailability(bool value) async {
+    if (_availabilitySaving) return;
+    setState(() => _availabilitySaving = true);
+    try {
+      final actual = await WorkerApi.updateOnlineStatus(value);
+      if (mounted && _profile != null) {
+        setState(() {
+          _profile = WorkerProfile(
+            id: _profile!.id,
+            status: _profile!.status,
+            name: _profile!.name,
+            phone: _profile!.phone,
+            upiId: _profile!.upiId,
+            isOnline: actual,
+            ratingAvg: _profile!.ratingAvg,
+            experienceYears: _profile!.experienceYears,
+            rejectionReason: _profile!.rejectionReason,
+          );
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(actual ? 'You are now online' : 'You are now offline')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update availability: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _availabilitySaving = false);
+    }
   }
 
-  void _navigateToOffers() {
+  void _openOffers() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const JobOffersScreen()),
-    );
+      MaterialPageRoute(builder: (_) => const JobOffersScreen()),
+    ).then((_) => _refresh());
   }
 
-  void _navigateToAssignedJob() {
+  void _openAssignedJobs() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const AssignedJobScreen()),
-    );
+      MaterialPageRoute(builder: (_) => const AssignedJobScreen()),
+    ).then((_) => _refresh());
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_error != null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Worker Dashboard')),
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.warning_amber_rounded, size: 48, color: AirwayColors.error),
-                  const SizedBox(height: 16),
-                  Text(_error!, style: const TextStyle(fontSize: 16)),
-                  const SizedBox(height: 16),
-                  FilledButton(onPressed: _refresh, child: const Text('Retry')),
-                ],
-              ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cloud_off_rounded, size: 48, color: AirwayColors.error),
+                const SizedBox(height: 14),
+                Text(_error!, textAlign: TextAlign.center),
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  onPressed: () => _loadDashboard(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
+                ),
+              ],
             ),
           ),
         ),
       );
     }
 
-    final profile = _profile;
-    if (profile == null) {
-      return const Scaffold(
-        body: Center(child: Text('No profile data available')),
-      );
-    }
-
+    final profile = _profile!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Worker Dashboard'),
+        title: Text(_tabTitles[_selectedTab]),
         actions: [
-          IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: IndexedStack(
+          index: _selectedTab,
           children: [
-            _buildProfileHeader(profile),
-            const SizedBox(height: 16),
-            _buildStatusCard(profile),
-            const SizedBox(height: 16),
-            _buildAssignedJobSection(),
-            const SizedBox(height: 16),
-            _buildPendingOffersSection(),
+            _buildHomeTab(profile),
+            _buildJobsTab(),
+            _buildEarningsTab(),
+            _buildProfileTab(profile),
           ],
         ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedTab,
+        onDestinationSelected: (index) => setState(() => _selectedTab = index),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.work_outline_rounded), selectedIcon: Icon(Icons.work_rounded), label: 'Jobs'),
+          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet_rounded), label: 'Earnings'),
+          NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
+        ],
       ),
     );
   }
 
-  Widget _buildProfileHeader(WorkerProfile profile) {
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: AirwayColors.primary,
-          child: const Icon(Icons.work, color: Colors.white, size: 28),
+  Widget _page(List<Widget> children) => ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: children,
+      );
+
+  Widget _buildHomeTab(WorkerProfile profile) {
+    final pendingCount = _offers.where((o) => o.status == WorkerOffer.pending).length;
+    final activeJobs = _assignedJobs.where((j) {
+      final status = j['status']?.toString();
+      return status != 'completed' && status != 'cancelled';
+    }).length;
+
+    return _page([
+      _buildWelcomeCard(profile),
+      const SizedBox(height: 16),
+      _buildAvailabilityCard(profile),
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          Expanded(child: _buildMetricCard('New offers', '$pendingCount', Icons.notifications_active_outlined)),
+          const SizedBox(width: 12),
+          Expanded(child: _buildMetricCard('Active jobs', '$activeJobs', Icons.assignment_outlined)),
+        ],
+      ),
+      const SizedBox(height: 20),
+      _sectionHeading('Your next steps', action: 'View jobs', onAction: () => setState(() => _selectedTab = 1)),
+      const SizedBox(height: 8),
+      _buildNextJobCard(),
+      const SizedBox(height: 16),
+      _sectionHeading('Recent job offers', action: 'View all', onAction: _openOffers),
+      const SizedBox(height: 8),
+      ..._offers.where((o) => o.status == WorkerOffer.pending).take(3).map(_buildOfferPreview),
+      if (pendingCount == 0)
+        const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'New job offers will appear here.'),
+    ]);
+  }
+
+  Widget _buildJobsTab() {
+    final active = _assignedJobs.where((j) => j['status']?.toString() != 'completed' && j['status']?.toString() != 'cancelled').toList();
+    final completed = _assignedJobs.where((j) => j['status']?.toString() == 'completed').toList();
+    final pendingOffers = _offers.where((o) => o.status == WorkerOffer.pending).toList();
+
+    return _page([
+      _sectionHeading('New job offers', action: 'View all', onAction: _openOffers),
+      const SizedBox(height: 8),
+      if (pendingOffers.isEmpty)
+        const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'Check back when customers request a service.')
+      else
+        ...pendingOffers.take(4).map(_buildOfferPreview),
+      const SizedBox(height: 20),
+      _sectionHeading('Assigned jobs', action: 'Open jobs', onAction: _openAssignedJobs),
+      const SizedBox(height: 8),
+      if (active.isEmpty)
+        const _EmptyCard(icon: Icons.work_outline, title: 'No active jobs', subtitle: 'Accepted jobs will appear here.')
+      else
+        ...active.take(5).map(_buildJobPreview),
+      if (completed.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        Text('Completed jobs: ${completed.length}', style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ]);
+  }
+
+  Widget _buildEarningsTab() {
+    final total = _earnings.fold<double>(
+      0,
+      (sum, item) => sum + (double.tryParse('${item['amount']}') ?? 0),
+    );
+    return _page([
+      Card(
+        color: AirwayColors.primary,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Recorded earnings', style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              Text(
+                NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(total),
+                style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text('${_earnings.length} earning records', style: const TextStyle(color: Colors.white70)),
+            ],
+          ),
         ),
-        title: Text(profile.name ?? profile.phone ?? 'Worker'),
-        subtitle: Text(profile.phone ?? ''),
-        trailing: IconButton(
-          icon: const Icon(Icons.info_outline),
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Profile Status'),
-                content: Text('Status: ${profile.status}\n'
-                    'UPI: ${profile.upiId ?? 'Not set'}\n'
-                    'Experience: ${profile.experienceYears ?? 0} years'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+      ),
+      const SizedBox(height: 20),
+      const Text('Recent activity', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      if (_earnings.isEmpty)
+        const _EmptyCard(icon: Icons.account_balance_wallet_outlined, title: 'No earnings yet', subtitle: 'Completed and credited jobs will show here.')
+      else
+        ..._earnings.map(_buildEarningRow),
+      const SizedBox(height: 8),
+      Text(
+        'Earnings shown are records returned by AIRway. Final payout and settlement may be handled separately.',
+        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+      ),
+    ]);
+  }
+
+  Widget _buildProfileTab(WorkerProfile profile) {
+    return _page([
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 38,
+                backgroundColor: AirwayColors.primary.withValues(alpha: 0.12),
+                child: Icon(Icons.person_rounded, size: 42, color: AirwayColors.primary),
+              ),
+              const SizedBox(height: 12),
+              Text(profile.name?.trim().isNotEmpty == true ? profile.name! : 'AIRway Worker',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(profile.phone ?? 'Phone not available', style: TextStyle(color: AirwayColors.textSecondary)),
+              const SizedBox(height: 12),
+              Chip(
+                avatar: const Icon(Icons.verified_rounded, size: 18, color: Colors.green),
+                label: const Text('Verified worker'),
+                backgroundColor: Colors.green.shade50,
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      _sectionHeading('Your details'),
+      const SizedBox(height: 8),
+      _detailTile(Icons.star_outline_rounded, 'Rating', profile.ratingAvg == null ? 'Not rated yet' : profile.ratingAvg!.toStringAsFixed(1)),
+      _detailTile(Icons.work_history_outlined, 'Experience', '${profile.experienceYears ?? 0} years'),
+      _detailTile(Icons.payments_outlined, 'UPI ID', (profile.upiId?.isNotEmpty == true) ? profile.upiId! : 'Not added'),
+      _detailTile(Icons.verified_user_outlined, 'Application', 'Approved'),
+      const SizedBox(height: 16),
+      OutlinedButton.icon(
+        onPressed: _refresh,
+        icon: const Icon(Icons.sync),
+        label: const Text('Refresh profile'),
+      ),
+    ]);
+  }
+
+  Widget _buildWelcomeCard(WorkerProfile profile) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Hello, ${profile.name?.trim().isNotEmpty == true ? profile.name : 'Partner'}!',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  Text('Ready for your next service?', style: TextStyle(color: AirwayColors.textSecondary)),
                 ],
               ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusCard(WorkerProfile profile) {
-    final isApproved = profile.status == 'approved';
-    final isOnline = profile.isOnline && isApproved;
-
-    return Card(
-      color: isOnline ? Colors.green[50] : (isApproved ? Colors.blue[50] : Colors.orange[100]),
-      child: ListTile(
-        leading: Icon(
-          isOnline ? Icons.wifi : (isApproved ? Icons.check_circle : Icons.pending),
-          color: isOnline ? Colors.green : (isApproved ? Colors.blue : Colors.orange),
-        ),
-        title: Text(isOnline ? 'Online - Accepting jobs' : (isApproved ? 'Offline' : 'Pending Approval')),
-        trailing: Switch(
-          value: isOnline,
-          onChanged: (value) {
-            // Toggle online status - would need backend endpoint
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAssignedJobSection() {
-    if (_assignedJob == null) {
-      return Card(
-        child: ListTile(
-          leading: const Icon(Icons.work_outlined),
-          title: const Text('No Assigned Job'),
-          subtitle: const Text('Accept an offer to see your job here'),
-          trailing: TextButton(
-            onPressed: _navigateToAssignedJob,
-            child: const Text('Assigned Jobs'),
-          ),
-        ),
-      );
-    }
-
-    final job = _assignedJob!;
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.directions_car, color: AirwayColors.primary),
-        title: const Text('Assigned Job'),
-        subtitle: Text(
-          '${job.serviceTitle} scheduled for ${_formatDateTime(job.scheduledAt)}',
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: _navigateToAssignedJob,
-      ),
-    );
-  }
-
-  Widget _buildPendingOffersSection() {
-    final hasOffers = _offers.where((o) => o.status == WorkerOffer.pending).isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Job Offers (${_offers.where((o) => o.status == WorkerOffer.pending).length})'),
-            TextButton(onPressed: _navigateToOffers, child: const Text('View All')),
+            ),
+            CircleAvatar(
+              radius: 25,
+              backgroundColor: AirwayColors.primary.withValues(alpha: 0.12),
+              child: Icon(Icons.handyman_outlined, color: AirwayColors.primary, size: 28),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        if (!hasOffers)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.work_outlined),
-              title: Text('No pending offers'),
-              subtitle: Text('New offers will appear here'),
-            ),
-          )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _offers.where((o) => o.status == WorkerOffer.pending).take(5).length,
-            itemBuilder: (context, index) {
-              final offer = _offers.where((o) => o.status == WorkerOffer.pending).elementAt(index);
-              return _buildOfferCard(offer);
-            },
-          ),
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityCard(WorkerProfile profile) {
+    return Card(
+      child: SwitchListTile(
+        value: profile.isOnline,
+        onChanged: _availabilitySaving ? null : _toggleAvailability,
+        secondary: Icon(
+          profile.isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+          color: profile.isOnline ? Colors.green : AirwayColors.textSecondary,
+        ),
+        title: Text(profile.isOnline ? 'You are online' : 'You are offline',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(profile.isOnline ? 'You can receive new job offers' : 'Turn on to receive nearby job offers'),
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(String label, String value, IconData icon) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AirwayColors.primary),
+            const SizedBox(height: 12),
+            Text(value, style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: AirwayColors.textSecondary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNextJobCard() {
+    if (_assignedJobs.isEmpty) {
+      return const _EmptyCard(icon: Icons.event_available_outlined, title: 'Nothing scheduled yet', subtitle: 'Your assigned jobs will appear here.');
+    }
+    final job = _assignedJobs.first;
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.assignment_outlined, color: AirwayColors.primary),
+        title: Text(job['service_title']?.toString() ?? 'Assigned service'),
+        subtitle: Text('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: _openAssignedJobs,
+      ),
+    );
+  }
+
+  Widget _buildJobPreview(Map<String, dynamic> job) {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.work_outline, color: AirwayColors.primary),
+        title: Text(job['service_title']?.toString() ?? 'Service job'),
+        subtitle: Text('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: _openAssignedJobs,
+      ),
+    );
+  }
+
+  Widget _buildOfferPreview(WorkerOffer offer) {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.notifications_active_outlined, color: AirwayColors.primary),
+        title: Text('Booking #${offer.bookingId}'),
+        subtitle: Text('Received ${_dateLabel(offer.offeredAt.toIso8601String())}'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: _openOffers,
+      ),
+    );
+  }
+
+  Widget _buildEarningRow(Map<String, dynamic> item) {
+    final amount = double.tryParse('${item['amount']}') ?? 0;
+    final title = item['service_title']?.toString().trim();
+    return Card(
+      child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.currency_rupee_rounded)),
+        title: Text(title?.isNotEmpty == true ? title! : 'Service payment'),
+        subtitle: Text('Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}'),
+        trailing: Text(
+          '+${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(amount)}',
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailTile(IconData icon, String title, String value) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon, color: AirwayColors.primary),
+        title: Text(title),
+        trailing: Flexible(child: Text(value, textAlign: TextAlign.end, overflow: TextOverflow.ellipsis)),
+      ),
+    );
+  }
+
+  Widget _sectionHeading(String title, {String? action, VoidCallback? onAction}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        if (action != null)
+          TextButton(onPressed: onAction, child: Text(action)),
       ],
     );
   }
 
-  Widget _buildOfferCard(WorkerOffer offer) {
+  String _dateLabel(dynamic value) {
+    if (value == null || value.toString().isEmpty) return 'Date not available';
+    final parsed = DateTime.tryParse(value.toString());
+    if (parsed == null) return 'Date not available';
+    return DateFormat('dd MMM, hh:mm a').format(parsed.toLocal());
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
-      child: ListTile(
-        title: Text('Booking #${offer.bookingId}'),
-        subtitle: Text('Offered at: ${_formatDateTime(offer.offeredAt)}'),
-        trailing: OutlinedButton(
-          onPressed: offer.canAccept ? () => _acceptOffer(offer.id) : null,
-          child: const Text('Accept'),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(icon, size: 34, color: AirwayColors.textSecondary),
+            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(subtitle, textAlign: TextAlign.center,
+                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+          ],
         ),
-        onTap: () {
-          // Show offer details
-        },
       ),
     );
-  }
-
-  Future<void> _acceptOffer(int offerId) async {
-    try {
-      await WorkerApi.acceptOffer(offerId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Offer accepted!')),
-        );
-        _loadAll();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to accept: $e')),
-        );
-      }
-    }
-  }
-
-  String _formatDateTime(DateTime dt) {
-    return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }
