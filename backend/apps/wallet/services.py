@@ -12,8 +12,13 @@ CENT = Decimal("0.01")
 def reserve_wallet_amount(payment, amount):
     """Hold wallet funds for a parent-order payment exactly once."""
     raw_amount = Decimal(str(amount))
-    if raw_amount < 0 or raw_amount.quantize(CENT) != raw_amount:
-        raise ValueError("Wallet amount must be a non-negative amount with at most two decimals.")
+    if not raw_amount.is_finite() or raw_amount < 0:
+        raise ValueError("Wallet amount must be a finite, non-negative amount.")
+    try:
+        if raw_amount.quantize(CENT) != raw_amount:
+            raise ValueError("Wallet amount must have at most two decimal places.")
+    except Exception as exc:
+        raise ValueError("Provide a valid wallet amount.") from exc
     amount = raw_amount.quantize(CENT)
     if amount == 0:
         return None
