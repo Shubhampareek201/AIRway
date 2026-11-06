@@ -242,27 +242,18 @@ class CityFilteredCategoryTreeTest(TestCase):
             is_active=True,
         )
 
-    def test_category_tree_only_includes_categories_with_eligible_workers(self):
+    def test_category_tree_uses_city_catalogue_not_live_worker_presence(self):
         response = self.client.get(
             f"/api/v1/catalog/categories/?address_id={self.address.id}"
         )
 
         self.assertEqual(response.status_code, 200, response.data)
-
         categories = response.data["results"]
+        self.assertEqual([item["id"] for item in categories], [self.root.id])
+        child_ids = [child["id"] for child in categories[0]["children"]]
+        self.assertEqual(set(child_ids), {self.visible_child.id, self.hidden_child.id})
 
-        self.assertEqual(len(categories), 1)
-        self.assertEqual(categories[0]["id"], self.root.id)
-
-        child_ids = [
-            child["id"] for child in categories[0]["children"]
-        ]
-
-        self.assertEqual(child_ids, [self.visible_child.id])
-
-
-
-    def test_city_service_is_hidden_when_no_eligible_worker_is_online(self):
+    def test_city_catalogue_remains_visible_when_no_worker_is_online(self):
         self.worker.is_online = False
         self.worker.save(update_fields=["is_online", "updated_at"])
 
@@ -271,9 +262,11 @@ class CityFilteredCategoryTreeTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["results"], [])
+        self.assertEqual(len(response.data["results"]), 1)
+        child_ids = [child["id"] for child in response.data["results"][0]["children"]]
+        self.assertEqual(set(child_ids), {self.visible_child.id, self.hidden_child.id})
 
-    def test_service_list_and_detail_require_eligible_worker_in_selected_zone(self):
+    def test_city_services_are_browsable_but_live_availability_is_separate(self):
         list_response = self.client.get(
             f"/api/v1/catalog/services/?address_id={self.address.id}"
         )
@@ -283,10 +276,13 @@ class CityFilteredCategoryTreeTest(TestCase):
             if isinstance(list_response.data, list)
             else list_response.data.get("results", [])
         )
-        listed_ids = [item["id"] for item in listed_services]
-        self.assertEqual(listed_ids, [self.visible_service.id])
+        by_id = {item["id"]: item for item in listed_services}
+        self.assertEqual(set(by_id), {self.visible_service.id, self.hidden_service.id})
+        self.assertTrue(by_id[self.visible_service.id]["is_available"])
+        self.assertFalse(by_id[self.hidden_service.id]["is_available"])
 
         detail_response = self.client.get(
             f"/api/v1/catalog/services/{self.hidden_service.id}/?address_id={self.address.id}"
         )
-        self.assertEqual(detail_response.status_code, 404)
+        self.assertEqual(detail_response.status_code, 200, detail_response.data)
+        self.assertFalse(detail_response.data["is_available"])
