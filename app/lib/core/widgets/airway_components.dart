@@ -126,16 +126,14 @@ class AirwayServiceCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Expanded(
-                child: Text(
-                  subtitle ?? categoryName ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    height: 1.25,
-                    color: AirwayColors.textSecondary,
-                  ),
+              Text(
+                subtitle ?? categoryName ?? '',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.25,
+                  color: AirwayColors.textSecondary,
                 ),
               ),
               Row(
