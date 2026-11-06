@@ -11,9 +11,10 @@ CENT = Decimal("0.01")
 
 def reserve_wallet_amount(payment, amount):
     """Hold wallet funds for a parent-order payment exactly once."""
-    amount = Decimal(str(amount)).quantize(CENT)
-    if amount < 0 or amount != Decimal(str(amount)):
+    raw_amount = Decimal(str(amount))
+    if raw_amount < 0 or raw_amount.quantize(CENT) != raw_amount:
         raise ValueError("Wallet amount must be a non-negative amount with at most two decimals.")
+    amount = raw_amount.quantize(CENT)
     if amount == 0:
         return None
 
@@ -65,7 +66,9 @@ def capture_wallet_reservation(payment, razorpay_payment_id=""):
             raise ValueError("Wallet reservation was already released and cannot be captured.")
 
         wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
-        wallet.pending_balance = max(Decimal("0.00"), wallet.pending_balance - reservation.amount)
+        if wallet.pending_balance < reservation.amount:
+            raise ValueError("Wallet pending balance is inconsistent with its reservation.")
+        wallet.pending_balance -= reservation.amount
         wallet.save(update_fields=["pending_balance", "updated_at"])
 
         WalletTransaction.objects.filter(
@@ -94,7 +97,9 @@ def release_wallet_reservation(payment, reason="Payment attempt expired"):
 
         wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
         wallet.balance += reservation.amount
-        wallet.pending_balance = max(Decimal("0.00"), wallet.pending_balance - reservation.amount)
+        if wallet.pending_balance < reservation.amount:
+            raise ValueError("Wallet pending balance is inconsistent with its reservation.")
+        wallet.pending_balance -= reservation.amount
         wallet.save(update_fields=["balance", "pending_balance", "updated_at"])
 
         WalletTransaction.objects.filter(
