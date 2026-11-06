@@ -118,7 +118,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      if (_profile?.isOnline == true) await WorkerApi.updateOnlineStatus(false);
       await WorkerAppApi.switchToCustomerMode();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const CustomerHomeScreen()), (_) => false);
