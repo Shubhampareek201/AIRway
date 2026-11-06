@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:airway/core/theme/airway_theme.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 
 class _Ui {
@@ -7,8 +6,6 @@ class _Ui {
   static const ink = Color(0xFF201A33);
   static const sub = Color(0xFF78718B);
   static const bg = Color(0xFFF8F7FD);
-  static const pale = Color(0xFFF1EDFF);
-  static const line = Color(0xFFEAE5F5);
 }
 
 class ServiceDetailScreen extends StatefulWidget {
