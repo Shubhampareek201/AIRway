@@ -2368,6 +2368,32 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(actual_ratings, expected_order)
 
 
+    def test_dispatcher_never_offers_booking_to_its_own_customer_worker(self):
+        """A customer who is also an approved worker must not receive their own job."""
+        from apps.bookings.dispatcher import DispatcherService
+
+        self_worker = self._create_eligible_worker(rating=5.0, suffix="77")
+        self.customer = self_worker.user
+        self.address.user = self.customer
+        self.address.save(update_fields=["user"])
+        other_worker = self._create_eligible_worker(rating=4.5, suffix="78")
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+
+        offers = DispatcherService.dispatch_offers(booking)
+
+        self.assertEqual([offer.worker_id for offer in offers], [other_worker.id])
+        self.assertFalse(WorkerOffer.objects.filter(
+            booking=booking, worker=self_worker
+        ).exists())
+
+
 class PaymentWebhookTest(TestCase):
     """Tests for Razorpay payment webhook."""
 
