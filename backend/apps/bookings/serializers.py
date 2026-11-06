@@ -445,12 +445,13 @@ from .models import CustomerCart, CartItem
 class CartItemSerializer(serializers.ModelSerializer):
     service_title = serializers.CharField(source="service.title", read_only=True)
     variant_title = serializers.CharField(source="variant.title", read_only=True)
+    booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
     line_total = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
         fields = [
-            "id", "service", "service_title", "variant", "variant_title",
+            "id", "service", "service_title", "variant", "variant_title", "booking_mode",
             "quantity", "addon_selections", "form_answers", "notes",
             "pricing_snapshot", "line_total",
         ]
