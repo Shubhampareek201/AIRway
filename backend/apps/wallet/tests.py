@@ -573,6 +573,45 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.assertEqual(self.wallet.balance, Decimal("0.00"))
         self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
 
+
+    @patch("apps.payments.views.client.order.create")
+    def test_timeout_releases_reservation_and_retry_reserves_again(self, create_order):
+        create_order.return_value = {"id": "order_wallet_timeout"}
+        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        payload = {"order_id": self.order.id, "wallet_amount": "300.00"}
+        started = self.client.post("/api/v1/payments/create-order/", payload, format="json")
+        self.assertEqual(started.status_code, 200, started.data)
+
+        payment = Payment.objects.get(order=self.order)
+        old_time = timezone.now() - timezone.timedelta(minutes=20)
+        Payment.objects.filter(pk=payment.pk).update(updated_at=old_time)
+
+        from apps.bookings.tasks import timeout_pending_payments
+        timeout_pending_payments()
+
+        payment.refresh_from_db()
+        self.wallet.refresh_from_db()
+        reservation = WalletReservation.objects.get(payment=payment)
+        self.assertEqual(payment.status, Payment.Status.FAILED)
+        self.assertEqual(reservation.status, WalletReservation.Status.RELEASED)
+        self.assertEqual(self.wallet.balance, Decimal("400.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
+
+        retried = self.client.post("/api/v1/payments/create-order/", payload, format="json")
+        self.assertEqual(retried.status_code, 200, retried.data)
+        payment.refresh_from_db()
+        self.wallet.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PENDING)
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        self.assertEqual(
+            WalletReservation.objects.filter(
+                payment=payment,
+                status=WalletReservation.Status.RESERVED,
+            ).count(),
+            1,
+        )
+
     @patch("apps.payments.views.client.order.create")
     def test_duplicate_checkout_does_not_reserve_wallet_twice(self, create_order):
         create_order.return_value = {"id": "order_wallet_duplicate"}
