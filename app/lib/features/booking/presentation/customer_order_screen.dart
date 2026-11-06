@@ -22,7 +22,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   static const line = Color(0xFFE8E0ED);
 
   final Razorpay razorpay = Razorpay();
+  final TextEditingController walletAmountController = TextEditingController(text: '0.00');
   Map<String, dynamic>? order;
+  double walletBalance = 0;
+  bool walletLoading = true;
   bool loading = true;
   bool paying = false;
   String? error;
@@ -35,6 +38,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, onPaymentError);
     razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, onExternalWallet);
     loadOrder();
+    loadWalletBalance();
     refreshTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       if (mounted && !paying) loadOrder(showLoader: false);
     });
@@ -43,6 +47,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   @override
   void dispose() {
     refreshTimer?.cancel();
+    walletAmountController.dispose();
     razorpay.clear();
     super.dispose();
   }
@@ -59,20 +64,74 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   double amount(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 
+  double get selectedWalletAmount =>
+      double.tryParse(walletAmountController.text.trim()) ?? 0;
+
+  Future<void> loadWalletBalance() async {
+    try {
+      final result = await BookingApi.request('/api/v1/wallet/balance/');
+      if (!mounted) return;
+      setState(() {
+        walletBalance = amount(result['balance']);
+        walletLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => walletLoading = false);
+    }
+  }
+
   Future<void> startPayment() async {
     if (order?['ready_for_payment'] != true || paying) return;
+    final total = amount(order?['total_amount']);
+    final walletAmount = selectedWalletAmount;
+    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > total) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a wallet amount within your available balance and order total.')),
+      );
+      return;
+    }
+    if ((walletAmount * 100).roundToDouble() != walletAmount * 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wallet amount can have at most two decimal places.')),
+      );
+      return;
+    }
+
     setState(() => paying = true);
     try {
-      final payment = await PaymentApi.createOrderForParent(widget.orderId);
+      final payment = await PaymentApi.createOrderForParent(
+        widget.orderId,
+        walletAmount: walletAmount.toStringAsFixed(2),
+      );
+      if (payment['fully_paid_by_wallet'] == true) {
+        if (!mounted) return;
+        setState(() => paying = false);
+        await loadOrder();
+        if (!mounted) return;
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.verified_rounded, color: violet, size: 48),
+            title: const Text('Payment successful'),
+            content: const Text('Your order was paid using your AIRway wallet.'),
+            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+          ),
+        );
+        return;
+      }
+
       final key = payment['key_id']?.toString() ?? '';
-      if (key.isEmpty) throw Exception('Razorpay key is not configured on the server.');
+      final gatewayOrderId = payment['order_id']?.toString() ?? '';
+      if (key.isEmpty || gatewayOrderId.isEmpty) {
+        throw Exception('Payment gateway order could not be initialized.');
+      }
       razorpay.open({
         'key': key,
         'amount': payment['amount'],
         'currency': payment['currency'] ?? 'INR',
         'name': 'AIRway',
         'description': 'Service order #' + widget.orderId.toString(),
-        'order_id': payment['order_id'],
+        'order_id': gatewayOrderId,
         'theme': {'color': '#7861A8'},
       });
     } catch (e) {
