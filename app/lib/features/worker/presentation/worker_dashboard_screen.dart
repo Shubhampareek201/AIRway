@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:airway/core/theme/airway_colors.dart';
+import 'package:airway/core/storage/secure_session_storage.dart';
+import 'package:airway/features/auth/presentation/welcome_screen.dart';
+import 'package:airway/features/customer/presentation/customer_home_screen.dart';
+import 'package:airway/features/worker/data/worker_app_api.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
@@ -100,6 +104,47 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     }
   }
 
+  Future<void> _switchToCustomerMode() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Switch to Customer?'),
+        content: const Text('You will return to Customer Home using this same account. Your worker profile and job history will remain saved.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Switch')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      if (_profile?.isOnline == true) await WorkerApi.updateOnlineStatus(false);
+      await WorkerAppApi.switchToCustomerMode();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const CustomerHomeScreen()), (_) => false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not switch to Customer mode: $e')));
+    }
+  }
+
+  Future<void> _endSession({required bool switchAccount}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(switchAccount ? 'Switch account?' : 'Log out?'),
+        content: Text(switchAccount ? 'You will be signed out so another AIRway account can sign in on this device.' : 'You will be securely signed out of AIRway.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(switchAccount ? 'Continue' : 'Log out')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await SecureSessionStorage.clearSession();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
+  }
   void _openOffers() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const JobOffersScreen()),
@@ -320,10 +365,17 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       _detailTile(Icons.payments_outlined, 'UPI ID', (profile.upiId?.isNotEmpty == true) ? profile.upiId! : 'Not added'),
       _detailTile(Icons.verified_user_outlined, 'Application', 'Approved'),
       const SizedBox(height: 16),
-      OutlinedButton.icon(
-        onPressed: _refresh,
-        icon: const Icon(Icons.sync),
-        label: const Text('Refresh profile'),
+      OutlinedButton.icon(onPressed: _refresh, icon: const Icon(Icons.sync), label: const Text('Refresh profile')),
+      const SizedBox(height: 20),
+      _sectionHeading('Account'),
+      Card(
+        child: Column(children: [
+          ListTile(leading: const Icon(Icons.storefront_outlined), title: const Text('Switch to Customer'), subtitle: const Text('Return to Customer Home with this account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _switchToCustomerMode),
+          const Divider(height: 1),
+          ListTile(leading: const Icon(Icons.switch_account_outlined), title: const Text('Switch Account'), subtitle: const Text('Sign out and use another account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _endSession(switchAccount: true)),
+          const Divider(height: 1),
+          ListTile(leading: Icon(Icons.logout_rounded, color: AirwayColors.error), title: Text('Log out', style: TextStyle(color: AirwayColors.error)), subtitle: const Text('Securely sign out of AIRway'), onTap: () => _endSession(switchAccount: false)),
+        ]),
       ),
     ]);
   }
