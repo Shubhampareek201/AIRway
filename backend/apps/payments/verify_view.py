@@ -126,6 +126,18 @@ def _process_verified_payment(
                 payment.save(
                     update_fields=["status", "failed_at", "raw_response", "updated_at"]
                 )
+                Notification.objects.create(
+                    user=payment.customer,
+                    type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                    title="Payment Refunded",
+                    body="Your late payment was automatically refunded because the reserved wallet amount was no longer available. You can retry checkout.",
+                    channel=Notification.Channel.IN_APP,
+                    data={
+                        "order_id": payment.order_id,
+                        "payment_id": payment.id,
+                        "refund_id": refund.get("id") if isinstance(refund, dict) else None,
+                    },
+                )
                 logger.warning(
                     "Late Razorpay payment %s was refunded because wallet funds were unavailable",
                     payment.id,
