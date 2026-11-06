@@ -10,11 +10,13 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 class ServiceListScreen extends StatefulWidget {
   final int categoryId;
   final String? categoryTitle;
+  final int? addressId;
 
   const ServiceListScreen({
     super.key,
     required this.categoryId,
     this.categoryTitle,
+    this.addressId,
   });
 
   @override
@@ -47,7 +49,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     });
 
     try {
-      final services = await CatalogApi.listServices(category: widget.categoryId);
+      final services = await CatalogApi.listServices(
+        category: widget.categoryId,
+        addressId: widget.addressId,
+      );
       if (!mounted) return;
       setState(() {
         _services = services;
@@ -226,7 +231,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => ServiceDetailScreen(serviceId: service.id),
+        builder: (_) => ServiceDetailScreen(
+          serviceId: service.id,
+          addressId: widget.addressId,
+        ),
       ),
     );
   }
