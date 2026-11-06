@@ -3,8 +3,17 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from PIL import Image
+
+def _tomorrow_at_noon():
+    """Return a stable daytime booking slot for worker-schedule tests."""
+    tomorrow = timezone.localtime().date() + timedelta(days=1)
+    return timezone.make_aware(
+        datetime.combine(tomorrow, time(12, 0)),
+        timezone.get_current_timezone(),
+    )
+
 
 from apps.accounts.models import User, Address
 from apps.catalog.models import Category, Service, ServiceVariant
@@ -205,7 +214,7 @@ class JobOfferAPITest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode=Booking.BookingMode.SCHEDULED,
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
         )
         booking_local = timezone.localtime(self.booking.scheduled_at)
@@ -500,7 +509,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
@@ -521,7 +530,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.IN_PROGRESS,
         )
         assignment = BookingAssignment.objects.create(
@@ -543,7 +552,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.CONFIRMED,
         )
         BookingAssignment.objects.create(
@@ -567,7 +576,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.CONFIRMED,
         )
         assignment = BookingAssignment.objects.create(
@@ -594,7 +603,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
         )
 
@@ -610,7 +619,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.CONFIRMED,
         )
 
@@ -626,7 +635,7 @@ class WorkerJobLifecycleTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
@@ -672,7 +681,7 @@ class JobOfferConcurrencyTest(TestCase):
             address=self.customer_address,
             service=self.service,
             booking_mode=Booking.BookingMode.SCHEDULED,
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
         )
 
@@ -1303,7 +1312,7 @@ class WorkerAcceptancePaymentTest(TestCase):
         )
         WorkerService.objects.create(worker=self.worker_profile, service=self.service)
         WorkerZone.objects.create(worker=self.worker_profile, zone=self.zone)
-        booking_weekday = timezone.localtime(timezone.now() + timedelta(days=1)).weekday()
+        booking_weekday = timezone.localtime(_tomorrow_at_noon()).weekday()
         WorkerSchedule.objects.create(
             worker=self.worker_profile,
             weekday=booking_weekday,
@@ -1339,7 +1348,7 @@ class WorkerAcceptancePaymentTest(TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.CONFIRMED,
         )
 
@@ -1607,7 +1616,7 @@ class WorkerAcceptancePaymentTest(TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
 
@@ -1697,7 +1706,7 @@ class PaymentIdempotencyTests(TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
 
@@ -1739,7 +1748,7 @@ class PaymentIdempotencyTests(TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
 
@@ -1777,7 +1786,7 @@ class PaymentIdempotencyTests(TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
 
@@ -1822,7 +1831,7 @@ class PaymentIdempotencyTests(TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
         )
 
