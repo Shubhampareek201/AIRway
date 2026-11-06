@@ -216,8 +216,8 @@ class CityFilteredCategoryTreeTest(TestCase):
             service=self.visible_service,
             is_active=True,
         )
-        # A city mapping alone is not enough: at least one approved, online,
-        # skilled worker with an active schedule must cover the selected zone.
+        # CityService controls catalogue publication independently of the
+        # current worker's online state and schedule.
         CityService.objects.create(
             city=self.city,
             service=self.hidden_service,
