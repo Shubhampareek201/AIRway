@@ -2811,6 +2811,44 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             pricing_snapshot={"line_total": "2000.00"},
         )
 
+    def test_checkout_dispatches_offer_to_eligible_worker(self):
+        worker_user = self._create_user("+919876543299")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        scheduled_at = timezone.now() + timedelta(days=2)
+        local_scheduled_at = timezone.localtime(scheduled_at)
+        WorkerSchedule.objects.create(
+            worker=worker,
+            weekday=local_scheduled_at.weekday(),
+            is_active=True,
+            start_time=time(0, 0),
+            end_time=time(23, 59),
+        )
+
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [{
+                    "cart_item_id": self.cart_item.id,
+                    "scheduled_at": scheduled_at.isoformat(),
+                }]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        booking_id = response.data["items"][0]["booking_id"]
+        self.assertEqual(
+            WorkerOffer.objects.filter(booking_id=booking_id, worker=worker).count(),
+            1,
+        )
+        self.assertEqual(response.data["dispatch"][0]["offers_sent"], 1)
+
     def test_checkout_creates_one_parent_order_and_booking_line(self):
         scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
         response = self.client.post(
