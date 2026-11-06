@@ -2,6 +2,7 @@
 
 from django.db import migrations, models
 import django.db.models.deletion
+import django.core.validators
 
 
 class Migration(migrations.Migration):
@@ -20,7 +21,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('rating_type', models.CharField(choices=[('customer', 'Customer Rating'), ('worker', 'Worker Rating')], max_length=20)),
-                ('rating', models.PositiveSmallIntegerField()),
+                ('rating', models.PositiveSmallIntegerField(validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(5)])),
                 ('comment', models.TextField(blank=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('booking', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='ratings', to='bookings.booking')),
