@@ -40,7 +40,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     loadOrder();
     loadWalletBalance();
     refreshTimer = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (mounted && !paying) loadOrder(showLoader: false);
+      if (mounted && !paying) {
+        loadOrder(showLoader: false);
+        loadWalletBalance();
+      }
     });
   }
 
