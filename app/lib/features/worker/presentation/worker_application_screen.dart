@@ -429,60 +429,40 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   Widget _buildStepIndicator() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: WorkerApplicationStep.values.asMap().entries.map((entry) {
-        final index = entry.key;
-        final step = entry.value;
-        final isCompleted = index < _currentStep.index ||
-            (_currentStep == WorkerApplicationStep.review);
-
-        return _buildStepIndicatorItem(
-          label: _stepLabels[step] ?? '',
-          isActive: _currentStep == step,
-          isCompleted: isCompleted,
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildStepIndicatorItem({
-    required String label,
-    required bool isActive,
-    required bool isCompleted,
-  }) {
-    final color = isCompleted
-        ? Colors.green
-        : isActive
-            ? AirwayColors.primary
-            : AirwayColors.textSecondary;
-
-    return Expanded(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: color,
-            child: Icon(
-              isCompleted ? Icons.check : Icons.circle,
-              color: Colors.white,
-              size: isCompleted ? 12 : 8,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                color: color,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+        children: List.generate(WorkerApplicationStep.values.length, (index) {
+          final isCompleted = index < _currentStep.index;
+          final isActive = index == _currentStep.index;
+          final color = isCompleted
+              ? Colors.green
+              : isActive
+                  ? AirwayColors.primary
+                  : AirwayColors.textSecondary.withAlpha(110);
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                right: index == WorkerApplicationStep.values.length - 1 ? 0 : 7,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              child: Container(
+                height: 34,
+                decoration: BoxDecoration(
+                  color: color.withAlpha(isActive || isCompleted ? 24 : 12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withAlpha(90)),
+                ),
+                child: Icon(
+                  isCompleted
+                      ? Icons.check_rounded
+                      : Icons.arrow_forward_rounded,
+                  color: color,
+                  size: 19,
+                ),
+              ),
             ),
-          ),
-        ],
+          );
+        }),
       ),
     );
   }
