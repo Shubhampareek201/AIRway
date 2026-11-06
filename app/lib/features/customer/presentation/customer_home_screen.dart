@@ -152,6 +152,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       setState(() {
         _catalogLoading = true;
         _catalogError = null;
+        // Never keep the previous city's catalog visible while a new one loads.
+        _catalogCategories = [];
+        _popularCatalogServices = [];
       });
     }
     try {
