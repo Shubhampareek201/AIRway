@@ -157,6 +157,37 @@ def timeout_pending_payments():
         ).values_list("id", flat=True)
     )
 
+    # Parent-order payments use one payment record for multiple assigned bookings.
+    # Expire the wallet hold after the retry window, but keep assignments intact so
+    # the customer can start a fresh payment attempt without losing selected workers.
+    parent_payment_ids = list(
+        Payment.objects.filter(
+            status=Payment.Status.PENDING,
+            updated_at__lt=timeout_ago,
+            order__isnull=False,
+        ).values_list("id", flat=True)
+    )
+    for payment_id in parent_payment_ids:
+        with transaction.atomic():
+            payment = Payment.objects.select_for_update().filter(
+                pk=payment_id,
+                status=Payment.Status.PENDING,
+                updated_at__lt=timeout_ago,
+                order__isnull=False,
+            ).first()
+            if payment is None:
+                continue
+            from apps.wallet.services import release_wallet_reservation
+            release_wallet_reservation(
+                payment,
+                reason="AIRway order payment timed out; wallet funds released.",
+            )
+            payment.status = Payment.Status.FAILED
+            payment.failed_at = timezone.now()
+            payment.save(update_fields=["status", "failed_at", "updated_at"])
+            count += 1
+            logger.info("Timed out parent-order payment %s; wallet hold released", payment.id)
+
     count = 0
     for payment_id in payment_ids:
         with transaction.atomic():
