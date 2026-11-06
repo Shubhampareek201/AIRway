@@ -106,9 +106,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     ).then((_) => _refresh());
   }
 
-  void _openAssignedJobs() {
+  void _openAssignedJobs({int? assignmentId}) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AssignedJobScreen()),
+      MaterialPageRoute(
+        builder: (_) => AssignedJobScreen(assignmentId: assignmentId),
+      ),
     ).then((_) => _refresh());
   }
 
@@ -398,7 +400,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
         title: Text(job['service_title']?.toString() ?? 'Assigned service'),
         subtitle: Text('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}'),
         trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: _openAssignedJobs,
+        onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
       ),
     );
   }
@@ -410,7 +412,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
         title: Text(job['service_title']?.toString() ?? 'Service job'),
         subtitle: Text('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}'),
         trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: _openAssignedJobs,
+        onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
       ),
     );
   }
