@@ -98,16 +98,42 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         final id = item['id'] as int;
         final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
         final time = times[id] ?? const TimeOfDay(hour: 10, minute: 0);
+        final scheduledAt = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          time.hour,
+          time.minute,
+        );
+        if (!scheduledAt.isAfter(DateTime.now())) {
+          throw Exception(
+            'Choose a future service time for '
+            '${item['service_title']?.toString() ?? 'this service'}.',
+          );
+        }
         final row = <String, dynamic>{
           'cart_item_id': id,
-          'scheduled_at': DateTime(date.year, date.month, date.day, time.hour, time.minute).toIso8601String(),
+          // Send an explicit UTC timestamp so the backend does not interpret
+          // the device's local wall-clock time as server time.
+          'scheduled_at': scheduledAt.toUtc().toIso8601String(),
         };
         if (item['booking_mode'] == 'pickup_drop') {
           final drop = dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0);
-          if (drop.hour * 60 + drop.minute <= time.hour * 60 + time.minute) {
-            throw Exception('Drop time must be later than pickup time for ' + (item['service_title']?.toString() ?? 'this service') + '.');
+          final dropScheduledAt = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            drop.hour,
+            drop.minute,
+          );
+          if (!dropScheduledAt.isAfter(scheduledAt)) {
+            throw Exception(
+              'Drop time must be later than pickup time for '
+              '${item['service_title']?.toString() ?? 'this service'}.',
+            );
           }
-          row['drop_scheduled_at'] = DateTime(date.year, date.month, date.day, drop.hour, drop.minute).toIso8601String();
+          row['drop_scheduled_at'] =
+              dropScheduledAt.toUtc().toIso8601String();
         }
         return row;
       }).toList();
