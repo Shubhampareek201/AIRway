@@ -578,6 +578,87 @@ class BookingAvailabilityTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+    def test_earlier_non_overlapping_booking_does_not_block_slot(self):
+        """A booking that ended before the requested slot must not block it."""
+        from apps.bookings.services import check_slot_availability
+
+        local_tz = pytz.timezone("Asia/Kolkata")
+        tomorrow = (timezone.now().astimezone(local_tz) + timedelta(days=1)).date()
+        earlier = local_tz.localize(datetime.combine(tomorrow, time(9, 0)))
+        requested = local_tz.localize(datetime.combine(tomorrow, time(14, 0)))
+
+        Booking.objects.create(
+            customer=self.user,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            scheduled_at=earlier,
+            status=Booking.Status.PENDING,
+        )
+
+        self.assertTrue(
+            check_slot_availability(
+                service=self.service,
+                scheduled_at=requested,
+                duration_minutes=60,
+                booking_mode=Booking.BookingMode.SCHEDULED,
+            )
+        )
+
+    def test_buffer_time_is_included_in_overlap_check(self):
+        """A new slot inside the previous job's buffer must be rejected."""
+        from apps.bookings.services import check_slot_availability, SlotConflictError
+
+        local_tz = pytz.timezone("Asia/Kolkata")
+        tomorrow = (timezone.now().astimezone(local_tz) + timedelta(days=1)).date()
+        existing_start = local_tz.localize(datetime.combine(tomorrow, time(13, 0)))
+        requested = local_tz.localize(datetime.combine(tomorrow, time(14, 15)))
+
+        Booking.objects.create(
+            customer=self.user,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            scheduled_at=existing_start,
+            status=Booking.Status.PENDING,
+        )
+
+        with self.assertRaises(SlotConflictError):
+            check_slot_availability(
+                service=self.service,
+                scheduled_at=requested,
+                duration_minutes=60,
+                booking_mode=Booking.BookingMode.SCHEDULED,
+            )
+
+    def test_back_to_back_slot_after_buffer_is_allowed(self):
+        """A slot beginning exactly after duration plus buffer is available."""
+        from apps.bookings.services import check_slot_availability
+
+        local_tz = pytz.timezone("Asia/Kolkata")
+        tomorrow = (timezone.now().astimezone(local_tz) + timedelta(days=1)).date()
+        existing_start = local_tz.localize(datetime.combine(tomorrow, time(12, 0)))
+        requested = local_tz.localize(datetime.combine(tomorrow, time(13, 30)))
+
+        Booking.objects.create(
+            customer=self.user,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            scheduled_at=existing_start,
+            status=Booking.Status.PENDING,
+        )
+
+        self.assertTrue(
+            check_slot_availability(
+                service=self.service,
+                scheduled_at=requested,
+                duration_minutes=60,
+                booking_mode=Booking.BookingMode.SCHEDULED,
+            )
+        )
+
+
 class BookingDoubleBookingPreventionTest(BookingAPITestMixin, TestCase):
     """Test that double-booking is prevented at the database level."""
 
