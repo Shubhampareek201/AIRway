@@ -808,10 +808,22 @@ class WorkerStatusUpdateView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response(
+                {"detail": "Only approved workers can change availability."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         online = request.data.get("is_online")
-        if online is not None:
-            profile.is_online = bool(online)
-            profile.save(update_fields=["is_online"])
+        if not isinstance(online, bool):
+            return Response(
+                {"is_online": ["A boolean value is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile.is_online = online
+        profile.save(update_fields=["is_online", "updated_at"])
         return Response({"is_online": profile.is_online})
 
 
