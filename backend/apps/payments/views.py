@@ -163,12 +163,27 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
                 method=Payment.Method.WALLET if requested == locked_order.total_amount else Payment.Method.RAZORPAY,
                 status=Payment.Status.PENDING,
             )
-        elif payment.status == Payment.Status.FAILED:
-            # Re-open a timed-out payment only when its old reservation was released.
+        elif payment.status in [Payment.Status.FAILED, Payment.Status.REFUNDED]:
+            # A timed-out attempt can reuse its gateway order. A refunded late
+            # capture must use a fresh Razorpay order so old callbacks cannot
+            # settle a new attempt.
+            was_refunded = payment.status == Payment.Status.REFUNDED
             payment.status = Payment.Status.PENDING
             payment.failed_at = None
             payment.amount = locked_order.total_amount - requested
-            payment.save(update_fields=["status", "failed_at", "amount", "updated_at"])
+            update_fields = ["status", "failed_at", "amount", "updated_at"]
+            if was_refunded:
+                payment.razorpay_order_id = ""
+                payment.razorpay_payment_id = ""
+                payment.razorpay_signature = ""
+                payment.raw_response = {}
+                update_fields.extend([
+                    "razorpay_order_id",
+                    "razorpay_payment_id",
+                    "razorpay_signature",
+                    "raw_response",
+                ])
+            payment.save(update_fields=update_fields)
 
         if requested > 0:
             from apps.wallet.services import reserve_wallet_amount
