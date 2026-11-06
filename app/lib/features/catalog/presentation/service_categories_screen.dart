@@ -204,18 +204,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                 color: AirwayColors.text,
               ),
             ),
-            if (category.titleHi?.isNotEmpty == true) ...[
-              const SizedBox(height: 4),
-              Text(
-                category.titleHi!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AirwayColors.textSecondary,
-                ),
-              ),
-            ],
             if (category.children.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
