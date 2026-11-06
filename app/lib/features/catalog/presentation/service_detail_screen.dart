@@ -65,6 +65,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         builder: (_) => BookingScheduledScreen(
           serviceId: _service!.id,
           serviceTitle: _service!.title,
+          addressId: widget.addressId,
         ),
       ),
     );
