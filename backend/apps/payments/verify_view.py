@@ -252,14 +252,18 @@ class VerifyPaymentView(APIView):
         ).hexdigest()
 
         if not hmac.compare_digest(expected_signature, razorpay_signature):
-            payment.status = Payment.Status.FAILED
-            payment.failed_at = timezone.now()
+            # A bad checkout callback is not proof that the Razorpay order
+            # itself failed. Keep parent-order reservations available for retry.
+            if not payment.order_id:
+                payment.status = Payment.Status.FAILED
+                payment.failed_at = timezone.now()
+                payment.save(update_fields=["status", "failed_at", "updated_at"])
             payment.raw_response = {
                 "error": "Signature verification failed",
                 "razorpay_order_id": razorpay_order_id,
                 "razorpay_payment_id": razorpay_payment_id,
             }
-            payment.save()
+            payment.save(update_fields=["raw_response", "updated_at"])
             logger.warning(
                 f"Payment verification failed for booking {payment.booking_id}: "
                 f"order_id={razorpay_order_id}"
@@ -468,11 +472,18 @@ class PaymentWebhookView(APIView):
                 return Response({"status": "ok"})
 
             if payment.status != Payment.Status.PAID:
-                payment.status = Payment.Status.FAILED
-                payment.failed_at = timezone.now()
-                payment.raw_response = payload
-                payment.save()
-                logger.info(f"Payment {payment.id} marked as FAILED via webhook")
+                if payment.order_id:
+                    # A failed attempt can be retried against the same Razorpay order.
+                    # Keep the parent payment and wallet reservation pending.
+                    payment.raw_response = payload
+                    payment.save(update_fields=["raw_response", "updated_at"])
+                    logger.info("Order payment %s attempt failed; reservation retained for retry", payment.id)
+                else:
+                    payment.status = Payment.Status.FAILED
+                    payment.failed_at = timezone.now()
+                    payment.raw_response = payload
+                    payment.save()
+                    logger.info(f"Payment {payment.id} marked as FAILED via webhook")
             else:
                 logger.info(f"Payment {payment.id} already PAID, not marking as FAILED")
 
@@ -491,11 +502,16 @@ class PaymentWebhookView(APIView):
                 return Response({"status": "ok"})
 
             if payment.status != Payment.Status.PAID:
-                payment.status = Payment.Status.FAILED
-                payment.failed_at = timezone.now()
-                payment.raw_response = payload
-                payment.save()
-                logger.info(f"Payment {payment.id} marked as FAILED (canceled)")
+                if payment.order_id:
+                    payment.raw_response = payload
+                    payment.save(update_fields=["raw_response", "updated_at"])
+                    logger.info("Order payment %s attempt canceled; reservation retained for retry", payment.id)
+                else:
+                    payment.status = Payment.Status.FAILED
+                    payment.failed_at = timezone.now()
+                    payment.raw_response = payload
+                    payment.save()
+                    logger.info(f"Payment {payment.id} marked as FAILED (canceled)")
 
             return Response({"status": "ok"})
 
