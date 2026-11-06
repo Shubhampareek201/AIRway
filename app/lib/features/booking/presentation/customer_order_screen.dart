@@ -111,6 +111,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         widget.orderId,
         walletAmount: walletAmount.toStringAsFixed(2),
       );
+      await loadWalletBalance();
       if (payment['fully_paid_by_wallet'] == true || payment['already_paid'] == true) {
         if (!mounted) return;
         setState(() => paying = false);
@@ -193,6 +194,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   void onPaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
     setState(() => paying = false);
+    loadWalletBalance();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(response.message ?? 'Payment was not completed. You can try again.')),
     );
