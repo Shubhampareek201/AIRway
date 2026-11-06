@@ -34,7 +34,6 @@ class _StartupGateState extends State<StartupGate> {
   static const int routeCustomerHome = 2;
   static const int routeProfileComplete = 3;
   static const int routeWorkerDashboard = 4;
-  static const int routeWorkerPending = 5;
   static const int routeWorkerRejected = 6;
 
   @override
@@ -77,15 +76,15 @@ class _StartupGateState extends State<StartupGate> {
         if (status == 'approved') {
           return _StartupRoute(routeWorkerDashboard, workerProfile: wp);
         }
-        if (status == 'pending') {
-          return _StartupRoute(routeWorkerPending, workerProfile: wp);
-        }
         if (status == 'rejected') {
           return _StartupRoute(routeWorkerRejected, workerProfile: wp);
         }
       }
 
-      if (meResponse['profile_complete'] == false) {
+      final workerStatus = (meResponse['worker_profile'] is Map)
+          ? (meResponse['worker_profile'] as Map)['status']?.toString()
+          : null;
+      if (meResponse['profile_complete'] == false && workerStatus != 'pending') {
         return _StartupRoute(routeProfileComplete); // Profile completion needed
       }
     }
@@ -97,57 +96,6 @@ class _StartupGateState extends State<StartupGate> {
     if (list is! List) throw const FormatException('Invalid address list.');
     // Empty -> location setup; saved address -> customer home.
     return _StartupRoute(list.isEmpty ? routeLocation : routeCustomerHome);
-  }
-
-  Widget _buildWorkerPendingScreen(Map<String, dynamic> workerProfile) {
-    // Pending applications don't show rejection reason (that's for rejected ones)
-    return Scaffold(
-      appBar: AppBar(title: const Text('Worker Application Status')),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.pending_actions, size: 64, color: Colors.orange),
-                const SizedBox(height: 20),
-                const Text(
-                  'Your Worker Application',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Your application is pending admin verification.\n\nYou will receive a notification once your application is approved.\n\nIn the meantime, you can continue using AIRway as a customer.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const WorkerApplicationScreen()),
-                    );
-                  },
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Continue Application'),
-                ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
-                      (route) => false,
-                    );
-                  },
-                  child: const Text('Switch to Customer Mode'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildWorkerRejectedScreen(Map<String, dynamic> workerProfile) {
@@ -267,8 +215,6 @@ class _StartupGateState extends State<StartupGate> {
             return const ProfileCompletionScreen();
           case routeWorkerDashboard:
             return const WorkerDashboardScreen();
-          case routeWorkerPending:
-            return _buildWorkerPendingScreen(route.workerProfile!);
           case routeWorkerRejected:
             return _buildWorkerRejectedScreen(route.workerProfile!);
           default:
