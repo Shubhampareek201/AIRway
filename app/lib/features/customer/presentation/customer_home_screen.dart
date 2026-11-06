@@ -23,7 +23,7 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 
 // AIRway customer home. Address, catalogue, pricing and nearby partners are loaded from authenticated APIs.
 class _Ui {
-  static const violet = Color(0xFF987451);
+  static const violet = Color(0xFF315C46);
   static const ink = AirwayColors.text;
   static const sub = AirwayColors.textSecondary;
   static const bg = AirwayColors.background;
