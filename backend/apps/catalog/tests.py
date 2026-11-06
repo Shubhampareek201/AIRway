@@ -278,7 +278,12 @@ class CityFilteredCategoryTreeTest(TestCase):
             f"/api/v1/catalog/services/?address_id={self.address.id}"
         )
         self.assertEqual(list_response.status_code, 200, list_response.data)
-        listed_ids = [item["id"] for item in list_response.data]
+        listed_services = (
+            list_response.data
+            if isinstance(list_response.data, list)
+            else list_response.data.get("results", [])
+        )
+        listed_ids = [item["id"] for item in listed_services]
         self.assertEqual(listed_ids, [self.visible_service.id])
 
         detail_response = self.client.get(
