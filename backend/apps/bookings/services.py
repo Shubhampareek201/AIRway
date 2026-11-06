@@ -116,15 +116,36 @@ def check_service_available(
     if not service.is_active:
         raise ServiceUnavailableError(f"Service '{service.title}' is not active.")
 
-    # Address stores its service city through Address.zone.city.
-    if address and address.zone_id:
-        from apps.catalog.models import CityService
-        city = address.zone.city
-        if not city.is_active or not CityService.objects.filter(
-            city=city, service=service, is_active=True
-        ).exists():
+    if not service.category.is_active:
+        raise ServiceUnavailableError(
+            f"Service '{service.title}' is not available."
+        )
+
+    # Catalogue publication and live worker availability are separate:
+    # a city-mapped service may be browsed, but booking requires at least one
+    # approved, online, skilled worker with an active schedule in the zone.
+    if address:
+        if not address.zone_id or not address.zone.is_active:
             raise ServiceUnavailableError(
-                f"Service '{service.title}' is not available in {city.name}."
+                "This address is outside an active AIRway service zone."
+            )
+
+        city = address.zone.city
+        if not city.is_active:
+            raise ServiceUnavailableError(
+                f"Services are not active in {city.name}."
+            )
+
+        from apps.workers.eligibility import eligible_worker_profiles
+
+        has_available_worker = eligible_worker_profiles(
+            city=city,
+            zone=address.zone,
+        ).filter(worker_services__service=service).exists()
+
+        if not has_available_worker:
+            raise ServiceUnavailableError(
+                f"No verified worker is currently available for {service.title} in this area. Please try another time."
             )
 
     return True
