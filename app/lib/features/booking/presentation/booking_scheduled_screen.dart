@@ -6,11 +6,11 @@ import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 
 class _Ui {
-  static const violet = Color(0xFF6F4EF6);
-  static const ink = Color(0xFF201A33);
-  static const sub = Color(0xFF78718B);
-  static const bg = Color(0xFFF8F7FD);
-  static const line = Color(0xFFEAE5F5);
+  static const violet = Color(0xFF7861A8);
+  static const ink = Color(0xFF292331);
+  static const sub = Color(0xFF81788A);
+  static const bg = Color(0xFFF7F3EC);
+  static const line = Color(0xFFE8E0ED);
 }
 
 class BookingScheduledScreen extends StatefulWidget {
@@ -373,7 +373,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                           ),
                         ),
                       ),
-                    const Spacer(),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         if (variant.mrp > variant.price)
