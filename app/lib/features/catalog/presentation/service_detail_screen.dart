@@ -59,22 +59,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   void _navigateToBooking() {
     if (_service == null) return;
 
-    final mode = _service!.bookingMode;
-    if (mode != 'scheduled' && mode != 'pickup_drop') {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'This service uses "${_service!.bookingModeDisplay}" booking mode. '
-            'Please contact us directly to arrange it.',
-          ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-
     Navigator.push<void>(
       context,
       MaterialPageRoute(
