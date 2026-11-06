@@ -19,7 +19,7 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_categories_screen.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
-import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
+import 'package:airway/features/catalog/presentation/service_detail_screen.dart' as catalog;
 
 // AIRway customer home. Addresses and nearby online partners use authenticated APIs.
 // Service cards and sample prices remain previews until the catalog API is connected.
@@ -204,7 +204,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => ServiceDetailScreen(
+        builder: (_) => catalog.ServiceDetailScreen(
           serviceId: service.id,
           addressId: addressId,
         ),
