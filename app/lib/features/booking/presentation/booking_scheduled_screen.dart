@@ -6,7 +6,7 @@ import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 
 class _Ui {
-  static const violet = Color(0xFF987451);
+  static const violet = Color(0xFF315C46);
   static const ink = Color(0xFF1E2923);
   static const sub = Color(0xFF748078);
   static const bg = Color(0xFFFFFFFF);
