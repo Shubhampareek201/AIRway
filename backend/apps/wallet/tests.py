@@ -8,6 +8,11 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.wallet.models import Wallet, WalletTransaction
+from apps.accounts.models import Address
+from apps.bookings.models import Booking
+from apps.catalog.models import Category, Service
+from apps.core.models import City, Zone
+from apps.payments.models import Payment
 
 User = get_user_model()
 
@@ -349,3 +354,90 @@ class WalletTopUpWebhookTest(TestCase):
         self.assertEqual(second.status_code, 200)
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance, Decimal("500.00"))
+
+
+class WalletRefundAdminTest(TestCase):
+    """Admin refunds must be tied to a paid cancelled booking and its customer."""
+
+    def setUp(self):
+        self.customer = User.objects.create_user(phone="9876543216", password="test123456")
+        self.admin = User.objects.create_user(
+            phone="9876543217", password="test123456", is_staff=True
+        )
+        self.admin_client = APIClient()
+        self.admin_client.force_authenticate(user=self.admin)
+        city = City.objects.create(name="Rawatbhata", state="Rajasthan")
+        zone = Zone.objects.create(name="Test Zone", city=city, is_active=True)
+        address = Address.objects.create(
+            user=self.customer,
+            label=Address.Label.HOME,
+            house_details="House 1",
+            landmark="Main road",
+            full_address="Test address, Rawatbhata",
+            zone=zone,
+        )
+        category = Category.objects.create(title="Cleaning", slug="refund-cleaning")
+        service = Service.objects.create(category=category, title="Home Cleaning")
+        self.booking = Booking.objects.create(
+            customer=self.customer,
+            address=address,
+            service=service,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            status=Booking.Status.CANCELLED,
+            pricing_snapshot={"total": "250.00"},
+        )
+        Payment.objects.create(
+            booking=self.booking,
+            customer=self.customer,
+            amount=Decimal("250.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+        )
+
+    def test_admin_refund_credits_booking_customer_not_admin(self):
+        response = self.admin_client.post(
+            "/api/v1/wallet/refund/",
+            {"booking_id": self.booking.id, "amount": "200.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        customer_wallet = Wallet.objects.get(user=self.customer)
+        admin_wallet = Wallet.objects.filter(user=self.admin).first()
+        self.assertEqual(customer_wallet.balance, Decimal("200.00"))
+        self.assertIsNone(admin_wallet)
+
+    def test_refund_cannot_exceed_remaining_booking_amount(self):
+        first = self.admin_client.post(
+            "/api/v1/wallet/refund/",
+            {"booking_id": self.booking.id, "amount": "200.00"},
+            format="json",
+        )
+        second = self.admin_client.post(
+            "/api/v1/wallet/refund/",
+            {"booking_id": self.booking.id, "amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 400)
+        self.assertEqual(Wallet.objects.get(user=self.customer).balance, Decimal("200.00"))
+
+    def test_unpaid_booking_cannot_be_refunded(self):
+        Payment.objects.filter(booking=self.booking).update(status=Payment.Status.FAILED)
+        response = self.admin_client.post(
+            "/api/v1/wallet/refund/",
+            {"booking_id": self.booking.id, "amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(WalletTransaction.objects.filter(type=WalletTransaction.Type.REFUND).exists())
+
+    def test_non_cancelled_booking_cannot_be_refunded(self):
+        self.booking.status = Booking.Status.COMPLETED
+        self.booking.save(update_fields=["status"])
+        response = self.admin_client.post(
+            "/api/v1/wallet/refund/",
+            {"booking_id": self.booking.id, "amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(WalletTransaction.objects.filter(type=WalletTransaction.Type.REFUND).exists())
