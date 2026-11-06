@@ -5,7 +5,7 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 
 class _Ui {
-  static const violet = Color(0xFF987451);
+  static const violet = Color(0xFF315C46);
   static const ink = Color(0xFF1E2923);
   static const sub = Color(0xFF748078);
   static const bg = Color(0xFFFFFFFF);
@@ -260,7 +260,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           alignment: Alignment.center,
           child: const Icon(
             Icons.home_repair_service_rounded,
-            color: Color(0xFF987451),
+            color: Color(0xFF315C46),
             size: 52,
           ),
         ),
