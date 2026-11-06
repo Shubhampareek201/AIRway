@@ -576,6 +576,59 @@ class ParentOrderWalletPaymentTest(TestCase):
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
     @patch("apps.payments.views.client.order.create")
+    def test_late_capture_re_reserves_released_wallet_funds_when_available(self, create_order):
+        import json
+        from django.test import Client
+
+        create_order.return_value = {"id": "order_wallet_late_capture"}
+        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        started = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            format="json",
+        )
+        self.assertEqual(started.status_code, 200, started.data)
+
+        payment = Payment.objects.get(order=self.order)
+        old_time = timezone.now() - timezone.timedelta(minutes=20)
+        Payment.objects.filter(pk=payment.pk).update(updated_at=old_time)
+        from apps.bookings.tasks import timeout_pending_payments
+        timeout_pending_payments()
+
+        payload = {
+            "event": "payment.captured",
+            "payload": {"payment": {"entity": {
+                "id": "pay_order_wallet_late",
+                "order_id": "order_wallet_late_capture",
+                "amount": 70000,
+                "currency": "INR",
+                "status": "captured",
+            }}},
+        }
+        raw_body = json.dumps(payload).encode("utf-8")
+        signature = hmac.new(
+            b"order-wallet-webhook-secret", raw_body, hashlib.sha256
+        ).hexdigest()
+        webhook_response = Client().post(
+            "/api/v1/payments/webhook/",
+            data=raw_body,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+
+        self.assertEqual(webhook_response.status_code, 200)
+        payment.refresh_from_db()
+        self.wallet.refresh_from_db()
+        latest_reservation = WalletReservation.objects.filter(
+            payment=payment
+        ).order_by("-created_at").first()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(latest_reservation.status, WalletReservation.Status.CAPTURED)
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
+    @patch("apps.payments.views.client.order.create")
     def test_failed_gateway_attempt_keeps_wallet_reservation_for_retry(self, create_order):
         import json
         from django.test import Client
