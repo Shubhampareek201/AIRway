@@ -153,7 +153,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             title: service.title,
             categoryName: service.categoryName,
             subtitle: service.description,
-            price: service.variants.isNotEmpty ? service.variants.first.price : 0,
+            price: service.variants.isNotEmpty ? service.variants.first.price : service.visitFee,
             mrp: service.variants.isNotEmpty && service.variants.first.mrp > service.variants.first.price
                 ? service.variants.first.mrp
                 : null,
