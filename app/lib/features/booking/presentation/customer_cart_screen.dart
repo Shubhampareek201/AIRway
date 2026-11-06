@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
-import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 
 class CustomerCartScreen extends StatefulWidget {
   const CustomerCartScreen({super.key});
@@ -131,7 +131,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const BookingListScreen()),
+          MaterialPageRoute(builder: (_) => CustomerOrderScreen(orderId: result['order_id'] as int)),
           (route) => route.isFirst,
         );
       }
