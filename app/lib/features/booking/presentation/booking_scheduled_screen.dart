@@ -495,18 +495,11 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                 );
                 break;
               case 'photo':
-                input = Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: _Ui.line),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Text(
-                    'Photo upload is not available in this app version.',
-                    style: TextStyle(color: _Ui.sub, fontSize: 13),
-                  ),
+                input = TextFormField(
+                  initialValue: _formAnswers[field.key]?.toString() ?? '',
+                  decoration: decoration.copyWith(hintText: 'Paste an image URL'),
+                  keyboardType: TextInputType.url,
+                  onChanged: (value) => _formAnswers[field.key] = value,
                 );
                 break;
               default:
