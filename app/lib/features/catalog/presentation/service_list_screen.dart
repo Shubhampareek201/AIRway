@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
-import 'package:airway/core/widgets/airway_components.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
@@ -144,24 +143,98 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       );
 
   Widget _buildList() => ListView.separated(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         itemCount: _filteredServices.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final service = _filteredServices[index];
-          return AirwayServiceCard(
-            title: service.title,
-            categoryName: service.categoryName,
-            subtitle: service.description,
-            price: service.variants.isNotEmpty ? service.variants.first.price : service.visitFee,
-            mrp: service.variants.isNotEmpty && service.variants.first.mrp > service.variants.first.price
-                ? service.variants.first.mrp
-                : null,
-            isPopular: service.isPopular,
-            image: service.image,
-            onTap: () => _openService(service),
+          final price = service.variants.isNotEmpty
+              ? service.variants.first.price
+              : service.visitFee;
+          return Material(
+            color: AirwayColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _openService(service),
+              child: Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AirwayColors.border),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: SizedBox(
+                        width: 82,
+                        height: 82,
+                        child: service.image?.isNotEmpty == true
+                            ? Image.network(
+                                service.image!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => _serviceImagePlaceholder(),
+                              )
+                            : _serviceImagePlaceholder(),
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            service.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AirwayColors.text,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            service.durationMinutes > 0
+                                ? '${service.durationMinutes} min'
+                                : service.categoryName,
+                            style: const TextStyle(
+                              color: AirwayColors.textSecondary,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            price > 0 ? '₹${price.toStringAsFixed(0)}' : 'Price on request',
+                            style: const TextStyle(
+                              color: AirwayColors.text,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chevron_right_rounded, color: AirwayColors.textSecondary),
+                  ],
+                ),
+              ),
+            ),
           );
         },
+      );
+
+  Widget _serviceImagePlaceholder() => Container(
+        color: AirwayColors.primarySoft,
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.home_repair_service_rounded,
+          color: AirwayColors.primary,
+          size: 30,
+        ),
       );
 
   Widget _emptyState() => Center(
