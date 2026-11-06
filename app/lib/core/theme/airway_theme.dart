@@ -5,10 +5,10 @@ class AirwayTheme {
   AirwayTheme._();
 
   static final ColorScheme _scheme = ColorScheme.fromSeed(
-    seedColor: AirwayColors.sage,
+    seedColor: AirwayColors.primary,
     brightness: Brightness.light,
   ).copyWith(
-    primary: AirwayColors.sage,
+    primary: AirwayColors.primary,
     onPrimary: Colors.white,
     secondary: AirwayColors.clay,
     onSecondary: Colors.white,
@@ -42,7 +42,7 @@ class AirwayTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AirwayColors.sage,
+          backgroundColor: AirwayColors.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size(0, 52),
           shape: const ContinuousRectangleBorder(
@@ -57,7 +57,7 @@ class AirwayTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AirwayColors.sage,
+          foregroundColor: AirwayColors.primary,
           minimumSize: const Size(0, 52),
           side: const BorderSide(color: AirwayColors.border),
           shape: const ContinuousRectangleBorder(
@@ -95,7 +95,7 @@ class AirwayTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AirwayColors.surface,
-        indicatorColor: AirwayColors.clay.withValues(alpha: 0.18),
+        indicatorColor: AirwayColors.primary.withValues(alpha: 0.16),
         iconTheme: const WidgetStatePropertyAll<IconThemeData?>(
   IconThemeData(color: AirwayColors.textTertiary),
 ),
