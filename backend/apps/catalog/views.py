@@ -35,18 +35,24 @@ def _city_service_ids(city, zone=None):
     if city is None:
         return None
 
-    eligible_service_ids = eligible_worker_profiles(
-        city=city,
-        zone=zone,
-    ).values_list("worker_services__service_id", flat=True)
-
+    # Catalogue visibility is based on city configuration, not live worker
+    # availability. Customers should still see services with no worker online.
     return CityService.objects.filter(
         city=city,
         is_active=True,
         service__is_active=True,
         service__category__is_active=True,
-        service_id__in=eligible_service_ids,
     ).values_list("service_id", flat=True)
+
+
+def _available_service_ids(city, zone=None):
+    if city is None:
+        return None
+    return set(
+        eligible_worker_profiles(city=city, zone=zone)
+        .values_list("worker_services__service_id", flat=True)
+        .distinct()
+    )
 
 
 def _visible_category_ids(service_ids):
@@ -104,6 +110,14 @@ class ServiceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = ServiceSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        location = _location_from_address(self.request)
+        context["available_service_ids"] = (
+            None if location is None else _available_service_ids(*location)
+        )
+        return context
+
     def get_queryset(self):
         queryset = Service.objects.filter(is_active=True, category__is_active=True).select_related(
             "category"
@@ -132,6 +146,14 @@ class ServiceListView(generics.ListAPIView):
 class ServiceDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = ServiceSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        location = _location_from_address(self.request)
+        context["available_service_ids"] = (
+            None if location is None else _available_service_ids(*location)
+        )
+        return context
 
     def get_queryset(self):
         queryset = Service.objects.filter(
