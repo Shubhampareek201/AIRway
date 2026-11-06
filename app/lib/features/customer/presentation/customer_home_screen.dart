@@ -201,13 +201,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         setState(() => _customerName = name.split(RegExp(r'\s+')).first);
       }
 
-      // Load worker profile status
+      // Worker application state is supplied by the authenticated /me/ API.
       final workerProfile = response['worker_profile'];
-      if (workerProfile is Map) {
+      final applicationStatus = response['worker_application_status'];
+      final profile = workerProfile is Map
+          ? Map<String, dynamic>.from(workerProfile)
+          : null;
+      final application = applicationStatus is Map
+          ? Map<String, dynamic>.from(applicationStatus)
+          : null;
+      if (mounted) {
         setState(() {
-          _workerProfile = Map<String, dynamic>.from(workerProfile);
-          _workerStatus = workerProfile['status'] as String?;
-          _workerRejectionReason = workerProfile['rejection_reason'] as String?;
+          _workerProfile = profile;
+          _workerStatus = profile?['status']?.toString() ??
+              application?['status']?.toString();
+          _workerRejectionReason = profile?['rejection_reason']?.toString() ??
+              application?['rejection_reason']?.toString();
         });
       }
     } catch (_) {
@@ -307,16 +316,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  void _goToWorkerApplication() {
-    Navigator.of(context).push(
+  Future<void> _goToWorkerApplication() async {
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const WorkerApplicationScreen()),
     );
+    if (mounted) await _refresh();
   }
 
-  void _viewWorkerStatus() {
-    Navigator.of(context).push(
+  Future<void> _viewWorkerStatus() async {
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const WorkerApplicationScreen()),
     );
+    if (mounted) await _refresh();
   }
 
   Future<void> _selectAddress() async {
@@ -432,6 +443,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         padding: const EdgeInsets.only(bottom: 30),
         children: [
           _purpleHeader(address),
+          if (_workerStatus == 'pending' ||
+              _workerStatus == 'approved' ||
+              _workerStatus == 'rejected')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: _buildWorkerHomeStatusCard(),
+            ),
           if (_query.isEmpty) ...[
             _offerCarousel(),
             _sectionHeading(
@@ -1071,7 +1089,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ],
 
     // Become a Worker button (shown when not approved as worker)
-    if (_workerProfile == null || (_workerStatus != 'approved' && _workerStatus != 'rejected')) ...[
+    if (_workerProfile == null ||
+        (_workerStatus != 'approved' &&
+            _workerStatus != 'pending' &&
+            _workerStatus != 'rejected')) ...[
       Card(
         color: Colors.white,
         elevation: 2,
@@ -1114,6 +1135,90 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ListTile(leading: const Icon(Icons.logout_rounded, color: _Ui.violet), title: const Text('Log out'), onTap: _logout),
     ])),
   ]);
+
+  Widget _buildWorkerHomeStatusCard() {
+    final status = _workerStatus;
+    final isPending = status == 'pending';
+    final isApproved = status == 'approved';
+    final isRejected = status == 'rejected';
+    final color = isPending
+        ? const Color(0xFFFFF4DF)
+        : isApproved
+            ? const Color(0xFFE7F2EC)
+            : const Color(0xFFFDECEC);
+    final accent = isPending
+        ? const Color(0xFFB7791F)
+        : isApproved
+            ? _Ui.violet
+            : const Color(0xFFB42318);
+    final title = isPending
+        ? 'Worker application pending'
+        : isApproved
+            ? 'You are an approved AIRway worker'
+            : 'Worker application needs attention';
+    final message = isPending
+        ? 'Your application is with our admin team for review. We’ll update this status when a decision is made.'
+        : isApproved
+            ? 'Your worker profile is approved. You can switch to Worker mode from your Profile.'
+            : (_workerRejectionReason?.isNotEmpty == true
+                ? 'Reason: $_workerRejectionReason'
+                : 'Your application was not approved. Open your application to review the next step.');
+    return Material(
+      color: color,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: isApproved ? null : _viewWorkerStatus,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                isPending
+                    ? Icons.pending_actions_rounded
+                    : isApproved
+                        ? Icons.verified_rounded
+                        : Icons.error_outline_rounded,
+                color: accent,
+                size: 25,
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: TextStyle(
+                      color: accent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    )),
+                    const SizedBox(height: 4),
+                    Text(message, style: const TextStyle(
+                      color: _Ui.ink,
+                      fontSize: 11.5,
+                      height: 1.4,
+                    )),
+                    if (!isApproved) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        isRejected ? 'View application  ›' : 'Application status  ›',
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildWorkerStatusCard() {
     final status = _workerStatus ?? 'no_profile';
