@@ -63,6 +63,7 @@ class WalletTransaction(TimeStampedModel):
     description = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
     reference_id = models.CharField(max_length=100, blank=True, help_text="Booking ID / Razorpay order ID / Referral reward ID")
+    razorpay_payment_id = models.CharField(max_length=100, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
