@@ -83,7 +83,9 @@ class DispatcherService:
             service=service,
             zone=address.zone,
             scheduled_at=scheduled_at,
-            duration_minutes=duration_minutes
+            duration_minutes=duration_minutes,
+            drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
+            exclude_booking_id=booking.id,
         )
 
         if not eligible_workers:
@@ -127,69 +129,110 @@ class DispatcherService:
         return offers_created
 
     @classmethod
-    def _get_eligible_workers(cls, service, zone, scheduled_at, duration_minutes):
-        """
-        Get list of eligible workers sorted by rating (desc), then proximity.
-        """
+    def _get_eligible_workers(
+        cls, service, zone, scheduled_at, duration_minutes,
+        drop_scheduled_at=None, exclude_booking_id=None,
+    ):
+        """Return workers who can cover every visit without a schedule or job conflict."""
         from apps.workers.models import WorkerProfile
         from apps.workers.eligibility import eligible_workers_for_service
         from apps.availability.models import WorkerBlockedSlot
-        from datetime import timedelta
-        from django.utils import timezone
+        from apps.bookings.models import Booking, BookingAssignment
+        from apps.bookings.services import _booking_intervals, _intervals_overlap
 
-        # Use the same approved/online/skill/zone/schedule gates as the
-        # customer catalogue. Booking-specific availability is checked below.
+        if not scheduled_at or not zone or not zone.is_active or not zone.city.is_active:
+            return WorkerProfile.objects.none()
+
         eligible_workers = eligible_workers_for_service(
-            service,
-            zone=zone,
+            service, zone=zone,
         ).prefetch_related("schedules", "leaves")
 
-        # Convert to local timezone for schedule matching
-        local_scheduled_at = timezone.localtime(scheduled_at)
-        weekday = local_scheduled_at.weekday()
-        booking_time = local_scheduled_at.time()
-        booking_end = scheduled_at + timedelta(minutes=duration_minutes)
-        local_booking_end = timezone.localtime(booking_end)
+        duration_minutes = max(int(duration_minutes or service.duration_minutes or 60), 1)
+        duration = timedelta(minutes=duration_minutes)
+        requested_intervals = _booking_intervals(
+            scheduled_at, duration_minutes, service.buffer_minutes, drop_scheduled_at,
+        )
+        visit_windows = [(scheduled_at, scheduled_at + duration)]
+        if drop_scheduled_at is not None:
+            visit_windows.append((drop_scheduled_at, drop_scheduled_at + duration))
 
+        active_statuses = [
+            Booking.Status.ASSIGNED,
+            Booking.Status.CONFIRMED,
+            Booking.Status.IN_PROGRESS,
+        ]
         eligible_ids = []
         worker_ratings = {}
 
         for worker in eligible_workers:
-            # The full service duration must fit inside one active weekday shift.
-            schedule_match = worker.schedules.filter(
-                weekday=weekday,
-                is_active=True,
-                start_time__lte=booking_time,
-                end_time__gte=local_booking_end.time(),
-            ).order_by("start_time").first()
-
-            # Overnight jobs are not supported by the current schedule model.
-            if not schedule_match or local_booking_end.date() != local_scheduled_at.date():
+            schedule_ok = True
+            for visit_start, visit_end in visit_windows:
+                local_start = timezone.localtime(visit_start)
+                local_end = timezone.localtime(visit_end)
+                if local_start.date() != local_end.date() or not worker.schedules.filter(
+                    weekday=local_start.weekday(),
+                    is_active=True,
+                    start_time__lte=local_start.time(),
+                    end_time__gte=local_end.time(),
+                ).exists():
+                    schedule_ok = False
+                    break
+            if not schedule_ok:
                 continue
 
-            # Check both ad-hoc blocked slots and worker-entered leave periods.
-            blocked = WorkerBlockedSlot.objects.filter(
-                worker=worker.user,
-                start_at__lt=booking_end,
-                end_at__gt=scheduled_at,
-            ).exists()
-            on_leave = worker.leaves.filter(
-                start_at__lt=booking_end,
-                end_at__gt=scheduled_at,
-            ).exists()
-
-            if blocked or on_leave:
+            blocked = any(
+                WorkerBlockedSlot.objects.filter(
+                    worker=worker.user,
+                    start_at__lt=end_at,
+                    end_at__gt=start_at,
+                ).exists()
+                or worker.leaves.filter(
+                    start_at__lt=end_at,
+                    end_at__gt=start_at,
+                ).exists()
+                for start_at, end_at in requested_intervals
+            )
+            if blocked:
                 continue
 
-            # Collect rating for sorting.
-            rating = worker.rating_avg or 0
-            worker_ratings[worker.id] = rating
+            assignments = BookingAssignment.objects.filter(
+                worker=worker,
+                booking__status__in=active_statuses,
+            ).exclude(booking_id=exclude_booking_id).select_related(
+                "booking__service", "booking__variant",
+            )
+            conflict = False
+            for assignment in assignments:
+                existing = assignment.booking
+                if not existing.scheduled_at:
+                    continue
+                existing_duration = (
+                    existing.variant.duration_minutes
+                    if existing.variant_id and existing.variant.duration_minutes
+                    else existing.service.duration_minutes
+                ) or 60
+                occupied = _booking_intervals(
+                    existing.scheduled_at,
+                    existing_duration,
+                    existing.service.buffer_minutes,
+                    existing.drop_scheduled_at
+                    if existing.booking_mode == Booking.BookingMode.PICKUP_DROP
+                    else None,
+                )
+                if any(
+                    _intervals_overlap(requested, current)
+                    for requested in requested_intervals
+                    for current in occupied
+                ):
+                    conflict = True
+                    break
+            if conflict:
+                continue
+
+            worker_ratings[worker.id] = worker.rating_avg or 0
             eligible_ids.append(worker.id)
 
-        # Sort by rating (descending)
-        eligible_ids.sort(key=lambda wid: worker_ratings.get(wid, 0), reverse=True)
-
-        # Return worker queryset in sorted order
+        eligible_ids.sort(key=lambda worker_id: worker_ratings.get(worker_id, 0), reverse=True)
         return WorkerProfile.objects.filter(id__in=eligible_ids).order_by(
-            '-rating_avg'
-        ).select_related('user')
+            "-rating_avg"
+        ).select_related("user")
