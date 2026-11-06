@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/presentation/job_offers_screen.dart';
 import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
-import 'package:airway/features/booking/data/booking_models.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
 
@@ -15,7 +14,7 @@ class WorkerDashboardScreen extends StatefulWidget {
 
 class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   WorkerProfile? _profile;
-  Booking? _assignedJob;
+  WorkerAssignmentDetail? _assignedJob;
   List<WorkerOffer> _offers = [];
   bool _loading = true;
   String? _error;
@@ -31,25 +30,26 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     try {
       final profile = await WorkerApi.getMyProfile();
       final offers = await WorkerApi.getJobOffers();
+      final assignedJobs = await WorkerApi.getAssignedJobs();
 
-      await Future.delayed(Duration.zero);
+      WorkerAssignmentDetail? assignedJob;
+      if (assignedJobs.isNotEmpty) {
+        final jobId = int.tryParse('${assignedJobs.first['id']}');
+        if (jobId != null) {
+          final jobDetail = await WorkerApi.getJobDetail(jobId);
+          assignedJob = WorkerAssignmentDetail.fromMap(jobDetail);
+        }
+      }
 
       if (mounted) {
         setState(() {
           _profile = profile;
           _offers = offers;
+          _assignedJob = assignedJob;
           if (profile.status != 'approved') {
             _error = 'Your worker profile is ${profile.status}. Contact support.';
           }
         });
-
-        if (_offers.isNotEmpty) {
-          for (final offer in offers) {
-            if (_isOfferAssigned(offer)) {
-              _assignedJob = await _loadBookingFromOffer(offer);
-            }
-          }
-        }
       }
     } catch (e) {
       if (mounted) {
@@ -59,23 +59,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       }
     } finally {
       if (mounted) setState(() { _loading = false; });
-    }
-  }
-
-  bool _isOfferAssigned(WorkerOffer offer) {
-    return offer.status == WorkerOffer.accepted ||
-        offer.status == WorkerOffer.pending && _hasAssignment();
-  }
-
-  bool _hasAssignment() {
-    return false;
-  }
-
-  Future<Booking?> _loadBookingFromOffer(WorkerOffer offer) async {
-    try {
-      return await WorkerApi.startJob(offer.bookingId);
-    } catch (e) {
-      return null;
     }
   }
 
@@ -228,26 +211,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 
     final job = _assignedJob!;
     return Card(
-      child: InkWell(
-        onTap: _navigateToAssignedJob,
-        child: ListTile(
-          leading: const Icon(Icons.directions_car, color: AirwayColors.primary),
-          title: const Text('Assigned Job'),
-          subtitle: Text('${job.serviceTitle} scheduled for ${job.scheduledAtDisplay}'),
-          trailing: PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'start') {
-                _startJobFromDashboard(job);
-              } else if (value == 'complete') {
-                _completeJobFromDashboard(job);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'start', child: Text('Start Job')),
-              const PopupMenuItem(value: 'complete', child: Text('Complete Job')),
-            ],
-          ),
+      child: ListTile(
+        leading: const Icon(Icons.directions_car, color: AirwayColors.primary),
+        title: const Text('Assigned Job'),
+        subtitle: Text(
+          '${job.serviceTitle} scheduled for ${_formatDateTime(job.scheduledAt)}',
         ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: _navigateToAssignedJob,
       ),
     );
   }
@@ -317,44 +288,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to accept: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _startJobFromDashboard(Booking job) async {
-    if (!mounted) return;
-    try {
-      await WorkerApi.startJob(job.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job started')),
-        );
-        _loadAll();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start job: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _completeJobFromDashboard(Booking job) async {
-    if (!mounted) return;
-    try {
-      await WorkerApi.completeJob(job.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job completed')),
-        );
-        _loadAll();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to complete job: $e')),
         );
       }
     }
