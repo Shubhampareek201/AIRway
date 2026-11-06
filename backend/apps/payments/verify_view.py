@@ -25,12 +25,13 @@ def _process_verified_payment(
     and webhook handlers.
     """
     # Idempotency check: skip if already processed
-    if payment.status == Payment.Status.PAID:
+    if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
         logger.info(
-            f"Payment {payment.id} already PAID, skipping re-process"
+            "Payment %s already settled with status %s; skipping re-process",
+            payment.id, payment.status,
         )
         return Response({
-            "detail": "Payment already verified.",
+            "detail": "Payment already settled.",
             "status": payment.status,
             "payment_id": payment.id,
         })
@@ -49,13 +50,81 @@ def _process_verified_payment(
                     "Cannot settle wallet component for payment %s: %s",
                     payment.id, exc,
                 )
+                # Razorpay has already captured the external component, but
+                # the released wallet funds may no longer be available. Refund
+                # the captured gateway amount rather than marking an underpaid
+                # order as paid.
+                if not razorpay_payment_id or payment.amount <= 0:
+                    return Response(
+                        {
+                            "detail": "Wallet funds are unavailable for payment reconciliation.",
+                            "status": payment.status,
+                            "payment_id": payment.id,
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                try:
+                    import razorpay
+
+                    gateway = razorpay.Client(
+                        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+                    )
+                    gateway_payment = gateway.payment.fetch(razorpay_payment_id)
+                    expected_refund_paise = int(payment.amount * 100)
+                    already_refunded_paise = int(gateway_payment.get("amount_refunded", 0))
+                    remaining_refund_paise = expected_refund_paise - already_refunded_paise
+                    if remaining_refund_paise > 0:
+                        refund = gateway.payment.refund(
+                            razorpay_payment_id,
+                            {
+                                "amount": remaining_refund_paise,
+                                "notes": {
+                                    "airway_payment_id": str(payment.id),
+                                    "reason": "Wallet reservation expired before payment capture",
+                                },
+                            },
+                        )
+                    else:
+                        refund = {"status": "already_refunded"}
+                except Exception:
+                    logger.exception(
+                        "Automatic Razorpay refund failed for late payment %s",
+                        payment.id,
+                    )
+                    return Response(
+                        {
+                            "detail": "Payment was captured but automatic refund could not be confirmed. AIRway support will reconcile it.",
+                            "status": payment.status,
+                            "payment_id": payment.id,
+                        },
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+
+                payment.status = Payment.Status.REFUNDED
+                payment.failed_at = timezone.now()
+                payment.raw_response = {
+                    "razorpay_order_id": razorpay_order_id,
+                    "razorpay_payment_id": razorpay_payment_id,
+                    "automatic_refund": refund,
+                    "reason": "Wallet reservation expired and released funds were unavailable.",
+                    "refunded_at": timezone.now().isoformat(),
+                    "source": source,
+                }
+                payment.save(
+                    update_fields=["status", "failed_at", "raw_response", "updated_at"]
+                )
+                logger.warning(
+                    "Late Razorpay payment %s was refunded because wallet funds were unavailable",
+                    payment.id,
+                )
                 return Response(
                     {
-                        "detail": "The wallet reservation expired before payment confirmation. Please contact AIRway support for payment reconciliation.",
+                        "detail": "The late payment was refunded because the wallet reservation had expired.",
                         "status": payment.status,
                         "payment_id": payment.id,
+                        "airway_order_id": payment.order_id,
                     },
-                    status=status.HTTP_409_CONFLICT,
+                    status=status.HTTP_200_OK,
                 )
 
         payment.status = Payment.Status.PAID
