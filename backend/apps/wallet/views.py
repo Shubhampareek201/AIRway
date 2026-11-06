@@ -6,6 +6,7 @@ from decimal import Decimal
 import razorpay
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q, Sum
 from django.utils import timezone
 from rest_framework import status, permissions, viewsets
 from rest_framework.views import APIView
@@ -226,8 +227,7 @@ class WalletTopUpConfirmView(APIView):
 
 
 class WalletRefundView(APIView):
-    # A customer must never be able to mint wallet credit by submitting an
-    # arbitrary booking ID and amount. Refunds are currently admin-reviewed.
+    """Admin-reviewed refund to the customer wallet for a paid, cancelled booking."""
     permission_classes = [IsAdminUser]
 
     def post(self, request):
@@ -240,23 +240,67 @@ class WalletRefundView(APIView):
                 {"detail": "booking_id and a valid amount are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if amount <= 0:
+        if amount <= 0 or amount.quantize(Decimal("0.01")) != amount:
             return Response(
-                {"detail": "Amount must be greater than zero."},
+                {"detail": "Refund amount must be positive and have at most two decimal places."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        transaction_obj = WalletTransaction.objects.create(
-            wallet=wallet,
-            type=WalletTransaction.Type.REFUND,
-            amount=amount,
-            description=reason,
-            status=WalletTransaction.Status.COMPLETED,
-            reference_id=str(booking_id),
-        )
-        wallet.balance += amount
-        wallet.save()
+        from apps.bookings.models import Booking
+        from apps.payments.models import Payment
+
+        with transaction.atomic():
+            try:
+                booking = Booking.objects.select_for_update().get(pk=booking_id)
+            except Booking.DoesNotExist:
+                return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            if booking.status != Booking.Status.CANCELLED:
+                return Response(
+                    {"detail": "Only cancelled bookings can be refunded."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            payment_filter = Q(booking=booking)
+            try:
+                order_id = booking.order_item.order_id
+            except Booking.order_item.RelatedObjectDoesNotExist:
+                order_id = None
+            if order_id:
+                payment_filter |= Q(order_id=order_id)
+            if not Payment.objects.filter(payment_filter, status=Payment.Status.PAID).exists():
+                return Response(
+                    {"detail": "A successful payment for this booking is required before refunding."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            already_refunded = WalletTransaction.objects.filter(
+                wallet__user=booking.customer,
+                type=WalletTransaction.Type.REFUND,
+                reference_id=str(booking.id),
+                status=WalletTransaction.Status.COMPLETED,
+            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+            booking_total = Decimal(str(booking.total_amount))
+            refundable = booking_total - already_refunded
+            if amount > refundable:
+                return Response(
+                    {"detail": f"Refund exceeds the remaining refundable amount of ₹{refundable}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            wallet, _ = Wallet.objects.get_or_create(user=booking.customer)
+            wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+            transaction_obj = WalletTransaction.objects.create(
+                wallet=wallet,
+                type=WalletTransaction.Type.REFUND,
+                amount=amount,
+                description=reason,
+                status=WalletTransaction.Status.COMPLETED,
+                reference_id=str(booking.id),
+            )
+            wallet.balance += amount
+            wallet.save(update_fields=["balance", "updated_at"])
+
         serializer = WalletTransactionSerializer(transaction_obj)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
