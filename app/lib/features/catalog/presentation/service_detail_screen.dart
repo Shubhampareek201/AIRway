@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 
@@ -92,6 +93,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       appBar: AppBar(
         title: Text(_service?.title ?? 'Service'),
         backgroundColor: _Ui.bg,
+        actions: [
+          IconButton(
+            tooltip: 'Your cart',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerCartScreen())),
+            icon: const Icon(Icons.shopping_bag_outlined, color: _Ui.violet),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _Ui.violet))
@@ -216,13 +224,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           ),
         ],
-        SliverToBoxAdapter(
-          child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: _formSection(service.formFields),
-          ),
-        ),
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
         SliverToBoxAdapter(
           child: Builder(builder: (context) {
@@ -233,7 +234,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 top: false,
                 child: FilledButton(
                   onPressed: _navigateToBooking,
-                  child: const Text('Book Now'),
+                  child: const Text('Customize & Add to Cart'),
                 ),
               ),
             );
