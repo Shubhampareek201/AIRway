@@ -213,9 +213,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             "status": booking.status,
             "assigned_at": assignment.assigned_at,
             "started_at": assignment.started_at,
-            # In a production app with WebSockets / Redis / FCM, live lat/lng would come here
-            "worker_latitude": float(booking.address.latitude) + 0.005 if booking.address.latitude else None,
-            "worker_longitude": float(booking.address.longitude) + 0.005 if booking.address.longitude else None,
+            # Live worker GPS is not stored by the current WorkerProfile model.
+            # Never fabricate a position from the customer's address; clients should
+            # show "location unavailable" until a verified worker GPS source is added.
+            "worker_latitude": None,
+            "worker_longitude": None,
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
