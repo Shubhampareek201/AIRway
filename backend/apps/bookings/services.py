@@ -121,9 +121,10 @@ def check_service_available(
             f"Service '{service.title}' is not available."
         )
 
-    # Catalogue publication and live worker availability are separate:
-    # a city-mapped service may be browsed, but booking requires at least one
-    # approved, online, skilled worker with an active schedule in the zone.
+    # Booking serviceability follows the same area configuration as the
+    # catalogue: either an active CityService row or an approved worker's
+    # explicit service + zone assignment makes the service serviceable.
+    # Online status and exact slot fit are handled by dispatch/availability.
     if address:
         if not address.zone_id or not address.zone.is_active:
             raise ServiceUnavailableError(
@@ -136,16 +137,23 @@ def check_service_available(
                 f"Services are not active in {city.name}."
             )
 
-        from apps.workers.eligibility import eligible_worker_profiles
+        from apps.catalog.models import CityService
+        from apps.workers.models import WorkerProfile
 
-        has_available_worker = eligible_worker_profiles(
+        city_configured = CityService.objects.filter(
             city=city,
-            zone=address.zone,
-        ).filter(worker_services__service=service).exists()
+            service=service,
+            is_active=True,
+        ).exists()
+        worker_assigned = WorkerProfile.objects.filter(
+            status=WorkerProfile.Status.APPROVED,
+            worker_zones__zone=address.zone,
+            worker_services__service=service,
+        ).exists()
 
-        if not has_available_worker:
+        if not city_configured and not worker_assigned:
             raise ServiceUnavailableError(
-                f"No verified worker is currently available for {service.title} in this area. Please try another time."
+                f"Service '{service.title}' is not configured for {city.name}."
             )
 
     return True
