@@ -47,10 +47,10 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
       // Open the selected assignment when launched from a job card;
       // otherwise keep the existing first-job fallback.
-      final selectedJob = widget.assignmentId == null
-          ? jobs.first
-          : jobs.where((job) => job['id'] == widget.assignmentId).firstOrNull;
-      if (selectedJob == null) {
+      final matchingJobs = widget.assignmentId == null
+          ? jobs
+          : jobs.where((job) => job['id'] == widget.assignmentId).toList();
+      if (matchingJobs.isEmpty) {
         if (mounted) {
           setState(() {
             _error = 'This job is no longer assigned to your account.';
@@ -61,6 +61,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       }
 
       // Get full job details for this exact assignment.
+      final selectedJob = matchingJobs.first;
       final detail = await WorkerApi.getJobDetail(selectedJob['id'] as int);
       if (mounted) {
         _jobDetail = WorkerAssignmentDetail.fromMap(detail);
