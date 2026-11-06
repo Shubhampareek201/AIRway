@@ -115,8 +115,11 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
         requested = Decimal(str(wallet_amount))
     except (InvalidOperation, TypeError, ValueError):
         raise ValueError("Provide a valid wallet amount.")
-    if not requested.is_finite() or requested < 0 or requested.quantize(Decimal("0.01")) != requested:
-        raise ValueError("Wallet amount must be non-negative and have at most two decimal places.")
+    try:
+        if not requested.is_finite() or requested < 0 or requested.quantize(Decimal("0.01")) != requested:
+            raise ValueError("Wallet amount must be non-negative and have at most two decimal places.")
+    except InvalidOperation:
+        raise ValueError("Provide a valid wallet amount.")
     if order.customer_id != customer.id:
         raise ValueError("Order not found or access denied.")
 
@@ -129,6 +132,10 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
         raise ValueError("Payment is available only after every service has an assigned worker.")
     if order.status not in [Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT]:
         raise ValueError("This order is not awaiting payment.")
+    if order.total_amount <= 0:
+        raise ValueError("Order total must be greater than zero.")
+    if requested > 0 and order.currency != "INR":
+        raise ValueError("AIRway wallet can only be used for INR orders.")
     if requested > order.total_amount:
         raise ValueError("Wallet amount cannot exceed the order total.")
 
