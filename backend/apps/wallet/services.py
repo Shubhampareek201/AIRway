@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
@@ -17,7 +17,7 @@ def reserve_wallet_amount(payment, amount):
     try:
         if raw_amount.quantize(CENT) != raw_amount:
             raise ValueError("Wallet amount must have at most two decimal places.")
-    except Exception as exc:
+    except InvalidOperation as exc:
         raise ValueError("Provide a valid wallet amount.") from exc
     amount = raw_amount.quantize(CENT)
     if amount == 0:
