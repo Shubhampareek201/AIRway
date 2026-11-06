@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
+import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 
 class BookingListScreen extends StatefulWidget {
   const BookingListScreen({super.key});
@@ -18,6 +19,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
   static const line = Color(0xFFE8E0ED);
 
   List<Booking> bookings = [];
+  List<Map<String, dynamic>> orders = [];
   bool loading = true;
   String? error;
   int? trackingId;
@@ -32,7 +34,9 @@ class _BookingListScreenState extends State<BookingListScreen> {
     setState(() { loading = true; error = null; });
     try {
       final result = await BookingApi.listBookings();
-      if (mounted) setState(() { bookings = result; loading = false; });
+      List<Map<String, dynamic>> parentOrders = [];
+      try { parentOrders = await BookingApi.listOrders(); } catch (_) {}
+      if (mounted) setState(() { bookings = result; orders = parentOrders; loading = false; });
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
     }
@@ -101,19 +105,56 @@ class _BookingListScreenState extends State<BookingListScreen> {
       ? const Center(child: CircularProgressIndicator(color: violet))
       : error != null
         ? empty('Unable to load bookings', error!, Icons.error_outline, loadBookings)
-        : bookings.isEmpty
+        : bookings.isEmpty && orders.isEmpty
           ? empty('No bookings yet', 'Your upcoming and completed services will appear here.', Icons.event_note_rounded, () => Navigator.pop(context))
           : RefreshIndicator(
               color: violet,
               onRefresh: loadBookings,
-              child: ListView.separated(
+              child: ListView(
                 padding: const EdgeInsets.all(18),
-                itemCount: bookings.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, index) => bookingCard(bookings[index]),
+                children: [
+                  if (orders.isNotEmpty) ...[
+                    const Text('Service Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
+                    const SizedBox(height: 10),
+                    for (final order in orders) ...[orderCard(order), const SizedBox(height: 10)],
+                    const SizedBox(height: 12),
+                  ],
+                  if (bookings.isNotEmpty) ...[
+                    const Text('Individual Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
+                    const SizedBox(height: 10),
+                    for (final booking in bookings) ...[bookingCard(booking), const SizedBox(height: 12)],
+                  ],
+                ],
               ),
             ),
   );
+
+  Widget orderCard(Map<String, dynamic> order) {
+    final id = order['id'] as int;
+    final ready = order['ready_for_payment'] == true;
+    final paid = order['status'] == 'paid';
+    final total = double.tryParse(order['total_amount']?.toString() ?? '') ?? 0;
+    final status = paid ? 'Paid' : ready ? 'Ready for payment' : 'Assigning professionals';
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerOrderScreen(orderId: id))),
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: line)),
+        child: Row(children: [
+          Container(width: 44, height: 44, decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.shopping_bag_outlined, color: violet)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Order #' + id.toString(), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+            Text((order['item_count'] ?? 0).toString() + ' services • ' + status, style: const TextStyle(fontSize: 12, color: sub)),
+          ])),
+          Text('₹' + total.toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w900, color: violet)),
+          const Icon(Icons.chevron_right_rounded, color: sub),
+        ]),
+      ),
+    );
+  }
 
   Widget bookingCard(Booking booking) {
     final status = BookingStatus.display(booking.status);
