@@ -231,7 +231,12 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     final step = steps[_flowStep];
     final isLast = _flowStep == steps.length - 1;
     final slivers = <Widget>[
-      if (service.image?.isNotEmpty ?? false) _imageSliver(service.image),
+      if ((service.image?.isNotEmpty ?? false) || service.images.isNotEmpty)
+        _imageSliver(
+          service.image?.isNotEmpty == true
+              ? service.image
+              : service.images.first.image,
+        ),
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
