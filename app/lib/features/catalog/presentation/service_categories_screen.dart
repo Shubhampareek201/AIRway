@@ -170,8 +170,8 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 58,
-              height: 58,
+              width: double.infinity,
+              height: 104,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: AirwayColors.primarySoft,
@@ -181,19 +181,15 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                   ? Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.design_services_rounded,
-                        color: AirwayColors.primary,
-                        size: 28,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(Icons.design_services_rounded, color: AirwayColors.primary, size: 34),
                       ),
                     )
-                  : const Icon(
-                      Icons.design_services_rounded,
-                      color: AirwayColors.primary,
-                      size: 28,
+                  : const Center(
+                      child: Icon(Icons.design_services_rounded, color: AirwayColors.primary, size: 34),
                     ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Text(
               category.title,
               maxLines: 2,
