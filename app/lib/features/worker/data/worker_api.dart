@@ -8,7 +8,7 @@ import 'package:airway/features/worker/data/worker_models.dart';
 class WorkerApi {
   WorkerApi._();
 
-  static Future<Map<String, dynamic>> _request(
+  static Future<dynamic> _request(
     String path, {
     String method = 'GET',
     Map<String, dynamic>? data,
@@ -70,17 +70,17 @@ class WorkerApi {
         'AIRway request failed (${result.status}): ${result.body}',
       );
     }
-    return Map<String, dynamic>.from(result.body as Map);
+    return result.body;
   }
 
   static Future<WorkerProfile> getMyProfile() async {
     final result = await _request('/api/v1/auth/me/');
-    return WorkerProfile.fromMap(result);
+    return WorkerProfile.fromMap(Map<String, dynamic>.from(result as Map));
   }
 
   static Future<List<WorkerOffer>> getJobOffers() async {
     final result = await _request('/api/v1/workers/offers/');
-    final list = result['results'] as List;
+    final list = (result as Map)['results'] as List;
 
     return list
         .whereType<Map>()
@@ -93,7 +93,7 @@ class WorkerApi {
       '/api/v1/workers/offers/$offerId/accept/',
       method: 'POST',
     );
-    return WorkerOffer.fromMap(Map<String, dynamic>.from(result));
+    return WorkerOffer.fromMap(Map<String, dynamic>.from(result as Map));
   }
 
   static Future<void> declineOffer(int offerId) async {
@@ -134,6 +134,26 @@ class WorkerApi {
 
   static Future<Map<String, dynamic>> getJobDetail(int jobId) async {
     final result = await _request('/api/v1/workers/jobs/$jobId/');
-    return Map<String, dynamic>.from(result);
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  static Future<List<Map<String, dynamic>>> getEarnings() async {
+    final result = await _request('/api/v1/workers/earnings/');
+    if (result is! List) {
+      throw const FormatException('Unexpected earnings response');
+    }
+    return result
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  static Future<bool> updateOnlineStatus(bool isOnline) async {
+    final result = await _request(
+      '/api/v1/workers/status/',
+      method: 'POST',
+      data: {'is_online': isOnline},
+    );
+    return (result as Map)['is_online'] as bool? ?? isOnline;
   }
 }
