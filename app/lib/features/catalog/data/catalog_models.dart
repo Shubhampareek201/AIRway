@@ -5,6 +5,7 @@ class Category {
   final String slug;
   final String? image;
   final bool isActive;
+  final List<Category> children;
 
   Category({
     required this.id,
@@ -13,6 +14,7 @@ class Category {
     required this.slug,
     this.image,
     required this.isActive,
+    this.children = const [],
   });
 
   factory Category.fromMap(Map<String, dynamic> map) {
@@ -23,6 +25,10 @@ class Category {
       slug: map['slug'] ?? '',
       image: map['image'],
       isActive: map['is_active'] ?? false,
+      children: (map['children'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => Category.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 }
