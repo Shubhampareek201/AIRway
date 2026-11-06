@@ -250,7 +250,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if booking.status != Booking.Status.ASSIGNED:
+        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response(
                 {"detail": f"Cannot start job in {booking.get_status_display()} state."},
                 status=status.HTTP_400_BAD_REQUEST
