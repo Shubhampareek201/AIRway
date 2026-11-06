@@ -20,13 +20,20 @@ def reserve_wallet_amount(payment, amount):
 
     with transaction.atomic():
         locked_payment = payment.__class__.objects.select_for_update().get(pk=payment.pk)
-        existing = WalletReservation.objects.select_for_update().filter(payment=locked_payment).first()
+        existing = WalletReservation.objects.select_for_update().filter(
+            payment=locked_payment,
+            status=WalletReservation.Status.RESERVED,
+        ).order_by("-created_at").first()
         if existing:
             if existing.amount != amount:
                 raise ValueError("A different wallet amount is already reserved for this order.")
-            if existing.status == WalletReservation.Status.RELEASED:
-                raise ValueError("The previous wallet reservation was released. Start a new payment attempt.")
             return existing
+
+        latest = WalletReservation.objects.filter(payment=locked_payment).order_by("-created_at").first()
+        if latest and latest.status == WalletReservation.Status.CAPTURED:
+            raise ValueError("Wallet funds for this payment have already been captured.")
+        if latest and latest.status == WalletReservation.Status.RESERVED:
+            raise ValueError("An active wallet reservation already exists.")
 
         wallet, _ = Wallet.objects.get_or_create(user=locked_payment.customer)
         wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
@@ -58,12 +65,11 @@ def capture_wallet_reservation(payment, razorpay_payment_id=""):
     """Finalize a held wallet debit after the order payment succeeds."""
     with transaction.atomic():
         reservation = WalletReservation.objects.select_for_update().filter(
-            payment=payment
-        ).first()
-        if reservation is None or reservation.status == WalletReservation.Status.CAPTURED:
-            return reservation
-        if reservation.status == WalletReservation.Status.RELEASED:
-            raise ValueError("Wallet reservation was already released and cannot be captured.")
+            payment=payment,
+            status=WalletReservation.Status.RESERVED,
+        ).order_by("-created_at").first()
+        if reservation is None:
+            return WalletReservation.objects.filter(payment=payment).order_by("-created_at").first()
 
         wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
         if wallet.pending_balance < reservation.amount:
@@ -90,10 +96,11 @@ def release_wallet_reservation(payment, reason="Payment attempt expired"):
     """Release held funds once when the parent-order payment is abandoned."""
     with transaction.atomic():
         reservation = WalletReservation.objects.select_for_update().filter(
-            payment=payment
-        ).first()
-        if reservation is None or reservation.status != WalletReservation.Status.RESERVED:
-            return reservation
+            payment=payment,
+            status=WalletReservation.Status.RESERVED,
+        ).order_by("-created_at").first()
+        if reservation is None:
+            return WalletReservation.objects.filter(payment=payment).order_by("-created_at").first()
 
         wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
         wallet.balance += reservation.amount
