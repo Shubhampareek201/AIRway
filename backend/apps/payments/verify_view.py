@@ -554,7 +554,7 @@ class PaymentWebhookView(APIView):
                 logger.warning(f"Payment not found for webhook (failed): payment_id={payment_id}, order_id={order_id}")
                 return Response({"status": "ok"})
 
-            if payment.status != Payment.Status.PAID:
+            if payment.status not in [Payment.Status.PAID, Payment.Status.REFUNDED]:
                 if payment.order_id:
                     # A failed attempt can be retried against the same Razorpay order.
                     # Keep the parent payment and wallet reservation pending.
@@ -584,7 +584,7 @@ class PaymentWebhookView(APIView):
                 logger.warning(f"Payment not found for webhook (canceled): payment_id={payment_id}, order_id={order_id}")
                 return Response({"status": "ok"})
 
-            if payment.status != Payment.Status.PAID:
+            if payment.status not in [Payment.Status.PAID, Payment.Status.REFUNDED]:
                 if payment.order_id:
                     payment.raw_response = payload
                     payment.save(update_fields=["raw_response", "updated_at"])
