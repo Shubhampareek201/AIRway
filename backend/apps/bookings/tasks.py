@@ -157,6 +157,8 @@ def timeout_pending_payments():
         ).values_list("id", flat=True)
     )
 
+    count = 0
+
     # Parent-order payments use one payment record for multiple assigned bookings.
     # Expire the wallet hold after the retry window, but keep assignments intact so
     # the customer can start a fresh payment attempt without losing selected workers.
