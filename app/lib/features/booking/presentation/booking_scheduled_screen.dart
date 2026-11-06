@@ -40,6 +40,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   // Selection state
   int? _selectedVariantId;
   List<int> _selectedAddonIds = [];
+  final Map<String, dynamic> _formAnswers = {};
   int? _selectedAddressId;
   List<Map<String, dynamic>> _addresses = [];
   Map<String, dynamic>? _selectedScheduleTime;
@@ -151,6 +152,10 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           if (service.addons.isNotEmpty) ...[
             _sectionHeader('Add-ons'),
             _addonPicker(),
+          ],
+          if (service.formFields.isNotEmpty) ...[
+            _sectionHeader('Service Details'),
+            _formFields(),
           ],
           _sectionHeader('Schedule'),
           _schedulePicker(),
@@ -478,6 +483,75 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     );
   }
 
+  Widget _formFields() {
+    final fields = _service!.formFields;
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          children: fields.map((field) {
+            final decoration = InputDecoration(
+              labelText: field.isRequired ? '${field.label} *' : field.label,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: _Ui.line),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: _Ui.line),
+              ),
+            );
+            Widget input;
+            switch (field.fieldType) {
+              case 'select':
+                input = DropdownButtonFormField<String>(
+                  value: _formAnswers[field.key]?.toString(),
+                  decoration: decoration,
+                  items: field.options.map((option) {
+                    final value = option.toString();
+                    return DropdownMenuItem(value: value, child: Text(value));
+                  }).toList(),
+                  onChanged: (value) => setState(() => _formAnswers[field.key] = value),
+                );
+                break;
+              case 'photo':
+                input = Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: _Ui.line),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Text(
+                    'Photo upload is not available in this app version.',
+                    style: TextStyle(color: _Ui.sub, fontSize: 13),
+                  ),
+                );
+                break;
+              default:
+                input = TextFormField(
+                  initialValue: _formAnswers[field.key]?.toString() ?? '',
+                  decoration: decoration,
+                  keyboardType: field.fieldType == 'number'
+                      ? TextInputType.number
+                      : TextInputType.text,
+                  maxLines: field.fieldType == 'textarea' ? 3 : 1,
+                  onChanged: (value) => _formAnswers[field.key] = value,
+                );
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: input,
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _schedulePicker() {
     final now = DateTime.now();
     final dates = List.generate(7, (index) {
@@ -775,6 +849,21 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   Future<void> _confirmBooking() async {
     if (_selectedAddressId == null) return;
     if (!_isAvailable) return;
+    if (_service!.variants.length > 1 && _selectedVariantId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a package.')),
+      );
+      return;
+    }
+    for (final field in _service!.formFields) {
+      if (field.isRequired && field.fieldType != 'photo' &&
+          (_formAnswers[field.key] == null || _formAnswers[field.key].toString().trim().isEmpty)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please complete: ${field.label}')),
+        );
+        return;
+      }
+    }
 
     if (!mounted) return;
     showDialog(
@@ -807,6 +896,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
             : null,
         addressId: _selectedAddressId!,
         addonIds: _selectedAddonIds.isEmpty ? null : _selectedAddonIds,
+        formResponses: _formAnswers,
       );
 
       if (!mounted) return;
