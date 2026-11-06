@@ -167,7 +167,9 @@ class WalletTopUpView(APIView):
         return Response({
             **WalletTransactionSerializer(transaction_obj).data,
             "order_id": razorpay_order["id"],
-            "amount": amount_paise,
+            # Keep amount in rupees to match WalletTransactionSerializer;
+            # expose the gateway's smallest currency unit separately for checkout.
+            "amount_paise": amount_paise,
             "currency": "INR",
             "key_id": settings.RAZORPAY_KEY_ID,
         }, status=status.HTTP_201_CREATED)
@@ -214,7 +216,16 @@ class WalletTopUpConfirmView(APIView):
         # The capture webhook can arrive before the checkout callback. Treat
         # the matching already-completed transaction as a successful retry.
         if wallet_tx.status == WalletTransaction.Status.COMPLETED:
+            # A completed CREDIT without a Razorpay payment ID is an internal
+            # credit/refund transaction, not a top-up that can be confirmed.
+            if not wallet_tx.razorpay_payment_id:
+                return Response(
+                    {"detail": "Top-up not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             if wallet_tx.razorpay_payment_id == razorpay_payment_id:
+                # Safe retry: webhook may have settled the same payment first,
+                # or the checkout callback may have been retried.
                 return Response(WalletTransactionSerializer(wallet_tx).data)
             return Response(
                 {"detail": "Top-up was already completed with a different payment reference."},
