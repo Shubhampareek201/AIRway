@@ -145,7 +145,7 @@ class DispatcherService:
 
         eligible_workers = eligible_workers_for_service(
             service, zone=zone,
-        ).prefetch_related("schedules", "leaves")
+        ).exclude(user_id=booking.customer_id).prefetch_related("schedules", "leaves")
 
         duration_minutes = max(int(duration_minutes or service.duration_minutes or 60), 1)
         duration = timedelta(minutes=duration_minutes)
