@@ -107,6 +107,11 @@ class WalletReservation(TimeStampedModel):
                 condition=models.Q(amount__gt=0),
                 name="wallet_reservation_amount_positive",
             ),
+            models.UniqueConstraint(
+                fields=["payment"],
+                condition=models.Q(status="reserved"),
+                name="one_active_wallet_reservation_per_payment",
+            ),
         ]
 
     def __str__(self):
