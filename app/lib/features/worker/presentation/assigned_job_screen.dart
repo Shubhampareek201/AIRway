@@ -86,7 +86,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     });
 
     try {
-      await WorkerApi.startJob(_jobDetail!.bookingId);
+      await WorkerApi.startJob(_jobDetail!.assignmentId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Job started')),
@@ -116,7 +116,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     });
 
     try {
-      await WorkerApi.completeJob(_jobDetail!.bookingId);
+      await WorkerApi.completeJob(_jobDetail!.assignmentId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Job completed')),
