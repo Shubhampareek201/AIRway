@@ -24,12 +24,12 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 // AIRway customer home. Addresses and nearby online partners use authenticated APIs.
 // Service cards and sample prices remain previews until the catalog API is connected.
 class _Ui {
-  static const violet = Color(0xFF075B43);
-  static const ink = Color(0xFF17231E);
-  static const sub = Color(0xFF77827C);
-  static const bg = Color(0xFFF7F9F7);
-  static const pale = Color(0xFFE7F1EC);
-  static const line = Color(0xFFE2EAE5);
+  static const violet = Color(0xFF7861A8);
+  static const ink = Color(0xFF292331);
+  static const sub = Color(0xFF81788A);
+  static const bg = Color(0xFFF7F3EC);
+  static const pale = Color(0xFFEDE7F5);
+  static const line = Color(0xFFE8E0ED);
 }
 
 class _Service {
@@ -877,7 +877,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             height: 54,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: selected ? _Ui.pale : const Color(0xFFF0F4F1),
+              color: selected ? _Ui.pale : const Color(0xFFF1EBF7),
               borderRadius: BorderRadius.circular(13),
               border: Border.all(color: selected ? _Ui.violet : _Ui.line),
             ),
@@ -1229,7 +1229,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     const secondLines = ['Happier Days', 'Simple', 'Doorstep'];
     const subtitles = ['A cleaner home starts here', 'Reliable help for everyday fixes', 'Home services made easy'];
     const icons = [Icons.cleaning_services_rounded, Icons.handyman_rounded, Icons.home_repair_service_rounded];
-    const colors = [Color(0xFF075B43), Color(0xFF0C6B4D), Color(0xFF174F3D)];
+    const colors = [Color(0xFF7861A8), Color(0xFF917BB9), Color(0xFF5F4A8B)];
     const images = [
       'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1100&q=85',
       'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1100&q=85',
@@ -1246,7 +1246,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 errorBuilder: (_, __, ___) => Container(color: colors[i])),
               DecoratedBox(decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [const Color(0xE6003D2C), const Color(0xA6003D2C), Colors.transparent],
+                  colors: [const Color(0xE64F3D73), const Color(0xA64F3D73), Colors.transparent],
                   begin: Alignment.centerLeft, end: Alignment.centerRight,
                 ),
               )),
