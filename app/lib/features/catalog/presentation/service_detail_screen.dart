@@ -5,11 +5,11 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 
 class _Ui {
-  static const violet = Color(0xFF075B43);
+  static const violet = Color(0xFF987451);
   static const ink = Color(0xFF1E2923);
   static const sub = Color(0xFF748078);
   static const bg = Color(0xFFFFFFFF);
-  static const line = Color(0xFFE5ECE7);
+  static const line = Color(0xFFEAE6DE);
 }
 
 class ServiceDetailScreen extends StatefulWidget {
@@ -102,7 +102,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     final service = _service!;
     return CustomScrollView(
       slivers: [
-        _imageSliver(service.image),
+        _imageSliver(service),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -245,17 +245,45 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     );
   }
 
-  Widget _imageSliver(String? imageUrl) {
-    if (imageUrl == null || imageUrl.isEmpty) {
-      return const SliverToBoxAdapter(child: SizedBox(height: 20));
+  Widget _imageSliver(Service service) {
+    final imageUrls = <String>[
+      if (service.image?.isNotEmpty == true) service.image!,
+      ...service.images
+          .map((item) => item.image)
+          .where((image) => image.isNotEmpty),
+    ];
+    if (imageUrls.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Container(
+          height: 190,
+          color: const Color(0xFFEAF1EA),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.home_repair_service_rounded,
+            color: Color(0xFF987451),
+            size: 52,
+          ),
+        ),
+      );
     }
     return SliverToBoxAdapter(
-      child: Container(
-        height: 200,
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: NetworkImage(imageUrl),
+      child: SizedBox(
+        height: 220,
+        child: PageView.builder(
+          itemCount: imageUrls.length,
+          itemBuilder: (context, index) => Image.network(
+            imageUrls[index],
+            width: double.infinity,
             fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: const Color(0xFFEAF1EA),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.broken_image_outlined,
+                color: Color(0xFF987451),
+                size: 42,
+              ),
+            ),
           ),
         ),
       ),
