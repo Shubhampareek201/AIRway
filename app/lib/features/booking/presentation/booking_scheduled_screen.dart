@@ -44,6 +44,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   bool _addressCheckBusy = false;
   List<Map<String, dynamic>> _addresses = [];
   int _quantity = 1;
+  int _flowStep = 0;
   final _formKey = GlobalKey<FormState>();
 
   // Summary state
@@ -163,75 +164,226 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     );
   }
 
+  List<String> _flowSteps(Service service) => [
+    if (service.variants.isNotEmpty) 'Package',
+    if (service.formFields.isNotEmpty) 'Your Space',
+    if (service.addons.isNotEmpty) 'Add-ons',
+    'Address',
+    'Summary',
+  ];
+
+  String _stepSubtitle(String step) {
+    switch (step) {
+      case 'Package':
+        return 'Choose the service package that suits your needs.';
+      case 'Your Space':
+        return 'Tell us a little about the space and service requirements.';
+      case 'Add-ons':
+        return 'Personalize your booking with optional extras.';
+      case 'Address':
+        return 'Where should our service professional visit?';
+      default:
+        return 'Review your selections before adding this service to your cart.';
+    }
+  }
+
+  void _continueFlow() {
+    final service = _service!;
+    final steps = _flowSteps(service);
+    final current = steps[_flowStep];
+    if (current == 'Package' &&
+        service.variants.isNotEmpty &&
+        _selectedVariantId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please choose a package to continue.')),
+      );
+      return;
+    }
+    if (current == 'Your Space') {
+      for (final field in service.formFields) {
+        if (field.isRequired &&
+            (_formAnswers[field.key] == null ||
+                _formAnswers[field.key].toString().trim().isEmpty)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Please complete: ${field.label}')),
+          );
+          return;
+        }
+      }
+    }
+    if (current == 'Address' && _selectedAddressId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a service address.')),
+      );
+      return;
+    }
+    if (_flowStep < steps.length - 1) {
+      setState(() => _flowStep++);
+    } else {
+      _addToCart();
+    }
+  }
+
   Widget _buildBody() {
     final service = _service!;
-    return Form(
-      key: _formKey,
-      child: CustomScrollView(
-        slivers: [
-          if (service.image?.isNotEmpty ?? false) _imageSliver(service.image),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Text(
-                'Customize your service',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _Ui.ink),
+    final steps = _flowSteps(service);
+    if (_flowStep >= steps.length) _flowStep = steps.length - 1;
+    final step = steps[_flowStep];
+    final isLast = _flowStep == steps.length - 1;
+    final slivers = <Widget>[
+      if (service.image?.isNotEmpty ?? false) _imageSliver(service.image),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'STEP ${_flowStep + 1} OF ${steps.length}',
+                    style: const TextStyle(
+                      color: _Ui.violet,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${((_flowStep + 1) / steps.length * 100).round()}% complete',
+                    style: const TextStyle(color: _Ui.sub, fontSize: 11),
+                  ),
+                ],
               ),
-            ),
+              const SizedBox(height: 10),
+              Row(
+                children: List.generate(steps.length, (index) {
+                  final active = index <= _flowStep;
+                  return Expanded(
+                    child: Container(
+                      height: 5,
+                      margin: EdgeInsets.only(right: index == steps.length - 1 ? 0 : 5),
+                      decoration: BoxDecoration(
+                        color: active ? _Ui.violet : _Ui.line,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                step,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: _Ui.ink,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                _stepSubtitle(step),
+                style: const TextStyle(color: _Ui.sub, fontSize: 13, height: 1.4),
+              ),
+            ],
           ),
-          _sectionHeader('Select Address'),
+        ),
+      ),
+    ];
+
+    switch (step) {
+      case 'Package':
+        slivers.addAll([
+          _sectionHeader('Choose your package'),
+          _variantPicker(),
+        ]);
+        break;
+      case 'Your Space':
+        slivers.addAll([
+          _sectionHeader('About your space'),
+          _formFields(),
+        ]);
+        break;
+      case 'Add-ons':
+        slivers.addAll([
+          _sectionHeader('Optional extras'),
+          _addonPicker(),
+        ]);
+        break;
+      case 'Address':
+        slivers.addAll([
+          _sectionHeader('Select service address'),
           _addressPicker(),
-          if (service.variants.isNotEmpty) ...[
-            _sectionHeader('Choose a Package'),
-            _variantPicker(),
-          ],
-          if (service.addons.isNotEmpty) ...[
-            _sectionHeader('Optional Add-ons'),
-            _addonPicker(),
-          ],
-          if (service.formFields.isNotEmpty) ...[
-            _sectionHeader('A Few Details'),
-            _formFields(),
-          ],
-          _sectionHeader('Quantity'),
+        ]);
+        break;
+      case 'Summary':
+        slivers.addAll([
+          _sectionHeader('Your service'),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                    onPressed: _quantity > 1
+                        ? () => setState(() => _quantity--)
+                        : null,
                     icon: const Icon(Icons.remove_circle_outline),
                   ),
-                  Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  Text('$_quantity', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                   IconButton(
-                    onPressed: _quantity < 20 ? () => setState(() => _quantity++) : null,
+                    onPressed: _quantity < 20
+                        ? () => setState(() => _quantity++)
+                        : null,
                     icon: const Icon(Icons.add_circle_outline),
                   ),
                   const Spacer(),
-                  const Text('Maximum 20', style: TextStyle(color: _Ui.sub, fontSize: 12)),
+                  const Text('Maximum 20', style: TextStyle(color: _Ui.sub, fontSize: 11)),
                 ],
               ),
             ),
           ),
-          _sectionHeader('Price Summary'),
+          _sectionHeader('Price details'),
           _summaryCard(),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: SafeArea(
-                top: false,
-                child: FilledButton.icon(
-                  onPressed: _selectedAddressId == null ? null : _addToCart,
-                  icon: const Icon(Icons.add_shopping_cart_rounded),
-                  label: const Text('Add to Cart'),
+        ]);
+        break;
+    }
+
+    slivers.add(
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                if (_flowStep > 0) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => setState(() => _flowStep--),
+                      child: const Text('Back'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: FilledButton(
+                    onPressed: _addressCheckBusy || (step == 'Address' && _selectedAddressId == null)
+                        ? null
+                        : _continueFlow,
+                    child: Text(isLast ? 'Add to Cart' : 'Continue'),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
+
+    return CustomScrollView(slivers: slivers);
   }
 
   Widget _imageSliver(String? imageUrl) {
