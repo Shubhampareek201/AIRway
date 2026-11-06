@@ -510,6 +510,24 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet = Wallet.objects.get(user=self.customer)
 
     @patch("apps.payments.views.client.order.create")
+    def test_zero_wallet_amount_preserves_full_razorpay_checkout(self, create_order):
+        create_order.return_value = {"id": "order_wallet_zero"}
+        response = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["amount"], 100000)
+        self.assertEqual(response.data["wallet_amount"], "0.00")
+        self.assertFalse(response.data["fully_paid_by_wallet"])
+        payment = Payment.objects.get(order=self.order)
+        self.assertEqual(payment.amount, Decimal("1000.00"))
+        self.assertEqual(payment.wallet_amount, Decimal("0.00"))
+        self.assertFalse(WalletReservation.objects.filter(payment=payment).exists())
+        create_order.assert_called_once()
+
+    @patch("apps.payments.views.client.order.create")
     def test_partial_wallet_payment_reserves_only_requested_amount(self, create_order):
         create_order.return_value = {"id": "order_partial_wallet"}
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
