@@ -8,6 +8,7 @@ import 'package:airway/features/location/presentation/address_picker_screen.dart
 import 'package:airway/features/location/presentation/location_selection_screen.dart';
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/service_detail_screen.dart';
 import 'package:airway/features/notification/presentation/notification_list_screen.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
@@ -664,6 +665,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 style: const TextStyle(color: _Ui.sub, fontSize: 11.5)),
             ])),
           )),
+          IconButton(tooltip: 'Your cart', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerCartScreen())),
+            icon: const Icon(Icons.shopping_bag_outlined, color: _Ui.violet, size: 24)),
           IconButton(tooltip: 'Notifications', onPressed: _showNotificationsInfo,
             icon: const Icon(Icons.notifications_none_rounded, color: _Ui.ink, size: 25)),
         ]),
