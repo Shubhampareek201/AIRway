@@ -20,6 +20,26 @@ class ServiceUnavailableError(Exception):
     pass
 
 
+def _booking_intervals(
+    start_at,
+    duration_minutes: int,
+    buffer_minutes: int,
+    drop_at=None,
+):
+    """Return the service's occupied intervals, including configured buffer time."""
+    duration = timedelta(minutes=max(int(duration_minutes or 0), 1))
+    buffer = timedelta(minutes=max(int(buffer_minutes or 0), 0))
+    intervals = [(start_at, start_at + duration + buffer)]
+    if drop_at is not None:
+        intervals.append((drop_at, drop_at + duration + buffer))
+    return intervals
+
+
+def _intervals_overlap(first, second) -> bool:
+    """Half-open interval overlap: adjacent jobs are allowed when buffers permit."""
+    return first[0] < second[1] and second[0] < first[1]
+
+
 def check_slot_availability(
     service: Service,
     scheduled_at: timezone.datetime,
@@ -29,52 +49,57 @@ def check_slot_availability(
     exclude_booking_id: int = None,
 ) -> bool:
     """
-    Check if a slot is available for booking.
+    Check whether a service slot overlaps an active booking.
 
-    Returns True if available, raises SlotConflictError if not.
-    Uses database query to check for overlapping confirmed/pending bookings.
+    The current data model has service-level capacity (not per-worker slot
+    inventory), so all active bookings for the same service are considered.
+    Both start and end bounds are checked, and each existing booking uses its
+    own variant duration plus the service buffer.
     """
-    buffer = timedelta(minutes=service.buffer_minutes)
-    end_at = scheduled_at + timedelta(minutes=duration_minutes) + buffer
-
-    # Check for overlapping bookings
-    overlapping = Booking.objects.filter(
-        service=service,
-        status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED, Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS]
-    ).exists()
-
-    # For proper overlap detection, check:
-    # A booking [start1, end1] overlaps with [start2, end2] if:
-    # start1 < end2 AND start2 < end1
-    from django.db.models import Q
-
-    queryset = Booking.objects.filter(
-        service=service,
-        status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED, Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS]
+    active_statuses = [
+        Booking.Status.PENDING,
+        Booking.Status.CONFIRMED,
+        Booking.Status.ASSIGNED,
+        Booking.Status.IN_PROGRESS,
+    ]
+    requested = _booking_intervals(
+        scheduled_at,
+        duration_minutes or service.duration_minutes or 60,
+        service.buffer_minutes,
+        drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
     )
 
-    # Calculate end time for pickup
-    pickup_end = scheduled_at + timedelta(minutes=duration_minutes) + buffer
+    existing_bookings = (
+        Booking.objects.filter(service=service, status__in=active_statuses)
+        .exclude(pk=exclude_booking_id)
+        .select_related("variant")
+        .only(
+            "id", "scheduled_at", "drop_scheduled_at", "booking_mode",
+            "service__duration_minutes", "service__buffer_minutes",
+            "variant__duration_minutes",
+        )
+    )
 
-    # Check pickup slot overlap
-    # Two bookings overlap if: booking2.start < booking1.end AND booking2.end > booking1.start
-    # For existing bookings, we need to check if their slot [scheduled_at, scheduled_at + duration + buffer]
-    # overlaps with new booking's slot [scheduled_at, pickup_end]
-    if queryset.filter(
-        Q(scheduled_at__lt=pickup_end)
-    ).exclude(pk=exclude_booking_id).exists():
-        raise SlotConflictError("Slot is already booked. Please choose another time.")
-
-    # For pickup-drop mode, check drop slot overlap
-    if booking_mode == 'pickup_drop' and drop_scheduled_at and drop_scheduled_at > scheduled_at:
-        drop_duration = duration_minutes or service.duration_minutes or 60
-        drop_end = drop_scheduled_at + timedelta(minutes=drop_duration) + buffer
-
-        if queryset.filter(
-            Q(drop_scheduled_at__lt=drop_end) &
-            (Q(drop_scheduled_at__gt=drop_scheduled_at - buffer) | Q(drop_scheduled_at__gte=drop_scheduled_at))
-        ).exclude(pk=exclude_booking_id).exists():
-            raise SlotConflictError("Drop slot conflicts with existing booking.")
+    for existing in existing_bookings:
+        existing_duration = (
+            existing.variant.duration_minutes
+            if existing.variant_id and existing.variant.duration_minutes
+            else existing.service.duration_minutes
+        ) or 60
+        existing_intervals = _booking_intervals(
+            existing.scheduled_at,
+            existing_duration,
+            existing.service.buffer_minutes,
+            existing.drop_scheduled_at
+            if existing.booking_mode == Booking.BookingMode.PICKUP_DROP
+            else None,
+        )
+        if any(
+            _intervals_overlap(candidate, occupied)
+            for candidate in requested
+            for occupied in existing_intervals
+        ):
+            raise SlotConflictError("Slot is already booked. Please choose another time.")
 
     return True
 
