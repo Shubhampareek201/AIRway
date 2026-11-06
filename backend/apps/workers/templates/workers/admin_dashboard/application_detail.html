@@ -1,0 +1,29 @@
+{% extends "workers/admin_dashboard/base.html" %}
+{% block title %}Review {{ worker.user.name|default:worker.user.phone }} · AIRway{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'admin_dashboard:applications' %}?status={{ worker.status }}">← Back to applications</a>
+<div class="page-head" style="margin-top:18px"><div><div class="eyebrow">Worker application #{{ worker.pk }}</div><h1>{{ worker.user.name|default:"Name not provided" }}</h1><div class="muted">{{ worker.user.phone|default:"No phone" }} · Submitted {{ worker.created_at|date:"d M Y, h:i A" }}</div></div><span class="pill {{ worker.status }}">{{ worker.get_status_display }}</span></div>
+<div class="detail-grid">
+<div style="display:grid;gap:18px">
+<div class="panel"><div class="panel-head"><h2>Personal & application details</h2></div><div class="panel-body"><div class="detail-list">
+<div class="detail-item"><label>Full name</label><strong>{{ worker.user.name|default:"—" }}</strong></div><div class="detail-item"><label>Phone number</label><strong>{{ worker.user.phone|default:"—" }}</strong></div><div class="detail-item"><label>Email</label><strong>{{ worker.user.email|default:"—" }}</strong></div><div class="detail-item"><label>Gender</label><strong>{{ worker.get_gender_display|default:"—" }}</strong></div><div class="detail-item"><label>Experience</label><strong>{{ worker.experience_years }} year(s)</strong></div><div class="detail-item"><label>UPI ID</label><strong>{{ worker.upi_id|default:"—" }}</strong></div></div>{% if worker.bio %}<div class="notice">{{ worker.bio|linebreaksbr }}</div>{% endif %}</div></div>
+<div class="panel"><div class="panel-head"><h2>Identity documents & photos</h2><span class="muted">{{ documents|length }} uploaded</span></div><div class="panel-body">
+{% for doc in documents %}<div class="doc-row"><div><strong style="font-size:13px">{{ doc.get_doc_type_display }}</strong><span class="subline"><span class="pill {{ doc.status }}">{{ doc.get_status_display }}</span> · {{ doc.created_at|date:"d M Y" }}</span><div style="margin-top:7px">{% if doc.file %}<a class="doc-link" href="{{ doc.file.url }}" target="_blank" rel="noopener">Open uploaded file ↗</a>{% else %}<span class="muted">File unavailable</span>{% endif %}</div>{% if doc.verified_by %}<span class="subline">Reviewed by {{ doc.verified_by.name|default:doc.verified_by.phone }}</span>{% endif %}</div>
+{% if worker.status == "pending" %}<div class="doc-actions"><form method="post" action="{% url 'admin_dashboard:review_document' worker.pk doc.pk %}">{% csrf_token %}<input type="hidden" name="decision" value="verify"><button class="btn btn-light" type="submit" {% if doc.status == "verified" %}disabled{% endif %}>Verify</button></form><form method="post" action="{% url 'admin_dashboard:review_document' worker.pk doc.pk %}">{% csrf_token %}<input type="hidden" name="decision" value="reject"><button class="btn btn-danger" type="submit" {% if doc.status == "rejected" %}disabled{% endif %}>Reject file</button></form></div>{% endif %}</div>
+{% empty %}<div class="empty">No documents uploaded.</div>{% endfor %}
+</div></div>
+<div class="panel"><div class="panel-head"><h2>Services & service areas</h2></div><div class="panel-body"><div class="detail-item"><label>Selected services</label><strong>{% for link in worker.worker_services.all %}{{ link.service.title }}{% if not forloop.last %}, {% endif %}{% empty %}No services selected{% endfor %}</strong></div><div class="detail-item" style="margin-top:18px"><label>Selected zones</label><strong>{% for link in worker.worker_zones.all %}{{ link.zone.name }}{% if not forloop.last %}, {% endif %}{% empty %}No zones selected{% endfor %}</strong></div></div></div>
+</div>
+<aside style="display:grid;gap:18px;align-content:start">
+<div class="panel"><div class="panel-head"><h2>Verification checklist</h2></div><div class="panel-body">
+<div class="notice {% if has_verified_id %}good{% else %}warn{% endif %}">{% if has_verified_id %}✓{% else %}○{% endif %} Government ID verified</div>
+<div class="notice {% if has_service %}good{% else %}warn{% endif %}">{% if has_service %}✓{% else %}○{% endif %} At least one service selected</div>
+<div class="notice {% if has_zone %}good{% else %}warn{% endif %}">{% if has_zone %}✓{% else %}○{% endif %} At least one service zone selected</div>
+{% if worker.status == "pending" %}<form class="decision" method="post" action="{% url 'admin_dashboard:approve_application' worker.pk %}" style="margin-top:18px">{% csrf_token %}<button class="btn btn-primary" type="submit" {% if not can_approve %}disabled{% endif %}>Approve worker</button></form>{% if not can_approve %}<div class="muted" style="margin-top:8px">Complete all checklist items before approval.</div>{% endif %}
+<hr style="border:0;border-top:1px solid #edf1ee;margin:20px 0"><form class="decision" method="post" action="{% url 'admin_dashboard:reject_application' worker.pk %}">{% csrf_token %}<label for="reason">Rejection reason <span style="color:#a33d36">*</span></label><textarea id="reason" name="reason" placeholder="Explain why this application is being rejected..." required></textarea><button class="btn btn-danger" type="submit">Reject application</button></form>
+{% elif worker.status == "approved" %}<div class="notice good">Approved {% if worker.approved_at %}on {{ worker.approved_at|date:"d M Y" }}{% endif %}{% if worker.approved_by %} by {{ worker.approved_by.name|default:worker.approved_by.phone }}{% endif %}.</div>
+{% elif worker.status == "rejected" %}<div class="notice warn"><strong>Rejection reason</strong><br>{{ worker.rejection_reason|default:"No reason recorded." }}</div>{% endif %}
+</div></div>
+<div class="panel"><div class="panel-head"><h2>Admin actions</h2></div><div class="panel-body"><a class="btn btn-light" href="/admin/apps/workers/workerprofile/{{ worker.pk }}/change/">Open in advanced admin ↗</a></div></div>
+</aside></div>
+{% endblock %}
