@@ -573,9 +573,9 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if booking.status != Booking.Status.ASSIGNED:
+        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response(
-                {"detail": "Job must be assigned before starting."},
+                {"detail": "Job must be assigned and confirmed before starting."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -906,6 +906,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             assignment = BookingAssignment.objects.create(
                 booking=booking,
                 worker=worker,
+                accepted_at=timezone.now(),
             )
 
             offer.status = WorkerOffer.Status.ACCEPTED
