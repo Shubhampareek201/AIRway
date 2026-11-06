@@ -260,7 +260,7 @@ class WalletRefundView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.bookings.models import Booking
+        from apps.bookings.models import Booking, OrderItem
         from apps.payments.models import Payment
 
         with transaction.atomic():
@@ -278,7 +278,7 @@ class WalletRefundView(APIView):
             payment_filter = Q(booking=booking)
             try:
                 order_id = booking.order_item.order_id
-            except Booking.order_item.RelatedObjectDoesNotExist:
+            except OrderItem.DoesNotExist:
                 order_id = None
             if order_id:
                 payment_filter |= Q(order_id=order_id)
