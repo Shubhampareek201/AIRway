@@ -188,7 +188,6 @@ def timeout_pending_payments():
             count += 1
             logger.info("Timed out parent-order payment %s; wallet hold released", payment.id)
 
-    count = 0
     for payment_id in payment_ids:
         with transaction.atomic():
             payment = Payment.objects.select_for_update().filter(
