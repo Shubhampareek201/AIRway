@@ -655,6 +655,13 @@ class ParentOrderWalletPaymentTest(TestCase):
         )
 
         self.assertEqual(webhook_response.status_code, 200)
+        duplicate_webhook = Client().post(
+            "/api/v1/payments/webhook/",
+            data=raw_body,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+        self.assertEqual(duplicate_webhook.status_code, 200)
         payment.refresh_from_db()
         self.order.refresh_from_db()
         self.wallet.refresh_from_db()
