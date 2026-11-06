@@ -8,9 +8,9 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.wallet.models import Wallet, WalletTransaction
+from apps.wallet.models import Wallet, WalletTransaction, WalletReservation
 from apps.accounts.models import Address
-from apps.bookings.models import Booking
+from apps.bookings.models import Booking, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.payments.models import Payment
@@ -462,3 +462,130 @@ class WalletRefundAdminTest(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(WalletTransaction.objects.filter(type=WalletTransaction.Type.REFUND).exists())
+
+
+class ParentOrderWalletPaymentTest(TestCase):
+    """Wallet split payments must reserve, capture and release funds safely."""
+
+    def setUp(self):
+        self.customer = User.objects.create_user(
+            phone="9876543290", password="test123456"
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.customer)
+        city = City.objects.create(name="Wallet City", state="Rajasthan")
+        zone = Zone.objects.create(name="Wallet Zone", city=city, is_active=True)
+        self.address = Address.objects.create(
+            user=self.customer,
+            label=Address.Label.HOME,
+            house_details="House 1",
+            landmark="Main road",
+            full_address="Wallet test address",
+            zone=zone,
+        )
+        category = Category.objects.create(title="Wallet Services", slug="wallet-services")
+        service = Service.objects.create(category=category, title="Wallet Test Service")
+        self.booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=service,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        self.order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_PAYMENT,
+            subtotal=Decimal("1000.00"),
+            total_amount=Decimal("1000.00"),
+        )
+        OrderItem.objects.create(
+            order=self.order,
+            booking=self.booking,
+            quantity=1,
+            line_subtotal=Decimal("1000.00"),
+            line_total=Decimal("1000.00"),
+        )
+        self.wallet = Wallet.objects.get(user=self.customer)
+
+    @patch("apps.payments.views.client.order.create")
+    def test_partial_wallet_payment_reserves_only_requested_amount(self, create_order):
+        create_order.return_value = {"id": "order_partial_wallet"}
+        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+
+        response = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["amount"], 70000)
+        self.assertEqual(response.data["wallet_amount"], "300.00")
+        self.assertFalse(response.data["fully_paid_by_wallet"])
+        create_order.assert_called_once()
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        reservation = WalletReservation.objects.get(payment__order=self.order)
+        self.assertEqual(reservation.status, WalletReservation.Status.RESERVED)
+        self.assertEqual(reservation.amount, Decimal("300.00"))
+
+    @patch("apps.payments.views.client.order.create")
+    def test_insufficient_wallet_balance_rejects_without_creating_payment(self, create_order):
+        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        response = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id, "wallet_amount": "500.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Payment.objects.filter(order=self.order).exists())
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("400.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
+        create_order.assert_not_called()
+
+    @patch("apps.payments.views.client.order.create")
+    def test_full_wallet_payment_skips_razorpay_and_confirms_order(self, create_order):
+        self.wallet.deposit(Decimal("1000.00"), description="Test top-up")
+        response = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id, "wallet_amount": "1000.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["fully_paid_by_wallet"])
+        self.assertEqual(response.data["amount"], 0)
+        create_order.assert_not_called()
+        self.order.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.wallet.refresh_from_db()
+        payment = Payment.objects.get(order=self.order)
+        reservation = WalletReservation.objects.get(payment=payment)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(self.order.status, Order.Status.PAID)
+        self.assertEqual(self.booking.status, Booking.Status.CONFIRMED)
+        self.assertEqual(reservation.status, WalletReservation.Status.CAPTURED)
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
+
+    @patch("apps.payments.views.client.order.create")
+    def test_duplicate_checkout_does_not_reserve_wallet_twice(self, create_order):
+        create_order.return_value = {"id": "order_wallet_duplicate"}
+        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        payload = {"order_id": self.order.id, "wallet_amount": "300.00"}
+
+        first = self.client.post("/api/v1/payments/create-order/", payload, format="json")
+        second = self.client.post("/api/v1/payments/create-order/", payload, format="json")
+
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        self.assertEqual(WalletReservation.objects.filter(payment__order=self.order).count(), 1)
+        create_order.assert_called_once()
