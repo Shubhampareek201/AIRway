@@ -547,17 +547,6 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                   color: _Ui.ink,
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 14, color: _Ui.sub),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${_selectedScheduleTime?['date'].toString().split(' ')[0]} at ${_selectedScheduleTime?['hour']}h',
-                    style: const TextStyle(fontSize: 13, color: _Ui.sub),
-                  ),
-                ],
-              ),
               if (_selectedVariantId != null) ...[
                 const SizedBox(height: 8),
                 Row(
