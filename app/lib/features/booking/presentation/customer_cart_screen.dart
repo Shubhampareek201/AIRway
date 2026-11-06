@@ -22,6 +22,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   String? error;
   final Map<int, DateTime> dates = {};
   final Map<int, TimeOfDay> times = {};
+  final Map<int, TimeOfDay> dropTimes = {};
 
   @override
   void initState() {
@@ -43,6 +44,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         final id = row['id'] as int;
         dates.putIfAbsent(id, () => DateTime(tomorrow.year, tomorrow.month, tomorrow.day));
         times.putIfAbsent(id, () => const TimeOfDay(hour: 10, minute: 0));
+        dropTimes.putIfAbsent(id, () => const TimeOfDay(hour: 14, minute: 0));
       }
       if (mounted) setState(() { cart = value; loading = false; });
     } catch (e) {
@@ -89,10 +91,18 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         final id = item['id'] as int;
         final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
         final time = times[id] ?? const TimeOfDay(hour: 10, minute: 0);
-        return {
+        final row = <String, dynamic>{
           'cart_item_id': id,
           'scheduled_at': DateTime(date.year, date.month, date.day, time.hour, time.minute).toIso8601String(),
         };
+        if (item['booking_mode'] == 'pickup_drop') {
+          final drop = dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0);
+          if (drop.hour * 60 + drop.minute <= time.hour * 60 + time.minute) {
+            throw Exception('Drop time must be later than pickup time for ' + (item['service_title']?.toString() ?? 'this service') + '.');
+          }
+          row['drop_scheduled_at'] = DateTime(date.year, date.month, date.day, drop.hour, drop.minute).toIso8601String();
+        }
+        return row;
       }).toList();
       final result = await BookingApi.checkoutCart(items: schedules);
       if (!mounted) return;
@@ -224,6 +234,17 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           const SizedBox(width: 8),
           Expanded(child: OutlinedButton.icon(onPressed: () => pickTime(id), icon: const Icon(Icons.schedule_rounded, size: 15), label: Text(time.format(context)))),
         ]),
+        if (item['booking_mode'] == 'pickup_drop') ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final value = await showTimePicker(context: context, initialTime: dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0));
+              if (value != null) setState(() => dropTimes[id] = value);
+            },
+            icon: const Icon(Icons.flag_outlined, size: 15),
+            label: Text('Drop-off: ' + (dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0)).format(context)),
+          ),
+        ],
       ]),
     );
   }
