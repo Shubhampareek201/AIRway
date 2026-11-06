@@ -191,12 +191,11 @@ class WalletTopUpConfirmView(APIView):
             id=transaction_id,
             wallet__user=request.user,
             type=WalletTransaction.Type.CREDIT,
-            status=WalletTransaction.Status.PENDING,
             reference_id=razorpay_order_id,
         ).first()
         if wallet_tx is None:
             return Response(
-                {"detail": "Pending top-up not found for this account and Razorpay order."},
+                {"detail": "Top-up not found for this account and Razorpay order."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -210,6 +209,21 @@ class WalletTopUpConfirmView(APIView):
             return Response(
                 {"detail": "Wallet top-up payment signature verification failed."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # The capture webhook can arrive before the checkout callback. Treat
+        # the matching already-completed transaction as a successful retry.
+        if wallet_tx.status == WalletTransaction.Status.COMPLETED:
+            if wallet_tx.razorpay_payment_id == razorpay_payment_id:
+                return Response(WalletTransactionSerializer(wallet_tx).data)
+            return Response(
+                {"detail": "Top-up was already completed with a different payment reference."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if wallet_tx.status != WalletTransaction.Status.PENDING:
+            return Response(
+                {"detail": "Top-up is no longer pending."},
+                status=status.HTTP_409_CONFLICT,
             )
 
         transaction_obj = complete_top_up_transaction(
