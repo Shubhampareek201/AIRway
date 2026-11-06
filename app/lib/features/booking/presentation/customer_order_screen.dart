@@ -111,17 +111,22 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         widget.orderId,
         walletAmount: walletAmount.toStringAsFixed(2),
       );
-      if (payment['fully_paid_by_wallet'] == true) {
+      if (payment['fully_paid_by_wallet'] == true || payment['already_paid'] == true) {
         if (!mounted) return;
         setState(() => paying = false);
         await loadOrder();
         if (!mounted) return;
+        final paidByWallet = payment['fully_paid_by_wallet'] == true;
         showDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(
             icon: const Icon(Icons.verified_rounded, color: violet, size: 48),
             title: const Text('Payment successful'),
-            content: const Text('Your order was paid using your AIRway wallet.'),
+            content: Text(
+              paidByWallet
+                  ? 'Your order was paid using your AIRway wallet.'
+                  : 'Your AIRway order has already been paid and confirmed.',
+            ),
             actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
           ),
         );
