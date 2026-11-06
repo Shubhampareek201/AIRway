@@ -23,6 +23,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   final Map<int, DateTime> dates = {};
   final Map<int, TimeOfDay> times = {};
   final Map<int, TimeOfDay> dropTimes = {};
+  List<Map<String, dynamic>> addresses = [];
 
   @override
   void initState() {
@@ -39,6 +40,11 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() { loading = true; error = null; });
     try {
       final value = await BookingApi.getCart();
+      try {
+        final rawAddresses = await BookingApi.request('/api/v1/auth/addresses/');
+        final rawList = rawAddresses is List ? rawAddresses : (rawAddresses is Map ? rawAddresses['results'] : null);
+        if (rawList is List) addresses = rawList.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      } catch (_) {}
       final tomorrow = DateTime.now().add(const Duration(days: 1));
       for (final row in (value['items'] as List? ?? []).whereType<Map>()) {
         final id = row['id'] as int;
@@ -187,19 +193,54 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     ]);
   }
 
-  Widget addressCard() => Container(
-    padding: const EdgeInsets.all(15),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: line)),
-    child: Row(children: [
-      const CircleAvatar(backgroundColor: pale, child: Icon(Icons.location_on_outlined, color: violet)),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Service address', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
-        Text(cart?['address'] == null ? 'No address selected' : 'Saved address #' + cart!['address'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
-      ])),
-      const Icon(Icons.check_circle, color: violet),
-    ]),
-  );
+  Widget addressCard() {
+    final selectedId = cart?['address'] is int ? cart!['address'] as int : int.tryParse(cart?['address']?.toString() ?? '');
+    final selected = addresses.where((a) => a['id'] == selectedId).toList();
+    final label = selected.isEmpty
+        ? (selectedId == null ? 'No address selected' : 'Saved address #' + selectedId.toString())
+        : (selected.first['label']?.toString() ?? 'Service address') + ' • ' +
+            (selected.first['full_address']?.toString() ?? '');
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: line)),
+      child: Row(children: [
+        const CircleAvatar(backgroundColor: pale, child: Icon(Icons.location_on_outlined, color: violet)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Service address', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+          Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: sub, fontSize: 12)),
+        ])),
+        if (addresses.isNotEmpty)
+          PopupMenuButton<int>(
+            tooltip: 'Change address',
+            icon: const Icon(Icons.edit_location_alt_outlined, color: violet),
+            onSelected: (id) async {
+              setState(() => busy = true);
+              try {
+                final updated = await BookingApi.updateCartAddress(id);
+                if (mounted) setState(() { cart = updated; busy = false; });
+              } catch (e) {
+                if (mounted) {
+                  setState(() => busy = false);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                }
+              }
+            },
+            itemBuilder: (context) => addresses.map((a) => PopupMenuItem<int>(
+              value: a['id'] as int,
+              child: SizedBox(
+                width: 230,
+                child: Text(
+                  (a['label']?.toString() ?? 'Address') + ' — ' + (a['full_address']?.toString() ?? ''),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )).toList(),
+          ),
+      ]),
+    );
+  }
 
   Widget itemCard(Map<String, dynamic> item) {
     final id = item['id'] as int;
