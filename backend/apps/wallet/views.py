@@ -1,11 +1,20 @@
+import hashlib
+import hmac
+import logging
+from decimal import Decimal
+
+import razorpay
+from django.conf import settings
+from django.db import transaction
 from rest_framework import status, permissions, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db import transaction
-from decimal import Decimal
 
 from .models import Wallet, WalletTransaction
 from .serializers import WalletSerializer, WalletTransactionSerializer, parse_amount
+
+logger = logging.getLogger(__name__)
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 
 def get_or_create_wallet(user):
@@ -20,33 +29,43 @@ class IsAdminUser(permissions.BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
-def complete_top_up_transaction(transaction_id, razorpay_payment_id=None):
+def complete_top_up_transaction(
+    transaction_id,
+    razorpay_payment_id=None,
+    user=None,
+    razorpay_order_id=None,
+):
     """
-    Complete a pending wallet top-up transaction.
-    Called by payment verification/webhook handlers.
-
-    Returns the updated transaction or None if not found/already completed.
+    Atomically credit a pending top-up once. Customer-initiated completion is
+    scoped to the authenticated wallet owner and the server-stored Razorpay
+    order ID. Webhooks may omit user because their signature is verified first.
     """
-    try:
-        with transaction.atomic():
-            wallet_tx = WalletTransaction.objects.select_for_update().get(
-                id=transaction_id,
-                type=WalletTransaction.Type.CREDIT,
-                status=WalletTransaction.Status.PENDING
-            )
-            wallet = wallet_tx.wallet
+    with transaction.atomic():
+        queryset = WalletTransaction.objects.select_for_update().filter(
+            id=transaction_id,
+            type=WalletTransaction.Type.CREDIT,
+            status=WalletTransaction.Status.PENDING,
+        )
+        if user is not None:
+            queryset = queryset.filter(wallet__user=user)
+        if razorpay_order_id:
+            queryset = queryset.filter(reference_id=razorpay_order_id)
 
-            wallet_tx.status = WalletTransaction.Status.COMPLETED
-            if razorpay_payment_id:
-                wallet_tx.reference_id = razorpay_payment_id
-            wallet_tx.save()
+        wallet_tx = queryset.first()
+        if wallet_tx is None:
+            return None
 
-            wallet.balance += wallet_tx.amount
-            wallet.save(update_fields=['balance'])
+        wallet = Wallet.objects.select_for_update().get(pk=wallet_tx.wallet_id)
+        wallet_tx.status = WalletTransaction.Status.COMPLETED
+        if razorpay_payment_id:
+            wallet_tx.razorpay_payment_id = razorpay_payment_id
+        wallet_tx.save(update_fields=[
+            "status", "razorpay_payment_id", "updated_at"
+        ])
 
-            return wallet_tx
-    except WalletTransaction.DoesNotExist:
-        return None
+        wallet.balance += wallet_tx.amount
+        wallet.save(update_fields=["balance", "updated_at"])
+        return wallet_tx
 
 
 class WalletViewSet(viewsets.ViewSet):
@@ -106,50 +125,109 @@ class WalletTopUpView(APIView):
 
     def post(self, request):
         amount = parse_amount(request.data.get("amount"))
-        if amount is None:
+        if amount is None or amount <= 0:
             return Response(
-                {"detail": "A valid amount is required."},
+                {"detail": "A valid amount greater than zero is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if amount <= 0:
+
+        normalized_amount = amount.quantize(Decimal("0.01"))
+        if normalized_amount != amount:
             return Response(
-                {"detail": "Amount must be greater than zero."},
+                {"detail": "Amount can have at most two decimal places."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        amount_paise = int(normalized_amount * 100)
+        try:
+            razorpay_order = razorpay_client.order.create(data={
+                "amount": amount_paise,
+                "currency": "INR",
+                "receipt": f"wallet_{request.user.id}_{timezone.now().strftime('%Y%m%d%H%M%S%f')}",
+                "notes": {"customer_id": str(request.user.id), "purpose": "wallet_top_up"},
+            })
+        except Exception:
+            logger.exception("Razorpay wallet top-up order creation failed for user %s", request.user.id)
+            return Response(
+                {"detail": "Unable to start wallet top-up. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
             )
 
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
         transaction_obj = WalletTransaction.objects.create(
             wallet=wallet,
             type=WalletTransaction.Type.CREDIT,
-            amount=amount,
-            description="Wallet top-up (pending Razorpay confirmation)",
+            amount=normalized_amount,
+            description="Wallet top-up (awaiting Razorpay confirmation)",
             status=WalletTransaction.Status.PENDING,
-            reference_id=request.data.get("reference_id", ""),
+            reference_id=razorpay_order["id"],
         )
-        serializer = WalletTransactionSerializer(transaction_obj)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({
+            **WalletTransactionSerializer(transaction_obj).data,
+            "order_id": razorpay_order["id"],
+            "amount": amount_paise,
+            "currency": "INR",
+            "key_id": settings.RAZORPAY_KEY_ID,
+        }, status=status.HTTP_201_CREATED)
 
 
 class WalletTopUpConfirmView(APIView):
-    """Confirm a pending top-up transaction after payment verification."""
+    """Verify Razorpay checkout signature before crediting the customer's wallet."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, transaction_id):
+        razorpay_order_id = request.data.get("razorpay_order_id")
+        razorpay_payment_id = request.data.get("razorpay_payment_id")
+        razorpay_signature = request.data.get("razorpay_signature")
+        if not all([razorpay_order_id, razorpay_payment_id, razorpay_signature]):
+            return Response(
+                {"detail": "razorpay_order_id, razorpay_payment_id and razorpay_signature are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        wallet_tx = WalletTransaction.objects.filter(
+            id=transaction_id,
+            wallet__user=request.user,
+            type=WalletTransaction.Type.CREDIT,
+            status=WalletTransaction.Status.PENDING,
+            reference_id=razorpay_order_id,
+        ).first()
+        if wallet_tx is None:
+            return Response(
+                {"detail": "Pending top-up not found for this account and Razorpay order."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        message = f"{razorpay_order_id}|{razorpay_payment_id}"
+        expected_signature = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(),
+            message.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected_signature, razorpay_signature):
+            return Response(
+                {"detail": "Wallet top-up payment signature verification failed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         transaction_obj = complete_top_up_transaction(
             transaction_id,
-            request.data.get("razorpay_payment_id")
+            razorpay_payment_id=razorpay_payment_id,
+            user=request.user,
+            razorpay_order_id=razorpay_order_id,
         )
         if transaction_obj is None:
             return Response(
-                {"detail": "Transaction not found or already completed."},
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "Top-up is already completed or no longer available."},
+                status=status.HTTP_409_CONFLICT,
             )
-        serializer = WalletTransactionSerializer(transaction_obj)
-        return Response(serializer.data)
+        return Response(WalletTransactionSerializer(transaction_obj).data)
 
 
 class WalletRefundView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    # A customer must never be able to mint wallet credit by submitting an
+    # arbitrary booking ID and amount. Refunds are currently admin-reviewed.
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         booking_id = request.data.get("booking_id")
