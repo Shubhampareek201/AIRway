@@ -418,6 +418,57 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["status"], "completed")
 
+    def test_worker_can_start_paid_confirmed_job(self):
+        """A paid booking remains startable after payment changes ASSIGNED to CONFIRMED."""
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.CONFIRMED,
+        )
+        BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], Booking.Status.IN_PROGRESS)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.IN_PROGRESS)
+
+    def test_worker_jobs_start_endpoint_accepts_paid_confirmed_job(self):
+        """The worker-specific start endpoint also supports paid confirmed bookings."""
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.CONFIRMED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/start/",
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], Booking.Status.IN_PROGRESS)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.IN_PROGRESS)
+
     def test_cannot_start_job_not_assigned(self):
         """Cannot start a job without assignment."""
         booking = Booking.objects.create(
