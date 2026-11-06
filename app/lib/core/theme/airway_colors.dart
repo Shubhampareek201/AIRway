@@ -2,21 +2,17 @@ import 'package:flutter/material.dart';
 
 /// AIRway design system — color palette.
 ///
-/// Derived directly from the AIRway logo mark:
-///   - warm cream ground   #F3EFAE
-///   - clay / terracotta   #A9856A
-///   - sage green          #7C8A6E
-///   - dark ink            #24201C
-/// A single warm, earthy identity shared by the customer and worker apps.
+/// AIRway customer palette: soft violet, warm cream and wood accents.
+/// Semantic green is reserved for success states, not primary navigation.
 class AirwayColors {
   AirwayColors._();
 
   // === Brand (from logo) ===
   static const cream = Color(0xFFF7F3EC); // warm cream
   static const clay = Color(0xFFA9856A); // warm wood accent
-  static const sage = Color(0xFF7861A8); // violet brand
+  static const sage = Color(0xFF7861A8); // compatibility alias for violet
   static const ink = Color(0xFF24201C); // wordmark + lines
-    // === Compatibility aliases ===
+  // === Compatibility aliases ===
   static const primary = sage;
   static const primarySoft = Color(0xFFEDE7F5);
   static const muted = textTertiary;
