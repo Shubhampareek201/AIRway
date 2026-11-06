@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
-import 'package:airway/features/booking/data/booking_models.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 
 class WorkerApi {
@@ -133,7 +132,7 @@ class WorkerApi {
       '/api/v1/workers/jobs/$assignmentId/complete/',
       method: 'POST',
     );
-    return Booking.fromMap(Map<String, dynamic>.from(result));
+    return Map<String, dynamic>.from(result as Map);
   }
 
   static Future<List<Map<String, dynamic>>> getAssignedJobs() async {
