@@ -15,6 +15,11 @@ import 'package:airway/features/wallet/presentation/wallet_screen.dart';
 import 'package:airway/features/worker/presentation/worker_application_screen.dart';
 import 'package:airway/features/worker/presentation/worker_dashboard_screen.dart';
 import 'package:airway/features/worker/data/worker_app_api.dart';
+import 'package:airway/features/catalog/data/catalog_api.dart';
+import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/presentation/service_categories_screen.dart';
+import 'package:airway/features/catalog/presentation/service_list_screen.dart';
+import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
 
 // AIRway customer home. Addresses and nearby online partners use authenticated APIs.
 // Service cards and sample prices remain previews until the catalog API is connected.
@@ -55,6 +60,10 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   List<Map<String, dynamic>> _addresses = [];
+  List<Category> _catalogCategories = [];
+  List<Service> _popularCatalogServices = [];
+  bool _catalogLoading = false;
+  String? _catalogError;
   bool _loading = true;
   String? _error;
   int _tab = 0;
@@ -120,8 +129,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       selected ??= list.isEmpty ? null : list.first;
       final addressId = selected?['id'];
       if (addressId != null) {
+        await _loadCatalog(int.tryParse(addressId.toString()));
         await _loadNearbyWorkers(addressId.toString());
       } else if (mounted) {
+        await _loadCatalog(null);
         setState(() {
           _nearbyWorkers = [];
           _workersLoading = false;
@@ -134,6 +145,71 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadCatalog(int? addressId) async {
+    if (mounted) {
+      setState(() {
+        _catalogLoading = true;
+        _catalogError = null;
+      });
+    }
+    try {
+      final results = await Future.wait([
+        CatalogApi.listCategories(addressId: addressId),
+        CatalogApi.listServices(popular: true, addressId: addressId),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _catalogCategories = results[0] as List<Category>;
+        _popularCatalogServices = results[1] as List<Service>;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _catalogError = e.toString());
+    } finally {
+      if (mounted) setState(() => _catalogLoading = false);
+    }
+  }
+
+  void _openCatalogCategory(Category category, int? addressId) {
+    _searchFocus.unfocus();
+    if (category.children.isNotEmpty) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceCategoriesScreen(
+            initialCategories: category.children,
+            addressId: addressId,
+            title: category.title,
+          ),
+        ),
+      );
+      return;
+    }
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceListScreen(
+          categoryId: category.id,
+          categoryTitle: category.title,
+          addressId: addressId,
+        ),
+      ),
+    );
+  }
+
+  void _openCatalogService(Service service, int? addressId) {
+    _searchFocus.unfocus();
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceDetailScreen(
+          serviceId: service.id,
+          addressId: addressId,
+        ),
+      ),
+    );
   }
 
   Future<void> _loadCustomerName() async {
@@ -435,18 +511,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   void _openAllServices() {
     _searchFocus.unfocus();
-    Navigator.push<void>(context, MaterialPageRoute(builder: (_) => Scaffold(
-      backgroundColor: _Ui.bg,
-      appBar: AppBar(title: const Text('All Services'), backgroundColor: _Ui.bg),
-      body: SafeArea(child: ListView(padding: const EdgeInsets.fromLTRB(18, 8, 18, 24), children: [
-        const Text('Find the right service for your home', style: TextStyle(color: _Ui.sub)),
-        const SizedBox(height: 18),
-        _categoryGrid(_services, allServices: true),
-        const SizedBox(height: 20),
-        const Text('Services and final rates depend on your selected area and availability.',
-          style: TextStyle(color: _Ui.sub, fontSize: 12)),
-      ])),
-    )));
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceCategoriesScreen(
+          initialCategories: _catalogCategories,
+          addressId: int.tryParse('${_active?['id']}'),
+        ),
+      ),
+    );
   }
 
   @override
@@ -498,27 +571,69 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   ]);
 
   Widget _home(Map<String, dynamic> address) {
-    final hits = _services.where((s) => '${s.name} ${s.description}'.toLowerCase().contains(_query.trim().toLowerCase())).toList();
+    final addressId = int.tryParse('${address['id']}');
+    final query = _query.trim().toLowerCase();
+    final matchingCategories = _catalogCategories.where((category) {
+      return category.title.toLowerCase().contains(query) ||
+          category.titleHi?.toLowerCase().contains(query) == true ||
+          category.children.any((child) =>
+              child.title.toLowerCase().contains(query));
+    }).toList();
+
     return RefreshIndicator(
       onRefresh: _refresh,
       color: _Ui.violet,
-      child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 30), children: [
-        _purpleHeader(address),
-        if (_query.isEmpty) ...[
-          _offerCarousel(),
-          _sectionHeading('Service Categories', onSeeAll: _openAllServices),
-          _categoryStrip(),
-          _sectionHeading('Popular Services', onSeeAll: _openAllServices),
-          _popularStrip(),
-          _walletReferralCard(),
-          _nearbyWorkersSection(),
-          _trustStrip(),
-        ] else ...[
-          _heading('Search Results', '${hits.length} matching categories'),
-          if (hits.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No matching services. Try another search.', style: TextStyle(color: _Ui.sub))),
-          _categoryGrid(hits, allServices: true),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 30),
+        children: [
+          _purpleHeader(address),
+          if (_query.isEmpty) ...[
+            _offerCarousel(),
+            _sectionHeading(
+              'Service Categories',
+              onSeeAll: _openAllServices,
+            ),
+            _categoryStrip(addressId),
+            _sectionHeading(
+              'Popular Services',
+              onSeeAll: _openAllServices,
+            ),
+            _popularStrip(addressId),
+            _walletReferralCard(),
+            _nearbyWorkersSection(),
+            _trustStrip(),
+          ] else ...[
+            _heading(
+              'Search Results',
+              '${matchingCategories.length} matching categories',
+            ),
+            if (_catalogLoading)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (matchingCategories.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No matching categories. Try another search.',
+                  style: TextStyle(color: _Ui.sub),
+                ),
+              )
+            else
+              _dynamicCategoryGrid(matchingCategories, addressId),
+          ],
+          if (_catalogError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: Text(
+                'Catalog could not be refreshed: $_catalogError',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+              ),
+            ),
         ],
-      ]),
+      ),
     );
   }
 
@@ -586,33 +701,156 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ]),
   );
 
-  Widget _categoryStrip() {
-    final items = <({String title, _Service service, IconData icon, String image})>[
-      (title: 'Cleaning', service: _services[2], icon: Icons.cleaning_services_rounded,
-        image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=240&q=80'),
-      (title: 'Repairing', service: _services[3], icon: Icons.handyman_rounded,
-        image: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=240&q=80'),
-      (title: 'Painting', service: _services[4], icon: Icons.format_paint_rounded,
-        image: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=240&q=80'),
-      (title: 'Car Care', service: _services[6], icon: Icons.local_car_wash_rounded,
-        image: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=240&q=80'),
-    ];
+  Widget _categoryStrip(int? addressId) {
+    if (_catalogLoading && _catalogCategories.isEmpty) {
+      return const SizedBox(
+        height: 96,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_catalogCategories.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Text(
+          _catalogError == null
+              ? 'No services are available in this area yet.'
+              : 'Could not load categories. Pull down to retry.',
+          style: const TextStyle(color: _Ui.sub, fontSize: 12),
+        ),
+      );
+    }
+
     return SizedBox(
-      height: 96,
-      child: ListView(
+      height: 104,
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        children: [
-          for (var i = 0; i < items.length; i++)
-            _categoryTile(
-              items[i].title,
-              items[i].icon,
-              () => _openService(items[i].service),
-              image: items[i].image,
-              selected: i == 0,
+        itemCount: _catalogCategories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final category = _catalogCategories[index];
+          return SizedBox(
+            width: 76,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _openCatalogCategory(category, addressId),
+              child: Column(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: _Ui.pale,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _Ui.line),
+                    ),
+                    child: category.image?.isNotEmpty == true
+                        ? Image.network(
+                            category.image!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.design_services_rounded,
+                              color: _Ui.violet,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.design_services_rounded,
+                            color: _Ui.violet,
+                          ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    category.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _Ui.ink,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          _categoryTile('More', Icons.grid_view_rounded, _openAllServices),
-        ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _dynamicCategoryGrid(
+    List<Category> categories,
+    int? addressId,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: categories.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisExtent: 150,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+        ),
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          return Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => _openCatalogCategory(category, addressId),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: category.image?.isNotEmpty == true
+                          ? Image.network(
+                              category.image!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.design_services_rounded,
+                                color: _Ui.violet,
+                                size: 34,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.design_services_rounded,
+                              color: _Ui.violet,
+                              size: 34,
+                            ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      category.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _Ui.ink,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      category.children.isEmpty
+                          ? 'View services'
+                          : '${category.children.length} subcategories',
+                      style: const TextStyle(
+                        color: _Ui.sub,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -878,26 +1116,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ]),
   ));
 
-  Widget _popularStrip() {
-    final items = <({ _Service service, String image, String title, String subtitle })>[
-      (service: _services[2], title: 'Home Cleaning', subtitle: 'Fresh, spotless spaces',
-        image: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=700&q=85'),
-      (service: _services[2], title: 'Kitchen Cleaning', subtitle: 'A cleaner cooking space',
-        image: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=700&q=85'),
-      (service: _services[2], title: 'Bathroom Cleaning', subtitle: 'Deep-cleaned bathrooms',
-        image: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=700&q=85'),
-      (service: _services[2], title: 'Sofa & Living Room', subtitle: 'Care for your furniture',
-        image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=700&q=85'),
-    ];
+  Widget _popularStrip(int? addressId) {
+    if (_catalogLoading && _popularCatalogServices.isEmpty) {
+      return const SizedBox(
+        height: 190,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_popularCatalogServices.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Text(
+          'Popular services will appear here when they are published for this area.',
+          style: const TextStyle(color: _Ui.sub, fontSize: 12),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 190,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: items.length,
+        itemCount: _popularCatalogServices.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, i) {
-          final item = items[i];
+        itemBuilder: (context, index) {
+          final service = _popularCatalogServices[index];
+          final price = service.variants.isNotEmpty
+              ? service.variants.first.price
+              : service.visitFee;
           return SizedBox(
             width: 164,
             child: Material(
@@ -905,31 +1152,67 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               borderRadius: BorderRadius.circular(16),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: () => _openService(item.service),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  SizedBox(
-                    height: 112,
-                    width: double.infinity,
-                    child: Image.network(
-                      item.image,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: _Ui.pale,
-                        child: const Icon(Icons.home_work_rounded, color: _Ui.violet, size: 42),
+                onTap: () => _openCatalogService(service, addressId),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: 112,
+                      width: double.infinity,
+                      child: service.image?.isNotEmpty == true
+                          ? Image.network(
+                              service.image!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: _Ui.pale,
+                                child: const Icon(
+                                  Icons.home_repair_service_rounded,
+                                  color: _Ui.violet,
+                                  size: 42,
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: _Ui.pale,
+                              child: const Icon(
+                                Icons.home_repair_service_rounded,
+                                color: _Ui.violet,
+                                size: 42,
+                              ),
+                            ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 9, 8, 7),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            service.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _Ui.ink,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            price > 0
+                                ? 'From ₹${price.toStringAsFixed(0)}'
+                                : service.categoryName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _Ui.sub,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 9, 8, 7),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _Ui.ink, fontSize: 12, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 3),
-                      Text(item.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _Ui.sub, fontSize: 10)),
-                    ]),
-                  ),
-                ]),
+                  ],
+                ),
               ),
             ),
           );
