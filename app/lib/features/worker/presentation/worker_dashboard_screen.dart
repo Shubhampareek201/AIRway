@@ -448,7 +448,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       child: ListTile(
         leading: Icon(icon, color: AirwayColors.primary),
         title: Text(title),
-        trailing: Flexible(child: Text(value, textAlign: TextAlign.end, overflow: TextOverflow.ellipsis)),
+        trailing: Text(value, textAlign: TextAlign.end, overflow: TextOverflow.ellipsis),
       ),
     );
   }
