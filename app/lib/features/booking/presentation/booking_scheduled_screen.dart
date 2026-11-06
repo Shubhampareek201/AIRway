@@ -6,11 +6,11 @@ import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 
 class _Ui {
-  static const violet = Color(0xFF7861A8);
-  static const ink = Color(0xFF292331);
-  static const sub = Color(0xFF81788A);
-  static const bg = Color(0xFFF7F3EC);
-  static const line = Color(0xFFE8E0ED);
+  static const violet = Color(0xFF075B43);
+  static const ink = Color(0xFF1E2923);
+  static const sub = Color(0xFF748078);
+  static const bg = Color(0xFFFFFFFF);
+  static const line = Color(0xFFE5ECE7);
 }
 
 class BookingScheduledScreen extends StatefulWidget {
@@ -41,6 +41,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   List<int> _selectedAddonIds = [];
   final Map<String, dynamic> _formAnswers = {};
   int? _selectedAddressId;
+  bool _addressCheckBusy = false;
   List<Map<String, dynamic>> _addresses = [];
   int _quantity = 1;
   final _formKey = GlobalKey<FormState>();
@@ -62,26 +63,30 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     });
 
     try {
-      final service = await CatalogApi.getService(widget.serviceId);
       final addresses = await _loadAddresses();
+      final defaultAddress = addresses.firstWhere(
+        (a) => a['is_default'] == true,
+        orElse: () => addresses.isNotEmpty ? addresses[0] : <String, dynamic>{},
+      );
+      final selectedAddressId =
+          widget.addressId ?? (defaultAddress.isEmpty ? null : defaultAddress['id']) as int?;
+      final service = await CatalogApi.getService(
+        widget.serviceId,
+        addressId: selectedAddressId,
+      );
 
       if (!mounted) return;
 
       setState(() {
         _service = service;
         _addresses = addresses;
-        final defaultAddress = addresses.firstWhere(
-          (a) => a['is_default'] == true,
-          orElse: () => addresses.isNotEmpty ? addresses[0] : <String, dynamic>{},
-        );
-        _selectedAddressId = widget.addressId ?? (defaultAddress.isEmpty ? null : defaultAddress['id']);
+        _selectedAddressId = selectedAddressId;
         _loading = false;
 
-        // Auto-select first variant if exactly one exists
+        // Auto-select first variant if exactly one exists.
         if (service.variants.length == 1) {
           _selectedVariantId = service.variants[0].id;
         }
-
       });
       _updateSummary();
     } catch (e) {
@@ -90,6 +95,39 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _changeAddress(int addressId) async {
+    if (addressId == _selectedAddressId) return;
+    setState(() => _addressCheckBusy = true);
+    try {
+      final service = await CatalogApi.getService(
+        widget.serviceId,
+        addressId: addressId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _selectedAddressId = addressId;
+        _service = service;
+        _selectedVariantId = service.variants.length == 1
+            ? service.variants.first.id
+            : null;
+        _selectedAddonIds.clear();
+        _formAnswers.clear();
+        _addressCheckBusy = false;
+      });
+      _updateSummary();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _addressCheckBusy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'This service is not available at the selected address. $e',
+          ),
+        ),
+      );
     }
   }
 
@@ -251,9 +289,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           children: _addresses.map((addr) {
             final isSelected = addr['id'] == _selectedAddressId;
             return GestureDetector(
-              onTap: () {
-                setState(() => _selectedAddressId = addr['id']);
-              },
+              onTap: _addressCheckBusy
+                  ? null
+                  : () => _changeAddress(addr['id'] as int),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
