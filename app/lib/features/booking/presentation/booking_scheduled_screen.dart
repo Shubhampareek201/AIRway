@@ -3,7 +3,7 @@ import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
-import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 
 class _Ui {
   static const violet = Color(0xFF7861A8);
@@ -33,9 +33,6 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   String? _error;
 
   // Availability state
-  bool _checkingAvailability = false;
-  bool _isAvailable = true;
-  String? _availabilityMessage;
 
   // Selection state
   int? _selectedVariantId;
@@ -43,9 +40,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   final Map<String, dynamic> _formAnswers = {};
   int? _selectedAddressId;
   List<Map<String, dynamic>> _addresses = [];
-  Map<String, dynamic>? _selectedScheduleTime;
-  Map<String, dynamic>? _selectedDropTime;
-  bool _isPickupDrop = false;
+  int _quantity = 1;
   final _formKey = GlobalKey<FormState>();
 
   // Summary state
@@ -74,7 +69,6 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _service = service;
         _addresses = addresses;
         _selectedAddressId = addresses.isNotEmpty ? addresses[0]['id'] : null;
-        _isPickupDrop = service.bookingMode == 'pickup_drop';
         _loading = false;
 
         // Auto-select first variant if exactly one exists
@@ -82,17 +76,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           _selectedVariantId = service.variants[0].id;
         }
 
-        // Set default schedule time
-        final now = DateTime.now();
-        final tomorrow = now.add(const Duration(days: 1));
-        _selectedScheduleTime = {
-          'date': tomorrow,
-          'hour': now.hour < 20 ? now.hour + 1 : 10,
-          'minute': 0,
-        };
       });
 
-      _checkSlotAvailability();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -136,79 +121,66 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   Widget _buildBody() {
     final service = _service!;
-
     return Form(
       key: _formKey,
       child: CustomScrollView(
         slivers: [
-          if (service.image?.isNotEmpty ?? false)
-            _imageSliver(service.image),
-          _sectionHeader('Address'),
+          if (service.image?.isNotEmpty ?? false) _imageSliver(service.image),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Text(
+                'Customize your service',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _Ui.ink),
+              ),
+            ),
+          ),
+          _sectionHeader('Select Address'),
           _addressPicker(),
-          if (service.variants.length > 1) ...[
-            _sectionHeader('Package'),
+          if (service.variants.isNotEmpty) ...[
+            _sectionHeader('Choose a Package'),
             _variantPicker(),
           ],
           if (service.addons.isNotEmpty) ...[
-            _sectionHeader('Add-ons'),
+            _sectionHeader('Optional Add-ons'),
             _addonPicker(),
           ],
           if (service.formFields.isNotEmpty) ...[
-            _sectionHeader('Service Details'),
+            _sectionHeader('A Few Details'),
             _formFields(),
           ],
-          _sectionHeader('Schedule'),
-          _schedulePicker(),
-          if (_isPickupDrop) ...[
-            _sectionHeader('Drop Time (Optional)'),
-            _dropTimePicker(),
-          ],
-          _sectionHeader('Booking Summary'),
-          _summaryCard(),
-          if (_checkingAvailability)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            ),
-          if (!_checkingAvailability && _availabilityMessage != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _isAvailable ? Colors.green.shade50 : Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isAvailable ? Icons.check_circle : Icons.error,
-                        color: _isAvailable ? Colors.green : Colors.red,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _availabilityMessage ?? '',
-                          style: TextStyle(
-                            color: _isAvailable ? Colors.green[800] : Colors.red[800],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          _sectionHeader('Quantity'),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                  Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  IconButton(
+                    onPressed: _quantity < 20 ? () => setState(() => _quantity++) : null,
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
+                  const Spacer(),
+                  const Text('Maximum 20', style: TextStyle(color: _Ui.sub, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          _sectionHeader('Price Summary'),
+          _summaryCard(),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: SafeArea(
-                child: FilledButton(
-                  onPressed: (_selectedAddressId != null && _isAvailable) ? _confirmBooking : null,
-                  child: const Text('Confirm Booking'),
+                top: false,
+                child: FilledButton.icon(
+                  onPressed: _selectedAddressId == null ? null : _addToCart,
+                  icon: const Icon(Icons.add_shopping_cart_rounded),
+                  label: const Text('Add to Cart'),
                 ),
               ),
             ),
@@ -586,8 +558,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                           'minute': 0,
                         };
                       });
-                      _checkSlotAvailability();
-                    },
+                                      },
                     child: Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -731,7 +702,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                   const Text('Subtotal', style: TextStyle(color: _Ui.sub)),
                   const Spacer(),
                   Text(
-                    '₹${_subtotal.toStringAsFixed(0)}',
+                    '₹${(_subtotal * _quantity).toStringAsFixed(0)}',
                     style: const TextStyle(color: _Ui.sub),
                   ),
                 ],
@@ -742,7 +713,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                   const Text('Est. total (incl. tax)', style: TextStyle(fontWeight: FontWeight.w700, color: _Ui.ink)),
                   const Spacer(),
                   Text(
-                    '₹${_estimatedTotal.toStringAsFixed(0)}',
+                    '₹${(_estimatedTotal * _quantity).toStringAsFixed(0)}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -786,140 +757,52 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     _checkSlotAvailability();
   }
 
-  Future<void> _checkSlotAvailability() async {
-    if (_service == null || _selectedScheduleTime == null || _selectedAddressId == null) {
-      return;
-    }
-
-    setState(() {
-      _checkingAvailability = true;
-      _availabilityMessage = null;
-    });
-
-    try {
-      final scheduledAt = DateTime(
-        _selectedScheduleTime!['date'].year,
-        _selectedScheduleTime!['date'].month,
-        _selectedScheduleTime!['date'].day,
-        _selectedScheduleTime!['hour'],
-        _selectedScheduleTime!['minute'],
-      );
-
-      final dropAt = _selectedDropTime != null
-          ? DateTime(
-              _selectedScheduleTime!['date'].year,
-              _selectedScheduleTime!['date'].month,
-              _selectedScheduleTime!['date'].day,
-              _selectedDropTime!['hour'],
-            )
-          : null;
-
-      final isAvailable = await BookingApi.checkSlotAvailability(
-        serviceId: widget.serviceId,
-        scheduledAt: scheduledAt,
-        dropScheduledAt: dropAt,
-        variantId: _selectedVariantId,
-        bookingMode: _service!.bookingMode,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _isAvailable = isAvailable;
-        if (isAvailable) {
-          _availabilityMessage = null;
-        } else {
-          _availabilityMessage = 'Selected slot is not available. Please choose another time.';
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isAvailable = false;
-        _availabilityMessage = 'Unable to check availability. $e';
-      });
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _checkingAvailability = false;
-    });
-  }
-
-  Future<void> _confirmBooking() async {
+  Future<void> _addToCart() async {
     if (_selectedAddressId == null) return;
-    if (!_isAvailable) return;
-    if (_service!.variants.length > 1 && _selectedVariantId == null) {
+    if (_service!.variants.isNotEmpty && _selectedVariantId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a package.')),
+        const SnackBar(content: Text('Please choose a package.')),
       );
       return;
     }
     for (final field in _service!.formFields) {
-      if (field.isRequired && field.fieldType != 'photo' &&
-          (_formAnswers[field.key] == null || _formAnswers[field.key].toString().trim().isEmpty)) {
+      if (field.isRequired &&
+          (_formAnswers[field.key] == null ||
+              _formAnswers[field.key].toString().trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please complete: ${field.label}')),
+          SnackBar(content: Text('Please complete: \${field.label}')),
         );
         return;
       }
     }
-
-    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
-
     try {
-      final scheduledAt = DateTime(
-        _selectedScheduleTime!['date'].year,
-        _selectedScheduleTime!['date'].month,
-        _selectedScheduleTime!['date'].day,
-        _selectedScheduleTime!['hour'],
-        _selectedScheduleTime!['minute'],
-      );
-
-      await BookingApi.createBooking(
+      await BookingApi.updateCartAddress(_selectedAddressId);
+      final addonSelections = _selectedAddonIds
+          .map((id) => {'id': id, 'quantity': 1})
+          .toList();
+      await BookingApi.addCartItem(
         serviceId: widget.serviceId,
         variantId: _selectedVariantId,
-        bookingMode: _service!.bookingMode,
-        scheduledAt: scheduledAt,
-        dropScheduledAt: _selectedDropTime != null
-            ? DateTime(
-                _selectedScheduleTime!['date'].year,
-                _selectedScheduleTime!['date'].month,
-                _selectedScheduleTime!['date'].day,
-                _selectedDropTime!['hour'],
-              )
-            : null,
-        addressId: _selectedAddressId!,
-        addonIds: _selectedAddonIds.isEmpty ? null : _selectedAddonIds,
-        formResponses: _formAnswers,
+        quantity: _quantity,
+        addonSelections: addonSelections,
+        formAnswers: _formAnswers,
       );
-
       if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
-      Navigator.pushReplacement(
+      Navigator.pop(context);
+      Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => BookingListScreen()),
+        MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // Close loading dialog
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Booking Failed'),
-          content: Text(e.toString()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not add service to cart: $e')),
       );
     }
   }
