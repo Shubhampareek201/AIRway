@@ -627,6 +627,16 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.assertEqual(self.wallet.balance, Decimal("100.00"))
         self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
 
+        duplicate = self.client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.id, "wallet_amount": "1000.00"},
+            format="json",
+        )
+        self.assertEqual(duplicate.status_code, 200, duplicate.data)
+        self.assertTrue(duplicate.data["already_paid"])
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
     @patch("apps.payments.views.client.order.create")
     def test_failed_gateway_attempt_keeps_wallet_reservation_for_retry(self, create_order):
