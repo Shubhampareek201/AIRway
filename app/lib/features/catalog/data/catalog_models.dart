@@ -187,6 +187,7 @@ class Service {
   final bool isPopular;
   final int sortOrder;
   final bool isActive;
+  final bool isAvailable;
   final List<ServiceImage> images;
   final List<ServiceVariant> variants;
   final List<AddOn> addons;
@@ -217,6 +218,7 @@ class Service {
     required this.isPopular,
     required this.sortOrder,
     required this.isActive,
+    required this.isAvailable,
     required this.images,
     required this.variants,
     required this.addons,
@@ -249,6 +251,7 @@ class Service {
       isPopular: map['is_popular'] ?? false,
       sortOrder: map['sort_order'] ?? 0,
       isActive: map['is_active'] ?? false,
+      isAvailable: map['is_available'] ?? true,
       images: (map['images'] as List? ?? [])
           .map((e) => ServiceImage.fromMap(Map<String, dynamic>.from(e)))
           .toList(),
