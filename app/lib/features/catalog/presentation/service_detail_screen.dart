@@ -80,7 +80,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         actions: [
           IconButton(
             tooltip: 'Your cart',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerCartScreen())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+            ),
             icon: const Icon(Icons.shopping_bag_outlined, color: _Ui.violet),
           ),
         ],
@@ -88,10 +91,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _Ui.violet))
           : _error != null
-              ? _errorWidget(_error!)
-              : _service == null
-                  ? _errorWidget('Service not found.')
-                  : _buildBody(),
+          ? _errorWidget(_error!)
+          : _service == null
+          ? _errorWidget('Service not found.')
+          : _buildBody(),
     );
   }
 
@@ -135,11 +138,20 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                _infoRow(Icons.access_time_rounded, '${service.durationMinutes} min'),
+                _infoRow(
+                  Icons.access_time_rounded,
+                  '${service.durationMinutes} min',
+                ),
                 if (service.bufferMinutes > 0)
-                  _infoRow(Icons.schedule_rounded, '${service.bufferMinutes} min buffer'),
+                  _infoRow(
+                    Icons.schedule_rounded,
+                    '${service.bufferMinutes} min buffer',
+                  ),
                 if (service.visitFee > 0)
-                  _infoRow(Icons.local_atm_rounded, 'Visit fee: ₹${service.visitFee.toStringAsFixed(0)}'),
+                  _infoRow(
+                    Icons.local_atm_rounded,
+                    'Visit fee: ₹${service.visitFee.toStringAsFixed(0)}',
+                  ),
                 if (service.audience != 'all')
                   _infoRow(Icons.person_rounded, service.audienceDisplay),
                 if (service.requiresFemaleWorker)
@@ -210,24 +222,28 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
         SliverToBoxAdapter(
-          child: Builder(builder: (context) {
-            return Container(
-              color: _Ui.bg,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: SafeArea(
-                top: false,
-                child: FilledButton(
-                  onPressed: _navigateToBooking,
-                  child: const Text('Customize & Add to Cart'),
+          child: Builder(
+            builder: (context) {
+              return Container(
+                color: _Ui.bg,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
                 ),
-              ),
-            );
-          }),
+                child: SafeArea(
+                  top: false,
+                  child: FilledButton(
+                    onPressed: _navigateToBooking,
+                    child: const Text('Customize & Add to Cart'),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
   }
-
 
   Widget _imageSliver(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) {
@@ -247,127 +263,128 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   Widget _infoRow(IconData icon, String label) => Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: _Ui.violet),
-            const SizedBox(width: 8),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 14, color: _Ui.ink)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.only(top: 6),
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: _Ui.violet),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontSize: 14, color: _Ui.ink)),
+      ],
+    ),
+  );
 
   Widget _variantCard(ServiceVariant v) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _Ui.line),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(v.title,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: _Ui.ink)),
-                  if (v.durationMinutes != null)
-                    Text(
-                      '${v.durationMinutes} min',
-                      style: const TextStyle(
-                          fontSize: 12, color: _Ui.sub),
-                    ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (v.mrp > v.price)
-                  Text(
-                    '₹${v.mrp.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      decoration:
-                          TextDecoration.lineThrough,
-                      color: _Ui.sub,
-                    ),
-                  ),
-                Text(
-                  '₹${v.price.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: _Ui.violet),
-                ),
-                if (v.discountPercent > 0)
-                  Text(
-                    '${v.discountPercent}% OFF',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF7861A8)),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      );
-
-  Widget _addonCard(AddOn a) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _Ui.line),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(a.title,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: _Ui.ink)),
-            ),
-            Text(
-              '₹${a.price.toStringAsFixed(0)}',
-              style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: _Ui.violet),
-            ),
-          ],
-        ),
-      );
-
-  Widget _errorWidget(String message) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: _Ui.line),
+    ),
+    child: Row(
+      children: [
+        Expanded(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.error_outline,
-                  color: Colors.redAccent, size: 52),
-              const SizedBox(height: 14),
               Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: _Ui.sub),
+                v.title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: _Ui.ink,
+                ),
               ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: _loadService,
-                child: const Text('Retry'),
-              ),
+              if (v.durationMinutes != null)
+                Text(
+                  '${v.durationMinutes} min',
+                  style: const TextStyle(fontSize: 12, color: _Ui.sub),
+                ),
             ],
           ),
         ),
-      );
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (v.mrp > v.price)
+              Text(
+                '₹${v.mrp.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  decoration: TextDecoration.lineThrough,
+                  color: _Ui.sub,
+                ),
+              ),
+            Text(
+              '₹${v.price.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: _Ui.violet,
+              ),
+            ),
+            if (v.discountPercent > 0)
+              Text(
+                '${v.discountPercent}% OFF',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF7861A8),
+                ),
+              ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _addonCard(AddOn a) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _Ui.line),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            a.title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: _Ui.ink,
+            ),
+          ),
+        ),
+        Text(
+          '₹${a.price.toStringAsFixed(0)}',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: _Ui.violet,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _errorWidget(String message) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.redAccent, size: 52),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _Ui.sub),
+          ),
+          const SizedBox(height: 20),
+          FilledButton(onPressed: _loadService, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
 }

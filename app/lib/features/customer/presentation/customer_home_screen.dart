@@ -17,7 +17,8 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_categories_screen.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
-import 'package:airway/features/catalog/presentation/service_detail_screen.dart' as catalog;
+import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
+    as catalog;
 
 // AIRway customer home. Address, catalogue, pricing and nearby partners are loaded from authenticated APIs.
 class _Ui {
@@ -78,11 +79,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Future<void> _refresh() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+    if (mounted)
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
     try {
       final result = await LocationApi.request('/api/v1/auth/addresses/');
-      final raw = result is List ? result : (result is Map ? result['results'] : null);
-      if (raw is! List) throw const FormatException('Unexpected address response');
+      final raw = result is List
+          ? result
+          : (result is Map ? result['results'] : null);
+      if (raw is! List)
+        throw const FormatException('Unexpected address response');
       final list = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       if (mounted) setState(() => _addresses = list);
       await _loadCustomerName();
@@ -108,7 +116,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Could not load your addresses. Check the connection and retry.');
+      if (mounted)
+        setState(
+          () => _error =
+              'Could not load your addresses. Check the connection and retry.',
+        );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -195,8 +207,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final name = fullName.isNotEmpty
           ? fullName
           : firstName.isNotEmpty
-              ? firstName
-              : username;
+          ? firstName
+          : username;
       if (name.isNotEmpty) {
         setState(() => _customerName = name.split(RegExp(r'\s+')).first);
       }
@@ -213,9 +225,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (mounted) {
         setState(() {
           _workerProfile = profile;
-          _workerStatus = profile?['status']?.toString() ??
+          _workerStatus =
+              profile?['status']?.toString() ??
               application?['status']?.toString();
-          _workerRejectionReason = profile?['rejection_reason']?.toString() ??
+          _workerRejectionReason =
+              profile?['rejection_reason']?.toString() ??
               application?['rejection_reason']?.toString();
         });
       }
@@ -238,24 +252,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final raw = response is List
           ? response
           : response is Map
-              ? response['results']
-              : null;
-      if (raw is! List) throw const FormatException('Unexpected worker response');
+          ? response['results']
+          : null;
+      if (raw is! List)
+        throw const FormatException('Unexpected worker response');
       final workers = raw
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
       final message = response is Map ? response['message']?.toString() : null;
-      if (mounted) setState(() {
-        _nearbyWorkers = workers;
-        _workersMessage = message;
-      });
+      if (mounted)
+        setState(() {
+          _nearbyWorkers = workers;
+          _workersMessage = message;
+        });
     } catch (_) {
-      if (mounted) setState(() {
-        _nearbyWorkers = [];
-        _workersError = 'Nearby partner availability could not be loaded.';
-        _workersMessage = null;
-      });
+      if (mounted)
+        setState(() {
+          _nearbyWorkers = [];
+          _workersError = 'Nearby partner availability could not be loaded.';
+          _workersMessage = null;
+        });
     } finally {
       if (mounted) setState(() => _workersLoading = false);
     }
@@ -287,7 +304,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           'Referral tracking and rewards will activate after the referral rules and wallet ledger are connected. No reward is being promised or credited yet.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Got it'),
+          ),
         ],
       ),
     );
@@ -299,7 +319,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       const SnackBar(content: Text('Switching to Worker mode...')),
     );
     try {
-      await WorkerAppApi.switchToWorkerMode(accessToken: (await SecureSessionStorage.readSession())?.accessToken ?? '');
+      await WorkerAppApi.switchToWorkerMode(
+        accessToken:
+            (await SecureSessionStorage.readSession())?.accessToken ?? '',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Successfully switched to Worker mode!')),
@@ -310,9 +333,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to switch mode: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to switch mode: $e')));
     }
   }
 
@@ -335,12 +357,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final latitude = double.tryParse('${current?['latitude']}') ?? 24.93;
     final longitude = double.tryParse('${current?['longitude']}') ?? 75.59;
     final result = await Navigator.of(context).push<AddressPickerResult>(
-      MaterialPageRoute(builder: (_) => AddressPickerScreen(mapCenter: ll.LatLng(latitude, longitude))),
+      MaterialPageRoute(
+        builder: (_) =>
+            AddressPickerScreen(mapCenter: ll.LatLng(latitude, longitude)),
+      ),
     );
     if (!mounted) return;
     if (result?.location != null) {
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => LocationSelectionScreen(initialLocation: result!.location)),
+        MaterialPageRoute(
+          builder: (_) =>
+              LocationSelectionScreen(initialLocation: result!.location),
+        ),
       );
     }
     if (mounted) await _refresh();
@@ -353,15 +381,24 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         title: const Text('Log out?'),
         content: const Text('You can sign in again using your mobile number.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Log out')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Log out'),
+          ),
         ],
       ),
     );
     if (ok != true) return;
     await SecureSessionStorage.clearSession();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (_) => false,
+    );
   }
 
   void _openAllServices() {
@@ -370,7 +407,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ServiceCategoriesScreen(
-          initialCategories: _catalogCategories.isEmpty ? null : _catalogCategories,
+          initialCategories: _catalogCategories.isEmpty
+              ? null
+              : _catalogCategories,
           addressId: int.tryParse('${_active?['id']}'),
         ),
       ),
@@ -387,43 +426,84 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         backgroundColor: Colors.white,
         indicatorColor: _Ui.pale,
         selectedIndex: _tab,
-        onDestinationSelected: (i) { _searchFocus.unfocus(); setState(() { _tab = i; }); },
+        onDestinationSelected: (i) {
+          _searchFocus.unfocus();
+          setState(() {
+            _tab = i;
+          });
+        },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded, color: _Ui.violet), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded, color: _Ui.violet), label: 'My Bookings'),
-          NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded, color: _Ui.violet), label: 'Profile'),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded, color: _Ui.violet),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month_rounded, color: _Ui.violet),
+            label: 'My Bookings',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded, color: _Ui.violet),
+            label: 'Profile',
+          ),
         ],
       ),
       body: SafeArea(
         child: _loading
             ? _skeleton()
             : _error != null
-                ? _status(Icons.wifi_off_rounded, _error!, 'Retry', _refresh)
-                : active == null
-                    ? _status(Icons.add_location_alt_outlined, 'Add a service address to get started.', 'Choose location', _selectAddress)
-                    : IndexedStack(index: _tab, children: [
-                        _home(active),
-                        _bookings(),
-                        _profile(active),
-                      ]),
+            ? _status(Icons.wifi_off_rounded, _error!, 'Retry', _refresh)
+            : active == null
+            ? _status(
+                Icons.add_location_alt_outlined,
+                'Add a service address to get started.',
+                'Choose location',
+                _selectAddress,
+              )
+            : IndexedStack(
+                index: _tab,
+                children: [_home(active), _bookings(), _profile(active)],
+              ),
       ),
     );
   }
 
-  Widget _status(IconData icon, String message, String action, VoidCallback callback) =>
-      Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: _Ui.violet, size: 52),
-        const SizedBox(height: 14),
-        Text(message, textAlign: TextAlign.center, style: const TextStyle(color: _Ui.sub, height: 1.5)),
-        const SizedBox(height: 16),
-        FilledButton(onPressed: callback, child: Text(action)),
-      ])));
+  Widget _status(
+    IconData icon,
+    String message,
+    String action,
+    VoidCallback callback,
+  ) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: _Ui.violet, size: 52),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _Ui.sub, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: callback, child: Text(action)),
+        ],
+      ),
+    ),
+  );
 
-  Widget _skeleton() => ListView(padding: const EdgeInsets.all(20), children: [
-    for (final h in [60.0, 170.0, 56.0, 24.0, 260.0, 120.0, 150.0]) ...[
-      _PulseBlock(height: h), const SizedBox(height: 18),
+  Widget _skeleton() => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      for (final h in [60.0, 170.0, 56.0, 24.0, 260.0, 120.0, 150.0]) ...[
+        _PulseBlock(height: h),
+        const SizedBox(height: 18),
+      ],
     ],
-  ]);
+  );
 
   Widget _home(Map<String, dynamic> address) {
     final addressId = int.tryParse('${address['id']}');
@@ -431,8 +511,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final matchingCategories = _catalogCategories.where((category) {
       return category.title.toLowerCase().contains(query) ||
           category.titleHi?.toLowerCase().contains(query) == true ||
-          category.children.any((child) =>
-              child.title.toLowerCase().contains(query));
+          category.children.any(
+            (child) => child.title.toLowerCase().contains(query),
+          );
     }).toList();
 
     return RefreshIndicator(
@@ -452,15 +533,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
           if (_query.isEmpty) ...[
             _offerCarousel(),
-            _sectionHeading(
-              'Service Categories',
-              onSeeAll: _openAllServices,
-            ),
+            _sectionHeading('Service Categories', onSeeAll: _openAllServices),
             _categoryStrip(addressId),
-            _sectionHeading(
-              'Popular Services',
-              onSeeAll: _openAllServices,
-            ),
+            _sectionHeading('Popular Services', onSeeAll: _openAllServices),
             _popularStrip(addressId),
             _walletReferralCard(),
             _nearbyWorkersSection(),
@@ -501,69 +576,167 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Widget _purpleHeader(Map<String, dynamic> a) {
     final label = '${a['label'] ?? 'Home'}';
-    final full = '${a['house_details'] ?? ''}, ${a['full_address'] ?? ''}'.replaceFirst(RegExp(r'^,\s*'), '').trim();
+    final full = '${a['house_details'] ?? ''}, ${a['full_address'] ?? ''}'
+        .replaceFirst(RegExp(r'^,\s*'), '')
+        .trim();
     final hour = DateTime.now().hour;
-    final greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+    final greeting = hour < 12
+        ? 'Morning'
+        : hour < 17
+        ? 'Afternoon'
+        : 'Evening';
     return Container(
       color: _Ui.bg,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.location_on_rounded, color: _Ui.violet, size: 22),
-          const SizedBox(width: 8),
-          Expanded(child: InkWell(
-            onTap: _selectAddress,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text(label, style: const TextStyle(color: _Ui.ink, fontSize: 13, fontWeight: FontWeight.w800)),
-                const Icon(Icons.keyboard_arrow_down_rounded, color: _Ui.ink, size: 18),
-              ]),
-              Text(full.isEmpty ? 'Choose your service address' : full, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _Ui.sub, fontSize: 11.5)),
-            ])),
-          )),
-          IconButton(tooltip: 'Your cart', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerCartScreen())),
-            icon: const Icon(Icons.shopping_bag_outlined, color: _Ui.violet, size: 24)),
-          IconButton(tooltip: 'Notifications', onPressed: _showNotificationsInfo,
-            icon: const Icon(Icons.notifications_none_rounded, color: _Ui.ink, size: 25)),
-        ]),
-        const SizedBox(height: 18),
-        Text('Good $greeting, ${_customerName == 'there' ? 'there' : _customerName}!',
-          style: const TextStyle(color: _Ui.ink, fontSize: 25, fontWeight: FontWeight.w900, height: 1.15)),
-        const SizedBox(height: 5),
-        const Text('What service do you need today?', style: TextStyle(color: _Ui.sub, fontSize: 13)),
-        const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: _searchBar()),
-          const SizedBox(width: 10),
-          Material(color: _Ui.violet, borderRadius: BorderRadius.circular(16), child: InkWell(
-            borderRadius: BorderRadius.circular(16), onTap: _openAllServices,
-            child: const SizedBox(width: 52, height: 52, child: Icon(Icons.tune_rounded, color: Colors.white, size: 23)),
-          )),
-        ]),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_rounded,
+                color: _Ui.violet,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  onTap: _selectAddress,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              label,
+                              style: const TextStyle(
+                                color: _Ui.ink,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: _Ui.ink,
+                              size: 18,
+                            ),
+                          ],
+                        ),
+                        Text(
+                          full.isEmpty ? 'Choose your service address' : full,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _Ui.sub,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Your cart',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+                ),
+                icon: const Icon(
+                  Icons.shopping_bag_outlined,
+                  color: _Ui.violet,
+                  size: 24,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Notifications',
+                onPressed: _showNotificationsInfo,
+                icon: const Icon(
+                  Icons.notifications_none_rounded,
+                  color: _Ui.ink,
+                  size: 25,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Good $greeting, ${_customerName == 'there' ? 'there' : _customerName}!',
+            style: const TextStyle(
+              color: _Ui.ink,
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'What service do you need today?',
+            style: TextStyle(color: _Ui.sub, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _searchBar()),
+              const SizedBox(width: 10),
+              Material(
+                color: _Ui.violet,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _openAllServices,
+                  child: const SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Icon(
+                      Icons.tune_rounded,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _sectionHeading(String title, {required VoidCallback onSeeAll}) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
-    child: Row(children: [
-      Expanded(child: Text(title, style: const TextStyle(
-        color: _Ui.ink, fontSize: 16, fontWeight: FontWeight.w900,
-      ))),
-      TextButton(
-        onPressed: onSeeAll,
-        style: TextButton.styleFrom(
-          foregroundColor: _Ui.violet,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  Widget _sectionHeading(String title, {required VoidCallback onSeeAll}) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: _Ui.ink,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onSeeAll,
+              style: TextButton.styleFrom(
+                foregroundColor: _Ui.violet,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'See All',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
         ),
-        child: const Text('See All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-      ),
-    ]),
-  );
+      );
 
   Widget _categoryStrip(int? addressId) {
     if (_catalogLoading && _catalogCategories.isEmpty) {
@@ -644,10 +817,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _dynamicCategoryGrid(
-    List<Category> categories,
-    int? addressId,
-  ) {
+  Widget _dynamicCategoryGrid(List<Category> categories, int? addressId) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GridView.builder(
@@ -704,10 +874,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       category.children.isEmpty
                           ? 'View services'
                           : '${category.children.length} subcategories',
-                      style: const TextStyle(
-                        color: _Ui.sub,
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(color: _Ui.sub, fontSize: 11),
                     ),
                   ],
                 ),
@@ -727,144 +894,398 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _Ui.line),
-        boxShadow: [BoxShadow(color: _Ui.violet.withAlpha(12), blurRadius: 16, offset: const Offset(0, 5))],
+        boxShadow: [
+          BoxShadow(
+            color: _Ui.violet.withAlpha(12),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: Column(children: [
-        Row(children: [
-          Container(width: 46, height: 46, decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(15)),
-            child: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet, size: 25)),
-          const SizedBox(width: 12),
-          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('AIRway Wallet', style: TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w900)),
-            SizedBox(height: 3),
-            Text('Your balance and transactions', style: TextStyle(color: _Ui.sub, fontSize: 11.5)),
-          ])),
-          TextButton(onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const WalletScreen()),
-            );
-          }, child: const Text('View')),
-        ]),
-        Padding(padding: const EdgeInsets.symmetric(vertical: 13), child: Divider(height: 1, color: _Ui.line)),
-        Row(children: [
-          Container(width: 46, height: 46, decoration: BoxDecoration(color: const Color(0xFFFFF0F8), borderRadius: BorderRadius.circular(15)),
-            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFD94691), size: 25)),
-          const SizedBox(width: 12),
-          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Invite friends & earn', style: TextStyle(color: _Ui.ink, fontSize: 15, fontWeight: FontWeight.w900)),
-            SizedBox(height: 3),
-            Text('Referral rewards are being prepared', style: TextStyle(color: _Ui.sub, fontSize: 11.5)),
-          ])),
-          OutlinedButton(onPressed: _showReferralInfo, style: OutlinedButton.styleFrom(
-            foregroundColor: _Ui.violet, side: const BorderSide(color: _Ui.violet), padding: const EdgeInsets.symmetric(horizontal: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
-          ), child: const Text('Invite')),
-        ]),
-      ]),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _Ui.pale,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: _Ui.violet,
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AIRway Wallet',
+                      style: TextStyle(
+                        color: _Ui.ink,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Your balance and transactions',
+                      style: TextStyle(color: _Ui.sub, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const WalletScreen(),
+                    ),
+                  );
+                },
+                child: const Text('View'),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            child: Divider(height: 1, color: _Ui.line),
+          ),
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F8),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.card_giftcard_rounded,
+                  color: Color(0xFFD94691),
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Invite friends & earn',
+                      style: TextStyle(
+                        color: _Ui.ink,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Referral rewards are being prepared',
+                      style: TextStyle(color: _Ui.sub, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton(
+                onPressed: _showReferralInfo,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _Ui.violet,
+                  side: const BorderSide(color: _Ui.violet),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                ),
+                child: const Text('Invite'),
+              ),
+            ],
+          ),
+        ],
+      ),
     ),
   );
 
   Widget _nearbyWorkersSection() => Padding(
     padding: const EdgeInsets.only(top: 4),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _heading('Available Partners Near You', 'Verified workers currently online in your service zone'),
-      if (_workersLoading)
-        const Padding(padding: EdgeInsets.fromLTRB(20, 4, 20, 8), child: LinearProgressIndicator(minHeight: 3))
-      else if (_workersError != null)
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Row(children: [
-          const Expanded(child: Text('Partner availability could not be loaded.', style: TextStyle(color: _Ui.sub, fontSize: 12))),
-          TextButton(onPressed: () { final id = _active?['id']; if (id != null) _loadNearbyWorkers(id.toString()); }, child: const Text('Retry')),
-        ]))
-      else if (_nearbyWorkers.isEmpty)
-        Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 4), child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _Ui.line)),
-          child: Row(children: [
-            const Icon(Icons.support_agent_rounded, color: _Ui.violet, size: 30),
-            const SizedBox(width: 12),
-            Expanded(child: Text(_workersMessage ?? 'No verified partners are online in this service zone right now. Availability updates when approved workers go online.',
-              style: const TextStyle(color: _Ui.sub, fontSize: 12, height: 1.4))),
-          ]),
-        ))
-      else
-        SizedBox(height: 150, child: ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          scrollDirection: Axis.horizontal,
-          itemCount: _nearbyWorkers.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 12),
-          itemBuilder: (context, index) {
-            final worker = _nearbyWorkers[index];
-            final services = worker['services'] is List ? (worker['services'] as List).map((e) => e.toString()).join(' · ') : 'Home services';
-            final rating = double.tryParse('${worker['rating'] ?? ''}');
-            return Container(width: 215, padding: const EdgeInsets.all(14), decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: _Ui.line),
-            ), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                CircleAvatar(backgroundColor: _Ui.pale, child: const Icon(Icons.person_rounded, color: _Ui.violet)),
-                const SizedBox(width: 9),
-                Expanded(child: Text('${worker['name'] ?? 'Verified partner'}', maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _Ui.ink, fontWeight: FontWeight.w800, fontSize: 13))),
-              ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                Container(width: 7, height: 7, decoration: const BoxDecoration(color: Color(0xFF20B779), shape: BoxShape.circle)),
-                const SizedBox(width: 5),
-                const Text('Online', style: TextStyle(color: Color(0xFF159A64), fontSize: 11, fontWeight: FontWeight.w800)),
-                if (rating != null && rating > 0) ...[
-                  const Spacer(), const Icon(Icons.star_rounded, size: 15, color: Color(0xFFFFB020)),
-                  Text(rating.toStringAsFixed(1), style: const TextStyle(color: _Ui.ink, fontSize: 11, fontWeight: FontWeight.w700)),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _heading(
+          'Available Partners Near You',
+          'Verified workers currently online in your service zone',
+        ),
+        if (_workersLoading)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: LinearProgressIndicator(minHeight: 3),
+          )
+        else if (_workersError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Partner availability could not be loaded.',
+                    style: TextStyle(color: _Ui.sub, fontSize: 12),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final id = _active?['id'];
+                    if (id != null) _loadNearbyWorkers(id.toString());
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          )
+        else if (_nearbyWorkers.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _Ui.line),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.support_agent_rounded,
+                    color: _Ui.violet,
+                    size: 30,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _workersMessage ?? 'No verified partners are online in this service zone right now. Availability updates when approved workers go online.',
+                      style: const TextStyle(
+                        color: _Ui.sub,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
                 ],
-              ]),
-              const Spacer(),
-              Text(services, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _Ui.sub, fontSize: 11.5, height: 1.25)),
-            ]));
-          },
-        )),
-    ]),
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 150,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              scrollDirection: Axis.horizontal,
+              itemCount: _nearbyWorkers.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final worker = _nearbyWorkers[index];
+                final services = worker['services'] is List
+                    ? (worker['services'] as List)
+                          .map((e) => e.toString())
+                          .join(' · ')
+                    : 'Home services';
+                final rating = double.tryParse('${worker['rating'] ?? ''}');
+                return Container(
+                  width: 215,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _Ui.line),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: _Ui.pale,
+                            child: const Icon(
+                              Icons.person_rounded,
+                              color: _Ui.violet,
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              '${worker['name'] ?? 'Verified partner'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _Ui.ink,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF20B779),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          const Text(
+                            'Online',
+                            style: TextStyle(
+                              color: Color(0xFF159A64),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (rating != null && rating > 0) ...[
+                            const Spacer(),
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 15,
+                              color: Color(0xFFFFB020),
+                            ),
+                            Text(
+                              rating.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: _Ui.ink,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const Spacer(),
+                      Text(
+                        services,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _Ui.sub,
+                          fontSize: 11.5,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    ),
   );
 
   Widget _searchBar() => TextField(
-    controller: _search, focusNode: _searchFocus, textInputAction: TextInputAction.search,
+    controller: _search,
+    focusNode: _searchFocus,
+    textInputAction: TextInputAction.search,
     onChanged: (v) => setState(() => _query = v),
     decoration: InputDecoration(
       hintText: 'Search services…',
       hintStyle: const TextStyle(fontSize: 12.5, color: _Ui.sub),
       prefixIcon: const Icon(Icons.search_rounded, color: _Ui.sub),
       suffixIcon: _query.isEmpty
-        ? IconButton(tooltip: 'Search by voice', onPressed: _startVoiceSearch, icon: const Icon(Icons.mic_none_rounded, color: _Ui.sub))
-        : IconButton(tooltip: 'Clear search', onPressed: () { _search.clear(); _searchFocus.unfocus(); setState(() => _query = ''); },
-            icon: const Icon(Icons.close_rounded, size: 19, color: _Ui.sub)),
-      filled: true, fillColor: Colors.white,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _Ui.line)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: _Ui.violet, width: 1.3)),
+          ? IconButton(
+              tooltip: 'Search by voice',
+              onPressed: _startVoiceSearch,
+              icon: const Icon(Icons.mic_none_rounded, color: _Ui.sub),
+            )
+          : IconButton(
+              tooltip: 'Clear search',
+              onPressed: () {
+                _search.clear();
+                _searchFocus.unfocus();
+                setState(() => _query = '');
+              },
+              icon: const Icon(Icons.close_rounded, size: 19, color: _Ui.sub),
+            ),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: _Ui.line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: _Ui.violet, width: 1.3),
+      ),
       contentPadding: const EdgeInsets.symmetric(vertical: 15),
     ),
   );
 
-    Widget _heading(String title, String subtitle) => Padding(
+  Widget _heading(String title, String subtitle) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 26, 20, 13),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _Ui.ink)),
-      const SizedBox(height: 3),
-      Text(subtitle, style: const TextStyle(fontSize: 12.5, color: _Ui.sub)),
-    ]),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 21,
+            fontWeight: FontWeight.w900,
+            color: _Ui.ink,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(subtitle, style: const TextStyle(fontSize: 12.5, color: _Ui.sub)),
+      ],
+    ),
   );
 
-  Widget _trustStrip() => Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), child: Container(
-    decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(20)),
-    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 5),
-    child: Row(children: [
-      _trustItem(Icons.location_on_outlined, 'Local focus'),
-      _trustItem(Icons.receipt_long_outlined, 'Clear pricing'),
-      _trustItem(Icons.support_agent_outlined, 'Support'),
-    ]),
-  ));
+  Widget _trustStrip() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+    child: Container(
+      decoration: BoxDecoration(
+        color: _Ui.pale,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 5),
+      child: Row(
+        children: [
+          _trustItem(Icons.location_on_outlined, 'Local focus'),
+          _trustItem(Icons.receipt_long_outlined, 'Clear pricing'),
+          _trustItem(Icons.support_agent_outlined, 'Support'),
+        ],
+      ),
+    ),
+  );
 
-  Widget _trustItem(IconData icon, String title) => Expanded(child: Column(mainAxisSize: MainAxisSize.min, children: [
-    Icon(icon, color: _Ui.violet, size: 25), const SizedBox(height: 6),
-    Text(title, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _Ui.ink)),
-  ]));
+  Widget _trustItem(IconData icon, String title) => Expanded(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: _Ui.violet, size: 25),
+        const SizedBox(height: 6),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: _Ui.ink,
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _popularStrip(int? addressId) {
     if (_catalogLoading && _popularCatalogServices.isEmpty) {
@@ -1065,101 +1486,178 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-    Widget _bookings() => const BookingListScreen();
+  Widget _bookings() => const BookingListScreen();
 
-  Widget _profile(Map<String, dynamic> address) => ListView(padding: const EdgeInsets.all(20), children: [
-    const Text('Profile', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink)),
-    const SizedBox(height: 16),
-    Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(22)),
-      child: Row(children: [
-        const CircleAvatar(radius: 24, backgroundColor: Colors.white, child: Icon(Icons.person_outline, color: _Ui.violet)),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Your AIRway account', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _Ui.ink)),
-          Text('${_addresses.length} saved addresses', style: const TextStyle(color: _Ui.sub)),
-        ])),
-      ]),
-    ),
-    const SizedBox(height: 16),
-
-    // Worker profile status card
-    if (_workerProfile != null) ...[
-      _buildWorkerStatusCard(),
-      const SizedBox(height: 16),
-    ],
-
-    // Become a Worker button (shown when not approved as worker)
-    if (_workerStatus == null || _workerStatus == 'no_profile') ...[
-      Card(
-        color: Colors.white,
-        elevation: 2,
-        child: ListTile(
-          leading: const Icon(Icons.work, color: _Ui.violet),
-          title: const Text('Become a Worker'),
-          subtitle: const Text('Earn money providing services in your area'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _goToWorkerApplication,
+  Widget _profile(Map<String, dynamic> address) => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      const Text(
+        'Profile',
+        style: TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.w900,
+          color: _Ui.ink,
         ),
       ),
-      const SizedBox(height: 8),
-    ],
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _Ui.pale,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Row(
+          children: [
+            const CircleAvatar(
+              radius: 24,
+              backgroundColor: Colors.white,
+              child: Icon(Icons.person_outline, color: _Ui.violet),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Your AIRway account',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: _Ui.ink,
+                    ),
+                  ),
+                  Text(
+                    '${_addresses.length} saved addresses',
+                    style: const TextStyle(color: _Ui.sub),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
 
-    Card(color: Colors.white, elevation: 0, child: Column(children: [
-      ListTile(leading: const Icon(Icons.location_on_outlined, color: _Ui.violet), title: const Text('Manage addresses'),
-          subtitle: Text('${address['full_address'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: const Icon(Icons.chevron_right), onTap: _selectAddress),
-      const Divider(height: 1, indent: 16, endIndent: 16),
-      ListTile(leading: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet), title: const Text('Wallet'),
-          subtitle: const Text('View balance and transactions'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const WalletScreen()),
-            );
-          }),
-      const Divider(height: 1, indent: 16, endIndent: 16),
-      ListTile(leading: const Icon(Icons.refresh, color: _Ui.violet), title: const Text('Refresh account data'), onTap: _refresh),
-      const Divider(height: 1, indent: 16, endIndent: 16),
-      ListTile(leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet), title: const Text('My Ratings'),
-          subtitle: const Text('Rate your service providers'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const RatingsScreen()),
-            );
-          }),
-      const Divider(height: 1, indent: 16, endIndent: 16),
-      ListTile(leading: const Icon(Icons.logout_rounded, color: _Ui.violet), title: const Text('Log out'), onTap: _logout),
-    ])),
-  ]);
+      // Worker application status
+      if (_workerProfile != null) ...[
+        _buildWorkerStatusCard(),
+        const SizedBox(height: 16),
+      ],
+
+      // Show registration only when no application exists
+      if (_workerStatus == null || _workerStatus == 'no_profile') ...[
+        Card(
+          color: Colors.white,
+          elevation: 2,
+          child: ListTile(
+            leading: const Icon(Icons.work, color: _Ui.violet),
+            title: const Text('Become a Worker'),
+            subtitle: const Text('Earn money providing services in your area'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _goToWorkerApplication,
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+
+      Card(
+        color: Colors.white,
+        elevation: 0,
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(
+                Icons.location_on_outlined,
+                color: _Ui.violet,
+              ),
+              title: const Text('Manage addresses'),
+              subtitle: Text(
+                '${address['full_address'] ?? ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _selectAddress,
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16),
+            ListTile(
+              leading: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: _Ui.violet,
+              ),
+              title: const Text('Wallet'),
+              subtitle: const Text('View balance and transactions'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const WalletScreen()),
+                );
+              },
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16),
+            ListTile(
+              leading: const Icon(Icons.refresh, color: _Ui.violet),
+              title: const Text('Refresh account data'),
+              onTap: _refresh,
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16),
+            ListTile(
+              leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet),
+              title: const Text('My Ratings'),
+              subtitle: const Text('Rate your service providers'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const RatingsScreen(),
+                  ),
+                );
+              },
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: _Ui.violet),
+              title: const Text('Log out'),
+              onTap: _logout,
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 
   Widget _buildWorkerHomeStatusCard() {
     final status = _workerStatus;
     final isPending = status == 'pending';
     final isApproved = status == 'approved';
     final isRejected = status == 'rejected';
+
     final color = isPending
         ? const Color(0xFFFFF4DF)
         : isApproved
-            ? const Color(0xFFE7F2EC)
-            : const Color(0xFFFDECEC);
+        ? const Color(0xFFE7F2EC)
+        : const Color(0xFFFDECEC);
+
     final accent = isPending
         ? const Color(0xFFB7791F)
         : isApproved
-            ? _Ui.violet
-            : const Color(0xFFB42318);
+        ? _Ui.violet
+        : const Color(0xFFB42318);
+
     final title = isPending
         ? 'Worker application pending'
         : isApproved
-            ? 'You are an approved AIRway worker'
-            : 'Worker application needs attention';
+        ? 'You are an approved AIRway worker'
+        : 'Worker application needs attention';
+
     final message = isPending
         ? 'Your application is with our admin team for review. We’ll update this status when a decision is made.'
         : isApproved
-            ? 'Your worker profile is approved. You can switch to Worker mode from your Profile.'
-            : (_workerRejectionReason?.isNotEmpty == true
-                ? 'Reason: $_workerRejectionReason'
-                : 'Your application was not approved. Open your application to review the next step.');
+        ? 'Your worker profile is approved. You can switch to Worker mode from your Profile.'
+        : (_workerRejectionReason?.isNotEmpty == true
+              ? 'Reason: $_workerRejectionReason'
+              : 'Your application was not approved. Open your application to review the next step.');
+
     return Material(
       color: color,
       borderRadius: BorderRadius.circular(16),
@@ -1175,8 +1673,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 isPending
                     ? Icons.pending_actions_rounded
                     : isApproved
-                        ? Icons.verified_rounded
-                        : Icons.error_outline_rounded,
+                    ? Icons.verified_rounded
+                    : Icons.error_outline_rounded,
                 color: accent,
                 size: 25,
               ),
@@ -1185,21 +1683,29 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(
-                      color: accent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    )),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(message, style: const TextStyle(
-                      color: _Ui.ink,
-                      fontSize: 11.5,
-                      height: 1.4,
-                    )),
+                    Text(
+                      message,
+                      style: const TextStyle(
+                        color: _Ui.ink,
+                        fontSize: 11.5,
+                        height: 1.4,
+                      ),
+                    ),
                     if (!isApproved) ...[
                       const SizedBox(height: 7),
                       Text(
-                        isRejected ? 'View application  ›' : 'Application status  ›',
+                        isRejected
+                            ? 'View application  ›'
+                            : 'Application status  ›',
                         style: TextStyle(
                           color: accent,
                           fontSize: 11,
@@ -1262,26 +1768,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         subtitle: isApproved
             ? const Text('You can accept jobs as a verified worker')
             : isPending
-                ? const Text('Awaiting admin verification')
-                : isRejected
-                    ? Text(_workerRejectionReason?.isNotEmpty == true
-                        ? 'Reason: $_workerRejectionReason'
-                        : 'Your application was not approved')
-                    : const Text('Register to earn by providing services'),
-        trailing: isApproved
-            ? Switch(
-                value: true,
-                onChanged: (_) => _switchToWorkerMode(),
-              )
+            ? const Text('Awaiting admin verification')
             : isRejected
-                ? TextButton(
-                    onPressed: _viewWorkerStatus,
-                    child: const Text('Reapply'),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: _goToWorkerApplication,
-                  ),
+            ? Text(
+                _workerRejectionReason?.isNotEmpty == true
+                    ? 'Reason: $_workerRejectionReason'
+                    : 'Your application was not approved',
+              )
+            : const Text('Register to earn by providing services'),
+        trailing: isApproved
+            ? Switch(value: true, onChanged: (_) => _switchToWorkerMode())
+            : isRejected
+            ? TextButton(
+                onPressed: _viewWorkerStatus,
+                child: const Text('Reapply'),
+              )
+            : IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: _goToWorkerApplication,
+              ),
       ),
     );
   }
@@ -1289,22 +1794,41 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
 class _PulseBlock extends StatefulWidget {
   const _PulseBlock({required this.height});
+
   final double height;
+
   @override
   State<_PulseBlock> createState() => _PulseBlockState();
 }
 
-class _PulseBlockState extends State<_PulseBlock> with SingleTickerProviderStateMixin {
+class _PulseBlockState extends State<_PulseBlock>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _animation = AnimationController(
-    vsync: this, duration: const Duration(milliseconds: 1100),
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
   )..repeat(reverse: true);
+
   @override
-  void dispose() { _animation.dispose(); super.dispose(); }
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(animation: _animation, builder: (context, _) => Container(
-    height: widget.height, decoration: BoxDecoration(
-      color: Color.lerp(const Color(0xFFE9E5F3), const Color(0xFFF6F3FA), _animation.value),
-      borderRadius: BorderRadius.circular(21),
-    ),
-  ));
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, _) => Container(
+        height: widget.height,
+        decoration: BoxDecoration(
+          color: Color.lerp(
+            const Color(0xFFE9E5F3),
+            const Color(0xFFF6F3FA),
+            _animation.value,
+          ),
+          borderRadius: BorderRadius.circular(21),
+        ),
+      ),
+    );
+  }
 }
