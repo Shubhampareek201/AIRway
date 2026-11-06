@@ -164,6 +164,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     separatorBuilder: (_, _) => const SizedBox(height: 10),
     itemBuilder: (context, index) {
       final service = _filteredServices[index];
+      final imageUrl = service.image?.isNotEmpty == true
+          ? service.image
+          : service.images.isNotEmpty
+          ? service.images.first.image
+          : null;
       final price = service.variants.isNotEmpty
           ? service.variants.first.price
           : service.visitFee;
@@ -186,9 +191,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   child: SizedBox(
                     width: 82,
                     height: 82,
-                    child: service.image?.isNotEmpty == true
+                    child: imageUrl?.isNotEmpty == true
                         ? Image.network(
-                            service.image!,
+                            imageUrl!,
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) =>
                                 _serviceImagePlaceholder(),
