@@ -73,6 +73,7 @@ class WalletAPITest(TestCase):
         self.assertEqual(response.data["type"], "credit")
         self.assertEqual(response.data["status"], "pending")
         self.assertEqual(response.data["amount"], "500.00")
+        self.assertEqual(response.data["amount_paise"], 50000)
         self.assertEqual(response.data["order_id"], "order_wallet_123")
         self.assertEqual(response.data["reference_id"], "order_wallet_123")
         create_order.assert_called_once()
@@ -238,7 +239,7 @@ class WalletTopUpConfirmTest(TestCase):
         self.assertEqual(self.pending.razorpay_payment_id, "pay_xyz")
 
         duplicate = self._confirm()
-        self.assertEqual(duplicate.status_code, 404)
+        self.assertEqual(duplicate.status_code, 200)
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance, Decimal("1000.00"))
 
@@ -418,9 +419,13 @@ class WalletRefundAdminTest(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         customer_wallet = Wallet.objects.get(user=self.customer)
-        admin_wallet = Wallet.objects.filter(user=self.admin).first()
+        admin_wallet = Wallet.objects.get(user=self.admin)
         self.assertEqual(customer_wallet.balance, Decimal("200.00"))
-        self.assertIsNone(admin_wallet)
+        self.assertEqual(admin_wallet.balance, Decimal("0.00"))
+        self.assertFalse(admin_wallet.transactions.filter(
+            type=WalletTransaction.Type.REFUND,
+            status=WalletTransaction.Status.COMPLETED,
+        ).exists())
 
     def test_refund_cannot_exceed_remaining_booking_amount(self):
         first = self.admin_client.post(
