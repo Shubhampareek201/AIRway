@@ -69,23 +69,29 @@ class _StartupGateState extends State<StartupGate> {
     }
 
     if (meResponse != null) {
+      // A worker profile can remain attached to an account after switching
+      // back to customer mode. Route by the account's explicit active mode,
+      // never by the mere existence/approval of a worker profile.
+      final activeMode = meResponse['active_mode']?.toString() ?? 'customer';
       final workerProfile = meResponse['worker_profile'];
-      if (workerProfile != null) {
-        final Map<String, dynamic> wp = Map<String, dynamic>.from(workerProfile);
-        final status = wp['status'] as String?;
-        if (status == 'approved') {
+
+      if (activeMode == 'worker' && workerProfile is Map) {
+        final wp = Map<String, dynamic>.from(workerProfile);
+        final workerStatus = wp['status']?.toString();
+
+        if (workerStatus == 'approved') {
           return _StartupRoute(routeWorkerDashboard, workerProfile: wp);
         }
-        if (status == 'rejected') {
+        if (workerStatus == 'rejected') {
           return _StartupRoute(routeWorkerRejected, workerProfile: wp);
         }
       }
 
-      final workerStatus = (meResponse['worker_profile'] is Map)
-          ? (meResponse['worker_profile'] as Map)['status']?.toString()
+      final workerStatus = workerProfile is Map
+          ? workerProfile['status']?.toString()
           : null;
       if (meResponse['profile_complete'] == false && workerStatus != 'pending') {
-        return _StartupRoute(routeProfileComplete); // Profile completion needed
+        return _StartupRoute(routeProfileComplete);
       }
     }
 
