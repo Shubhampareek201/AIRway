@@ -133,6 +133,7 @@ class WorkerJob {
 }
 
 class WorkerAssignmentDetail {
+  final int assignmentId;
   final int bookingId;
   final String bookingIdStr;
   final String status;
@@ -149,6 +150,7 @@ class WorkerAssignmentDetail {
   final WorkerAssignmentInfo assignment;
 
   WorkerAssignmentDetail({
+    required this.assignmentId,
     required this.bookingId,
     required this.bookingIdStr,
     required this.status,
@@ -167,7 +169,8 @@ class WorkerAssignmentDetail {
 
   factory WorkerAssignmentDetail.fromMap(Map<String, dynamic> map) {
     return WorkerAssignmentDetail(
-      bookingId: map['booking_id'],
+      assignmentId: map['id'] as int,
+      bookingId: map['booking_id'] as int,
       bookingIdStr: map['id'].toString(),
       status: map['status'] ?? '',
       serviceTitle: map['service_title'] ?? '',
