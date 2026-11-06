@@ -14,12 +14,12 @@ class CustomerOrderScreen extends StatefulWidget {
 }
 
 class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
-  static const violet = Color(0xFF075B43);
+  static const violet = Color(0xFF987451);
   static const ink = Color(0xFF1E2923);
   static const sub = Color(0xFF748078);
   static const bg = Color(0xFFFFFFFF);
-  static const pale = Color(0xFFE7F2EC);
-  static const line = Color(0xFFE5ECE7);
+  static const pale = Color(0xFFEAF1EA);
+  static const line = Color(0xFFEAE6DE);
 
   final Razorpay razorpay = Razorpay();
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
