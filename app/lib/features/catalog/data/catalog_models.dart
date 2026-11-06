@@ -1,3 +1,32 @@
+import 'package:airway/core/network/auth_api.dart';
+
+/// Resolve media paths returned by Django and repair loopback hosts that are
+/// unusable from a physical Android device.
+String? _resolveMediaUrl(dynamic value) {
+  final raw = value?.toString().trim() ?? '';
+  if (raw.isEmpty) return null;
+
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return null;
+  final apiBase = Uri.parse(AuthApi.baseUrl);
+
+  if (!uri.hasScheme || uri.host.isEmpty) {
+    return apiBase.resolve(raw).toString();
+  }
+
+  const loopbackHosts = {'localhost', '127.0.0.1', '0.0.0.0'};
+  if (loopbackHosts.contains(uri.host) &&
+      !loopbackHosts.contains(apiBase.host)) {
+    return uri.replace(
+      scheme: apiBase.scheme,
+      host: apiBase.host,
+      port: apiBase.hasPort ? apiBase.port : null,
+    ).toString();
+  }
+
+  return uri.toString();
+}
+
 class Category {
   final int id;
   final String title;
@@ -23,7 +52,7 @@ class Category {
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
       slug: map['slug'] ?? '',
-      image: map['image'],
+      image: _resolveMediaUrl(map['image']),
       isActive: map['is_active'] ?? false,
       children: (map['children'] as List? ?? [])
           .whereType<Map>()
@@ -47,7 +76,7 @@ class ServiceImage {
   factory ServiceImage.fromMap(Map<String, dynamic> map) {
     return ServiceImage(
       id: map['id'],
-      image: map['image'] ?? '',
+      image: _resolveMediaUrl(map['image']) ?? '',
       sortOrder: map['sort_order'] ?? 0,
     );
   }
