@@ -242,6 +242,21 @@ class WalletTopUpConfirmTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance, Decimal("1000.00"))
 
+    def test_checkout_callback_is_idempotent_after_webhook_capture(self):
+        from apps.wallet.views import complete_top_up_transaction
+
+        completed = complete_top_up_transaction(
+            self.pending.id,
+            razorpay_payment_id="pay_xyz",
+            user=self.user,
+            razorpay_order_id="order_wallet_abc",
+        )
+        self.assertIsNotNone(completed)
+        response = self._confirm()
+        self.assertEqual(response.status_code, 200)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("1000.00"))
+
     def test_invalid_signature_does_not_credit_wallet(self):
         response = self._confirm(razorpay_signature="invalid")
         self.assertEqual(response.status_code, 400)
