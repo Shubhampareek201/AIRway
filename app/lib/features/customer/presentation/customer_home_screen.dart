@@ -21,15 +21,14 @@ import 'package:airway/features/catalog/presentation/service_categories_screen.d
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart' as catalog;
 
-// AIRway customer home. Addresses and nearby online partners use authenticated APIs.
-// Service cards and sample prices remain previews until the catalog API is connected.
+// AIRway customer home. Address, catalogue, pricing and nearby partners are loaded from authenticated APIs.
 class _Ui {
-  static const violet = Color(0xFF7861A8);
-  static const ink = Color(0xFF292331);
-  static const sub = Color(0xFF81788A);
-  static const bg = Color(0xFFF7F3EC);
-  static const pale = Color(0xFFEDE7F5);
-  static const line = Color(0xFFE8E0ED);
+  static const violet = Color(0xFF075B43);
+  static const ink = Color(0xFF1E2923);
+  static const sub = Color(0xFF748078);
+  static const bg = Color(0xFFFFFFFF);
+  static const pale = Color(0xFFE7F2EC);
+  static const line = Color(0xFFE5ECE7);
 }
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -55,9 +54,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String? _workersMessage;
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
-  final _offers = PageController(viewportFraction: 0.94);
-  Timer? _offerTimer;
-  int _offerIndex = 0;
 
   Map<String, dynamic>? _workerProfile;
   String? _workerStatus;
@@ -67,17 +63,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _refresh();
-    _offerTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted || !_offers.hasClients || _tab != 0 || _query.isNotEmpty) return;
-      final next = (_offerIndex + 1) % 3;
-      _offers.animateToPage(next, duration: const Duration(milliseconds: 480), curve: Curves.easeInOutCubic);
-    });
   }
 
   @override
   void dispose() {
-    _offerTimer?.cancel();
-    _offers.dispose();
     _search.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -1033,56 +1022,83 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-    Widget _offerCarousel() {
-    const captions = ['Clean Spaces,', 'Repairs Made', 'Care at Your'];
-    const secondLines = ['Happier Days', 'Simple', 'Doorstep'];
-    const subtitles = ['A cleaner home starts here', 'Reliable help for everyday fixes', 'Home services made easy'];
-    const icons = [Icons.cleaning_services_rounded, Icons.handyman_rounded, Icons.home_repair_service_rounded];
-    const colors = [Color(0xFF7861A8), Color(0xFF917BB9), Color(0xFF5F4A8B)];
-    const images = [
-      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1100&q=85',
-      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1100&q=85',
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1100&q=85',
-    ];
-    return Column(children: [
-      SizedBox(height: 174, child: PageView.builder(
-        controller: _offers, itemCount: 3, onPageChanged: (v) => setState(() => _offerIndex = v),
-        itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Material(
-          color: colors[i], borderRadius: BorderRadius.circular(22), clipBehavior: Clip.antiAlias,
-          child: InkWell(onTap: _openAllServices,
-            child: Stack(fit: StackFit.expand, children: [
-              Image.network(images[i], fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: colors[i])),
-              DecoratedBox(decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [const Color(0xE64F3D73), const Color(0xA64F3D73), Colors.transparent],
-                  begin: Alignment.centerLeft, end: Alignment.centerRight,
+  Widget _offerCarousel() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Material(
+        color: const Color(0xFFE7F2EC),
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _openAllServices,
+          child: SizedBox(
+            height: 174,
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -18,
+                  bottom: -22,
+                  child: Icon(
+                    Icons.chair_alt_rounded,
+                    size: 170,
+                    color: const Color(0xFF075B43).withAlpha(24),
+                  ),
                 ),
-              )),
-              Padding(padding: const EdgeInsets.fromLTRB(19, 17, 12, 15), child: Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(captions[i], style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800)),
-                  Text(secondLines[i], style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 6),
-                  Text(subtitles[i], maxLines: 2, style: TextStyle(color: Colors.white.withAlpha(235), fontSize: 11.5)),
-                  const SizedBox(height: 11),
-                  Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                    child: const Text('Book Now', style: TextStyle(color: _Ui.violet, fontSize: 11.5, fontWeight: FontWeight.w800))),
-                ])),
-                const SizedBox(width: 8),
-              ])),
-            ]),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 15),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Clean Spaces',
+                        style: TextStyle(
+                          color: _Ui.ink,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Text(
+                        'Happier Days',
+                        style: TextStyle(
+                          color: _Ui.ink,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      const Text(
+                        'A cleaner home for a brighter you.',
+                        style: TextStyle(color: _Ui.sub, fontSize: 11.5),
+                      ),
+                      const SizedBox(height: 11),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _Ui.violet,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Book Now',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        )),
-      )),
-      const SizedBox(height: 10),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (i) => AnimatedContainer(
-        duration: const Duration(milliseconds: 260), width: i == _offerIndex ? 21 : 7, height: 7,
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        decoration: BoxDecoration(color: i == _offerIndex ? _Ui.violet : _Ui.line, borderRadius: BorderRadius.circular(9)),
-      ))),
-    ]);
+        ),
+      ),
+    );
   }
 
     Widget _bookings() => const BookingListScreen();
