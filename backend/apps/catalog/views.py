@@ -3,6 +3,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Address
 from apps.workers.eligibility import eligible_worker_profiles
+from apps.workers.models import WorkerProfile
 from .models import Category, CityService, Service
 from .serializers import CategoryTreeSerializer, ServiceSerializer
 
@@ -28,21 +29,39 @@ def _location_from_address(request):
 
 def _city_service_ids(city, zone=None):
     """
-    Return city-enabled services that have at least one approved, online,
-    service-skilled worker with an active schedule in the requested area.
-    If a zone is supplied, serviceability is checked for that exact zone.
+    Return services configured for the city OR assigned to an approved worker
+    serving the city/zone. Worker online status and schedules must not hide
+    catalogue entries; those are represented separately by is_available.
     """
     if city is None:
         return None
 
-    # Catalogue visibility is based on city configuration, not live worker
-    # availability. Customers should still see services with no worker online.
-    return CityService.objects.filter(
-        city=city,
-        is_active=True,
-        service__is_active=True,
-        service__category__is_active=True,
-    ).values_list("service_id", flat=True)
+    # City-level catalogue configuration is one source of visibility.
+    configured_ids = set(
+        CityService.objects.filter(
+            city=city,
+            is_active=True,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).values_list("service_id", flat=True)
+    )
+
+    # A worker's explicitly selected service + service zone is also a valid
+    # signal that the service should appear in that area, even if an admin
+    # has not separately created its CityService row yet.
+    worker_services = WorkerProfile.objects.filter(
+        status=WorkerProfile.Status.APPROVED,
+        worker_zones__zone__city=city,
+        worker_services__service__is_active=True,
+        worker_services__service__category__is_active=True,
+    )
+    if zone is not None:
+        worker_services = worker_services.filter(worker_zones__zone=zone)
+
+    assigned_ids = set(
+        worker_services.values_list("worker_services__service_id", flat=True)
+    )
+    return configured_ids | assigned_ids
 
 
 def _available_service_ids(city, zone=None):
