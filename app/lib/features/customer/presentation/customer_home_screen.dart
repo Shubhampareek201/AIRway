@@ -179,10 +179,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (selected == null || !mounted) return;
       answers = selected;
     }
-    final categoryIdentity = '${category.slug} ${category.title}'.toLowerCase();
-    final isBeauty = categoryIdentity.contains('beauty') ||
-        categoryIdentity.contains('salon') ||
-        categoryIdentity.contains('wellness');
     if (category.children.isNotEmpty) {
       Navigator.push<void>(
         context,
@@ -811,20 +807,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     if (value.contains('car')) return Icons.directions_car_rounded;
     return Icons.grid_view_rounded;
-  }
-
-  String? _categoryImageForService(Service service) {
-    for (final category in _catalogCategories) {
-      if (category.id == service.categoryId && category.image != null) {
-        return category.image;
-      }
-      for (final child in category.children) {
-        if (child.id == service.categoryId && child.image != null) {
-          return child.image;
-        }
-      }
-    }
-    return null;
   }
 
   String _photoForCategory(String name) {
