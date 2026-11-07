@@ -17,14 +17,14 @@ class BookingScheduledScreen extends StatefulWidget {
   final int serviceId;
   final String serviceTitle;
   final int? addressId;
-  final Map<String, dynamic> initialFormAnswers;
+  final Map<String, dynamic> initialCategoryAnswers;
 
   const BookingScheduledScreen({
     super.key,
     required this.serviceId,
     required this.serviceTitle,
     this.addressId,
-    this.initialFormAnswers = const {},
+    this.initialCategoryAnswers = const {},
   });
 
   @override
@@ -42,6 +42,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   int? _selectedVariantId;
   List<int> _selectedAddonIds = [];
   final Map<String, dynamic> _formAnswers = {};
+  final Map<String, dynamic> _categoryAnswers = {};
   int? _selectedAddressId;
   bool _addressCheckBusy = false;
   List<Map<String, dynamic>> _addresses = [];
@@ -84,7 +85,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _service = service;
         _addresses = addresses;
         _selectedAddressId = selectedAddressId;
-        _formAnswers.addAll(widget.initialFormAnswers);
+        _categoryAnswers.addAll(widget.initialCategoryAnswers);
         _loading = false;
 
         // Auto-select first variant if exactly one exists.
@@ -118,9 +119,10 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
             ? service.variants.first.id
             : null;
         _selectedAddonIds.clear();
-        _formAnswers
+        _formAnswers.clear();
+        _categoryAnswers
           ..clear()
-          ..addAll(widget.initialFormAnswers);
+          ..addAll(widget.initialCategoryAnswers);
         _addressCheckBusy = false;
       });
       _updateSummary();
@@ -855,6 +857,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         quantity: _quantity,
         addonSelections: addonSelections,
         formAnswers: _formAnswers,
+        categoryAnswers: _categoryAnswers,
       );
       if (!mounted) return;
       Navigator.pop(context);
