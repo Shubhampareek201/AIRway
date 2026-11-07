@@ -132,7 +132,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
                 spacing: 10,
                 runSpacing: 10,
                 children: options.map((option) {
-                  final value = option['value'] as String;
+                  final value = option['value'];
                   final image = option['image'] as String?;
                   final selected = _answers[key]?.toString() == value;
                   return InkWell(
