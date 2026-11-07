@@ -847,7 +847,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=700&auto=format&fit=crop';
     }
     if (value.contains('car') || value.contains('wash') || value.contains('vehicle')) {
-      return 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?w=700&auto=format&fit=crop';
+      return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=700&auto=format&fit=crop';
     }
     if (value.contains('electric') || value.contains('fan') || value.contains('light')) {
       return 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=700&auto=format&fit=crop';
@@ -903,10 +903,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           ? category.image!
                           : _photoForCategory(category.title),
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Icon(
-                        _categoryIcon(category.title),
-                        color: _Ui.violet,
-                        size: 29,
+                      errorBuilder: (_, __, ___) => Image.network(
+                        _photoForCategory(category.title),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Icon(
+                          _categoryIcon(category.title),
+                          color: _Ui.violet,
+                          size: 29,
+                        ),
                       ),
                     ),
                   ),
@@ -958,21 +962,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: category.image?.isNotEmpty == true
-                          ? Image.network(
-                              category.image!,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                Icons.design_services_rounded,
-                                color: _Ui.violet,
-                                size: 34,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.design_services_rounded,
-                              color: _Ui.violet,
-                              size: 34,
-                            ),
+                      child: Image.network(
+                        category.image?.isNotEmpty == true
+                            ? category.image!
+                            : _photoForCategory(category.title),
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Image.network(
+                          _photoForCategory(category.title),
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            _categoryIcon(category.title),
+                            color: _Ui.violet,
+                            size: 34,
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
