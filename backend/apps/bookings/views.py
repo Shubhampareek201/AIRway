@@ -192,12 +192,12 @@ class BookingViewSet(viewsets.ModelViewSet):
         except SlotConflictError as e:
             return Response(
                 {"available": False, "message": str(e)},
-                status=status.HTTP_409_CONFLICT,
+                status=status.HTTP_200_OK,
             )
         except ServiceUnavailableError as e:
             return Response(
                 {"available": False, "message": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_200_OK,
             )
 
     @action(detail=True, methods=["get", "post"])
