@@ -47,6 +47,31 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
               'Choose a few details so we can show the right services and options.',
               style: TextStyle(color: muted, height: 1.45),
             ),
+            if (widget.categoryTitle.toLowerCase().contains('electrical')) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF4E5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFF0D6AC)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Color(0xFF9A5B13)),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Electrical safety: If you notice sparks, smoke, a burning smell or exposed wires, keep away and do not touch the equipment. Switch off the main supply only if it is safe to do so, and request urgent professional help.',
+                        style: TextStyle(fontSize: 12, height: 1.45, color: Color(0xFF704515)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
             const SizedBox(height: 22),
             for (final step in widget.steps) ...[
               _field(step),
