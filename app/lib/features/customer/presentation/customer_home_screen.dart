@@ -743,6 +743,38 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
       );
 
+  IconData _categoryIcon(String name) {
+    final value = name.toLowerCase();
+    if (value.contains('clean')) return Icons.cleaning_services_rounded;
+    if (value.contains('repair') || value.contains('electric')) {
+      return Icons.handyman_rounded;
+    }
+    if (value.contains('plumb')) return Icons.plumbing_rounded;
+    if (value.contains('paint')) return Icons.format_paint_rounded;
+    if (value.contains('shift') || value.contains('move')) {
+      return Icons.local_shipping_rounded;
+    }
+    if (value.contains('beauty') || value.contains('salon')) {
+      return Icons.spa_rounded;
+    }
+    if (value.contains('car')) return Icons.directions_car_rounded;
+    return Icons.grid_view_rounded;
+  }
+
+  String? _categoryImageForService(Service service) {
+    for (final category in _catalogCategories) {
+      if (category.id == service.categoryId && category.image != null) {
+        return category.image;
+      }
+      for (final child in category.children) {
+        if (child.id == service.categoryId && child.image != null) {
+          return child.image;
+        }
+      }
+    }
+    return null;
+  }
+
   Widget _categoryStrip(int? addressId) {
     if (_catalogLoading && _catalogCategories.isEmpty) {
       return const SizedBox(
@@ -781,25 +813,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   Container(
                     width: 58,
                     height: 58,
-                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       color: _Ui.pale,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: _Ui.line),
                     ),
-                    child: category.image?.isNotEmpty == true
-                        ? Image.network(
-                            category.image!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.design_services_rounded,
-                              color: _Ui.violet,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.design_services_rounded,
-                            color: _Ui.violet,
-                          ),
+                    child: Icon(
+                      _categoryIcon(category.title),
+                      color: _Ui.violet,
+                      size: 29,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -1335,23 +1357,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     SizedBox(
                       height: 112,
                       width: double.infinity,
-                      child: (service.image?.isNotEmpty == true ||
-                              service.images.isNotEmpty)
-                          ? Image.network(
-                              service.image?.isNotEmpty == true
-                                  ? service.image!
-                                  : service.images.first.image,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: _Ui.pale,
-                                child: const Icon(
-                                  Icons.home_repair_service_rounded,
-                                  color: _Ui.violet,
-                                  size: 42,
-                                ),
+                      child: Builder(
+                        builder: (context) {
+                          final imageUrl = service.image?.isNotEmpty == true
+                              ? service.image
+                              : service.images.isNotEmpty
+                                  ? service.images.first.image
+                                  : _categoryImageForService(service);
+                          if (imageUrl == null || imageUrl.isEmpty) {
+                            return Container(
+                              color: _Ui.pale,
+                              child: const Icon(
+                                Icons.home_repair_service_rounded,
+                                color: _Ui.violet,
+                                size: 42,
                               ),
-                            )
-                          : Container(
+                            );
+                          }
+                          return Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
                               color: _Ui.pale,
                               child: const Icon(
                                 Icons.home_repair_service_rounded,
@@ -1359,6 +1385,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 size: 42,
                               ),
                             ),
+                          );
+                        },
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 9, 8, 7),
@@ -1408,8 +1437,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         .where((service) =>
             (service.image?.isNotEmpty == true) || service.images.isNotEmpty)
         .firstOrNull;
+    final fallbackCategoryImage = _catalogCategories
+        .map((category) => category.image)
+        .whereType<String>()
+        .firstOrNull;
 
-    if (!hasBanners && fallbackService == null) {
+    if (!hasBanners && fallbackService == null && fallbackCategoryImage == null) {
       return const SizedBox.shrink();
     }
 
@@ -1425,7 +1458,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             final banner = hasBanners ? _homeBanners[index] : null;
             final imageUrl = banner?.image ??
                 fallbackService?.image ??
-                fallbackService?.images.firstOrNull?.image;
+                fallbackService?.images.firstOrNull?.image ??
+                fallbackCategoryImage;
             final title = banner?.title ?? 'Clean Spaces, Happier Days';
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
