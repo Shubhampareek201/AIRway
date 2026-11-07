@@ -266,12 +266,14 @@ class BookingApi {
     DateTime? dropScheduledAt,
     int? variantId,
     int? addressId,
+    int quantity = 1,
     String bookingMode = 'scheduled',
   }) async {
     final data = {
       'service': serviceId,
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'booking_mode': bookingMode,
+      'quantity': quantity,
     };
     if (addressId != null) data['address_id'] = addressId;
 
