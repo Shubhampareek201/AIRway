@@ -75,7 +75,7 @@ class AddOnSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AddOn
-        fields = ["id", "title", "title_hi", "description", "mrp", "price", "discount_percent", "sort_order", "is_active"]
+        fields = ["id", "title", "title_hi", "description", "image", "mrp", "price", "discount_percent", "sort_order", "is_active"]
         read_only_fields = ["discount_percent"]
 
 
