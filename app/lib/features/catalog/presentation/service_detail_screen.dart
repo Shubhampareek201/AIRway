@@ -15,11 +15,13 @@ class _Ui {
 class ServiceDetailScreen extends StatefulWidget {
   final int serviceId;
   final int? addressId;
+  final Map<String, dynamic> initialAnswers;
 
   const ServiceDetailScreen({
     super.key,
     required this.serviceId,
     this.addressId,
+    this.initialAnswers = const {},
   });
 
   @override
@@ -65,6 +67,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           serviceId: _service!.id,
           serviceTitle: _service!.title,
           addressId: widget.addressId,
+          initialFormAnswers: widget.initialAnswers,
         ),
       ),
     );
