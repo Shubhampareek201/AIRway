@@ -978,6 +978,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     else None
                 ),
                 exclude_booking_id=booking.id,
+                exclude_customer_id=booking.customer_id,
             ).filter(pk=worker.pk).exists()
 
             if not eligible_now:
