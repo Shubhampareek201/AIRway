@@ -1,4 +1,5 @@
 from collections import Counter
+import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -31,8 +32,9 @@ def image_field_state(field):
 
 
 def fallback_group(title):
-    """Broad title intent classification; this does not verify photo content."""
-    value = title.lower()
+    """Classify title intent using whole words; this does not verify photo content."""
+    value = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    words = set(value.split())
     groups = (
         ("Fan", ("fan",)),
         ("Lighting", ("chandelier", "ceiling light", "wall light", "tube light",
@@ -58,8 +60,34 @@ def fallback_group(title):
                                  "dusting", "maid")),
     )
     for label, terms in groups:
-        if any(term in value for term in terms):
-            return label
+        for term in terms:
+            normalized = re.sub(r"[^a-z0-9]+", " ", term.lower()).strip()
+            if " " in normalized:
+                if normalized in value:
+                    return label
+            elif normalized in words:
+                return label
+    # Beauty-specific title families.
+    if words & {"facial", "bleaching", "cleanup", "tan", "brightening"}:
+        return "Facial / skin care"
+    if words & {"massage", "spa"}:
+        return "Massage / spa"
+    if words & {"beard", "shave", "haircut", "hair", "hairstyle", "styling",
+                "curling", "rebonding", "smoothening", "straightening",
+                "keratin", "colour", "color", "highlights", "trimming",
+                "wash", "blow", "dry"}:
+        return "Hair / grooming"
+    if words & {"nail", "manicure", "pedicure", "polish", "extensions"}:
+        return "Nail care"
+    if words & {"threading", "eyebrow", "lip", "chin", "forehead"}:
+        return "Threading"
+    if words & {"wax", "underarms", "arms", "legs", "bikini", "brazilian"}:
+        return "Waxing"
+    if words & {"makeup", "bridal", "engagement", "saree", "draping"}:
+        return "Makeup / occasion styling"
+    if words & {"car", "vehicle", "detailing", "coating", "polishing",
+                "scratch", "paint", "wash", "engine", "headlight", "wax"}:
+        return "Car care"
     return "NO TITLE RULE"
 
 
