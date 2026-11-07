@@ -448,6 +448,14 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     booking_status = serializers.CharField(source="booking.status", read_only=True)
     worker_name = serializers.CharField(source="worker.user.name", read_only=True)
     worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
+    service_title = serializers.CharField(source="booking.service.title", read_only=True)
+    variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
+    scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
+    service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
+    customer_answers = serializers.JSONField(source="booking.customer_answers", read_only=True)
+    form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
+    addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
+    quantity = serializers.SerializerMethodField()
     offered_at = serializers.DateTimeField(read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     can_accept = serializers.SerializerMethodField()
@@ -459,10 +467,16 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         fields = [
             "id", "booking", "worker", "status", "status_display",
             "offered_at", "expires_at", "accepted_at", "responded_at",
-            "booking_status", "worker_name", "worker_phone",
+            "booking_status", "worker_name", "worker_phone", "service_title",
+            "variant_title", "scheduled_at", "service_address", "customer_answers",
+            "form_responses", "addons", "quantity",
             "can_accept", "can_decline", "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_quantity(self, obj):
+        order_item = getattr(obj.booking, "order_item", None)
+        return order_item.quantity if order_item else 1
 
     def get_can_accept(self, obj):
         from django.utils import timezone
