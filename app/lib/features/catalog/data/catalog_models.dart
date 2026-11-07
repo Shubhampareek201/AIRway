@@ -265,7 +265,7 @@ class Service {
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
       description: map['description'],
-      image: map['image'],
+      image: _resolveMediaUrl(map['image']),
       bookingMode: map['booking_mode'] ?? '',
       bookingModeDisplay: map['booking_mode_display'] ?? '',
       pricingType: map['pricing_type'] ?? '',
