@@ -508,13 +508,13 @@ class CartItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"quantity": "Quantity must be between 1 and 20."})
         if not service.is_active:
             raise serializers.ValidationError({"service": "This service is not available."})
+        if not isinstance(addons, list) or not isinstance(answers, dict) or not isinstance(category_answers, dict):
+            raise serializers.ValidationError("Add-ons must be a list and answers must be objects.")
         if variant and (variant.service_id != service.id or not variant.is_active):
             raise serializers.ValidationError({"variant": "Choose an active package for this service."})
         if variant and (variant.attributes or {}).get("vehicle_type"):
             if (variant.attributes or {}).get("vehicle_type") != category_answers.get("vehicle_type"):
                 raise serializers.ValidationError({"variant": "This package is not priced for the selected vehicle type."})
-        if not isinstance(addons, list) or not isinstance(answers, dict) or not isinstance(category_answers, dict):
-            raise serializers.ValidationError("Add-ons must be a list and answers must be objects.")
 
         addon_ids = []
         for row in addons:
