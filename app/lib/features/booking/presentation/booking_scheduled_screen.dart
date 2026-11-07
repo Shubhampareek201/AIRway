@@ -183,7 +183,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   List<String> _flowSteps(Service service) => [
     if (service.variants.isNotEmpty) 'Package',
-    if (service.formFields.isNotEmpty) 'Your Space',
+    if (service.formFields.isNotEmpty) 'Service Details',
     if (service.addons.isNotEmpty) 'Add-ons',
     'Address',
     'Summary',
@@ -193,7 +193,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     switch (step) {
       case 'Package':
         return 'Choose the service package that suits your needs.';
-      case 'Your Space':
+      case 'Service Details':
         return 'Tell us a little about the space and service requirements.';
       case 'Add-ons':
         return 'Personalize your booking with optional extras.';
@@ -216,7 +216,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       );
       return;
     }
-    if (current == 'Your Space') {
+    if (current == 'Service Details') {
       for (final field in service.formFields) {
         if (field.isRequired &&
             (_formAnswers[field.key] == null ||
@@ -820,7 +820,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Final amount confirmed by backend after booking',
+                service.bookingMode == 'inspection' || service.pricingType == 'quote'
+                    ? 'Inspection / visit fee only. Final job quote will be shared after inspection.'
+                    : 'Final amount confirmed by backend after booking',
                 style: TextStyle(fontSize: 11, color: _Ui.sub),
               ),
             ],
