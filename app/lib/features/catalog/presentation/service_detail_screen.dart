@@ -390,8 +390,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 style: const TextStyle(fontSize: 12, decoration: TextDecoration.lineThrough, color: _Ui.sub),
               ),
             Text(
-              '₹${v.price.toStringAsFixed(0)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _Ui.violet),
+              v.price > 0 ? '₹${v.price.toStringAsFixed(0)}' : 'Price on request',
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _Ui.violet),
             ),
             if (v.discountPercent > 0)
               Text('${v.discountPercent}% OFF', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF7861A8))),
@@ -445,9 +446,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ),
         ),
         Text(
-          '₹${a.price.toStringAsFixed(0)}',
+          a.price > 0 ? '₹${a.price.toStringAsFixed(0)}' : 'Price on request',
+          textAlign: TextAlign.end,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w800,
             color: _Ui.violet,
           ),
