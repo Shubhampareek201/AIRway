@@ -104,7 +104,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
             maxLines: type == 'textarea' ? 3 : 1,
             decoration: _decoration('Enter $title'),
             onChanged: (value) => _answers[key] = value,
-            validator: required ? (value) => value == null || value.trim().isEmpty ? 'Please enter $title' : null : null,
+            validator: isRequired ? (value) => value == null || value.trim().isEmpty ? 'Please enter $title' : null : null,
           ),
       ],
     );
