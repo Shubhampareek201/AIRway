@@ -414,9 +414,14 @@ class BookingAvailabilitySerializer(serializers.Serializer):
             raise serializers.ValidationError({"service": "Invalid service ID."})
 
         attrs["service_obj"] = service
-        attrs["variant"] = ServiceVariant.objects.filter(pk=attrs.get("variant_id")).first() if attrs.get("variant_id") else None
+        variant = ServiceVariant.objects.filter(pk=attrs.get("variant_id"), is_active=True).first() if attrs.get("variant_id") else None
+        if attrs.get("variant_id") and (variant is None or variant.service_id != service.id):
+            raise serializers.ValidationError({"variant_id": "Choose an active package for this service."})
+        attrs["variant"] = variant
 
         booking_mode = attrs.get("booking_mode", "scheduled")
+        if booking_mode != service.booking_mode:
+            raise serializers.ValidationError({"booking_mode": "This service does not support the selected booking mode."})
 
         # Validate drop_scheduled_at is provided for pickup_drop mode
         if booking_mode == "pickup_drop" and not attrs.get("drop_scheduled_at"):
