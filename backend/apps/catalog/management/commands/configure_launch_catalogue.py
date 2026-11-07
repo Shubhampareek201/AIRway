@@ -171,7 +171,7 @@ class Command(BaseCommand):
 
         counts = {"city_services_created": 0, "packages_priced": 0, "addons_priced": 0, "services_priced": 0}
         for service in services:
-            _, created = CityService.objects.get_or_create(
+            _, created = CityService.objects.update_or_create(
                 city=city, service=service, defaults={"is_active": True}
             )
             if created:
@@ -180,7 +180,10 @@ class Command(BaseCommand):
             root = _root_name(service.category)
             variants = list(service.variants.filter(is_active=True))
             for variant in variants:
-                if variant.price > 0 and variant.mrp > 0:
+                if variant.price > 0:
+                    if variant.mrp <= 0:
+                        variant.mrp = variant.price
+                        variant.save(update_fields=["mrp", "updated_at"])
                     continue
                 price = _package_price(root, service.title, variant.title, variant.attributes)
                 if price <= 0:
@@ -193,7 +196,10 @@ class Command(BaseCommand):
                 counts["packages_priced"] += 1
 
             for addon in service.addons.filter(is_active=True):
-                if addon.price > 0 and addon.mrp > 0:
+                if addon.price > 0:
+                    if addon.mrp <= 0:
+                        addon.mrp = addon.price
+                        addon.save(update_fields=["mrp", "updated_at"])
                     continue
                 price = _addon_price(root, addon.title)
                 addon.price = price
