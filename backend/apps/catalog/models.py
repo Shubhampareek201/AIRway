@@ -155,7 +155,11 @@ class FormField(TimeStampedModel):
     label = models.CharField(max_length=150)
     label_hi = models.CharField("Label (Hindi)", max_length=150, blank=True)
     field_type = models.CharField(max_length=10, choices=FieldType.choices)
-    options = models.JSONField(default=list, blank=True, help_text='Dropdown ke liye: ["Sedan", "SUV"]')
+    options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Choices: ["Sedan"] or [{ "label": "Sedan", "value": "Sedan", "image": "https://..." }].',
+    )
     is_active = models.BooleanField(default=True, help_text="Admin sawaal ko form mein chhod sakta hai")
     is_required = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
