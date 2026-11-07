@@ -53,7 +53,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         final id = row['id'] as int;
         dates.putIfAbsent(id, () => DateTime(tomorrow.year, tomorrow.month, tomorrow.day));
         times.putIfAbsent(id, () => const TimeOfDay(hour: 10, minute: 0));
-        dropTimes.putIfAbsent(id, () => const TimeOfDay(hour: 14, minute: 0));
+        dropTimes.putIfAbsent(id, () => const TimeOfDay(hour: 17, minute: 0));
       }
       if (mounted) setState(() { cart = value; loading = false; });
     } catch (e) {
