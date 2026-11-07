@@ -88,20 +88,23 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   List<Service> get _filteredServices {
-    if (_query.trim().isEmpty) return _services;
     final lower = _query.trim().toLowerCase();
-    return _services
-        .where((s) {
-          final beautyType = widget.initialAnswers['beauty_type']?.toString();
-          if (beautyType == "Men's Beauty" && s.audience != 'men' && s.audience != 'all') return false;
-          if (beautyType == "Women's Beauty" && s.audience != 'women' && s.audience != 'all') return false;
-          if (beautyType == 'Common Services' && s.audience != 'all') return false;
-          return
-              s.title.toLowerCase().contains(lower) ||
-              s.description?.toLowerCase().contains(lower) == true ||
-              s.categoryName.toLowerCase().contains(lower);
-        })
-        .toList();
+    final beautyType = widget.initialAnswers['beauty_type']?.toString();
+    return _services.where((service) {
+      if (beautyType == "Men's Beauty" &&
+          service.audience != 'men' &&
+          service.audience != 'all') return false;
+      if (beautyType == "Women's Beauty" &&
+          service.audience != 'women' &&
+          service.audience != 'all') return false;
+      if (beautyType == 'Common Services' && service.audience != 'all') {
+        return false;
+      }
+      if (lower.isEmpty) return true;
+      return service.title.toLowerCase().contains(lower) ||
+          service.description?.toLowerCase().contains(lower) == true ||
+          service.categoryName.toLowerCase().contains(lower);
+    }).toList();
   }
 
   @override
