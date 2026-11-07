@@ -100,12 +100,14 @@ class BookingApi {
     int quantity = 1,
     required List<Map<String, dynamic>> addonSelections,
     required Map<String, dynamic> formAnswers,
+    Map<String, dynamic> categoryAnswers = const {},
   }) async {
     final data = <String, dynamic>{
       'service': serviceId,
       'quantity': quantity,
       'addon_selections': addonSelections,
       'form_answers': formAnswers,
+      'category_answers': categoryAnswers,
     };
     if (variantId != null) data['variant'] = variantId;
     final result = await request(
