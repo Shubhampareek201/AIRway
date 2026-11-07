@@ -488,6 +488,129 @@ Use this as a completeness and worker-skill checklist, not permission to publish
 - What documentation/warranty, if any, is offered for installation and repair work? Do not invent a warranty period.
 - Which property types (residential, retail, office, industrial) and voltage/phase classes are in the launch scope?
 
+## Home Cleaning — detailed professional-service requirements (design review)
+
+### Customer-first cleaning journey
+
+The customer should choose the space/item and the result they need, not be expected to know cleaning chemicals, machinery or trade terminology. Keep the initial questions short and reveal follow-ups only when relevant.
+
+Recommended order:
+1. Choose the cleaning area/service.
+2. Select a clearly described package (regular/basic, deep, premium only where the scope is genuinely different) or the specific task.
+3. Ask the minimum scope questions: room/area count, approximate size, material/surface, condition/soil level and special concerns where relevant.
+4. Show exactly what is included and excluded; offer only compatible add-ons.
+5. Ask about water/electricity/access, furniture/appliance movement, pets/children and parking only where the selected service needs it.
+6. Capture optional photos for complex/large/stained/high-access jobs. Never make a photo mandatory where a simple size/count selection is enough.
+7. Confirm address, then fetch slots based on area, package duration, team size, equipment and worker skills.
+8. Review the package, areas/items, add-ons, exclusions, access notes, price and confirmed time before creating the booking.
+
+### Service-by-service customer configuration and worker handoff
+
+| Existing service / ID | Customer-facing configuration | Worker-ready requirements / review notes |
+|---|---|---|
+| Balcony & Terrace Cleaning (#164) | Choose basic/deep/premium package; ask balcony/terrace count, approximate size (small/medium/large or sq ft if known), floor level, covered/open, water point and visible soil (dust / bird droppings / mud / plant debris / heavy buildup). Ask about railing/glass only if present. | Confirm outdoor-safe chemicals, drainage, water access, railing and floor material, height/fall risk, access and waste volume. No exterior façade/rope-access work under a normal cleaning slot. Current packages: ₹399/₹699/₹999; package durations 45/75/90 min versus service default 90 min; schedule from selected variant and realistic area/team capacity. |
+| Drain Area Cleaning (#170) | Ask drain type (balcony floor drain / open channel / terrace outlet / other), number, approximate length/area, blocked vs routine cleaning, standing water/odour and visible debris. Photo optional. | Surface cleaning only unless drain-clearing capability is verified. Do not promise plumbing repair, sewer work, manhole entry or hazardous blockage removal. Use PPE; assess stagnant water, sharp objects and contamination. Existing ₹499 fixed fee needs quantity/length and scope boundary. |
+| Outdoor Floor Cleaning (#171) | Ask area size, surface (tile / stone / concrete / deck / other), soil (dust / mud / algae / grease / stains), water availability and whether pressure washing is requested. | Select compatible scrubber/pressure equipment and surface-safe chemicals; protect nearby doors, plants, sockets and vehicles. Pressure washing only if equipment, drainage and trained staff are available. Existing ₹499 needs area and method limit. |
+| Terrace Cleanup (#169) | Ask terrace size, open/covered, dry leaves/dust/construction debris/plant waste, number of waste bags, water availability and whether garden items/furniture need moving. | Define cleanup versus deep floor wash; waste collection/disposal and transport are not automatically included. Assess access, stairs, parapet/fall risk, heat/weather and heavy debris. Existing ₹499 needs volume/area boundary. |
+| Bathroom Cleaning (#157) | Choose basic/deep/premium; ask bathroom count, approximate size, bathroom type (common / attached / guest / other), shower enclosure/bathtub if present, hard-water scale/soap scum/mould level and optional photo. Show extra bathroom, hard-water treatment, bathtub and exhaust fan add-ons only when applicable. | Match chemicals/tools to tile, grout, natural stone, chrome, glass and sanitaryware. Confirm ventilation, water supply, drainage, mould severity and safe chemical use. Never mix bleach, acids or ammonia-based products. Existing packages ₹399/₹599/₹799 (45/75/90 min) and add-ons need exact unit basis; "extra bathroom ₹99" must define package coverage and duration. |
+| Bedroom Cleaning (#159) | Choose basic/deep/premium; ask bedroom count/size, floor type, furniture density, occupied/vacant, wardrobe interior only if requested, and whether bed/mattress/curtains/windows/fans need separate cleaning. | Define dusting reach, furniture movement limits, electronics/fragile items, wardrobe emptying requirement and linen handling. Do not include mattress/curtain/window/fan deep cleaning unless package explicitly includes it. Current packages ₹499/₹799/₹1199 (60/90/120 min); add-ons must be conditional and not double-count included tasks. |
+| Carpet & Rug Cleaning (#163) | Ask carpet/rug count, size (small/medium/large/custom), material if known (wool / synthetic / cotton / silk / jute / unsure), stain type/age, odour/pet stains, location and whether it can be moved. | Identify fibre and colourfastness; test inconspicuous area before treatment. Choose vacuum, low-moisture or extraction method compatible with fibre; explain drying/ventilation and access. Delicate, antique, valuable or non-colourfast rugs require specialist review. Existing packages ₹199/₹349/₹499 and stain/odour add-ons must define per rug/size; avoid promising complete stain removal. |
+| Floor Cleaning (#166) | Choose basic/deep; ask area (sq ft or room count), surface (tile / marble / granite / vitrified / concrete / wood / laminate / other), soil level and furniture obstruction. | Match tools and pH-safe chemicals to material. Do not use acidic cleaners on marble/natural stone or excess water on wood/laminate. Deep package includes tile/grout tasks as stated; clarify whether furniture movement and skirting are included. Packages ₹499/₹799 (60/120 min); define area limits. |
+| Grout Cleaning (#178) | Ask floor/wall grout, tile type, approximate area, grout colour, dirt/mould/scale level and optional close-up photo. | Verify grout type/condition and test treatment; protect tile finish and sealant. Deep stain removal may not restore original colour; damaged grout replacement/regrouting is a separate trade. Existing ₹499 requires area basis and chemical/method limits. |
+| Marble Floor Cleaning (#176) | Ask marble/natural stone type if known, area size, finish (polished / matte / unsure), issue (dust / dullness / stains / etching / routine clean), and whether any prior coating/sealer exists. | Use stone-safe neutral products and non-abrasive pads. No acidic descaler, harsh bleach or unapproved abrasive. Distinguish cleaning from honing, crystallization, grinding or polishing; refer restoration to trained stone specialist. Existing ₹499 must specify area and cleaning-only scope. |
+| Marble Polishing (#177) | Ask area, visible dullness/scratches/etching, stone type/finish, previous polishing and photos in natural light. Explain this is a site-assessment/quote service, not routine mopping. | Inspection/quote by stone-restoration specialist: assess stone condition, machinery, dust/slurry containment, water/power and furniture removal. Define finish expectations and test patch. Current ₹499 visit fee; fee adjustment/refund policy and quote acceptance process are not defined. |
+| Tile Cleaning (#175) | Ask tile type (ceramic / vitrified / porcelain / anti-skid / other), floor vs wall, area, grout condition, soil/grease/scale and access. | Select compatible brush/pad/chemical; test sensitive finishes and avoid damaging grout/sealant. Distinguish routine tile cleaning from grout restoration, tile repair and acid wash. Existing ₹499 needs area and included method boundary. |
+| Full Home Cleaning (#156) | Ask property type, bedrooms, bathrooms, kitchens, living/dining areas, approximate size/floors, occupied/vacant, regular/deep/move-in/move-out intent and major extras. Show package inclusions/exclusions before selection. Ask photos only for unusually large/complex homes. | Build an area checklist and crew/time estimate. Confirm room count, team size, consumables, water/power, furniture movement, kitchen/bathroom depth, windows, fans, appliances and waste. Packages ₹1499/₹2499/₹3499 have durations 180/300/360 min, but generic service default is 90 min; selected package duration and property-size thresholds must control capacity. "Selected glass/hard-to-reach areas" must be bounded. |
+| Move-in Cleaning (#167) | Ask property size, bedrooms/bathrooms/kitchens, vacant vs partly furnished, previous tenant/renovation condition, dust/paint/cement residue and desired date. Clarify whether cupboards/appliances are empty. | Quote or package by measured rooms/area and condition. Construction debris, paint/adhesive removal, pest waste, heavy appliance movement and repairs are excluded unless separately offered. Check utilities and key/access handoff. Current ₹499 fixed fee and 90 min are not credible as an unrestricted whole-property scope; verify before exposure. |
+| Move-out Cleaning (#168) | Ask property size and room counts, furnished/vacant, kitchen/bathroom condition, wall marks, appliance interiors and whether landlord/inspection checklist is supplied. | Define checklist and evidence photos with customer consent. Do not promise deposit recovery or landlord acceptance. Distinguish ordinary cleaning from wall repainting, damage repair, junk removal and pest treatment. Current ₹499/90 min needs scope/area boundary. |
+| Garden Cleaning (#158) | Choose cleanup/deep cleanup/maintenance; ask garden size, lawn/planter/terrace garden, plants/hedges, weeds/leaf volume, grass height, and whether grass cutting, hedge trimming, pruning, repotting, soil replacement or waste disposal is required. | Separate cleaning from horticulture/gardening skills. Confirm tools, green-waste handling, plant species/sensitivity, irrigation access, safe equipment and disposal route. No pesticide/herbicide application unless separately qualified and legally compliant. Current packages ₹499/₹799/₹1199; add-ons ₹99 each need units (per plant, pot, area, bag or visit) and task boundaries. |
+| Kitchen Cleaning (#155) | Choose basic/deep/premium; ask kitchen count, size, grease level, modular/open shelves, chimney type, and whether oven/microwave/fridge interior/cabinet interiors are requested. Add-ons should appear only when the appliance exists and package doesn't already include it. | Confirm appliance emptying/cooling/unplugging requirements, food protection, material/finish compatibility, grease level, ventilation and water. Do not disassemble gas/electrical appliances or disconnect gas lines. Chimney internal service only if trained and equipped; otherwise exterior-only or specialist. Packages ₹799/₹1299/₹1799 (90/150/180 min); prevent duplicate charging for included cabinet/chimney tasks. |
+| Living Room & Dining Room (#160) | Choose basic/deep/premium; ask room count/approx size, furniture density, floor type, glass/window requirement, sofa/chair count and whether upholstery is separate. | Define accessible furniture surfaces, under-furniture reach, electronics handling, fragile décor and moving limits. Deep package includes sofa exterior, TV unit, doors, fans and corners; don't sell overlapping sofa/window/glass add-ons without clear distinction. Packages ₹499/₹799/₹1199 (60/90/120 min). |
+| Mattress Cleaning (#162) | Ask mattress size, quantity, single/double-sided treatment, material/type if known, stains/odour/pet/urine/spill concerns, age and whether mattress can be accessed on both sides. | Verify fibre/foam/latex compatibility, moisture tolerance and extraction method. Explain drying time and ventilation; no guarantee for permanent stain/odour removal. Confirm safe sanitising product and customer consent for sensitive stains. Packages ₹299/₹499/₹699 (45/75/90 min) need price basis per mattress and size; current size list lacks custom/other. |
+| Sofa & Upholstery Cleaning (#161) | Ask item type and count: sofa seats/configuration, recliner, dining chairs or other upholstery; material (fabric / leather / suede / velvet / synthetic / unsure), stain/odour/pet concern, cushion removability and photos. | Fibre/material identification, colourfastness test, appropriate dry/steam/extraction method and drying plan. Leather/suede/delicate upholstery needs specialist method; do not apply generic shampoo. Packages ₹299/₹499/₹699 (45/90/120 min) need per-seat/per-item basis; existing item choices and quantity must calculate realistic duration. |
+| Balcony Glass Cleaning (#173) | Ask panel count/approx dimensions, inside-only vs reachable exterior, floor level, access from inside, glass type/film and visible hard-water marks. Optional photo from safe indoor position. | Only accessible glass within safe reach unless specialist access equipment and trained staff verified. No leaning outside, climbing railings or rope access. Confirm ladder/platform, weather and fall protection. Existing ₹499 needs panel/area and side-count scope. |
+| Glass Door Cleaning (#172) | Ask number/size of doors, sliding/hinged, glass partition vs exterior door, both sides or one side, frame/track cleaning needed and hard-water/sticker residue. | Use glass-safe tools and protect tracks, seals, handles and floor. Sticker/paint/cement removal may scratch glass and requires separate assessment. Existing ₹499 needs door/panel count and both-side definition. |
+| Interior Glass Cleaning (#174) | Ask glass type/location (partition / shower screen / mirror / cabinet / interior window), approximate area/panel count, access and scale/grease/sticker condition. | Use surface-compatible tools and chemicals; avoid scratching coatings, mirrors and tinted/laminated glass. Clarify whether frames/tracks and both sides are included. Existing ₹499 needs area basis. |
+| Window & Glass Cleaning (#165) | Choose basic/deep; ask window count/type, approximate size, sliding tracks/grills/screens, interior-only vs safely accessible exterior, floor level and soil/scale. | Confirm safe access and whether grills/screens can be removed without risk. Never offer external high-rise glass cleaning without specialist equipment, training and insurance. Packages ₹399/₹699 (45/75 min); define number/size of windows and included sides/frames. |
+
+### Complete professional cleaning capability map
+
+This is a coverage checklist for evaluating future catalogue breadth. It is not permission to publish every service. Each capability needs trained workers, tools, consumables, safe method, waste handling, realistic duration and approved pricing.
+
+- **Room and property cleaning:** bedrooms, living/dining, kitchen, bathrooms, common areas, stairs, corridors, full-home regular/deep, move-in/move-out, vacant-property turnover and post-renovation cleaning (specialist).
+- **Floor and hard surfaces:** tile, grout, marble, granite, vitrified/porcelain, natural stone, concrete, wood/laminate, vinyl, outdoor decking; scrubbing, stain treatment, stone restoration/polishing as distinct skill.
+- **Soft furnishings:** sofa, sectional, recliner, dining chairs, office chairs, curtains/blinds, mattresses, carpets, rugs, cushions and upholstery; fibre-specific cleaning and drying.
+- **Glass and façade-accessible surfaces:** interior windows, doors, partitions, mirrors, shower glass, balcony glass, frames/tracks/screens; high-rise/exterior access only through a specialist safety programme.
+- **Kitchen and appliances:** counters, sinks, cabinets, backsplash, chimney exterior/interior, hob/cooktop, oven, microwave, refrigerator, dishwasher exterior, exhaust fan; appliance disassembly/repair and gas/electrical connections are separate trades.
+- **Bathroom and sanitation:** toilets, basins, showers, bathtubs, fittings, tiles, grout, hard-water scale, exhaust fans and accessible drains; plumbing, sewer and biohazard remediation separate.
+- **Outdoor areas:** balconies, terraces, patios, outdoor floors, garden cleanup, lawns, hedges, leaves and green waste; tree work, pesticide application and hazardous waste need specialist handling.
+- **Specialist hygiene/restoration:** post-construction dust, mould remediation, flood/water damage, fire/soot cleanup, hoarding, pest/biohazard/medical waste, high-level industrial cleaning. These must not be offered as ordinary home cleaning without specialist training, PPE, containment and disposal compliance.
+- **Commercial cleaning (future scope):** shops, offices, clinics, schools, common areas, washrooms, periodic contracts and after-hours cleaning. Requires staffing, access/security, insurance and documented service-level standards.
+
+### Minimum worker handoff and operational requirements
+
+- Exact room/item count, package, selected add-ons, size/area estimates and customer-defined priority areas.
+- Surface/material and condition, stain/odour notes, photos where useful, and any customer "not sure" response.
+- Explicit included/excluded task list; do not rely on package names alone.
+- Water, electricity, drainage, ventilation, parking, stairs/lift, floor level and safe access constraints.
+- Furniture/appliance movement: what worker may move, what customer must empty/unplug/prepare, and what is excluded due to weight or fragility.
+- Pets, children, elderly occupants, allergies/sensitivities and preferred fragrance-free/low-odour products where offered; do not make unsupported hypoallergenic claims.
+- Worker skills (routine cleaner, deep cleaner, upholstery extractor, stone specialist, glass-access specialist, gardener), team size, equipment, PPE and estimated duration.
+- Consumables/material responsibility and safe chemical handling. Workers must follow label dilution/contact time, never mix incompatible products, label containers and keep chemicals away from children/pets/food.
+- Before/after evidence for agreed tasks, customer consent for photos, completion checklist and customer sign-off.
+- If actual condition/area exceeds booked scope, pause, explain the difference and obtain explicit approval for a revised quote or additional slot before doing extra paid work.
+
+### Negative and exception scenarios to design
+
+- Customer selects deep clean but condition is heavy construction residue, mould, biohazard, pest infestation or hazardous waste beyond normal capability.
+- Area size/count exceeds package boundary; worker capacity/time estimate is insufficient.
+- Customer is unsure of surface/material; worker must inspect/test a small inconspicuous area before using chemicals.
+- Delicate/antique fabric, natural stone, coated/tinted glass, damaged grout, loose fixtures or pre-existing damage.
+- Stain/odour is permanent or cannot be guaranteed removable; communicate realistic outcomes before treatment.
+- No water, electricity, drainage, ventilation, parking or safe access; equipment cannot be operated.
+- Heavy furniture/appliance needs moving, items are not emptied/unplugged, fragile belongings are not secured, or customer is absent.
+- Pet/child access to wet floors or chemicals; cleaning team must secure work zone and communicate drying/re-entry guidance.
+- High windows/balconies, unstable ladders, wet/slippery terrace, extreme heat/rain or unsafe outdoor conditions.
+- Add-on duplicates a task already included in package; prevent duplicate charge.
+- Worker lacks extraction machine, pressure washer, stone-safe tools, ladder/PPE, disposal route or specialist skill.
+- Customer requests extra rooms/items mid-job; get price/time approval before proceeding.
+- Worker discovers plumbing/electrical/appliance repair requirement; stop and route to relevant service, do not perform unqualified work.
+- Worker rejection/no-show, reassignment, customer cancellation, no access, incomplete checklist, equipment failure, weather interruption or disputed quality.
+- Never mark job complete if booked areas/tasks were skipped or unsafe chemical residue/wet-floor hazards remain.
+
+### Home Cleaning catalogue corrections and launch blockers
+
+- All 24 active Home Cleaning services report zero approved mapped workers in the export. Do not present bookable slots until an eligible approved worker with the required skill, equipment and capacity exists.
+- No Home Cleaning service/gallery images were present in the export. Use accurate service-specific images or neutral placeholders, never unrelated images.
+- Existing form fields are sparse for several tasks. Balcony/terrace, drain, outdoor floor, terrace cleanup, grout, marble, tile, move-in/move-out, glass and window services mostly ask only area size/photo; add the minimum service-specific details above.
+- Package-backed services have zero service-level visit_fee but active variants carry prices. Checkout must use the selected variant price/duration, not zero base fee or generic service duration.
+- Full Home Cleaning default duration is 90 minutes while variants are 180/300/360 minutes. Slot capacity must use selected package duration and team size.
+- Full Home Cleaning package descriptions include basic bathroom/kitchen tasks, while separate room services/add-ons may overlap. Define package scope and prevent duplicate charges.
+- Kitchen deep/premium includes cabinet interior/chimney tasks but add-ons separately list cabinet interior/chimney cleaning. Make add-ons conditional and only charge when outside selected package scope.
+- Bedroom and living-room packages overlap with fan, sofa, window, glass and mattress add-ons. Show a clear included-vs-extra breakdown.
+- Garden add-ons each show ₹99 without unit basis. Define per plant/per pot/per area/per bag/per task before publication.
+- Sofa packages use sofa type plus item quantity but no material/fabric field. Add fabric/material and seat-count basis to prevent underquoting.
+- Mattress options do not include custom size or mattress type/material; add "Other/Not sure" where appropriate.
+- Carpet size is present but fibre/material, number of rugs and stain/odour condition need to be captured; delicate fibres require specialist routing.
+- Many fixed-fee services show a single ₹499 with no defined area, panel, drain length, item count or access boundary. Do not interpret as unlimited.
+- Marble polishing is inspection/quote and must be kept distinct from routine marble cleaning. Define visit fee and quote policy before live use.
+- Drain cleaning must not be represented as plumbing/sewer clearing unless that capability is separately verified.
+- Move-in/move-out fixed ₹499/90-minute entries need property-size and condition boundaries; don't imply unrestricted full-property cleaning.
+- Existing package prices/durations are audit observations only, not approval to change them.
+- Define chemical/product safety, customer preparation, fragile-property damage process, waste disposal, drying/re-entry guidance and any service warranty/quality re-clean policy before launch. Do not invent terms.
+- Address must precede slot search; slots must account for selected variant duration, room/area scope, equipment and worker/team capacity.
+- Do not add high-rise exterior glass, mould remediation, biohazard, pest, post-construction or industrial work to public catalogue until verified as supported specialist services.
+
+### Home Cleaning business decisions to confirm before live configuration
+
+- Which cleaning methods/equipment can AIRway workers actually provide today (vacuum, extractor, steam cleaner, pressure washer, floor scrubber, ladders, stone-polishing machine)?
+- Are packages priced per room, per item, per seat, per mattress, per sq ft, per panel or per visit? Define limits and overage handling for each.
+- What is included in each basic/deep/premium package, especially overlapping kitchen, bedroom, living-room and full-home services?
+- Who supplies chemicals and consumables? Can customers request fragrance-free/low-odour products, and what allergy/sensitivity disclosures are required?
+- What are the rules for furniture movement, appliance emptying/unplugging, fragile items, waste disposal and customer presence?
+- Does AIRway offer any specialist work (high-rise glass, marble restoration, mould/biohazard, post-construction, pest-related cleaning)? If yes, what training, PPE, insurance and disposal compliance are verified?
+- What is the quality assurance/re-clean or damage-reporting policy? Do not promise a warranty or free re-clean until approved.
+
 ## Cross-cutting implementation requirements
 - **Pricing integrity:** fixed-price bookings must use server-calculated snapshots; no client-side price authority. Quote/inspection services must clearly distinguish visit fee from the later estimate. Do not silently convert quote jobs into fixed-price jobs.
 - **Variant integrity:** variants must belong to the selected service and match relevant answers (e.g. vehicle/seat/size); do not show inactive variants.
