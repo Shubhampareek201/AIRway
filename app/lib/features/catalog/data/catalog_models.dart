@@ -27,6 +27,27 @@ String? _resolveMediaUrl(dynamic value) {
   return uri.toString();
 }
 
+class CatalogBanner {
+  final int id;
+  final String title;
+  final String? image;
+  final int? linkServiceId;
+
+  const CatalogBanner({
+    required this.id,
+    required this.title,
+    this.image,
+    this.linkServiceId,
+  });
+
+  factory CatalogBanner.fromMap(Map<String, dynamic> map) => CatalogBanner(
+        id: map['id'] as int,
+        title: map['title']?.toString() ?? '',
+        image: _resolveMediaUrl(map['image']),
+        linkServiceId: map['link_service'] as int?,
+      );
+}
+
 class Category {
   final int id;
   final String title;
