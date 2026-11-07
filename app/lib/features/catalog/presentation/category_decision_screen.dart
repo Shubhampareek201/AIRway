@@ -72,7 +72,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
     final title = step['title']?.toString() ?? key;
     final description = step['description']?.toString();
     final type = step['type']?.toString() ?? 'select';
-    final required = step['required'] != false;
+    final isRequired = step['required'] != false;
     final options = (step['options'] as List? ?? [])
         .map((value) => value.toString())
         .toList();
@@ -81,7 +81,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title + (required ? ' *' : ''),
+          title + (isRequired ? ' *' : ''),
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: ink),
         ),
         if (description != null && description.isNotEmpty) ...[
@@ -95,7 +95,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
             decoration: _decoration('Choose $title'),
             items: options.map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
             onChanged: (value) => setState(() => _answers[key] = value),
-            validator: required ? (value) => value == null || value.isEmpty ? 'Please choose $title' : null : null,
+            validator: isRequired ? (value) => value == null || value.isEmpty ? 'Please choose $title' : null : null,
           )
         else
           TextFormField(
