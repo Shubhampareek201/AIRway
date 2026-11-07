@@ -55,7 +55,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     try {
       final results = await Future.wait([
         CatalogApi.listServices(
-          category: widget.categoryId,
+          category: widget.includeDescendants ? null : widget.categoryId,
           addressId: widget.addressId,
         ),
         CatalogApi.listCategories(addressId: widget.addressId),
