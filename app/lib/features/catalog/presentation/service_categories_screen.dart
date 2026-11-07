@@ -160,8 +160,25 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     return rows;
   }
 
+  IconData _categoryIcon(String name) {
+    final value = name.toLowerCase();
+    if (value.contains('clean')) return Icons.cleaning_services_rounded;
+    if (value.contains('repair') || value.contains('electric')) {
+      return Icons.handyman_rounded;
+    }
+    if (value.contains('plumb')) return Icons.plumbing_rounded;
+    if (value.contains('paint')) return Icons.format_paint_rounded;
+    if (value.contains('shift') || value.contains('move')) {
+      return Icons.local_shipping_rounded;
+    }
+    if (value.contains('beauty') || value.contains('salon')) {
+      return Icons.spa_rounded;
+    }
+    if (value.contains('car')) return Icons.directions_car_rounded;
+    return Icons.grid_view_rounded;
+  }
+
   Widget _categoryCard(Category category) {
-    final imageUrl = category.image;
     return Ingram(
       onTap: () => _openCategory(category),
       child: Container(
@@ -169,25 +186,21 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: double.infinity,
-              height: 104,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: AirwayColors.primarySoft,
-                borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AirwayColors.primarySoft,
+                  borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
+                ),
+                child: Center(
+                  child: Icon(
+                    _categoryIcon(category.title),
+                    color: AirwayColors.primary,
+                    size: 44,
+                  ),
+                ),
               ),
-              child: imageUrl != null && imageUrl.isNotEmpty
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Center(
-                        child: Icon(Icons.design_services_rounded, color: AirwayColors.primary, size: 34),
-                      ),
-                    )
-                  : const Center(
-                      child: Icon(Icons.design_services_rounded, color: AirwayColors.primary, size: 34),
-                    ),
             ),
             const SizedBox(height: 12),
             Text(
