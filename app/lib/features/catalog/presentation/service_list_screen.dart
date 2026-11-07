@@ -113,6 +113,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   List<Service> get _filteredServices {
     final lower = _query.trim().toLowerCase();
     final beautyType = widget.initialAnswers['beauty_type']?.toString();
+    final electricalGroup = widget.initialAnswers['electrical_group']?.toString();
     return _services.where((service) {
       if (beautyType == "Men's Beauty" &&
           service.audience != 'men' &&
@@ -121,6 +122,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           service.audience != 'women' &&
           service.audience != 'all') return false;
       if (beautyType == 'Common Services' && service.audience != 'all') {
+        return false;
+      }
+      if (electricalGroup != null && service.categoryName != electricalGroup) {
         return false;
       }
       if (lower.isEmpty) return true;
