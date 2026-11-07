@@ -64,6 +64,18 @@ def _available_service_ids(city, zone=None):
     )
 
 
+LAUNCH_CATEGORY_SLUGS = ("car-wash", "beauty", "electrical", "home-cleaning")
+
+
+def _launch_catalogue_filter(queryset):
+    """Keep the mobile launch catalogue inside its four approved root trees."""
+    return queryset.filter(
+        Q(category__slug__in=LAUNCH_CATEGORY_SLUGS, category__parent__isnull=True)
+        | Q(category__parent__slug__in=LAUNCH_CATEGORY_SLUGS,
+            category__parent__parent__isnull=True)
+    )
+
+
 def _visible_category_ids(service_ids):
     category_ids = set(
         Service.objects.filter(
@@ -100,10 +112,13 @@ class CategoryListView(generics.ListAPIView):
         return context
 
     def get_queryset(self):
-        return Category.objects.filter(
+        queryset = Category.objects.filter(
             is_active=True,
             parent__isnull=True,
-        ).prefetch_related("children")
+        )
+        if self.request.query_params.get("launch_only", "").lower() == "true":
+            queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
+        return queryset.prefetch_related("children")
 
 
 class ServiceListView(generics.ListAPIView):
@@ -124,6 +139,8 @@ class ServiceListView(generics.ListAPIView):
         ).prefetch_related(
             "images", "variants", "addons", "form_fields"
         )
+        if self.request.query_params.get("launch_only", "").lower() == "true":
+            queryset = _launch_catalogue_filter(queryset)
 
         location = _location_from_address(self.request)
         if location is not None:
@@ -161,6 +178,8 @@ class ServiceDetailView(generics.RetrieveAPIView):
         ).select_related("category").prefetch_related(
             "images", "variants", "addons", "form_fields"
         )
+        if self.request.query_params.get("launch_only", "").lower() == "true":
+            queryset = _launch_catalogue_filter(queryset)
         location = _location_from_address(self.request)
         if location is not None:
             city, zone = location
