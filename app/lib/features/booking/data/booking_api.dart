@@ -270,13 +270,13 @@ class BookingApi {
   }) async {
     final data = {
       'service': serviceId,
-      'scheduled_at': scheduledAt.toIso8601String(),
+      'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'booking_mode': bookingMode,
     };
     if (addressId != null) data['address_id'] = addressId;
 
     if (dropScheduledAt != null) {
-      data['drop_scheduled_at'] = dropScheduledAt.toIso8601String();
+      data['drop_scheduled_at'] = dropScheduledAt.toUtc().toIso8601String();
     }
     if (variantId != null) {
       data['variant_id'] = variantId;
