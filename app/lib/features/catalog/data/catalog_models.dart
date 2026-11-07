@@ -86,7 +86,7 @@ class Category {
           'required': true,
           'options': [
             {'label': 'Hatchback', 'value': 'Hatchback', 'image': 'https://images.pexels.com/photos/31042170/pexels-photo-31042170.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'Sedan', 'value': 'Sedan', 'image': 'https://images.pexels.com/photos/4797547/pexels-photo-4797547.jpeg?auto=compress&cs=tinysrgb&w=900'},
+            {'label': 'Sedan', 'value': 'Sedan', 'image': 'https://images.pexels.com/photos/100656/pexels-photo-100656.jpeg?auto=compress&cs=tinysrgb&w=900'},
             {'label': 'Compact SUV', 'value': 'Compact SUV', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
             {'label': 'SUV – 5 Seater', 'value': 'SUV – 5 Seater', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
             {'label': 'SUV – 7 Seater', 'value': 'SUV – 7 Seater', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
@@ -100,7 +100,7 @@ class Category {
         {'key': 'vehicle_model', 'title': 'Car model (optional)', 'type': 'text', 'required': false},
       ];
     }
-    if (identity.contains('beauty') || identity.contains('salon')) {
+    if (identity.contains('beauty') || identity.contains('salon') || identity.contains('wellness')) {
       return [
         {
           'key': 'beauty_type',
