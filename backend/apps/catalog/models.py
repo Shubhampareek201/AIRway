@@ -93,6 +93,7 @@ class PricedItem(TimeStampedModel):
     """Variant aur AddOn dono ka common price logic."""
     title = models.CharField(max_length=150)
     title_hi = models.CharField("Title (Hindi)", max_length=150, blank=True)
+    description = models.TextField(blank=True, help_text="What is included in this package or add-on")
     mrp = models.DecimalField("MRP (kata hua)", max_digits=10, decimal_places=2)
     price = models.DecimalField("Selling price", max_digits=10, decimal_places=2)
     sort_order = models.PositiveIntegerField(default=0)
