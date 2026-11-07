@@ -22,8 +22,7 @@ class ServiceCategoriesScreen extends StatefulWidget {
   });
 
   @override
-  State<ServiceCategoriesScreen> createState() =>
-      _ServiceCategoriesScreenState();
+  State<ServiceCategoriesScreen> createState() => _ServiceCategoriesScreenState();
 }
 
 class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
@@ -48,9 +47,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       _error = null;
     });
     try {
-      final categories = await CatalogApi.listCategories(
-        addressId: widget.addressId,
-      );
+      final categories = await CatalogApi.listCategories(addressId: widget.addressId);
       if (!mounted) return;
       setState(() {
         _categories = categories;
@@ -63,6 +60,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         _loading = false;
       });
     }
+  }
+
+  bool _isBeauty(Category category) {
+    final value = '${category.slug} ${category.title}'.toLowerCase();
+    return value.contains('beauty') || value.contains('salon') || value.contains('wellness');
   }
 
   Future<void> _openCategory(Category category) async {
@@ -80,6 +82,25 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       if (selected == null || !mounted) return;
       answers.addAll(selected);
     }
+
+    // Beauty's Men / Women / Common choice is an audience filter, not a
+    // separate dead-end category screen. Load services from the Beauty tree.
+    if (_isBeauty(category)) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceListScreen(
+            categoryId: category.id,
+            categoryTitle: category.title,
+            addressId: widget.addressId,
+            initialAnswers: answers,
+            includeDescendants: true,
+          ),
+        ),
+      );
+      return;
+    }
+
     if (category.children.isNotEmpty) {
       var children = category.children;
       final filterStep = category.customerFlowSteps.where(
@@ -124,115 +145,59 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AirwayColors.background,
-      appBar: AppBar(
-        title: Text(widget.title),
-        backgroundColor: AirwayColors.background,
-      ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AirwayColors.primary),
-            )
-          : _error != null
-              ? _errorWidget(_error!)
-              : _categories.isEmpty
-                  ? _emptyState()
-                  : _buildBody(),
-    );
-  }
-
-  Widget _buildBody() {
-    return ListView(
-      padding: AirwaySpacing.screenPadding,
-      children: [
-        Text(
-          widget.title == 'Browse Services'
-              ? 'Choose a category'
-              : 'Choose a service',
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: AirwayColors.text,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Explore services available in your selected area',
-          style: TextStyle(
-            fontSize: 14,
-            color: AirwayColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 20),
-        ..._buildCategoryGrid(),
-      ],
-    );
-  }
-
-  List<Widget> _buildCategoryGrid() {
-    final rows = <Widget>[];
-    for (var i = 0; i < _categories.length; i += 2) {
-      final pair = _categories.sublist(i, (i + 2).clamp(0, _categories.length));
-      rows.add(
-        Row(
-          children: [
-            for (final category in pair) ...[
-              Expanded(child: _categoryCard(category)),
-              if (pair.length == 2 && category != pair.last)
-                const SizedBox(width: 12),
-            ],
-            if (pair.length < 2) const Expanded(child: SizedBox()),
-          ],
-        ),
-      );
-      if (i + 2 < _categories.length) {
-        rows.add(const SizedBox(height: 12));
-      }
+  String _categoryPhoto(String name) {
+    final value = name.toLowerCase();
+    if (value.contains('beauty') || value.contains('salon') || value.contains('wellness')) {
+      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=900&auto=format&fit=crop';
     }
-    return rows;
+    if (value.contains('car') || value.contains('wash') || value.contains('vehicle')) {
+      return 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?w=900&auto=format&fit=crop';
+    }
+    if (value.contains('electric') || value.contains('fan') || value.contains('light')) {
+      return 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=900&auto=format&fit=crop';
+    }
+    if (value.contains('clean') || value.contains('home') || value.contains('kitchen')) {
+      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=900&auto=format&fit=crop';
+    }
+    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=900&auto=format&fit=crop';
   }
 
   IconData _categoryIcon(String name) {
     final value = name.toLowerCase();
     if (value.contains('clean')) return Icons.cleaning_services_rounded;
-    if (value.contains('repair') || value.contains('electric')) {
-      return Icons.handyman_rounded;
-    }
+    if (value.contains('repair') || value.contains('electric')) return Icons.handyman_rounded;
     if (value.contains('plumb')) return Icons.plumbing_rounded;
     if (value.contains('paint')) return Icons.format_paint_rounded;
-    if (value.contains('shift') || value.contains('move')) {
-      return Icons.local_shipping_rounded;
-    }
-    if (value.contains('beauty') || value.contains('salon')) {
-      return Icons.spa_rounded;
-    }
+    if (value.contains('shift') || value.contains('move')) return Icons.local_shipping_rounded;
+    if (value.contains('beauty') || value.contains('salon') || value.contains('wellness')) return Icons.spa_rounded;
     if (value.contains('car')) return Icons.directions_car_rounded;
     return Icons.grid_view_rounded;
   }
 
   Widget _categoryCard(Category category) {
+    final imageUrl = category.image?.isNotEmpty == true
+        ? category.image!
+        : _categoryPhoto(category.title);
     return Ingram(
       onTap: () => _openCategory(category),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: double.infinity,
-              height: 112,
-              decoration: BoxDecoration(
-                color: AirwayColors.primarySoft,
-                borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
-              ),
-              child: Center(
-                child: Icon(
-                  _categoryIcon(category.title),
-                  color: AirwayColors.primary,
-                  size: 44,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
+              child: SizedBox(
+                width: double.infinity,
+                height: 112,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: AirwayColors.primarySoft,
+                    alignment: Alignment.center,
+                    child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
+                  ),
                 ),
               ),
             ),
@@ -241,20 +206,13 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
               category.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AirwayColors.text,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AirwayColors.text),
             ),
             if (category.children.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
                 '${category.children.length} subcategories',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AirwayColors.textSecondary,
-                ),
+                style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary),
               ),
             ],
           ],
@@ -263,66 +221,85 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     );
   }
 
+  List<Widget> _buildCategoryGrid() {
+    final rows = <Widget>[];
+    for (var i = 0; i < _categories.length; i += 2) {
+      final pair = _categories.sublist(i, (i + 2).clamp(0, _categories.length));
+      rows.add(Row(
+        children: [
+          for (final category in pair) ...[
+            Expanded(child: _categoryCard(category)),
+            if (pair.length == 2 && category != pair.last) const SizedBox(width: 12),
+          ],
+          if (pair.length < 2) const Expanded(child: SizedBox()),
+        ],
+      ));
+      if (i + 2 < _categories.length) rows.add(const SizedBox(height: 12));
+    }
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AirwayColors.background,
+      appBar: AppBar(title: Text(widget.title), backgroundColor: AirwayColors.background),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: AirwayColors.primary))
+          : _error != null
+              ? _errorWidget(_error!)
+              : _categories.isEmpty
+                  ? _emptyState()
+                  : ListView(
+                      padding: AirwaySpacing.screenPadding,
+                      children: [
+                        Text(
+                          widget.title == 'Browse Services' ? 'Choose a category' : 'Choose a service',
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AirwayColors.text),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Explore services available in your selected area',
+                          style: TextStyle(fontSize: 14, color: AirwayColors.textSecondary),
+                        ),
+                        const SizedBox(height: 20),
+                        ..._buildCategoryGrid(),
+                      ],
+                    ),
+    );
+  }
+
   Widget _emptyState() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.category_outlined,
-                size: 64,
-                color: AirwayColors.textSecondary,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'No categories available',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AirwayColors.text,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Services for this area will appear here once they are available.',
-                style: TextStyle(color: AirwayColors.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: _loadCategories,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.category_outlined, size: 64, color: AirwayColors.textSecondary),
+          const SizedBox(height: 20),
+          const Text('No categories available', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AirwayColors.text)),
+          const SizedBox(height: 8),
+          const Text('Services for this area will appear here once they are available.', style: TextStyle(color: AirwayColors.textSecondary), textAlign: TextAlign.center),
+          const SizedBox(height: 20),
+          FilledButton(onPressed: _loadCategories, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
 
   Widget _errorWidget(String message) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.redAccent,
-                size: 52,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AirwayColors.textSecondary),
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: _loadCategories,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.redAccent, size: 52),
+          const SizedBox(height: 14),
+          Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AirwayColors.textSecondary)),
+          const SizedBox(height: 20),
+          FilledButton(onPressed: _loadCategories, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
 }
