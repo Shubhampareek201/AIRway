@@ -165,13 +165,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _openCatalogCategory(Category category, int? addressId) async {
     _searchFocus.unfocus();
     var answers = <String, dynamic>{};
-    if (category.flowSteps.isNotEmpty) {
+    if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
           builder: (_) => CategoryDecisionScreen(
             categoryTitle: category.title,
-            steps: category.flowSteps,
+            steps: category.customerFlowSteps,
           ),
         ),
       );
