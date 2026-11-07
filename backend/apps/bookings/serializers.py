@@ -100,12 +100,13 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     )
     address_id = serializers.IntegerField(write_only=True)
     category_answers = serializers.DictField(required=False, write_only=True)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=20, write_only=True, default=1)
 
     class Meta:
         model = Booking
         fields = [
             "id", "service", "variant", "booking_mode", "scheduled_at", "drop_scheduled_at",
-            "address_id", "addon_ids", "form_responses", "category_answers", "notes"
+            "address_id", "addon_ids", "form_responses", "category_answers", "quantity", "notes"
         ]
         read_only_fields = ["id"]
 
@@ -113,6 +114,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         service = attrs["service"]
         variant = attrs.get("variant")
         booking_mode = attrs.get("booking_mode", Booking.BookingMode.SCHEDULED)
+        quantity = attrs.get("quantity", 1)
         scheduled_at = attrs.get("scheduled_at")
         drop_scheduled_at = attrs.get("drop_scheduled_at")
         address_id = attrs["address_id"]
@@ -158,7 +160,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             check_slot_availability(
                 service=service,
                 scheduled_at=scheduled_at,
-                duration_minutes=duration or 60,
+                duration_minutes=(duration or 60) * quantity,
                 booking_mode=booking_mode,
                 drop_scheduled_at=drop_scheduled_at,
             )
@@ -204,6 +206,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         addon_ids = validated_data.pop("addon_ids", [])
         form_responses = validated_data.pop("form_responses", {})
         category_answers = validated_data.pop("category_answers", {})
+        validated_data.pop("quantity", 1)
         address = validated_data.pop("_address")
         user = self.context["request"].user
 
@@ -399,6 +402,7 @@ class BookingAvailabilitySerializer(serializers.Serializer):
     booking_mode = serializers.CharField(required=False, default="scheduled")
     audience = serializers.CharField(required=False, default="all")
     address_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
 
     def validate_scheduled_at(self, value):
         from django.utils import timezone
