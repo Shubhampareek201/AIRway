@@ -186,19 +186,18 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: AirwayColors.primarySoft,
-                  borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
-                ),
-                child: Center(
-                  child: Icon(
-                    _categoryIcon(category.title),
-                    color: AirwayColors.primary,
-                    size: 44,
-                  ),
+            Container(
+              width: double.infinity,
+              height: 112,
+              decoration: BoxDecoration(
+                color: AirwayColors.primarySoft,
+                borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
+              ),
+              child: Center(
+                child: Icon(
+                  _categoryIcon(category.title),
+                  color: AirwayColors.primary,
+                  size: 44,
                 ),
               ),
             ),
