@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
@@ -300,6 +301,48 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     );
   }
 
+  Widget _serviceImage(Service service) {
+    final imageUrl = (service.image?.isNotEmpty == true)
+        ? service.image!
+        : service.images.isNotEmpty
+            ? service.images.first.image
+            : CatalogImageResolver.forService(
+                title: service.title,
+                categoryName: service.categoryName,
+                audience: service.audience,
+              );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(11),
+      child: SizedBox(
+        width: 76,
+        height: 76,
+        child: imageUrl == null || imageUrl.isEmpty
+            ? Container(
+                color: AirwayColors.primarySoft,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.home_repair_service_rounded,
+                  color: AirwayColors.primary,
+                  size: 30,
+                ),
+              )
+            : Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: AirwayColors.primarySoft,
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.broken_image_outlined,
+                    color: AirwayColors.primary,
+                    size: 28,
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
   Widget _serviceCard(Service service) {
     final price = _displayPrice(service);
     final description = service.description?.trim() ?? '';
@@ -317,20 +360,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           ),
           child: Row(
             children: [
-              Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  color: AirwayColors.primarySoft,
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.home_repair_service_rounded,
-                  color: AirwayColors.primary,
-                  size: 30,
-                ),
-              ),
+              _serviceImage(service),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
