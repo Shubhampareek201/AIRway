@@ -855,7 +855,12 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
         return WorkerOffer.objects.filter(
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
-        ).select_related("booking", "worker__user")
+        ).select_related(
+            "booking__service", "booking__variant", "booking__address", "worker__user"
+        ).prefetch_related(
+            "booking__form_responses__form_field",
+            "booking__booking_addons__addon",
+        )
 
     def get_serializer_class(self):
         from apps.bookings.serializers import WorkerOfferSerializer
