@@ -160,10 +160,20 @@ class BookingViewSet(viewsets.ModelViewSet):
         scheduled_at = data["scheduled_at"]
         drop_scheduled_at = data.get("drop_scheduled_at")
 
+        address = None
+        if data.get("address_id"):
+            address = Address.objects.filter(
+                pk=data["address_id"],
+                user=request.user,
+                deleted_at__isnull=True,
+            ).select_related("zone__city").first()
+            if address is None:
+                return Response({"detail": "Select a valid service address."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             check_service_available(
                 service=service,
-                address=None,
+                address=address,
                 audience=data.get("audience", "all"),
             )
 
