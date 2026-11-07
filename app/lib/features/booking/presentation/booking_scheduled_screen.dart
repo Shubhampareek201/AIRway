@@ -17,12 +17,14 @@ class BookingScheduledScreen extends StatefulWidget {
   final int serviceId;
   final String serviceTitle;
   final int? addressId;
+  final Map<String, dynamic> initialFormAnswers;
 
   const BookingScheduledScreen({
     super.key,
     required this.serviceId,
     required this.serviceTitle,
     this.addressId,
+    this.initialFormAnswers = const {},
   });
 
   @override
@@ -82,6 +84,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _service = service;
         _addresses = addresses;
         _selectedAddressId = selectedAddressId;
+        _formAnswers.addAll(widget.initialFormAnswers);
         _loading = false;
 
         // Auto-select first variant if exactly one exists.
@@ -115,7 +118,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
             ? service.variants.first.id
             : null;
         _selectedAddonIds.clear();
-        _formAnswers.clear();
+        _formAnswers
+          ..clear()
+          ..addAll(widget.initialFormAnswers);
         _addressCheckBusy = false;
       });
       _updateSummary();
