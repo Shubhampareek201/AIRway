@@ -56,6 +56,19 @@ void main() {
         }
       }
     });
+
+    test('fan service titles use distinct title-matched Commons photographs', () {
+      const fanTitles = ['Ceiling Fan', 'Wall Fan', 'Exhaust Fan', 'Decorative Fan'];
+      final images = fanTitles
+          .map((title) => CatalogImageResolver.forService(
+                title: title,
+                categoryName: 'Fan Services',
+              )!)
+          .toSet();
+
+      expect(images, hasLength(fanTitles.length));
+      expect(images.every((image) => image.contains('Special:FilePath/')), isTrue);
+    });
   });
 
   group('CatalogImageResolver beauty audience handling', () {
