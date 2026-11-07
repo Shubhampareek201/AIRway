@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
+import 'package:airway/features/booking/presentation/booking_schedule_screen.dart';
 
 class CustomerCartScreen extends StatefulWidget {
   const CustomerCartScreen({super.key});
@@ -70,29 +71,8 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     }
   }
 
-  Future<void> pickDate(int id) async {
-    final now = DateTime.now();
-    final initial = dates[id] ?? now.add(const Duration(days: 1));
-    final value = await showDatePicker(
-      context: context,
-      initialDate: initial.isBefore(DateTime(now.year, now.month, now.day)) ? now : initial,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: now.add(const Duration(days: 90)),
-    );
-    if (value != null) {
-      setState(() {
-        dates[id] = value;
-        _slotConfirmed.remove(id);
-      });
-    }
-  }
-
-  Future<void> pickTime(int id) async {
-    Map<String, dynamic>? item;
-    for (final row in items) {
-      if (row['id'] == id) { item = row; break; }
-    }
-    final selectedItem = item;
+  Future<void> chooseSchedule(int id) async {
+    final selectedItem = items.where((row) => row['id'] == id).firstOrNull;
     final serviceId = int.tryParse(selectedItem?['service']?.toString() ?? '');
     final addressId = int.tryParse(cart?['address']?.toString() ?? '');
     if (selectedItem == null || serviceId == null || addressId == null) {
@@ -102,83 +82,33 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       return;
     }
 
-    setState(() => busy = true);
-    final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
-    final candidates = <TimeOfDay>[];
-    for (var hour = 8; hour <= 19; hour++) {
-      final slot = TimeOfDay(hour: hour, minute: 0);
-      final scheduledAt = DateTime(date.year, date.month, date.day, hour);
-      if (scheduledAt.isAfter(DateTime.now())) candidates.add(slot);
-    }
-
-    try {
-      final checks = await Future.wait(candidates.map((slot) {
-        final scheduledAt = DateTime(date.year, date.month, date.day, slot.hour);
-        DateTime? dropAt;
-        if (selectedItem['booking_mode'] == 'pickup_drop') {
-          final drop = dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0);
-          dropAt = DateTime(date.year, date.month, date.day, drop.hour, drop.minute);
-          if (!dropAt.isAfter(scheduledAt)) return Future<bool>.value(false);
-        }
-        return BookingApi.checkSlotAvailability(
+    final previousDate = dates[id];
+    final previousTime = times[id];
+    final previousDrop = dropTimes[id];
+    final result = await Navigator.of(context).push<BookingScheduleResult>(
+      MaterialPageRoute(
+        builder: (_) => BookingScheduleScreen(
           serviceId: serviceId,
-          scheduledAt: scheduledAt,
-          dropScheduledAt: dropAt,
-          variantId: int.tryParse(selectedItem['variant']?.toString() ?? ''),
           addressId: addressId,
+          variantId: int.tryParse(selectedItem['variant']?.toString() ?? ''),
           quantity: int.tryParse(selectedItem['quantity']?.toString() ?? '1') ?? 1,
           bookingMode: selectedItem['booking_mode']?.toString() ?? 'scheduled',
-        );
-      }));
-      final available = <TimeOfDay>[
-        for (var i = 0; i < candidates.length; i++)
-          if (checks[i]) candidates[i],
-      ];
-      if (!mounted) return;
-      setState(() => busy = false);
-      if (available.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No available slots for this date. Please choose another date.')),
-        );
-        return;
-      }
-      final selected = await showModalBottomSheet<TimeOfDay>(
-        context: context,
-        showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
-                child: Text('Available time slots', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              ),
-              for (final slot in available)
-                ListTile(
-                  leading: const Icon(Icons.schedule_rounded, color: violet),
-                  title: Text(slot.format(sheetContext)),
-                  subtitle: const Text('Available for this service duration'),
-                  onTap: () => Navigator.pop(sheetContext, slot),
-                ),
-            ],
-          ),
+          initialDate: previousDate,
+          initialTime: previousTime,
+          initialDropTime: previousDrop,
         ),
-      );
-      if (selected != null && mounted) {
-        setState(() {
-          times[id] = selected;
-          _slotConfirmed.add(id);
-        });
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    setState(() {
+      dates[id] = result.scheduledAt;
+      times[id] = TimeOfDay.fromDateTime(result.scheduledAt);
+      if (result.dropScheduledAt != null) {
+        dropTimes[id] = TimeOfDay.fromDateTime(result.dropScheduledAt!);
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() => busy = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load available slots: $e')),
-        );
-      }
-    }
+      _slotConfirmed.add(id);
+    });
   }
 
   Future<void> checkout() async {
@@ -405,24 +335,41 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           for (final addon in addons) Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 12, color: ink)),
         ],
         const Divider(height: 20),
-        const Text('Choose service date and time', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 13)),
+        const Text('Service Schedule', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 13)),
         const SizedBox(height: 8),
-        Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: () => pickDate(id), icon: const Icon(Icons.calendar_today_outlined, size: 15), label: Text(DateFormat('dd MMM yyyy').format(date)))),
-          const SizedBox(width: 8),
-          Expanded(child: OutlinedButton.icon(onPressed: () => pickTime(id), icon: const Icon(Icons.schedule_rounded, size: 15), label: Text(_slotConfirmed.contains(id) ? time.format(context) : 'Choose slot'))),
-        ]),
-        if (item['booking_mode'] == 'pickup_drop') ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final value = await showTimePicker(context: context, initialTime: dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0));
-              if (value != null) setState(() => dropTimes[id] = value);
-            },
-            icon: const Icon(Icons.flag_outlined, size: 15),
-            label: Text('Drop-off: ' + (dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0)).format(context)),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: pale,
+            borderRadius: BorderRadius.circular(13),
           ),
-        ],
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_month_rounded, color: violet),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _slotConfirmed.contains(id)
+                      ? DateFormat('EEE, dd MMM yyyy').format(date) + ' • ' + time.format(context)
+                      : 'Choose a date and available time',
+                  style: const TextStyle(color: ink, fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+              ),
+              TextButton(
+                onPressed: busy ? null : () => chooseSchedule(id),
+                child: Text(_slotConfirmed.contains(id) ? 'Change' : 'Select'),
+              ),
+            ],
+          ),
+        ),
+        if (item['booking_mode'] == 'pickup_drop' && _slotConfirmed.contains(id))
+          Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Text(
+              'Drop-off: ' + (dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context),
+              style: const TextStyle(color: sub, fontSize: 12),
+            ),
+          ),
       ]),
     );
   }
