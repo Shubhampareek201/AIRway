@@ -2,7 +2,7 @@ from django.test import TestCase
 
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Category, Service
+from apps.catalog.models import Category, Service, ServiceVariant
 
 
 class CatalogSerializerFieldRegressionTest(TestCase):
@@ -286,3 +286,37 @@ class CityFilteredCategoryTreeTest(TestCase):
         )
         self.assertEqual(detail_response.status_code, 200, detail_response.data)
         self.assertFalse(detail_response.data["is_available"])
+
+
+
+class CatalogPackageIncludedTasksTest(TestCase):
+    def test_service_api_exposes_package_included_tasks(self):
+        category = Category.objects.create(title="Home Cleaning", slug="home-cleaning")
+        service = Service.objects.create(
+            category=category,
+            title="Kitchen Cleaning",
+            booking_mode="scheduled",
+            pricing_type="fixed",
+        )
+        variant = ServiceVariant.objects.create(
+            service=service,
+            title="Deep Kitchen Cleaning",
+            description="Detailed kitchen cleaning.",
+            included_tasks=[
+                "Countertop and sink cleaning",
+                "Grease removal",
+                "Tile cleaning",
+                "Cabinet interior cleaning",
+            ],
+            mrp="0.00",
+            price="0.00",
+        )
+
+        response = APIClient().get(f"/api/v1/catalog/services/{service.id}/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["variants"][0]["id"], variant.id)
+        self.assertEqual(
+            response.data["variants"][0]["included_tasks"],
+            variant.included_tasks,
+        )
