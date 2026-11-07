@@ -154,6 +154,7 @@ class AddOn {
   final int id;
   final String title;
   final String? titleHi;
+  final String? description;
   final double mrp;
   final double price;
   final int discountPercent;
@@ -164,6 +165,7 @@ class AddOn {
     required this.id,
     required this.title,
     this.titleHi,
+    this.description,
     required this.mrp,
     required this.price,
     required this.discountPercent,
@@ -176,6 +178,7 @@ class AddOn {
       id: map['id'],
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
+      description: map['description']?.toString(),
       mrp: double.tryParse(map['mrp'].toString()) ?? 0,
       price: double.tryParse(map['price'].toString()) ?? 0,
       discountPercent: map['discount_percent'] ?? 0,
