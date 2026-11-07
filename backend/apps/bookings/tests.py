@@ -163,6 +163,47 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertIn("form_responses", response.data)
 
+    def test_create_booking_rejects_choice_outside_catalogue(self):
+        """Choice answers must be one of the options configured for the service."""
+        FormField.objects.create(
+            service=self.service,
+            key="car_type",
+            label="Car Type",
+            field_type="select",
+            options=["Sedan", "SUV", "Hatchback"],
+            is_required=True,
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"car_type": "Truck"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
+    def test_create_booking_rejects_invalid_numeric_answer(self):
+        """Numeric form fields must reject non-numeric values."""
+        FormField.objects.create(
+            service=self.service,
+            key="room_count",
+            label="Room count",
+            field_type="number",
+            is_required=True,
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"room_count": "many"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
     def test_create_booking_fails_with_past_date(self):
         """Should reject booking with past scheduled time."""
         past_time = timezone.now() - timezone.timedelta(hours=1)
