@@ -169,6 +169,7 @@ class ServiceVariant {
   final String title;
   final String? titleHi;
   final String? description;
+  final String? image;
   final Map<String, dynamic> attributes;
   final double mrp;
   final double price;
@@ -182,6 +183,7 @@ class ServiceVariant {
     required this.title,
     this.titleHi,
     this.description,
+    this.image,
     this.attributes = const {},
     required this.mrp,
     required this.price,
@@ -197,6 +199,7 @@ class ServiceVariant {
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
       description: map['description']?.toString(),
+      image: _resolveMediaUrl(map['image']),
       attributes: Map<String, dynamic>.from(map['attributes'] as Map? ?? {}),
       mrp: double.tryParse(map['mrp'].toString()) ?? 0,
       price: double.tryParse(map['price'].toString()) ?? 0,
@@ -213,6 +216,7 @@ class AddOn {
   final String title;
   final String? titleHi;
   final String? description;
+  final String? image;
   final double mrp;
   final double price;
   final int discountPercent;
@@ -224,6 +228,7 @@ class AddOn {
     required this.title,
     this.titleHi,
     this.description,
+    this.image,
     required this.mrp,
     required this.price,
     required this.discountPercent,
@@ -237,6 +242,7 @@ class AddOn {
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
       description: map['description']?.toString(),
+      image: _resolveMediaUrl(map['image']),
       mrp: double.tryParse(map['mrp'].toString()) ?? 0,
       price: double.tryParse(map['price'].toString()) ?? 0,
       discountPercent: map['discount_percent'] ?? 0,
