@@ -357,7 +357,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "id", "service", "service_title", "service_title_hi", "service_image",
             "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
             "scheduled_at", "drop_scheduled_at", "status", "status_display",
-            "address_detail", "pricing_snapshot", "notes", "customer_answers", "worker_notes",
+            "address_detail", "pricing_snapshot", "notes", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
             "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
             "created_at", "updated_at"
