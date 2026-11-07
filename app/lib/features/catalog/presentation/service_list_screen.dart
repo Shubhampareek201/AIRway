@@ -220,9 +220,16 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           : service.images.isNotEmpty
           ? service.images.first.image
           : _categoryImages[service.categoryId];
-      final price = service.variants.isNotEmpty
-          ? service.variants.first.price
-          : service.visitFee;
+      final matchingVariants = service.variants.where((variant) {
+        if (variant.attributes.isEmpty) return true;
+        return variant.attributes.entries.every((entry) =>
+            widget.initialAnswers[entry.key]?.toString() == entry.value.toString());
+      }).toList();
+      final price = matchingVariants.isNotEmpty
+          ? matchingVariants.first.price
+          : service.variants.isEmpty
+              ? service.visitFee
+              : 0.0;
       return Material(
         color: AirwayColors.surface,
         borderRadius: BorderRadius.circular(14),
