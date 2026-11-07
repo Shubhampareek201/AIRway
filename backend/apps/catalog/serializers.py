@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Service, ServiceVariant, AddOn, FormField, ServiceImage
+from .models import Banner, Category, Service, ServiceVariant, AddOn, FormField, ServiceImage
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
@@ -118,3 +118,12 @@ class ServiceSerializer(serializers.ModelSerializer):
             "images", "variants", "addons", "form_fields",
             "created_at", "updated_at"
         ]
+
+
+class BannerSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(read_only=True)
+    link_service = serializers.IntegerField(source="link_service_id", read_only=True)
+
+    class Meta:
+        model = Banner
+        fields = ["id", "title", "image", "link_service", "sort_order"]
