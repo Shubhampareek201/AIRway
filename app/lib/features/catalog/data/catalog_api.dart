@@ -106,6 +106,19 @@ class CatalogApi {
         .toList();
   }
 
+  static Future<List<CatalogBanner>> listBanners({
+    int? addressId,
+  }) async {
+    final query = <String, String>{};
+    if (addressId != null) query['address_id'] = addressId.toString();
+    final uri = Uri(
+      path: '/api/v1/catalog/banners/',
+      queryParameters: query.isEmpty ? null : query,
+    );
+    final result = await request(uri.toString());
+    return _parseList(result, CatalogBanner.fromMap);
+  }
+
   static Future<List<Category>> listCategories({
     int? addressId,
   }) async {
