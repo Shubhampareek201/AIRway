@@ -151,7 +151,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=900&auto=format&fit=crop';
     }
     if (value.contains('car') || value.contains('wash') || value.contains('vehicle')) {
-      return 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?w=900&auto=format&fit=crop';
+      return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=900&auto=format&fit=crop';
     }
     if (value.contains('electric') || value.contains('fan') || value.contains('light')) {
       return 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=900&auto=format&fit=crop';
@@ -193,10 +193,14 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                 child: Image.network(
                   imageUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: AirwayColors.primarySoft,
-                    alignment: Alignment.center,
-                    child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
+                  errorBuilder: (_, __, ___) => Image.network(
+                    _categoryPhoto(category.title),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AirwayColors.primarySoft,
+                      alignment: Alignment.center,
+                      child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
+                    ),
                   ),
                 ),
               ),
