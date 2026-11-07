@@ -194,7 +194,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       case 'Package':
         return 'Choose the service package that suits your needs.';
       case 'Service Details':
-        return 'Tell us a little about the space and service requirements.';
+        return 'Share the details needed to complete this service.';
       case 'Add-ons':
         return 'Personalize your booking with optional extras.';
       case 'Address':
@@ -321,9 +321,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           _variantPicker(),
         ]);
         break;
-      case 'Your Space':
+      case 'Service Details':
         slivers.addAll([
-          _sectionHeader('About your space'),
+          _sectionHeader('Your service details'),
           _formFields(),
         ]);
         break;
@@ -819,7 +819,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 service.bookingMode == 'inspection' || service.pricingType == 'quote'
                     ? 'Inspection / visit fee only. Final job quote will be shared after inspection.'
                     : 'Final amount confirmed by backend after booking',
