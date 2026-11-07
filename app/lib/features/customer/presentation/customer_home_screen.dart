@@ -1431,8 +1431,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               ? service.image
                               : service.images.isNotEmpty
                                   ? service.images.first.image
-                                  : _categoryImageForService(service) ??
-                                      _photoForService(service);
+                                  : _photoForService(service);
                           if (imageUrl == null || imageUrl.isEmpty) {
                             return Container(
                               color: _Ui.pale,
