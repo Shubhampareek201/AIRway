@@ -12,31 +12,14 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         read_only_fields = ["slug", "children"]
 
     def get_image(self, obj):
-        # Prefer an explicitly uploaded category image. If the admin has not
-        # added one, use a real uploaded service image from this category tree.
-        if obj.image:
-            request = self.context.get("request")
-            url = obj.image.url
-            return request.build_absolute_uri(url) if request else url
-
-        category_ids = [obj.id, *obj.children.filter(is_active=True).values_list("id", flat=True)]
-        services = Service.objects.filter(
-            category_id__in=category_ids,
-            is_active=True,
-            category__is_active=True,
-        ).order_by("sort_order", "title")
-
-        for service in services:
-            if service.image:
-                request = self.context.get("request")
-                url = service.image.url
-                return request.build_absolute_uri(url) if request else url
-            gallery_image = service.images.order_by("sort_order").first()
-            if gallery_image:
-                request = self.context.get("request")
-                url = gallery_image.image.url
-                return request.build_absolute_uri(url) if request else url
-        return None
+        # Category tiles must use the category's own uploaded image.
+        # Never borrow an arbitrary first service image: that can show a
+        # kitchen photo on a bathroom category or vice versa.
+        if not obj.image:
+            return None
+        request = self.context.get("request")
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url
 
     def get_children(self, obj):
         children = obj.children.filter(is_active=True)
