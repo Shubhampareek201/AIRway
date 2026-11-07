@@ -52,7 +52,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   List<ServiceVariant> _availableVariants(Service service) {
     final vehicleType = _categoryAnswers['vehicle_type']?.toString();
-    if (vehicleType == null || vehicleType.isEmpty) return service.variants;
+    if (_categoryAnswers.isEmpty) return service.variants;
     return service.variants.where((variant) {
       if (variant.attributes.isEmpty) return true;
       return variant.attributes.entries.every((entry) {
