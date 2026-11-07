@@ -188,12 +188,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                             if (_tracking['worker_rating'] != null)
                               Text('Rating: ${_tracking['worker_rating']}', style: const TextStyle(color: _muted, fontSize: 12)),
                           ])),
-                          if ((_tracking['worker_phone']?.toString() ?? '').isNotEmpty)
-                            IconButton(
-                              onPressed: () {},
-                              tooltip: 'Contact details',
-                              icon: const Icon(Icons.phone_outlined, color: _green),
-                            ),
+
                         ]),
                         if ((_tracking['worker_phone']?.toString() ?? '').isNotEmpty)
                           SelectableText(_tracking['worker_phone'].toString(), style: const TextStyle(color: _muted)),
