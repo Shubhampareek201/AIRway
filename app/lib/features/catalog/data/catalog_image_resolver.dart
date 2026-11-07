@@ -28,12 +28,41 @@ class CatalogImageResolver {
     // Exact/high-specificity jobs must be tested before broad terms.
     if (_has(t, ['balcony'])) return _photo('1600607687939-ce8a6c25118c');
     if (_has(t, ['interior car', 'car interior'])) return _photo('1607860108855-64acf2078ed9');
+
+    // Electrical titles are resolved before broad home-cleaning terms (for
+    // example, "Full Home Electrical Inspection" is not a cleaning service).
+    final isElectrical = c.contains('electrical') ||
+        c.contains('fan services') || c.contains('lighting services') ||
+        c.contains('switch socket') || c.contains('wiring') ||
+        c.contains('inverter') || c.contains('geyser');
+    if (isElectrical) {
+      if (_has(t, ['fan'])) return _photo('1706973320036-b5049d93b580');
+      if (_has(t, ['bulb', 'led'])) return _photo('1674659719067-8735479ba10c');
+      if (_has(t, ['wall light', 'wall lamp', 'sconce'])) {
+        return _photo('1747655760627-c53acf6b9b8c');
+      }
+      if (_has(t, ['tube light', 'panel light', 'ceiling light', 'chandelier',
+                   'decorative light', 'outdoor light', 'strip light', 'lighting'])) {
+        return _photo('1724054913772-afffd0933162');
+      }
+      if (_has(t, ['switch', 'socket', 'plug', 'doorbell', 'loose connection',
+                   'burnt socket'])) {
+        return _photo('1621905251189-08b45d6a269e');
+      }
+      if (_has(t, ['wiring', 'short circuit', 'power failure', 'mcb', 'fuse',
+                   'earthing', 'rccb', 'elcb', 'voltage', 'electrical',
+                   'power point', 'inspection', 'safety check', 'setup',
+                   'inverter', 'ups', 'battery', 'geyser', 'water pump',
+                   'motor', 'charging'])) {
+        return _photo('1621905251189-08b45d6a269e');
+      }
+    }
+
     if (_has(t, ['interior cleaning', 'inside cleaning', 'room cleaning', 'full home', 'deep home', 'house cleaning', 'home cleaning'])) {
       return _photo('1581578731548-c64695cc6952');
     }
-    // Electrical: use real, title-relevant Unsplash photos that were opened
-    // and visually checked during implementation. These are separate from the
-    // older generic category fallbacks below.
+    // Electrical fan and lighting photo IDs above have not been semantically
+    // verified for every individual service; see image audit before release.
     if (_has(t, ['fan'])) {
       // One verified ceiling-fan photograph is suitable for the fan service
       // family; do not let a broad "light" match steal fan titles.
