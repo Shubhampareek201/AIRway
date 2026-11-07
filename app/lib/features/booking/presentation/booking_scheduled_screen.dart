@@ -972,9 +972,13 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   void _updateSummary() {
     final service = _service!;
-    final selectedVariant = service.variants.where(
-      (variant) => variant.id == _selectedVariantId,
-    ).firstOrNull;
+    ServiceVariant? selectedVariant;
+    for (final variant in service.variants) {
+      if (variant.id == _selectedVariantId) {
+        selectedVariant = variant;
+        break;
+      }
+    }
 
     // Never display the first package's price when the customer has not
     // selected it. The backend also requires an explicit variant selection.
