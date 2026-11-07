@@ -809,7 +809,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                       child: Container(
                         width: (MediaQuery.of(context).size.width - 50) / 2,
                         decoration: BoxDecoration(
-                          color: selected ? _Ui.pale : Colors.white,
+                          color: selected ? const Color(0xFFEAF1EA) : Colors.white,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: selected ? _Ui.violet : _Ui.line, width: selected ? 2 : 1),
                         ),
@@ -874,7 +874,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   Widget _choiceImagePlaceholder({double height = 86, double? size}) => Container(
     height: size ?? height,
     width: size ?? double.infinity,
-    color: _Ui.pale,
+    color: const Color(0xFFEAF1EA),
     alignment: Alignment.center,
     child: const Icon(Icons.photo_outlined, color: _Ui.sub, size: 28),
   );
