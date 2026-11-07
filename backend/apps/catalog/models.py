@@ -14,6 +14,14 @@ class Category(TimeStampedModel):
     title_hi = models.CharField("Title (Hindi)", max_length=100, blank=True)
     slug = models.SlugField(unique=True)
     image = models.ImageField(upload_to="categories/", blank=True)
+    flow_steps = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Optional customer decision steps shown before browsing this category. "
+            "Each item: key, title, type (select/text/number/textarea), options, required, description."
+        ),
+    )
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
