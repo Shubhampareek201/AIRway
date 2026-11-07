@@ -17,6 +17,7 @@ import 'package:airway/features/worker/data/worker_app_api.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_categories_screen.dart';
+import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
     as catalog;
@@ -161,8 +162,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  void _openCatalogCategory(Category category, int? addressId) {
+  Future<void> _openCatalogCategory(Category category, int? addressId) async {
     _searchFocus.unfocus();
+    var answers = <String, dynamic>{};
+    if (category.flowSteps.isNotEmpty) {
+      final selected = await Navigator.push<Map<String, dynamic>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CategoryDecisionScreen(
+            categoryTitle: category.title,
+            steps: category.flowSteps,
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      answers = selected;
+    }
     if (category.children.isNotEmpty) {
       Navigator.push<void>(
         context,
@@ -171,6 +186,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             initialCategories: category.children,
             addressId: addressId,
             title: category.title,
+            initialAnswers: answers,
           ),
         ),
       );
@@ -183,6 +199,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           categoryId: category.id,
           categoryTitle: category.title,
           addressId: addressId,
+          initialAnswers: answers,
         ),
       ),
     );
