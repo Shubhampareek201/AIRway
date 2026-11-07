@@ -147,7 +147,7 @@ class FormField(TimeStampedModel):
         TEXT = "text", "Text"
         TEXTAREA = "textarea", "Lamba text"
         NUMBER = "number", "Number"
-        SELECT = "select", "Dropdown"
+        SELECT = "select", "Image choice cards"
         PHOTO = "photo", "Photo"
 
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="form_fields")
