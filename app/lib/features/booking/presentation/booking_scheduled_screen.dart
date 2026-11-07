@@ -921,38 +921,48 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                 ),
               ],
               const Divider(height: 16),
-              Row(
-                children: [
-                  const Text('Subtotal', style: TextStyle(color: _Ui.sub)),
-                  const Spacer(),
-                  Text(
-                    '₹${(_subtotal * _quantity).toStringAsFixed(0)}',
-                    style: const TextStyle(color: _Ui.sub),
+              if (service.variants.isNotEmpty && _selectedVariantId == null)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'Choose a package to see the price.',
+                    style: TextStyle(color: _Ui.sub, fontSize: 12),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Text('Est. total (incl. tax)', style: TextStyle(fontWeight: FontWeight.w700, color: _Ui.ink)),
-                  const Spacer(),
-                  Text(
-                    '₹${(_estimatedTotal * _quantity).toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: _Ui.violet,
+                )
+              else ...[
+                Row(
+                  children: [
+                    const Text('Subtotal', style: TextStyle(color: _Ui.sub)),
+                    const Spacer(),
+                    Text(
+                      '₹${(_subtotal * _quantity).toStringAsFixed(0)}',
+                      style: const TextStyle(color: _Ui.sub),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                service.bookingMode == 'inspection' || service.pricingType == 'quote'
-                    ? 'Inspection / visit fee only. Final job quote will be shared after inspection.'
-                    : 'Final amount confirmed by backend after booking',
-                style: TextStyle(fontSize: 11, color: _Ui.sub),
-              ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Text('Est. total (incl. tax)', style: TextStyle(fontWeight: FontWeight.w700, color: _Ui.ink)),
+                    const Spacer(),
+                    Text(
+                      '₹${(_estimatedTotal * _quantity).toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: _Ui.violet,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  service.bookingMode == 'inspection' || service.pricingType == 'quote'
+                      ? 'Inspection / visit fee only. Final job quote will be shared after inspection.'
+                      : 'Final amount confirmed by backend after booking',
+                  style: TextStyle(fontSize: 11, color: _Ui.sub),
+                ),
+              ],
             ],
           ),
         ),
@@ -962,20 +972,22 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   void _updateSummary() {
     final service = _service!;
-    final variant = service.variants.firstWhere(
-      (v) => v.id == _selectedVariantId,
-      orElse: () => service.variants.isEmpty
-          ? ServiceVariant(id: 0, title: '', mrp: 0, price: 0, discountPercent: 0, sortOrder: 0, isActive: false)
-          : service.variants.first,
-    );
-    double total = service.variants.isEmpty ? service.visitFee : variant.price;
+    final selectedVariant = service.variants.where(
+      (variant) => variant.id == _selectedVariantId,
+    ).firstOrNull;
 
+    // Never display the first package's price when the customer has not
+    // selected it. The backend also requires an explicit variant selection.
+    if (service.variants.isNotEmpty && selectedVariant == null) {
+      _subtotal = 0;
+      _estimatedTotal = 0;
+      return;
+    }
+
+    double total = selectedVariant?.price ?? service.visitFee;
     for (final addonId in _selectedAddonIds) {
-      final addon = service.addons.firstWhere(
-        (a) => a.id == addonId,
-        orElse: () => AddOn(id: 0, title: '', mrp: 0, price: 0, discountPercent: 0, sortOrder: 0, isActive: false),
-      );
-      total += addon.price;
+      final matchingAddons = service.addons.where((addon) => addon.id == addonId);
+      if (matchingAddons.isNotEmpty) total += matchingAddons.first.price;
     }
 
     _subtotal = total;
