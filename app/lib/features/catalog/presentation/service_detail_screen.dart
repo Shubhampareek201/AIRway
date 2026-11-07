@@ -333,12 +333,38 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                v.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: _Ui.ink,
+              if (v.image?.isNotEmpty == true)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    v.image!,
+                    width: 76,
+                    height: 76,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _optionImagePlaceholder(),
+                  ),
+                )
+              else
+                _optionImagePlaceholder(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      v.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _Ui.ink,
+                      ),
+                    ),
+                    if (v.description?.isNotEmpty == true)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(v.description!, style: const TextStyle(fontSize: 11, color: _Ui.sub)),
+                      ),
+                  ],
                 ),
               ),
               if (v.durationMinutes != null)
@@ -393,14 +419,38 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
     child: Row(
       children: [
-        Expanded(
-          child: Text(
-            a.title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _Ui.ink,
+        if (a.image?.isNotEmpty == true)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              a.image!,
+              width: 58,
+              height: 58,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _optionImagePlaceholder(size: 58),
             ),
+          )
+        else
+          _optionImagePlaceholder(size: 58),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                a.title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _Ui.ink,
+                ),
+              ),
+              if (a.description?.isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(a.description!, style: const TextStyle(fontSize: 11, color: _Ui.sub)),
+                ),
+            ],
           ),
         ),
         Text(
@@ -413,6 +463,17 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ),
       ],
     ),
+  );
+
+  Widget _optionImagePlaceholder({double size = 76}) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: const Color(0xFFEAF1EA),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    alignment: Alignment.center,
+    child: const Icon(Icons.photo_outlined, color: Color(0xFF748078), size: 25),
   );
 
   Widget _errorWidget(String message) => Center(
