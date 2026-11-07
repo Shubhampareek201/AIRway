@@ -120,6 +120,7 @@ class ServiceVariant(PricedItem):
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="variants")
     duration_minutes = models.PositiveIntegerField(null=True, blank=True, help_text="Khali = service wala time")
     attributes = models.JSONField(default=dict, blank=True, help_text="Conditional package matching, e.g. vehicle_type: Sedan")
+    included_tasks = models.JSONField(default=list, blank=True, help_text="Checklist of exact work included in this package; enter a JSON list of task names.")
     history = HistoricalRecords()
 
     class Meta(PricedItem.Meta):
