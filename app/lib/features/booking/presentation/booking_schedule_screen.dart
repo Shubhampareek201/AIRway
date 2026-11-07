@@ -226,10 +226,10 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                       ),
                       child: CalendarDatePicker(
                         initialDate: _selectedDate,
-                        firstDate: DateTime.now().subtract(
-                          Duration(
-                            days: DateTime.now().hour >= 20 ? 0 : 0,
-                          ),
+                        firstDate: DateTime(
+                          DateTime.now().year,
+                          DateTime.now().month,
+                          DateTime.now().day,
                         ),
                         lastDate: DateTime.now().add(const Duration(days: 90)),
                         onDateChanged: (date) => setState(() {
