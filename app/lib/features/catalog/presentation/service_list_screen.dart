@@ -11,6 +11,7 @@ class ServiceListScreen extends StatefulWidget {
   final String? categoryTitle;
   final int? addressId;
   final Map<String, dynamic> initialAnswers;
+  final bool includeDescendants;
 
   const ServiceListScreen({
     super.key,
@@ -18,6 +19,7 @@ class ServiceListScreen extends StatefulWidget {
     this.categoryTitle,
     this.addressId,
     this.initialAnswers = const {},
+    this.includeDescendants = false,
   });
 
   @override
@@ -58,8 +60,29 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         ),
         CatalogApi.listCategories(addressId: widget.addressId),
       ]);
-      final services = results[0] as List<Service>;
+      var services = results[0] as List<Service>;
       final categories = results[1] as List<Category>;
+      if (widget.includeDescendants) {
+        final descendantIds = <int>{};
+        void collect(List<Category> items) {
+          for (final item in items) {
+            descendantIds.add(item.id);
+            collect(item.children);
+          }
+        }
+        void findAndCollect(List<Category> items) {
+          for (final item in items) {
+            if (item.id == widget.categoryId) {
+              descendantIds.add(item.id);
+              collect(item.children);
+              return;
+            }
+            findAndCollect(item.children);
+          }
+        }
+        findAndCollect(categories);
+        services = services.where((service) => descendantIds.contains(service.categoryId)).toList();
+      }
       final images = <int, String>{};
       void collectImages(List<Category> items) {
         for (final category in items) {
