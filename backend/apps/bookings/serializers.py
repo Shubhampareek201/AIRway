@@ -99,12 +99,13 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         help_text="Dict of form_field_key -> value"
     )
     address_id = serializers.IntegerField(write_only=True)
+    category_answers = serializers.DictField(required=False, write_only=True)
 
     class Meta:
         model = Booking
         fields = [
             "id", "service", "variant", "booking_mode", "scheduled_at", "drop_scheduled_at",
-            "address_id", "addon_ids", "form_responses", "notes"
+            "address_id", "addon_ids", "form_responses", "category_answers", "notes"
         ]
         read_only_fields = ["id"]
 
@@ -195,6 +196,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         addon_ids = validated_data.pop("addon_ids", [])
         form_responses = validated_data.pop("form_responses", {})
+        category_answers = validated_data.pop("category_answers", {})
         address = validated_data.pop("_address")
         user = self.context["request"].user
 
@@ -260,6 +262,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         validated_data["customer"] = user
         validated_data["address"] = address
         validated_data["pricing_snapshot"] = pricing
+        validated_data["customer_answers"] = category_answers
 
         booking = Booking.objects.create(**validated_data)
 
@@ -354,9 +357,9 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "id", "service", "service_title", "service_title_hi", "service_image",
             "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
             "scheduled_at", "drop_scheduled_at", "status", "status_display",
-            "address_detail", "pricing_snapshot", "notes", "worker_notes",
+            "address_detail", "pricing_snapshot", "notes", "customer_answers", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
-            "addons", "form_responses", "status_history", "assignment", "can_cancel",
+            "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
             "created_at", "updated_at"
         ]
 
@@ -476,7 +479,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
-            "quantity", "addon_selections", "form_answers", "notes",
+            "quantity", "addon_selections", "form_answers", "category_answers", "notes",
             "pricing_snapshot", "line_total",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
@@ -491,6 +494,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         quantity = attrs.get("quantity", instance.quantity if instance else 1)
         addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
         answers = attrs.get("form_answers", instance.form_answers if instance else {})
+        category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
 
         if quantity < 1 or quantity > 20:
             raise serializers.ValidationError({"quantity": "Quantity must be between 1 and 20."})
@@ -498,8 +502,8 @@ class CartItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"service": "This service is not available."})
         if variant and (variant.service_id != service.id or not variant.is_active):
             raise serializers.ValidationError({"variant": "Choose an active package for this service."})
-        if not isinstance(addons, list) or not isinstance(answers, dict):
-            raise serializers.ValidationError("Add-ons must be a list and answers must be an object.")
+        if not isinstance(addons, list) or not isinstance(answers, dict) or not isinstance(category_answers, dict):
+            raise serializers.ValidationError("Add-ons must be a list and answers must be objects.")
 
         addon_ids = []
         for row in addons:
