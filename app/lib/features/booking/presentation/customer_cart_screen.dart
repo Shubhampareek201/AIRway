@@ -24,6 +24,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   final Map<int, DateTime> dates = {};
   final Map<int, TimeOfDay> times = {};
   final Map<int, TimeOfDay> dropTimes = {};
+  final Set<int> _slotConfirmed = {};
   List<Map<String, dynamic>> addresses = [];
 
   @override
@@ -78,12 +79,101 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: now.add(const Duration(days: 90)),
     );
-    if (value != null) setState(() => dates[id] = value);
+    if (value != null) {
+      setState(() {
+        dates[id] = value;
+        _slotConfirmed.remove(id);
+      });
+    }
   }
 
   Future<void> pickTime(int id) async {
-    final value = await showTimePicker(context: context, initialTime: times[id] ?? const TimeOfDay(hour: 10, minute: 0));
-    if (value != null) setState(() => times[id] = value);
+    final item = items.where((row) => row['id'] == id).firstOrNull;
+    final serviceId = int.tryParse(item?['service']?.toString() ?? '');
+    final addressId = int.tryParse(cart?['address']?.toString() ?? '');
+    if (item == null || serviceId == null || addressId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a valid service and address first.')),
+      );
+      return;
+    }
+
+    setState(() => busy = true);
+    final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
+    final candidates = <TimeOfDay>[];
+    for (var hour = 8; hour <= 19; hour++) {
+      final slot = TimeOfDay(hour: hour, minute: 0);
+      final scheduledAt = DateTime(date.year, date.month, date.day, hour);
+      if (scheduledAt.isAfter(DateTime.now())) candidates.add(slot);
+    }
+
+    try {
+      final checks = await Future.wait(candidates.map((slot) {
+        final scheduledAt = DateTime(date.year, date.month, date.day, slot.hour);
+        DateTime? dropAt;
+        if (item['booking_mode'] == 'pickup_drop') {
+          final drop = dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0);
+          dropAt = DateTime(date.year, date.month, date.day, drop.hour, drop.minute);
+          if (!dropAt.isAfter(scheduledAt)) return Future<bool>.value(false);
+        }
+        return BookingApi.checkSlotAvailability(
+          serviceId: serviceId,
+          scheduledAt: scheduledAt,
+          dropScheduledAt: dropAt,
+          variantId: int.tryParse(item['variant']?.toString() ?? ''),
+          addressId: addressId,
+          bookingMode: item['booking_mode']?.toString() ?? 'scheduled',
+        );
+      }));
+      final available = <TimeOfDay>[
+        for (var i = 0; i < candidates.length; i++)
+          if (checks[i]) candidates[i],
+      ];
+      if (!mounted) return;
+      setState(() => busy = false);
+      if (available.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No available slots for this date. Please choose another date.')),
+        );
+        return;
+      }
+      final selected = await showModalBottomSheet<TimeOfDay>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
+                child: Text('Available time slots', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              for (final slot in available)
+                ListTile(
+                  leading: const Icon(Icons.schedule_rounded, color: violet),
+                  title: Text(slot.format(sheetContext)),
+                  subtitle: const Text('Available for this service duration'),
+                  onTap: () => Navigator.pop(sheetContext, slot),
+                ),
+            ],
+          ),
+        ),
+      );
+      if (selected != null && mounted) {
+        setState(() {
+          times[id] = selected;
+          _slotConfirmed.add(id);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load available slots: $e')),
+        );
+      }
+    }
   }
 
   Future<void> checkout() async {
@@ -97,6 +187,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       final schedules = items.map((item) {
         final id = item['id'] as int;
         final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
+        if (!_slotConfirmed.contains(id)) {
+          throw Exception('Choose an available time slot for ${item['service_title'] ?? 'this service'}.');
+        }
         final time = times[id] ?? const TimeOfDay(hour: 10, minute: 0);
         final scheduledAt = DateTime(
           date.year,
@@ -248,7 +341,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             tooltip: 'Change address',
             icon: const Icon(Icons.edit_location_alt_outlined, color: violet),
             onSelected: (id) async {
-              setState(() => busy = true);
+              setState(() { busy = true; _slotConfirmed.clear(); });
               try {
                 final updated = await BookingApi.updateCartAddress(id);
                 if (mounted) setState(() { cart = updated; busy = false; });
@@ -306,7 +399,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         Row(children: [
           Expanded(child: OutlinedButton.icon(onPressed: () => pickDate(id), icon: const Icon(Icons.calendar_today_outlined, size: 15), label: Text(DateFormat('dd MMM yyyy').format(date)))),
           const SizedBox(width: 8),
-          Expanded(child: OutlinedButton.icon(onPressed: () => pickTime(id), icon: const Icon(Icons.schedule_rounded, size: 15), label: Text(time.format(context)))),
+          Expanded(child: OutlinedButton.icon(onPressed: () => pickTime(id), icon: const Icon(Icons.schedule_rounded, size: 15), label: Text(_slotConfirmed.contains(id) ? time.format(context) : 'Choose slot'))),
         ]),
         if (item['booking_mode'] == 'pickup_drop') ...[
           const SizedBox(height: 8),
