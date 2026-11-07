@@ -73,9 +73,19 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
     final description = step['description']?.toString();
     final type = step['type']?.toString() ?? 'select';
     final isRequired = step['required'] != false;
-    final options = (step['options'] as List? ?? [])
-        .map((value) => value.toString())
-        .toList();
+    final options = (step['options'] as List? ?? []).map((item) {
+      if (item is Map) {
+        final option = Map<String, dynamic>.from(item);
+        final value = option['value']?.toString() ?? option['label']?.toString() ?? '';
+        return {
+          'value': value,
+          'label': option['label']?.toString() ?? value,
+          'image': option['image']?.toString(),
+        };
+      }
+      final value = item.toString();
+      return {'value': value, 'label': value, 'image': null};
+    }).where((item) => (item['value'] as String).isNotEmpty).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,14 +98,62 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
           const SizedBox(height: 4),
           Text(description, style: const TextStyle(fontSize: 12, color: muted)),
         ],
-        const SizedBox(height: 9),
-        if (type == 'select' && options.isNotEmpty)
-          DropdownButtonFormField<String>(
-            value: _answers[key]?.toString(),
-            decoration: _decoration('Choose $title'),
-            items: options.map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-            onChanged: (value) => setState(() => _answers[key] = value),
-            validator: isRequired ? (value) => value == null || value.isEmpty ? 'Please choose $title' : null : null,
+        const SizedBox(height: 10),
+        if ((type == 'select' || type == 'choice') && options.isNotEmpty)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: options.map((option) {
+                  final value = option['value'] as String;
+                  final image = option['image'] as String?;
+                  final selected = _answers[key]?.toString() == value;
+                  return InkWell(
+                    onTap: () => setState(() => _answers[key] = value),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: cardWidth,
+                      decoration: BoxDecoration(
+                        color: selected ? const Color(0xFFEAF1EA) : Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: selected ? green : line, width: selected ? 2 : 1),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (image != null && image.isNotEmpty)
+                            Image.network(
+                              image,
+                              height: 92,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _optionPlaceholder(),
+                            )
+                          else
+                            _optionPlaceholder(),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 11),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    option['label'] as String,
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ink),
+                                  ),
+                                ),
+                                if (selected) const Icon(Icons.check_circle, color: green, size: 18),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
           )
         else
           TextFormField(
@@ -104,11 +162,17 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
             maxLines: type == 'textarea' ? 3 : 1,
             decoration: _decoration('Enter $title'),
             onChanged: (value) => _answers[key] = value,
-            validator: isRequired ? (value) => value == null || value.trim().isEmpty ? 'Please enter $title' : null : null,
           ),
       ],
     );
   }
+
+  Widget _optionPlaceholder() => Container(
+    height: 92,
+    color: const Color(0xFFF1F5F1),
+    alignment: Alignment.center,
+    child: const Icon(Icons.photo_outlined, color: muted, size: 30),
+  );
 
   InputDecoration _decoration(String hint) => InputDecoration(
     hintText: hint,
@@ -120,7 +184,17 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
   );
 
   void _continue() {
-    if (!_formKey.currentState!.validate()) return;
+    final missing = widget.steps.where((step) {
+      if (step['required'] == false) return false;
+      final key = step['key']?.toString() ?? '';
+      return (_answers[key]?.toString().trim().isEmpty ?? true);
+    }).toList();
+    if (missing.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please choose or enter: ${missing.first['title'] ?? missing.first['key']}')),
+      );
+      return;
+    }
     Navigator.pop(context, Map<String, dynamic>.from(_answers));
   }
 }
