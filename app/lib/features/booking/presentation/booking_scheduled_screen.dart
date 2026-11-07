@@ -52,10 +52,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   List<Map<String, dynamic>> _addresses = [];
   int _quantity = 1;
   int _flowStep = 0;
-  final _formKey = GlobalKey<FormState>();
 
   List<ServiceVariant> _availableVariants(Service service) {
-    final vehicleType = _categoryAnswers['vehicle_type']?.toString();
     if (_categoryAnswers.isEmpty) return service.variants;
     return service.variants.where((variant) {
       if (variant.attributes.isEmpty) return true;
@@ -211,15 +209,6 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   void _continueFlow() {
     final service = _service!;
-    final serviceImage = service.image?.isNotEmpty == true
-        ? service.image
-        : service.images.isNotEmpty
-            ? service.images.first.image
-            : CatalogImageResolver.forService(
-                title: service.title,
-                categoryName: service.categoryName,
-                audience: service.audience,
-              );
     final steps = _flowSteps(service);
     final current = steps[_flowStep];
     if (current == 'Package' &&
@@ -257,6 +246,15 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   Widget _buildBody() {
     final service = _service!;
+    final serviceImage = service.image?.isNotEmpty == true
+        ? service.image
+        : service.images.isNotEmpty
+            ? service.images.first.image
+            : CatalogImageResolver.forService(
+                title: service.title,
+                categoryName: service.categoryName,
+                audience: service.audience,
+              );
     final steps = _flowSteps(service);
     if (_flowStep >= steps.length) _flowStep = steps.length - 1;
     final step = steps[_flowStep];
