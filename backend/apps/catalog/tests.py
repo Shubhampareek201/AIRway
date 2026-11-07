@@ -320,3 +320,64 @@ class CatalogPackageIncludedTasksTest(TestCase):
             response.data["variants"][0]["included_tasks"],
             variant.included_tasks,
         )
+
+
+class LaunchCatalogueScopeTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.roots = {
+            slug: Category.objects.create(title=title, slug=slug)
+            for slug, title in [
+                ("car-wash", "Car Wash"),
+                ("beauty", "Beauty"),
+                ("electrical", "Electrical"),
+                ("home-cleaning", "Home Cleaning"),
+                ("test-qa", "Test QA"),
+                ("test", "Test"),
+            ]
+        }
+        self.child = Category.objects.create(
+            title="Exterior Car Cleaning", slug="exterior-car-cleaning",
+            parent=self.roots["car-wash"],
+        )
+        self.services = {}
+        for slug, category in self.roots.items():
+            self.services[slug] = Service.objects.create(
+                category=category,
+                title=f"{category.title} sample",
+                booking_mode="scheduled",
+                pricing_type="fixed",
+                is_active=True,
+            )
+        self.child_service = Service.objects.create(
+            category=self.child,
+            title="Side Profile Car Wash",
+            booking_mode="scheduled",
+            pricing_type="fixed",
+            is_active=True,
+        )
+
+    def test_launch_categories_returns_only_four_approved_roots(self):
+        response = self.client.get("/api/v1/catalog/categories/?launch_only=true")
+        self.assertEqual(response.status_code, 200)
+        results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        self.assertEqual(
+            {item["slug"] for item in results},
+            {"car-wash", "beauty", "electrical", "home-cleaning"},
+        )
+
+    def test_launch_services_excludes_test_roots_and_keeps_subcategory_services(self):
+        response = self.client.get("/api/v1/catalog/services/?launch_only=true")
+        self.assertEqual(response.status_code, 200)
+        results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        titles = {item["title"] for item in results}
+        self.assertIn("Side Profile Car Wash", titles)
+        self.assertIn("Car Wash sample", titles)
+        self.assertNotIn("Test sample", titles)
+        self.assertNotIn("Test QA sample", titles)
+
+    def test_launch_service_detail_rejects_service_outside_launch_roots(self):
+        response = self.client.get(
+            f"/api/v1/catalog/services/{self.services['test'].id}/?launch_only=true"
+        )
+        self.assertEqual(response.status_code, 404)
