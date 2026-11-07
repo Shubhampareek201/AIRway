@@ -547,6 +547,14 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                         color: _Ui.ink,
                       ),
                     ),
+                    if (variant.description?.isNotEmpty == true)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          variant.description!,
+                          style: const TextStyle(fontSize: 12, color: _Ui.sub, height: 1.4),
+                        ),
+                      ),
                     if (variant.durationMinutes != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
@@ -636,13 +644,22 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        addon.title,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            addon.title,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _Ui.ink,
-                        ),
+                            color: _Ui.ink,
+                          ),
+                          if (addon.description?.isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(addon.description!, style: const TextStyle(fontSize: 11, color: _Ui.sub)),
+                            ),
+                        ],
                       ),
                     ),
                     Text(
