@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from decimal import Decimal
 from django.utils import timezone
 
 from .models import (
@@ -189,16 +190,43 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             if invalid:
                 raise serializers.ValidationError({"addon_ids": f"Invalid addon IDs: {invalid}"})
 
-        # Validate form responses
+        # Validate every active configured field, including required answers
+        # omitted by the client. Never trust client-side form validation alone.
         form_responses = attrs.get("form_responses", {})
-        if form_responses:
-            service_fields = {f.key: f for f in service.form_fields.filter(is_active=True)}
-            for key, value in form_responses.items():
-                if key not in service_fields:
-                    raise serializers.ValidationError({"form_responses": f"Unknown form field: {key}"})
-                field = service_fields[key]
-                if field.is_required and (value is None or value == ""):
-                    raise serializers.ValidationError({"form_responses": f"Field '{field.label}' is required."})
+        service_fields = {f.key: f for f in service.form_fields.filter(is_active=True)}
+        if not isinstance(form_responses, dict):
+            raise serializers.ValidationError({"form_responses": "Answers must be an object."})
+        unknown_fields = set(form_responses) - set(service_fields)
+        if unknown_fields:
+            raise serializers.ValidationError({"form_responses": "Unknown form field supplied."})
+        for key, field in service_fields.items():
+            value = form_responses.get(key)
+            if field.is_required and value in (None, ""):
+                raise serializers.ValidationError({
+                    "form_responses": f"Field '{field.label}' is required."
+                })
+            if value in (None, ""):
+                continue
+            if field.field_type == FormField.FieldType.SELECT:
+                allowed_values = set()
+                for option in (field.options or []):
+                    option_value = (
+                        option.get("value", option.get("label"))
+                        if isinstance(option, dict) else option
+                    )
+                    if option_value is not None:
+                        allowed_values.add(str(option_value))
+                if str(value) not in allowed_values:
+                    raise serializers.ValidationError({
+                        "form_responses": f"Choose a valid option for {field.label}."
+                    })
+            if field.field_type == FormField.FieldType.NUMBER:
+                try:
+                    Decimal(str(value))
+                except (ArithmeticError, TypeError, ValueError):
+                    raise serializers.ValidationError({
+                        "form_responses": f"Enter a valid number for {field.label}."
+                    })
 
         return attrs
 
