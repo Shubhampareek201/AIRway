@@ -31,63 +31,106 @@ def image_field_state(field):
     return "PRESENT", url
 
 
-def fallback_group(title):
-    """Classify title intent using whole words; this does not verify photo content."""
+def fallback_group(title, root_title="", category_title=""):
+    """Classify a service using its catalogue context before its title.
+
+    This is an audit hint only; it does not establish that a photo depicts the job.
+    """
     value = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
     words = set(value.split())
+    root = root_title.lower().strip()
+    category = category_title.lower().strip()
+
+    # The catalogue branch is stronger evidence than ambiguous words such as
+    # "wash", "wax", "light", or "highlights" in a service title.
+    if root == "car wash":
+        if "monthly" in words or "plan" in words:
+            return "Car wash plan"
+        if "interior" in words:
+            return "Car interior cleaning"
+        if "engine" in words:
+            return "Engine bay detailing"
+        return "Car care"
+
+    if root == "beauty":
+        if category == "facial & skin care":
+            return "Facial / skin care"
+        if category == "grooming & massage":
+            return "Massage / spa" if words & {"massage", "spa"} else "Hair / grooming"
+        if category == "hair services":
+            return "Massage / spa" if "massage" in words else "Hair / grooming"
+        if category == "makeup & occasion styling":
+            return "Hair / grooming" if words & {"hairstyle", "hairstyling"} else "Makeup / occasion styling"
+        if category == "manicure & pedicure":
+            return "Nail care"
+        if category == "threading":
+            return "Threading"
+        if category == "waxing":
+            return "Waxing"
+        if category == "beauty":
+            return "Beauty / salon service"
+
+    if root == "home cleaning":
+        if "balcony" in category or "terrace" in category:
+            return "Balcony / terrace cleaning"
+        if "living room" in category:
+            return "Living room cleaning"
+        if "bathroom" in category:
+            return "Bathroom"
+        if "bedroom" in category or "mattress" in category:
+            return "Mattress / bedroom"
+        if "carpet" in category:
+            return "Carpet / rug"
+        if "floor" in category:
+            return "Floor / tile"
+        if "home" in category:
+            return "Full-home cleaning"
+        if "garden" in category:
+            return "Garden"
+        if "kitchen" in category:
+            return "Kitchen / appliance"
+        if "sofa" in category or "upholstery" in category:
+            return "Sofa / upholstery"
+        if "window" in category or "glass" in category:
+            return "Window / glass"
+        return "Home cleaning"
+
+    if root == "electrical":
+        if "fan" in category:
+            return "Fan"
+        if "lighting" in category:
+            return "Lighting"
+        if "switch" in category or "socket" in category:
+            return "Switch / socket"
+        if "wiring" in category:
+            return "Wiring / electrical repair"
+        if "inverter" in category or "ups" in category:
+            return "Inverter / UPS"
+        if "geyser" in category:
+            return "Geyser / water heater"
+        if "inspection" in category or "setup" in category:
+            return "Electrical inspection / setup"
+
+    # Context-free fallback for services outside the launch catalogue.
     groups = (
-        ("Fan", ("fan",)),
-        ("Lighting", ("chandelier", "ceiling light", "wall light", "tube light",
-                      "panel light", "strip light", "decorative light", "outdoor light",
-                      "lighting", "light", "bulb", "led")),
-        ("Switch / wiring / electrical repair", ("switch", "socket", "plug", "wiring",
-                                                   "short circuit", "mcb", "fuse",
-                                                   "electrician", "electrical")),
-        ("Inverter / UPS", ("inverter", "ups", "battery backup")),
-        ("Geyser / water heater", ("geyser", "water heater")),
-        ("Sofa / upholstery", ("sofa", "upholstery", "cushion", "chair cleaning")),
-        ("Kitchen / appliance", ("kitchen", "chimney", "refrigerator", "fridge",
-                                  "microwave", "oven")),
-        ("Bathroom", ("bathroom", "toilet", "washbasin", "sanitary")),
-        ("Window / glass", ("window", "glass")),
-        ("Mattress / bedroom", ("mattress", "bedroom", "bed cleaning")),
-        ("Carpet / rug", ("carpet", "rug")),
-        ("Floor / tile / outdoor", ("floor", "tile", "marble", "grout", "terrace",
-                                     "balcony", "outdoor")),
-        ("Garden", ("garden", "plant", "lawn")),
-        ("Full-home cleaning", ("full home", "deep home", "move-in", "move-out",
-                                 "home cleaning", "house cleaning", "general cleaning",
-                                 "dusting", "maid")),
+        ("Fan", {"fan"}),
+        ("Lighting", {"chandelier", "lighting", "light", "bulb", "led"}),
+        ("Switch / socket", {"switch", "socket", "plug"}),
+        ("Wiring / electrical repair", {"wiring", "electrician", "electrical", "mcb", "fuse"}),
+        ("Inverter / UPS", {"inverter", "ups", "battery"}),
+        ("Geyser / water heater", {"geyser"}),
+        ("Facial / skin care", {"facial", "bleaching", "cleanup"}),
+        ("Massage / spa", {"massage", "spa"}),
+        ("Hair / grooming", {"beard", "shave", "haircut", "hair", "hairstyle", "styling"}),
+        ("Nail care", {"nail", "manicure", "pedicure", "polish"}),
+        ("Threading", {"threading", "eyebrow"}),
+        ("Waxing", {"wax", "underarms", "bikini"}),
+        ("Makeup / occasion styling", {"makeup", "bridal", "engagement", "saree"}),
+        ("Car care", {"car", "vehicle", "detailing", "coating", "polishing", "paint"}),
     )
     for label, terms in groups:
-        for term in terms:
-            normalized = re.sub(r"[^a-z0-9]+", " ", term.lower()).strip()
-            if " " in normalized:
-                if normalized in value:
-                    return label
-            elif normalized in words:
-                return label
-    # Beauty-specific title families.
-    if words & {"facial", "bleaching", "cleanup", "tan", "brightening"}:
-        return "Facial / skin care"
-    if words & {"massage", "spa"}:
-        return "Massage / spa"
-    if words & {"beard", "shave", "haircut", "hair", "hairstyle", "styling",
-                "curling", "rebonding", "smoothening", "straightening",
-                "keratin", "colour", "color", "highlights", "trimming",
-                "wash", "blow", "dry"}:
-        return "Hair / grooming"
-    if words & {"nail", "manicure", "pedicure", "polish", "extensions"}:
-        return "Nail care"
-    if words & {"threading", "eyebrow", "lip", "chin", "forehead"}:
-        return "Threading"
-    if words & {"wax", "underarms", "arms", "legs", "bikini", "brazilian"}:
-        return "Waxing"
-    if words & {"makeup", "bridal", "engagement", "saree", "draping"}:
-        return "Makeup / occasion styling"
-    if words & {"car", "vehicle", "detailing", "coating", "polishing",
-                "scratch", "paint", "wash", "engine", "headlight", "wax"}:
-        return "Car care"
+        if words & terms:
+            return label
     return "NO TITLE RULE"
 
 
@@ -196,7 +239,7 @@ class Command(BaseCommand):
                 if broken_storage:
                     image_status += f"; {len(broken_storage)} storage file(s) missing"
 
-                group = fallback_group(service.title)
+                group = fallback_group(service.title, root.title, service.category.title)
                 if group == "NO TITLE RULE":
                     unmatched.append(
                         f"{root.title} > {service.category.title} > {service.title}"
