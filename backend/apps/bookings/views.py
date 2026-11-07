@@ -420,6 +420,7 @@ class CustomerCheckoutView(APIView):
                 "address_id": cart.address_id,
                 "addon_ids": [row["id"] for row in item.addon_selections],
                 "form_responses": item.form_answers,
+                "category_answers": item.category_answers,
                 "notes": item.notes,
             }
             serializer = BookingCreateSerializer(
