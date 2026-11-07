@@ -62,11 +62,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     }
   }
 
-  bool _isBeauty(Category category) {
-    final value = '${category.slug} ${category.title}'.toLowerCase();
-    return value.contains('beauty') || value.contains('salon') || value.contains('wellness');
-  }
-
   Future<void> _openCategory(Category category) async {
     var answers = Map<String, dynamic>.from(widget.initialAnswers);
     if (category.customerFlowSteps.isNotEmpty) {
@@ -81,24 +76,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       );
       if (selected == null || !mounted) return;
       answers.addAll(selected);
-    }
-
-    // Beauty's Men / Women / Common choice is an audience filter, not a
-    // separate dead-end category screen. Load services from the Beauty tree.
-    if (_isBeauty(category)) {
-      Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceListScreen(
-            categoryId: category.id,
-            categoryTitle: category.title,
-            addressId: widget.addressId,
-            initialAnswers: answers,
-            includeDescendants: true,
-          ),
-        ),
-      );
-      return;
     }
 
     if (category.children.isNotEmpty) {
