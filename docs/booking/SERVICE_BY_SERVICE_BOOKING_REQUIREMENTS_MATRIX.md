@@ -246,6 +246,93 @@ Fields marked * are currently required in the exported catalogue. Existing field
 - All Beauty services currently report zero approved mapped workers except the generic service (#4). Worker mapping and service-specific capacity must be verified before any service is made bookable.
 - No Beauty service/gallery images were present in the audit export. Use verified service-specific images, otherwise a neutral placeholder; never use a misleading image.
 
+## Car Wash — detailed professional-service requirements (design review)
+
+### Design standard: configure the job like an experienced car-care provider
+
+The customer journey must collect enough information for the right professional, equipment, products, time and price to be assigned before the job is accepted. Do not expose every technical question to every customer: use conditional questions only when the selected service needs them. Optional photos and notes must remain optional unless a quote cannot be responsibly prepared without them.
+
+### Customer journey order
+
+1. Choose the exact service: exterior wash, interior cleaning, complete cleaning, detailing/treatment, or recurring wash plan.
+2. Select vehicle class. Reuse a saved vehicle profile where possible; otherwise collect vehicle type first, then make/model and registration number only when needed for identification, size-based pricing or recurring service.
+3. Select the package/treatment and review exact inclusions, exclusions, duration and price/inspection-fee status.
+4. Ask only relevant condition, material, access and quantity questions for that service. Show optional photo upload for stains, damage, paint condition or detailing requests.
+5. Confirm service address and practical access: parking/working space, water and electricity availability, society/parking restrictions, and whether the vehicle is accessible at the chosen time. Ask only the access questions relevant to the service.
+6. Fetch date/time slots only after address and service configuration; availability must account for service duration, equipment, worker skills, location and any pickup/drop logistics.
+7. Review vehicle, package, add-ons, answers, access, address, slot, duration and exact amount or quote/inspection status. Revalidate everything on the server before booking creation.
+
+### Vehicle profile and conditional data
+
+- Vehicle class already represented in the catalogue: Hatchback, Sedan, Compact SUV, SUV (5 seater), SUV (7 seater), MUV/MPV, Luxury Car and Luxury SUV. Standardise labels and make the size mapping mutually clear (e.g. avoid overlap between Compact SUV and SUV 5-seater).
+- Proposed future coverage to evaluate separately: two-wheelers, three-wheelers, pickup/commercial vehicles, vans and fleets. Do not shoehorn these into car variants or show them as bookable until AIRway has the relevant service packages, equipment and trained worker capacity.
+- Make/model should preferably be selected from a searchable list with an "Other / not listed" option. Do not make customers type the model if vehicle class alone determines the price.
+- Registration number is useful for identifying a recurring vehicle and worker arrival, but should be optional for a one-time wash unless operationally required. Treat it as personal data and do not expose it publicly.
+- Multiple vehicles require one vehicle profile and one service configuration per vehicle; do not apply one vehicle's size/package to every vehicle in a multi-car order.
+- Optional condition photos: exterior overview, close-up of paint/stains/scratches, and interior only for interior/detailing services. Avoid asking for irrelevant photos on a basic wash.
+
+### Service-by-service requirements
+
+| Existing service / ID | Recommended customer configuration | Worker-ready job details and audit notes |
+|---|---|---|
+| Exterior Car Wash (#10, Exterior Car Cleaning) | Required vehicle class; choose Basic / Deep / Premium exterior package. Show exact included work. Optional add-ons only when relevant: hard-water stain removal, tyre polish, bird-dropping removal, engine-bay cleaning and underbody cleaning. Ask about severe mud, hard-water stains or bird droppings only when the customer selects the related extra or requests help. | Vehicle class, package, selected extras, visible condition/photo if supplied, parking/water access, address and slot. Confirm whether water and power are supplied by customer or worker before promising the service. |
+| Exterior Car Wash (#1, root Car Wash) | Do not present as a separate duplicate until reconciled with #10. Current record has only one Hatchback variant at ₹299 and no form fields, while #10 has a full class/package matrix. | Merge/retire/rename only after catalogue owner confirms intended distinction. Never leave two indistinguishable Exterior Car Wash listings with conflicting prices or vehicle coverage. |
+| Interior Car Cleaning (#11) | Required vehicle class; Basic / Deep / Premium interior package. Show seat, carpet, dashboard, mats, boot and glass scope clearly. Relevant optional extras: leather conditioning, stain removal, AC vent cleaning, odour removal, roof-lining cleaning and seat shampoo. Ask upholstery type (fabric/leather/mixed) only if the chosen treatment depends on it; ask stain/odour details only when relevant. | Vehicle class, package, upholstery/treatment needs, selected extras, optional stain/odour photos, access and slot. Protect electronics, screens and sensitive trim; workers need product/material instructions and exclusions. |
+| Complete Car Cleaning (#12) | Required vehicle class; Basic / Deep / Premium complete package. Clearly show that it combines the configured exterior and interior scope; do not make customers separately reselect both halves unless customising the bundle. Optional relevant extras can be offered without duplicating work already included. | Vehicle class, complete package, included exterior/interior tasks, extras, condition notes/photos, water/power/parking access and duration. Resolve any overlap between package inclusions and separately priced add-ons. |
+| Ceramic Coating (#16) | Inspection/quote. Required vehicle class; ask existing coating status (none / ceramic / wax / unsure), paint condition and desired outcome. Ask vehicle age only if it affects assessment. Request clear optional photos of all sides and paint close-ups; let customer choose "not sure" rather than diagnose paint. | Inspection scope, vehicle class, existing coating, paint condition, photos, customer expectations and proposed treatment. Worker must assess paint preparation, correction level, coating product/brand, number of layers, curing time and aftercare before quote. Current ₹299 visit fee must be disclosed; refund/adjustment policy is not defined. |
+| Graphene Coating (#17) | Inspection/quote. Same short intake as ceramic coating, but keep the treatment name and technical explanation distinct. Ask whether customer is comparing ceramic/graphene only if useful; do not make them choose a technical product they do not understand. | Record surface prep, paint correction required, product specification, application layers, curing/vehicle downtime and aftercare in the estimate. Do not promise performance claims without approved product details. Current ₹299 visit fee; policy not defined. |
+| Paint Correction (#14) | Inspection/quote. Ask what customer notices: swirl marks, oxidation/fading, water spots, scratches or "not sure"; ask affected panels/areas if known. Optional photos in daylight. | Record panel-level condition, paint thickness/risks where professionally measurable, correction stages, exclusions and expected result. Never guarantee every scratch can be removed. Current ₹299 visit fee; policy not defined. |
+| Rubbing & Polishing (#13) | Inspection/quote. Ask desired area: full body / selected panels / unsure; paint condition and optional photos. Explain that rubbing/polishing is not the same as a routine wash or permanent scratch repair. | Record panels, paint condition, product/process, risk assessment and finish expectation. Avoid promising full scratch removal. Current ₹299 visit fee; policy not defined. |
+| Scratch Reduction (#19) | Inspection/quote. Ask scratch location and approximate extent (single panel / multiple panels / unsure), whether paint is visibly damaged, and request optional close-up photos. | Worker assesses scratch depth and whether polishing, touch-up or body-shop repair is appropriate. If outside worker capability, do not accept as a normal detailing job; explain referral/unavailability. Current ₹299 visit fee; policy not defined. |
+| Headlight Restoration (#18) | Inspection/quote. Ask one or both headlights, visible issue (yellowing / cloudiness / scratches / moisture / not sure), optional front photos. | Worker confirms whether issue is surface oxidation or internal moisture/cracking, restoration process, protection and limits. Do not promise restoration where replacement/electrical diagnosis is needed. Current ₹299 visit fee; policy not defined. |
+| Engine Bay Detailing (#20) | Inspection/quote. Ask vehicle class, engine-bay condition (light dust / oily dirt / heavy contamination / unsure), any known modifications or exposed electrical concerns, optional photos. | Confirm safe cleaning method, sensitive components, degreaser and drying process, whether engine is cool, and exclusions. Do not advertise pressure washing or water exposure as universal. Current ₹299 visit fee; policy not defined. |
+| Wax Treatment (#15) | Inspection/quote. Ask vehicle class, current paint condition and whether customer wants a basic protective wax or a more involved treatment; explain choices in plain language rather than product jargon. Optional photos. | Worker records product type/brand, surface preparation, expected durability range backed by product guidance, curing/downtime and aftercare. Distinguish wax from ceramic/graphene coating. Current ₹299 visit fee; policy not defined. |
+| Monthly Car Wash Plan (#21) | Select vehicle class and number of vehicles; choose an actual plan cadence (e.g. weekly, alternate-day, daily) and subscription duration (15 days / 1 / 3 / 6 months only if supported). Show exact number of included washes, service scope per visit, blackout/reschedule rules and service address before purchase. | Create a visit schedule per vehicle, define skipped/missed visit handling, worker route/coverage, service logs and plan balance. Existing variants' prices and subscription-duration field conflict: e.g. a "Weekly Wash Plan" is paired with a separate 15-day/1/3/6-month duration. Do not publish until plan cadence, included visit count, price basis, validity and scheduling rules are unambiguous. |
+
+### Professional coverage map — service types a capable car-care team may offer
+
+Use this as a capability and catalogue completeness checklist, not as approval to launch every service. Existing services are mapped above; new service families require owner confirmation, qualified workers, tools, safe processes and their own prices/terms.
+
+- **Routine exterior care:** water wash, foam wash, pressure rinse where safe, hand wash, body wipe/dry, glass/mirror cleaning, wheel and rim cleaning, tyre dressing, bug/tar removal, hard-water spot treatment, underbody rinse where suitable.
+- **Interior care:** vacuuming, dashboard/console/door-panel cleaning, mats, seats, carpets, boot, interior glass, seat shampoo/extraction, fabric or leather care, leather conditioning, roof-lining cleaning, odour treatment, AC vent surface cleaning and sanitisation where an approved process exists.
+- **Complete packages:** exterior + interior combinations with Basic / Deep / Premium tiers, clearly differentiated by tasks and time rather than names alone.
+- **Paint and finish care:** clay/decontamination where trained, wax/sealant, machine polishing, paint correction, scratch assessment, ceramic coating, graphene coating and headlight restoration.
+- **Specialist cleaning:** engine-bay detailing, underbody cleaning, pet-hair removal, heavy stain treatment, mould remediation assessment and water-spot removal. Treat electrical/mechanical, mould or hazardous contamination as specialist work, not routine wash add-ons.
+- **Recurring and fleet work:** scheduled recurring washes, multiple vehicles, fleet/site plans and per-vehicle service history. Require route feasibility and a clear visit entitlement.
+- **Possible adjacent services to assess separately:** bike wash/detailing, commercial vehicle wash, pickup/drop vehicle detailing, doorstep waterless wash and fleet contracts. These should not appear as customer options until operationally supported.
+
+### Minimum operational details the worker must receive
+
+- Vehicle identity/class and per-vehicle selected service/package.
+- Customer-selected extras and the exact tasks included/excluded.
+- Customer-provided condition answers and photos; do not convert an optional photo into a booking blocker.
+- Address, parking/vehicle access instructions, water/power availability and any society restrictions.
+- Appointment slot and realistic duration; detailing/inspection jobs need appropriate longer blocks and specialist skill tags.
+- Inspection/quote jobs: visit-fee disclosure, inspection checklist, photos, estimate line items, customer approval status and no-work-before-approval rule.
+- Before/after photo checklist where useful, completion checklist and customer confirmation. Do not expose worker private notes to customers.
+
+### Car Wash catalogue corrections and launch blockers
+
+- All 13 active Car Wash services in the export report zero approved mapped workers. This is a real booking-readiness blocker, not a reason to show fake availability.
+- No service/gallery images were present in the export. Add verified images matching the exact service/package; otherwise use a neutral placeholder.
+- Eight detailing/paint-treatment services reuse the same generic required fields. Replace that with service-specific conditional intake; e.g. paint condition is relevant to coating/correction but not the core intake for headlight restoration or engine-bay detailing.
+- The root-level Exterior Car Wash (#1) conflicts with Exterior Car Wash (#10) under Exterior Car Cleaning. Resolve the business meaning and pricing before exposing both.
+- Existing vehicle class variants must be consistently mapped to the required customer answer. The root-level #1 currently has no `vehicle_type` form field and only one Hatchback variant; it is not ready as a complete service.
+- Complete, exterior and interior variants have zero base visit fee and rely on selected variants. The server must require a valid matching vehicle/package variant and calculate price/duration from it; never show ₹0 as the booking total.
+- Existing vehicle class list does not cover bikes, three-wheelers, vans or commercial vehicles. Keep them out of current car packages until separately configured and staffed.
+- Monthly plan variants currently mix cadence names and prices while a separate duration field asks 15 days / 1 / 3 / 6 months. Define the entitlement and billing period before publishing.
+- Verify every package's actual task inclusions, chemical/product quality, equipment, water/power requirements, time and price. Existing prices are audit observations only, not approved recommendations.
+- Confirm whether the ₹299 inspection fee for each detailing service is charged per visit, what it covers and whether it can be adjusted/refunded. Do not invent the policy.
+- Customer booking must not imply a worker is available merely because a city-service mapping is active. Confirm worker approval, skill mapping, equipment and location coverage first.
+
+### Car Wash decisions to confirm only when operationally ready
+
+- Which service families will AIRway actually launch in Rawatbhata, and which specialist services will remain hidden until qualified workers/equipment are onboarded?
+- For monthly plans: exact wash frequency, included visits, package scope, validity, missed-visit/reschedule rules and service-day windows.
+- For detailing inspections: exact ₹299 fee policy, estimate approval process and whether the fee is adjustable/refundable.
+- Whether water, electricity, cleaning products and equipment are supplied by the customer, worker or vary by service; disclose any customer requirement before slot selection.
+- Whether pickup/drop is offered. If yes, define handover verification, keys, vehicle condition photos, insurance/liability and return process before enabling it.
+
 ## Cross-cutting implementation requirements
 - **Pricing integrity:** fixed-price bookings must use server-calculated snapshots; no client-side price authority. Quote/inspection services must clearly distinguish visit fee from the later estimate. Do not silently convert quote jobs into fixed-price jobs.
 - **Variant integrity:** variants must belong to the selected service and match relevant answers (e.g. vehicle/seat/size); do not show inactive variants.
