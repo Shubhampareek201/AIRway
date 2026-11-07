@@ -709,10 +709,11 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                         children: [
                           Text(
                             addon.title,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                            color: _Ui.ink,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _Ui.ink,
+                            ),
                           ),
                           if (addon.description?.isNotEmpty == true)
                             Padding(
