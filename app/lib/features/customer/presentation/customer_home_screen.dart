@@ -55,6 +55,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String? _workersMessage;
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
+  final _bannerController = PageController(viewportFraction: 0.96);
 
   Map<String, dynamic>? _workerProfile;
   String? _workerStatus;
@@ -70,6 +71,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void dispose() {
     _search.dispose();
     _searchFocus.dispose();
+    _bannerController.dispose();
     super.dispose();
   }
 
@@ -1453,7 +1455,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         height: 174,
         child: PageView.builder(
           itemCount: count,
-          controller: PageController(viewportFraction: 0.96),
+          controller: _bannerController,
           itemBuilder: (context, index) {
             final banner = hasBanners ? _homeBanners[index] : null;
             final imageUrl = banner?.image ??
