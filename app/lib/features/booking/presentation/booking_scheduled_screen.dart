@@ -100,7 +100,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
         // Auto-select first variant if exactly one exists.
         if (_availableVariants(service).length == 1) {
-          _selectedVariantId = service.variants[0].id;
+          _selectedVariantId = _availableVariants(service).first.id;
         }
       });
       _updateSummary();
@@ -125,8 +125,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       setState(() {
         _selectedAddressId = addressId;
         _service = service;
-        _selectedVariantId = service.variants.length == 1
-            ? service.variants.first.id
+        _selectedVariantId = _availableVariants(service).length == 1
+            ? _availableVariants(service).first.id
             : null;
         _selectedAddonIds.clear();
         _formAnswers.clear();
