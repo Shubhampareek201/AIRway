@@ -8,7 +8,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["id", "title", "title_hi", "slug", "image", "is_active", "parent", "children"]
+        fields = ["id", "title", "title_hi", "slug", "image", "flow_steps", "is_active", "parent", "children"]
         read_only_fields = ["slug", "children"]
 
     def get_image(self, obj):
