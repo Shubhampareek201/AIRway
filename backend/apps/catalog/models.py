@@ -19,7 +19,8 @@ class Category(TimeStampedModel):
         blank=True,
         help_text=(
             "Optional customer decision steps shown before browsing this category. "
-            "Each item: key, title, type (select/text/number/textarea), options, required, description."
+            "Each item: key, title, type (select/text/number/textarea), options, required, description. "
+            "For visual choices, use option objects: {label, value, image} with an absolute image URL."
         ),
     )
     sort_order = models.PositiveIntegerField(default=0)
