@@ -8,7 +8,7 @@ from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
 
-from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn
+from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -193,7 +193,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         except SlotConflictError as e:
             return Response(
                 {"available": False, "message": str(e)},
-                status=status.HTTP_200_OK,
+                status=status.HTTP_409_CONFLICT,
             )
         except ServiceUnavailableError as e:
             return Response(
@@ -527,10 +527,13 @@ class CustomerCheckoutView(APIView):
 
             # Dispatch the newly created booking immediately. Without this,
             # checkout leaves every order permanently awaiting assignment.
-            offers = create_worker_offers_for_booking(booking)
+            # BookingCreateSerializer.create() already dispatches offers.
+            # Read the persisted offers instead of dispatching a second time;
+            # the second call would skip duplicates and incorrectly report zero.
+            offers_sent = WorkerOffer.objects.filter(booking=booking).count()
             dispatch_results.append({
                 "booking_id": booking.id,
-                "offers_sent": len(offers),
+                "offers_sent": offers_sent,
             })
 
         order.subtotal = subtotal
