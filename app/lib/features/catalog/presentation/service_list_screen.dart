@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
 
 /// Service listing screen for a specific category.
@@ -28,7 +29,6 @@ class ServiceListScreen extends StatefulWidget {
 
 class _ServiceListScreenState extends State<ServiceListScreen> {
   List<Service> _services = [];
-  final Map<int, String> _categoryImages = {};
   bool _loading = true;
   String? _error;
   final _searchController = TextEditingController();
@@ -83,22 +83,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         findAndCollect(categories);
         services = services.where((service) => descendantIds.contains(service.categoryId)).toList();
       }
-      final images = <int, String>{};
-      void collectImages(List<Category> items) {
-        for (final category in items) {
-          if (category.image?.isNotEmpty == true) {
-            images[category.id] = category.image!;
-          }
-          collectImages(category.children);
-        }
-      }
-      collectImages(categories);
       if (!mounted) return;
       setState(() {
         _services = services;
-        _categoryImages
-          ..clear()
-          ..addAll(images);
         _loading = false;
       });
     } catch (e) {
@@ -223,7 +210,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           ? service.image
           : service.images.isNotEmpty
           ? service.images.first.image
-          : _categoryImages[service.categoryId];
+          : CatalogImageResolver.forService(
+              title: service.title,
+              categoryName: service.categoryName,
+            );
       final matchingVariants = service.variants.where((variant) {
         if (variant.attributes.isEmpty) return true;
         return variant.attributes.entries.every((entry) =>
