@@ -50,6 +50,16 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   int _flowStep = 0;
   final _formKey = GlobalKey<FormState>();
 
+  List<ServiceVariant> _availableVariants(Service service) {
+    final vehicleType = _categoryAnswers['vehicle_type']?.toString();
+    if (vehicleType == null || vehicleType.isEmpty) return service.variants;
+    final matched = service.variants.where((variant) {
+      final configured = variant.attributes['vehicle_type']?.toString();
+      return configured == null || configured.isEmpty || configured == vehicleType;
+    }).toList();
+    return matched;
+  }
+
   // Summary state
   double _subtotal = 0;
   double _estimatedTotal = 0;
@@ -89,7 +99,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _loading = false;
 
         // Auto-select first variant if exactly one exists.
-        if (service.variants.length == 1) {
+        if (_availableVariants(service).length == 1) {
           _selectedVariantId = service.variants[0].id;
         }
       });
@@ -513,10 +523,12 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Wrap(
+        child: _availableVariants(service).isEmpty
+            ? const Text('No package is configured for the selected vehicle type. Please contact support.')
+            : Wrap(
           spacing: 12,
           runSpacing: 12,
-          children: service.variants.map((variant) {
+          children: _availableVariants(service).map((variant) {
             final isSelected = variant.id == _selectedVariantId;
             return GestureDetector(
               onTap: () {
