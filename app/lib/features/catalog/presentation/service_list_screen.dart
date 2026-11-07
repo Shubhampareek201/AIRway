@@ -24,6 +24,7 @@ class ServiceListScreen extends StatefulWidget {
 
 class _ServiceListScreenState extends State<ServiceListScreen> {
   List<Service> _services = [];
+  final Map<int, String> _categoryImages = {};
   bool _loading = true;
   String? _error;
   final _searchController = TextEditingController();
@@ -48,13 +49,31 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     });
 
     try {
-      final services = await CatalogApi.listServices(
-        category: widget.categoryId,
-        addressId: widget.addressId,
-      );
+      final results = await Future.wait([
+        CatalogApi.listServices(
+          category: widget.categoryId,
+          addressId: widget.addressId,
+        ),
+        CatalogApi.listCategories(addressId: widget.addressId),
+      ]);
+      final services = results[0] as List<Service>;
+      final categories = results[1] as List<Category>;
+      final images = <int, String>{};
+      void collectImages(List<Category> items) {
+        for (final category in items) {
+          if (category.image?.isNotEmpty == true) {
+            images[category.id] = category.image!;
+          }
+          collectImages(category.children);
+        }
+      }
+      collectImages(categories);
       if (!mounted) return;
       setState(() {
         _services = services;
+        _categoryImages
+          ..clear()
+          ..addAll(images);
         _loading = false;
       });
     } catch (e) {
@@ -168,7 +187,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           ? service.image
           : service.images.isNotEmpty
           ? service.images.first.image
-          : null;
+          : _categoryImages[service.categoryId];
       final price = service.variants.isNotEmpty
           ? service.variants.first.price
           : service.visitFee;
