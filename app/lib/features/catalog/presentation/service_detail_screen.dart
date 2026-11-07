@@ -321,7 +321,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   );
 
   Widget _variantCard(ServiceVariant v) => Container(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(18),
@@ -329,81 +329,58 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
     child: Row(
       children: [
+        if (v.image?.isNotEmpty == true)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.network(
+              v.image!,
+              width: 76,
+              height: 76,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _optionImagePlaceholder(),
+            ),
+          )
+        else
+          _optionImagePlaceholder(),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (v.image?.isNotEmpty == true)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    v.image!,
-                    width: 76,
-                    height: 76,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _optionImagePlaceholder(),
-                  ),
-                )
-              else
-                _optionImagePlaceholder(),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      v.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: _Ui.ink,
-                      ),
-                    ),
-                    if (v.description?.isNotEmpty == true)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(v.description!, style: const TextStyle(fontSize: 11, color: _Ui.sub)),
-                      ),
-                  ],
-                ),
+              Text(
+                v.title,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _Ui.ink),
               ),
+              if (v.description?.isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(v.description!, style: const TextStyle(fontSize: 11, color: _Ui.sub)),
+                ),
               if (v.durationMinutes != null)
-                Text(
-                  '${v.durationMinutes} min',
-                  style: const TextStyle(fontSize: 12, color: _Ui.sub),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('${v.durationMinutes} min', style: const TextStyle(fontSize: 12, color: _Ui.sub)),
                 ),
             ],
           ),
         ),
+        const SizedBox(width: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
           children: [
             if (v.mrp > v.price)
               Text(
                 '₹${v.mrp.toStringAsFixed(0)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  decoration: TextDecoration.lineThrough,
-                  color: _Ui.sub,
-                ),
+                style: const TextStyle(fontSize: 12, decoration: TextDecoration.lineThrough, color: _Ui.sub),
               ),
             Text(
               '₹${v.price.toStringAsFixed(0)}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: _Ui.violet,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _Ui.violet),
             ),
             if (v.discountPercent > 0)
-              Text(
-                '${v.discountPercent}% OFF',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF7861A8),
-                ),
-              ),
+              Text('${v.discountPercent}% OFF', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF7861A8))),
           ],
         ),
       ],
