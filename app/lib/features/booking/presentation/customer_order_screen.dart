@@ -243,21 +243,6 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (mounted) await loadOrder(showLoader: false);
   }
 
-  Widget _trackingStep(String title, bool complete, String detail) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(complete ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: complete ? const Color(0xFF2E7D52) : sub, size: 21),
-        const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
-          Text(detail, style: const TextStyle(color: sub, fontSize: 12)),
-        ])),
-      ]),
-    );
-  }
-
   String statusLabel(String value) {
     switch (value) {
       case 'pending': return 'Finding professional';
