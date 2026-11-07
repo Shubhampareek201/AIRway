@@ -67,13 +67,13 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
 
   Future<void> _openCategory(Category category) async {
     var answers = Map<String, dynamic>.from(widget.initialAnswers);
-    if (category.flowSteps.isNotEmpty) {
+    if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
           builder: (_) => CategoryDecisionScreen(
             categoryTitle: category.title,
-            steps: category.flowSteps,
+            steps: category.customerFlowSteps,
           ),
         ),
       );
@@ -81,11 +81,27 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       answers.addAll(selected);
     }
     if (category.children.isNotEmpty) {
+      var children = category.children;
+      final filterStep = category.customerFlowSteps.where(
+        (step) => step['filter_children'] == true,
+      ).toList();
+      if (filterStep.isNotEmpty) {
+        final key = filterStep.first['key']?.toString();
+        final selected = key == null ? null : answers[key]?.toString();
+        if (selected != null && selected.isNotEmpty) {
+          final normalized = selected.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+          final matches = children.where((child) {
+            final title = child.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+            return title.contains(normalized) || normalized.contains(title);
+          }).toList();
+          if (matches.isNotEmpty) children = matches;
+        }
+      }
       Navigator.push<void>(
         context,
         MaterialPageRoute(
           builder: (_) => ServiceCategoriesScreen(
-            initialCategories: category.children,
+            initialCategories: children,
             addressId: widget.addressId,
             title: category.title,
             initialAnswers: answers,
