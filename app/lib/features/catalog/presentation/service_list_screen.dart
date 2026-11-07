@@ -10,12 +10,14 @@ class ServiceListScreen extends StatefulWidget {
   final int categoryId;
   final String? categoryTitle;
   final int? addressId;
+  final Map<String, dynamic> initialAnswers;
 
   const ServiceListScreen({
     super.key,
     required this.categoryId,
     this.categoryTitle,
     this.addressId,
+    this.initialAnswers = const {},
   });
 
   @override
@@ -53,6 +55,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         CatalogApi.listServices(
           category: widget.categoryId,
           addressId: widget.addressId,
+          initialAnswers: widget.initialAnswers,
         ),
         CatalogApi.listCategories(addressId: widget.addressId),
       ]);
