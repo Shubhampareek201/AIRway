@@ -94,7 +94,6 @@ class PricedItem(TimeStampedModel):
     title = models.CharField(max_length=150)
     title_hi = models.CharField("Title (Hindi)", max_length=150, blank=True)
     description = models.TextField(blank=True, help_text="What is included in this package or add-on")
-    attributes = models.JSONField(default=dict, blank=True, help_text="Conditional package matching, e.g. vehicle_type: Sedan")
     mrp = models.DecimalField("MRP (kata hua)", max_digits=10, decimal_places=2)
     price = models.DecimalField("Selling price", max_digits=10, decimal_places=2)
     sort_order = models.PositiveIntegerField(default=0)
@@ -118,6 +117,7 @@ class ServiceVariant(PricedItem):
     """Package/size: Basic, Premium, Hatchback, SUV, 1 BHK..."""
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="variants")
     duration_minutes = models.PositiveIntegerField(null=True, blank=True, help_text="Khali = service wala time")
+    attributes = models.JSONField(default=dict, blank=True, help_text="Conditional package matching, e.g. vehicle_type: Sedan")
     history = HistoricalRecords()
 
     class Meta(PricedItem.Meta):
