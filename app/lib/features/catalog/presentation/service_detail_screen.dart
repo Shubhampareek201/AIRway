@@ -67,7 +67,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           serviceId: _service!.id,
           serviceTitle: _service!.title,
           addressId: widget.addressId,
-          initialFormAnswers: widget.initialAnswers,
+          initialCategoryAnswers: widget.initialAnswers,
         ),
       ),
     );
