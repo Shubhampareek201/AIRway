@@ -14,12 +14,12 @@
 1. Select service and configure only the inputs relevant to that service.
 2. Show package/variant, quantity and add-ons when configured; update total and duration immediately.
 3. Collect service-specific details and optional photos/notes; validate required answers before continuing.
-4. Select address and date/time using backend availability; never show a slot unless API confirms it.
+4. Select/confirm the service address first, then load date/time availability for that address and service; never show a slot unless the backend confirms it.
 5. Show a complete review: service, variant, quantity, extras, answers, address, slot, duration and price/quote status.
 6. Create booking only after server-side revalidation of catalogue, price snapshot, city eligibility and slot availability.
 
 ## Category journey patterns (draft)
-- **Beauty:** Choose audience/service → select package or treatment → optional preferences/sensitivity → date & time → address → review.
+- **Beauty:** Select service → choose package/treatment where applicable → answer only relevant service questions → optionally choose professional preference (Female professional / No preference) → confirm address → select an API-confirmed date/time → review.
 - **Car Wash:** Choose vehicle type → choose wash/detailing service → select package/vehicle variant → vehicle make/model and access details → date & time → address → review.
 - **Electrical:** Choose appliance/issue and work type → quantity/property/material → describe issue + optional photos → show fixed price or inspection/visit-fee explanation → date & time → address → review.
 - **Home Cleaning:** Choose room/area/property → choose package/depth → enter size/count where needed → select add-ons → optional photos/access notes → date & time → address → review.
@@ -201,6 +201,51 @@ Fields marked * are currently required in the exported catalogue. Existing field
 | Home Cleaning | Window & Glass Cleaning | Interior Glass Cleaning (#174) | scheduled/fixed; fee ₹499.00; 90 min | — | — | Area size / quantity* [text], Upload area photos [photo] | No approved worker mapping in export, No service image in export, Fixed price without variant: verify what quantity/unit the price covers, Capture area/room/quantity or property size where it changes scope |
 | Home Cleaning | Window & Glass Cleaning | Window & Glass Cleaning (#165) | scheduled/fixed; fee ₹0.00; 90 min | Basic Window Cleaning ₹399.00; Deep Window Cleaning ₹699.00 | — | Area size / details [textarea], Upload area photos [photo] | No approved worker mapping in export, No service image in export, Capture area/room/quantity or property size where it changes scope |
 
+
+## Beauty — detailed booking requirements (reviewed)
+
+### Approved customer preference
+- Customer can choose **Female professional** or **No preference** for a Beauty booking.
+- Keep this as a customer-facing preference, separate from the service's audience field (men/women/all). Do not infer professional preference from the customer's gender or from the service audience.
+- Default to **No preference**; do not preselect Female professional.
+- Apply the preference during eligible-worker and slot matching. Preserve it in the booking and worker-assignment context.
+- If no female professional is available for the selected address/date/time, explain that clearly and ask the customer whether to try another slot or change to No preference. Never silently ignore the preference.
+- Show this choice once per booking, not once per service item. The customer may change it before confirming.
+
+### Customer journey order and shared UX rules
+1. Service detail page shows a clear service description, verified image (or neutral placeholder), starting/fixed price and realistic duration.
+2. Customer selects the service and any required package/variant. For services with no variants, show the fixed scope and price only after its coverage is verified.
+3. Ask only service-specific questions listed below. Keep reference photos and notes optional unless the service cannot be scoped without them.
+4. Ask professional preference (Female professional / No preference).
+5. Select or confirm address. Only then fetch slots because worker coverage and availability depend on the service location.
+6. Show only backend-confirmed slots. Revalidate price, selected variant, preference eligibility and slot at booking creation.
+7. Review screen must show service, package, selected extras, answers, professional preference, address, date/time, duration and exact payable amount or quote/inspection status.
+
+### Service-by-service customer inputs
+
+| Subcategory | Services covered | Customer inputs / behaviour |
+|---|---|---|
+| Facial & Skin Care | Anti-Tan Facial, Bridal Facial, Brightening Facial, Charcoal Facial, Diamond Facial, Face Bleaching, Face Cleanup, Fruit Facial, Gold Facial, Hydrating Facial, Pearl Facial | Select the chosen treatment package. Keep skin type/sensitivity as a short optional note; add a clear optional allergy/sensitivity prompt where the professional needs it before treatment. Do not make customers diagnose their skin. Display package inclusions and duration. Bridal Facial must have its package prices and scope checked because current package prices are ₹999 / ₹4,999 / ₹4,999. |
+| Grooming & Massage | Back Massage, Beard Styling, Beard Trim, Clean Shave, Foot Massage, Full Body Spa, Hair Oil Massage, Hand Massage | Beard services retain the men audience restriction already configured. For massage services, allow optional pressure/comfort or focus-area notes without asking for medical details. Show duration and what is included. Full Body Spa stays an inspection/quote journey: disclose the current ₹499 visit fee before the customer proceeds, collect a short optional requirement note, then show the estimate for explicit customer approval before additional work. Do not assume the visit-fee refund/adjustment policy. |
+| Hair Services | Blow Dry, Global Hair Colour, Grey Hair Coverage, Hair Curling, Hair Highlights, Hair Rebonding, Hair Smoothening, Hair Straightening, Hair Trimming, Head Massage, Keratin Treatment, Men's Hair Colour, Men's Hair Spa, Men's Hair Styling, Men's Hair Wash, Men's Haircut, Men's Haircut + Hair Wash, Root Touch-up, Women's Hair Spa, Women's Hair Styling, Women's Hair Wash, Women's Haircut | For package-based services, require package selection. For colour/chemical/long treatments, collect hair length (short/medium/long) only if the business confirms it changes price, material quantity or duration; otherwise keep it as optional notes/photo. Offer an optional reference photo for styling. Haircut and wash services should stay short: package where present, optional style note, then preference/address/slot. Verify all currently flat ₹499 services before exposing that amount as the final total. |
+| Makeup & Occasion Styling | Bridal Hairstyle, Bridal Makeup, Engagement Makeup, HD Makeup, Hairstyling, Light Makeup, Party Hairstyle, Party Makeup, Saree Draping | Ask occasion and event date using structured controls (date picker for date); people count should default to 1 and allow increase when group booking is supported. Preferred style and reference photo remain optional. Separate the event date from the actual appointment date/time when they differ. For Bridal Makeup, current inspection/quote mode conflicts with configured ₹2,499/₹4,999 variants and zero visit fee: do not present these as guaranteed final prices until the business defines whether they are fixed packages or indicative quote anchors. Engagement/Party/Light Makeup variants must show exact inclusions and duration. |
+| Manicure & Pedicure | Gel Polish, Manicure, Nail Art, Nail Extensions, Nail Removal, Pedicure, Spa Manicure, Spa Pedicure | Show treatment scope and fixed price. For Nail Art and Nail Extensions, allow an optional reference image/design and ask length/design complexity only if it changes the quote. For Nail Removal, ask whether existing product is gel/acrylic only if it affects time or price. Do not ask irrelevant skin/hair questions. |
+| Threading | Chin Threading, Eyebrow Threading, Forehead Threading, Full Face Threading, Lower Lip Threading, Side Locks Threading, Threading Combination, Upper Lip Threading | Individual-area services need no extra area question. Threading Combination must require the customer to select the areas; calculate/display the combined price and duration from configured rules rather than charging a single generic ₹79 if multiple areas are included. |
+| Waxing | Back Wax, Bikini Line, Bikini Wax, Brazilian Wax, Chest Wax, Full Arms, Full Body Wax, Full Face, Full Legs, Half Arms, Half Legs, Underarms | Require wax type/package selection (Regular/Rica/Premium) where configured. Show the selected area and exact inclusions. Do not ask the customer to repeat the body area already encoded by the service. Keep relevant skin sensitivity/allergy notes optional and discreet. Check package prices for consistency: several areas currently share generic ₹199/₹399/₹699 or ₹499/₹499/₹799 ladders that may not reflect area size. |
+| Root Beauty category | Active Beauty Service (#4) | Treat as a catalogue-quality issue, not a normal customer-facing service. Verify its real name, description, audience, scope, image and worker mapping before displaying it. Do not silently rename or delete it. |
+
+### Beauty catalogue corrections to make before implementation
+- Correct event date fields from free-text to date inputs; keep appointment date/time separate where the event is later.
+- Do not require a customer to enter information already known from the selected service (e.g. selected threading area).
+- Add professional preference to the booking data and worker matching, not to a hard-coded Flutter-only filter.
+- Ensure selected variant price and duration are authoritative. Do not fall back to a zero service fee when variants exist or show a generic base fee as the final price.
+- Confirm package inclusions, price and duration for all variants. Current facial variants are reused across unrelated treatments; Bridal Facial pricing is inconsistent; waxing price ladders appear generic; several makeup variants show 60-minute duration while the service is configured for 90 minutes.
+- Verify the actual service scope behind fixed-price/no-variant entries before treating the fee as all-inclusive. This is especially important for chemical hair treatments and services with variable hair length.
+- Keep audience restrictions already configured, but validate them against the actual intended catalogue. Audience controls who can book; professional preference controls worker matching. They are not interchangeable.
+- Do not expose the generic "Active Beauty Service" until its identity and purpose are confirmed.
+- All Beauty services currently report zero approved mapped workers except the generic service (#4). Worker mapping and service-specific capacity must be verified before any service is made bookable.
+- No Beauty service/gallery images were present in the audit export. Use verified service-specific images, otherwise a neutral placeholder; never use a misleading image.
+
 ## Cross-cutting implementation requirements
 - **Pricing integrity:** fixed-price bookings must use server-calculated snapshots; no client-side price authority. Quote/inspection services must clearly distinguish visit fee from the later estimate. Do not silently convert quote jobs into fixed-price jobs.
 - **Variant integrity:** variants must belong to the selected service and match relevant answers (e.g. vehicle/seat/size); do not show inactive variants.
@@ -208,7 +253,7 @@ Fields marked * are currently required in the exported catalogue. Existing field
 - **Add-ons:** only show active add-ons belonging to that service; reflect price and duration impacts if configured.
 - **Answers/photos:** required fields must block continuation when missing; optional photos must remain optional; worker job card must preserve all submitted answers and media references.
 - **Availability:** validate city-service mapping, approved worker coverage, worker schedule/leave and slot conflicts on the server. Catalogue visibility must not imply bookability.
-- **Worker handoff:** send service, category, variant/package, quantities, add-ons, price snapshot, booking mode, customer answers, photos, notes, address, scheduled slot and any inspection/quote state.
+- **Worker handoff:** send service, category, variant/package, quantities, add-ons, price snapshot, booking mode, customer answers, photos, notes, professional preference (if selected), address, scheduled slot and any inspection/quote state.
 - **Failure paths:** no eligible worker, no slots, slot taken during checkout, invalid/stale variant, changed price, missing required answer, upload failure, worker rejection/reassignment, cancellation and quote declined/expired.
 
 ## Blocking audit findings before launch
@@ -224,6 +269,7 @@ Fields marked * are currently required in the exported catalogue. Existing field
 - Quote validity/expiry, estimate line items, customer approval and decline handling.
 - Cancellation/reschedule windows and any charges.
 - Whether worker-supplied materials are quoted separately and whether customer approval is required before purchase.
+- Confirm exact scope, inclusions, price and duration for the flagged Beauty packages/services before publishing them as fixed-price offers.
 - Which exact services should be launch-enabled in Rawatbhata based on real worker capacity.
 
 ## Next review gate
