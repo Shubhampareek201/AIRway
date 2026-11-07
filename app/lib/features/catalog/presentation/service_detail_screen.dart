@@ -284,6 +284,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       final fallback = CatalogImageResolver.forService(
         title: service.title,
         categoryName: service.categoryName,
+        audience: service.audience,
       );
       if (fallback != null) imageUrls.add(fallback);
     }
