@@ -559,8 +559,35 @@ class CartItemSerializer(serializers.ModelSerializer):
         if set(answers) - set(fields):
             raise serializers.ValidationError({"form_answers": "An unknown question was supplied."})
         for key, field in fields.items():
-            if field.is_required and answers.get(key) in (None, ""):
+            value = answers.get(key)
+            if field.is_required and value in (None, ""):
                 raise serializers.ValidationError({"form_answers": f"{field.label} is required."})
+            if value in (None, ""):
+                continue
+
+            # Choice answers must match the live catalogue options. Accept both
+            # legacy string options and structured {label, value} options.
+            if field.field_type in ("select", "choice"):
+                allowed_values = set()
+                for option in (field.options or []):
+                    if isinstance(option, dict):
+                        option_value = option.get("value", option.get("label"))
+                    else:
+                        option_value = option
+                    if option_value is not None:
+                        allowed_values.add(str(option_value))
+                if str(value) not in allowed_values:
+                    raise serializers.ValidationError({
+                        "form_answers": f"Choose a valid option for {field.label}."
+                    })
+
+            if field.field_type == "number":
+                try:
+                    Decimal(str(value))
+                except (ArithmeticError, TypeError, ValueError):
+                    raise serializers.ValidationError({
+                        "form_answers": f"Enter a valid number for {field.label}."
+                    })
 
         if variant:
             base = Decimal(variant.price)
