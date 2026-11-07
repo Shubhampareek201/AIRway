@@ -472,11 +472,22 @@ class WorkerJobDetailView(APIView):
             "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+            "variant_title": booking.variant.title if booking.variant_id else None,
+            "quantity": booking.order_item.quantity if hasattr(booking, "order_item") else 1,
+            "customer_answers": booking.customer_answers or {},
             "notes": booking.notes,
             "worker_notes": booking.worker_notes,
+            "addons": [
+                {
+                    "title": row.addon.title,
+                    "quantity": row.quantity,
+                    "total_price": str(row.total_price),
+                }
+                for row in booking.booking_addons.select_related("addon").all()
+            ],
             "form_responses": [
                 {"key": fr.form_field.key, "label": fr.form_field.label, "value": fr.value}
-                for fr in booking.form_responses.all()
+                for fr in booking.form_responses.select_related("form_field").all()
             ],
             "assignment": {
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
