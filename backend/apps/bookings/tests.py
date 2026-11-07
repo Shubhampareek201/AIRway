@@ -163,6 +163,27 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertIn("form_responses", response.data)
 
+    def test_create_booking_rejects_omitted_required_form_answer(self):
+        """A required active question cannot be bypassed by omitting its key."""
+        FormField.objects.create(
+            service=self.service,
+            key="property_type",
+            label="Property type",
+            field_type="select",
+            options=["Apartment", "Villa"],
+            is_required=True,
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
     def test_create_booking_rejects_choice_outside_catalogue(self):
         """Choice answers must be one of the options configured for the service."""
         FormField.objects.create(
