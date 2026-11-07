@@ -17,7 +17,7 @@ class VariantInline(TabularInline):
 class AddOnInline(TabularInline):
     model = AddOn
     extra = 0
-    fields = ("title", "title_hi", "description", "mrp", "price", "sort_order", "is_active")
+    fields = ("title", "title_hi", "description", "image", "mrp", "price", "sort_order", "is_active")
     show_change_link = True
 
 
