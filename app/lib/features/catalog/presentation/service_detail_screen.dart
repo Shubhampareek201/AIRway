@@ -3,6 +3,7 @@ import 'package:airway/features/booking/presentation/booking_scheduled_screen.da
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 
 class _Ui {
   static const violet = Color(0xFF315C46);
@@ -215,7 +216,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final v = _matchingVariants(service)[index];
-                return _variantCard(v);
+                return _variantCard(v, service.categoryName);
               },
             ),
           ),
@@ -242,7 +243,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final a = service.addons[index];
-                return _addonCard(a);
+                return _addonCard(a, service.categoryName);
               },
             ),
           ),
@@ -328,7 +329,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
   );
 
-  Widget _variantCard(ServiceVariant v) => Container(
+  Widget _variantCard(ServiceVariant v, String categoryName) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
@@ -337,11 +338,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
     child: Row(
       children: [
-        if (v.image?.isNotEmpty == true)
+        if (v.title.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.network(
-              v.image!,
+              v.image?.isNotEmpty == true
+                  ? v.image!
+                  : CatalogImageResolver.forService(title: v.title, categoryName: categoryName),
               width: 76,
               height: 76,
               fit: BoxFit.cover,
@@ -410,7 +413,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
   );
 
-  Widget _addonCard(AddOn a) => Container(
+  Widget _addonCard(AddOn a, String categoryName) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
@@ -419,11 +422,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
     child: Row(
       children: [
-        if (a.image?.isNotEmpty == true)
+        if (a.title.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.network(
-              a.image!,
+              a.image?.isNotEmpty == true
+                  ? a.image!
+                  : CatalogImageResolver.forService(title: a.title, categoryName: categoryName),
               width: 58,
               height: 58,
               fit: BoxFit.cover,
