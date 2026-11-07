@@ -95,8 +95,8 @@ class Category {
             {'label': 'Luxury SUV', 'value': 'Luxury SUV', 'image': 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=700&auto=format&fit=crop'},
           ],
         },
-        {'key': 'vehicle_make', 'title': 'Car manufacturer', 'type': 'text', 'required': true},
-        {'key': 'vehicle_model', 'title': 'Car model', 'type': 'text', 'required': true},
+        {'key': 'vehicle_make', 'title': 'Car manufacturer (optional)', 'type': 'text', 'required': false},
+        {'key': 'vehicle_model', 'title': 'Car model (optional)', 'type': 'text', 'required': false},
       ];
     }
     if (identity.contains('beauty') || identity.contains('salon')) {
