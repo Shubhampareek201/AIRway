@@ -122,11 +122,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"variant": "Variant does not belong to this service."})
         category_answers = attrs.get("category_answers", {})
         if variant and isinstance(category_answers, dict):
-            required_vehicle = (variant.attributes or {}).get("vehicle_type")
-            selected_vehicle = category_answers.get("vehicle_type")
-            if required_vehicle and required_vehicle != selected_vehicle:
+            required_attributes = variant.attributes or {}
+            if any(category_answers.get(key) != value for key, value in required_attributes.items()):
                 raise serializers.ValidationError({
-                    "variant": "This package is not priced for the selected vehicle type."
+                    "variant": "This package does not match the selected service details."
                 })
 
         # Validate booking mode matches service
@@ -512,9 +511,11 @@ class CartItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Add-ons must be a list and answers must be objects.")
         if variant and (variant.service_id != service.id or not variant.is_active):
             raise serializers.ValidationError({"variant": "Choose an active package for this service."})
-        if variant and (variant.attributes or {}).get("vehicle_type"):
-            if (variant.attributes or {}).get("vehicle_type") != category_answers.get("vehicle_type"):
-                raise serializers.ValidationError({"variant": "This package is not priced for the selected vehicle type."})
+        if variant and any(
+            category_answers.get(key) != value
+            for key, value in (variant.attributes or {}).items()
+        ):
+            raise serializers.ValidationError({"variant": "This package does not match the selected service details."})
 
         addon_ids = []
         for row in addons:
