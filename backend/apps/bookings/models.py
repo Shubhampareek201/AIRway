@@ -74,6 +74,7 @@ class Booking(TimeStampedModel):
     )
 
     notes = models.TextField(blank=True, help_text="Customer notes")
+    customer_answers = models.JSONField(default=dict, blank=True, help_text="Category-level choices captured before service selection")
     worker_notes = models.TextField(blank=True, help_text="Worker notes during service")
 
     cancelled_at = models.DateTimeField(null=True, blank=True)
@@ -346,6 +347,7 @@ class CartItem(TimeStampedModel):
     quantity = models.PositiveIntegerField(default=1)
     addon_selections = models.JSONField(default=list, blank=True)
     form_answers = models.JSONField(default=dict, blank=True)
+    category_answers = models.JSONField(default=dict, blank=True)
     notes = models.TextField(blank=True)
     pricing_snapshot = models.JSONField(default=dict, blank=True)
 
