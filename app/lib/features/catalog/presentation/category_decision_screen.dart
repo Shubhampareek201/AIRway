@@ -127,8 +127,10 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
                           if (image != null && image.isNotEmpty)
                             Image.network(
                               image,
-                              height: 92,
-                              fit: BoxFit.cover,
+                              height: 104,
+                              fit: key == 'vehicle_type'
+                                  ? BoxFit.contain
+                                  : BoxFit.cover,
                               errorBuilder: (_, __, ___) => _optionPlaceholder(),
                             )
                           else
