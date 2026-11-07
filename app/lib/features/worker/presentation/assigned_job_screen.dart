@@ -191,13 +191,71 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
   Widget _buildServiceInfo(WorkerAssignmentDetail job) {
     return Card(
-      child: ListTile(
-        leading: Icon(
-          Icons.book,
-          color: AirwayColors.primary,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.book, color: AirwayColors.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(job.serviceTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+              ],
+            ),
+            if (job.variantTitle?.isNotEmpty == true || job.quantity > 1) ...[
+              const SizedBox(height: 8),
+              Text(
+                [if (job.variantTitle?.isNotEmpty == true) job.variantTitle!, 'Qty ${job.quantity}'].join(' • '),
+                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+              ),
+            ],
+            if (job.customerAnswers.isNotEmpty) ...[
+              const Divider(height: 22),
+              const Text('Customer selections', style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              for (final entry in job.customerAnswers.entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${entry.key.replaceAll('_', ' ')}: ${entry.value}',
+                    style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                  ),
+                ),
+            ],
+            if (job.formResponses.isNotEmpty) ...[
+              const Divider(height: 22),
+              const Text('Service details', style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              for (final answer in job.formResponses)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${answer['label'] ?? answer['key']}: ${answer['value']}',
+                    style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                  ),
+                ),
+            ],
+            if (job.addons.isNotEmpty) ...[
+              const Divider(height: 22),
+              const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              for (final addon in job.addons)
+                Text(
+                  '${addon['title']} × ${addon['quantity']}',
+                  style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                ),
+            ],
+            if (job.notes?.isNotEmpty == true) ...[
+              const Divider(height: 22),
+              const Text('Customer note', style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(job.notes!, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+            ],
+          ],
         ),
-        title: Text(job.serviceTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('Service details'),
       ),
     );
   }
