@@ -55,7 +55,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         CatalogApi.listServices(
           category: widget.categoryId,
           addressId: widget.addressId,
-          initialAnswers: widget.initialAnswers,
         ),
         CatalogApi.listCategories(addressId: widget.addressId),
       ]);
@@ -359,6 +358,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         builder: (_) => ServiceDetailScreen(
           serviceId: service.id,
           addressId: widget.addressId,
+          initialAnswers: widget.initialAnswers,
         ),
       ),
     );
