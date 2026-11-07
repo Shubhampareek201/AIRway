@@ -69,6 +69,57 @@ class Category {
     this.children = const [],
   });
 
+  /// Admin configuration wins. These initial AIRway journeys are defaults
+  /// for the four launch categories and can be replaced from the Admin panel.
+  List<Map<String, dynamic>> get customerFlowSteps {
+    if (flowSteps.isNotEmpty) return flowSteps;
+    final identity = '${slug.toLowerCase()} ${title.toLowerCase()}';
+    if (identity.contains('car') || identity.contains('vehicle')) {
+      return [
+        {
+          'key': 'vehicle_type',
+          'title': 'Select vehicle type',
+          'type': 'select',
+          'required': true,
+          'options': [
+            'Hatchback', 'Sedan', 'Compact SUV', 'SUV – 5 Seater',
+            'SUV – 7 Seater', 'MUV / MPV', 'Luxury Car', 'Luxury SUV',
+          ],
+        },
+        {'key': 'vehicle_make', 'title': 'Car manufacturer', 'type': 'text', 'required': true},
+        {'key': 'vehicle_model', 'title': 'Car model', 'type': 'text', 'required': true},
+      ];
+    }
+    if (identity.contains('beauty') || identity.contains('salon')) {
+      return [
+        {
+          'key': 'beauty_type',
+          'title': 'Who is this service for?',
+          'type': 'select',
+          'required': true,
+          'options': ["Men's Beauty", "Women's Beauty", 'Common Services'],
+        },
+      ];
+    }
+    if (identity.contains('electrical') || identity.contains('electrician')) {
+      return [
+        {
+          'key': 'electrical_group',
+          'title': 'Choose electrical service group',
+          'type': 'select',
+          'required': true,
+          'options': [
+            'Fan Services', 'Lighting Services', 'Switch & Socket Services',
+            'Wiring & Electrical Repairs', 'Inverter & UPS',
+            'Geyser & Electrical Connections', 'Electrical Inspection & Setup',
+          ],
+          'filter_children': true,
+        },
+      ];
+    }
+    return const [];
+  }
+
   factory Category.fromMap(Map<String, dynamic> map) {
     return Category(
       id: map['id'],
