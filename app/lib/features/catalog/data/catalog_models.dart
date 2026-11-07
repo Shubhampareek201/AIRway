@@ -54,6 +54,7 @@ class Category {
   final String? titleHi;
   final String slug;
   final String? image;
+  final List<Map<String, dynamic>> flowSteps;
   final bool isActive;
   final List<Category> children;
 
@@ -63,6 +64,7 @@ class Category {
     this.titleHi,
     required this.slug,
     this.image,
+    this.flowSteps = const [],
     required this.isActive,
     this.children = const [],
   });
@@ -74,6 +76,10 @@ class Category {
       titleHi: map['title_hi'],
       slug: map['slug'] ?? '',
       image: _resolveMediaUrl(map['image']),
+      flowSteps: (map['flow_steps'] as List? ?? [])
+          .whereType<Map>()
+          .map((step) => Map<String, dynamic>.from(step))
+          .toList(),
       isActive: map['is_active'] ?? false,
       children: (map['children'] as List? ?? [])
           .whereType<Map>()
