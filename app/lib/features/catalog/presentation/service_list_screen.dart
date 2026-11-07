@@ -91,12 +91,16 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     if (_query.trim().isEmpty) return _services;
     final lower = _query.trim().toLowerCase();
     return _services
-        .where(
-          (s) =>
+        .where((s) {
+          final beautyType = widget.initialAnswers['beauty_type']?.toString();
+          if (beautyType == "Men's Beauty" && s.audience != 'men' && s.audience != 'all') return false;
+          if (beautyType == "Women's Beauty" && s.audience != 'women' && s.audience != 'all') return false;
+          if (beautyType == 'Common Services' && s.audience != 'all') return false;
+          return
               s.title.toLowerCase().contains(lower) ||
               s.description?.toLowerCase().contains(lower) == true ||
-              s.categoryName.toLowerCase().contains(lower),
-        )
+              s.categoryName.toLowerCase().contains(lower);
+        })
         .toList();
   }
 
