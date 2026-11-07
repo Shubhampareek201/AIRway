@@ -205,14 +205,42 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  void _openCatalogService(Service service, int? addressId) {
+  Category? _rootCategoryForService(int categoryId) {
+    bool containsCategory(Category category) {
+      if (category.id == categoryId) return true;
+      return category.children.any(containsCategory);
+    }
+    for (final root in _catalogCategories) {
+      if (containsCategory(root)) return root;
+    }
+    return null;
+  }
+
+  Future<void> _openCatalogService(Service service, int? addressId) async {
     _searchFocus.unfocus();
+    var answers = <String, dynamic>{};
+    final root = _rootCategoryForService(service.categoryId);
+    if (root != null && root.customerFlowSteps.isNotEmpty) {
+      final selected = await Navigator.push<Map<String, dynamic>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CategoryDecisionScreen(
+            categoryTitle: root.title,
+            steps: root.customerFlowSteps,
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      answers = selected;
+    }
+    if (!mounted) return;
     Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => catalog.ServiceDetailScreen(
           serviceId: service.id,
           addressId: addressId,
+          initialAnswers: answers,
         ),
       ),
     );
