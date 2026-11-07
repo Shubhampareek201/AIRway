@@ -157,6 +157,22 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 if (service.audience != 'all')
                   _infoRow(Icons.person_rounded, service.audienceDisplay),
+                if (service.bookingMode == 'inspection' || service.pricingType == 'quote')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(13),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7E8),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Inspection required. Any displayed visit fee is for the inspection; the final job quote will be shared after assessment.',
+                        style: TextStyle(fontSize: 12, height: 1.45, color: Color(0xFF77551E)),
+                      ),
+                    ),
+                  ),
                 if (service.requiresFemaleWorker)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
