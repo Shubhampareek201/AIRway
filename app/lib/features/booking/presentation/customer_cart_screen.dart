@@ -72,7 +72,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   }
 
   Future<void> chooseSchedule(int id) async {
-    final selectedItem = items.where((row) => row['id'] == id).firstOrNull;
+    Map<String, dynamic>? selectedItem;
+    for (final row in items) {
+      if (row['id'] == id) {
+        selectedItem = row;
+        break;
+      }
+    }
     final serviceId = int.tryParse(selectedItem?['service']?.toString() ?? '');
     final addressId = int.tryParse(cart?['address']?.toString() ?? '');
     if (selectedItem == null || serviceId == null || addressId == null) {
