@@ -10,7 +10,7 @@ from .models import (
 class VariantInline(TabularInline):
     model = ServiceVariant
     extra = 0
-    fields = ("title", "title_hi", "description", "image", "attributes", "mrp", "price", "duration_minutes", "sort_order", "is_active")
+    fields = ("title", "title_hi", "description", "included_tasks", "image", "attributes", "mrp", "price", "duration_minutes", "sort_order", "is_active")
     show_change_link = True
 
 
