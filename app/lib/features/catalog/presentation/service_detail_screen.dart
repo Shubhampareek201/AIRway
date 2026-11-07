@@ -281,10 +281,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           .where((image) => image.isNotEmpty),
     ];
     if (imageUrls.isEmpty) {
-      imageUrls.add(CatalogImageResolver.forService(
+      final fallback = CatalogImageResolver.forService(
         title: service.title,
         categoryName: service.categoryName,
-      ));
+      );
+      if (fallback != null) imageUrls.add(fallback);
     }
     if (imageUrls.isEmpty) {
       return SliverToBoxAdapter(
@@ -347,15 +348,25 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         if (v.title.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: Image.network(
-              v.image?.isNotEmpty == true
-                  ? v.image!
-                  : CatalogImageResolver.forService(title: v.title, categoryName: categoryName),
-              width: 76,
-              height: 76,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _optionImagePlaceholder(),
-            ),
+            child: (v.image?.isNotEmpty == true ||
+                    CatalogImageResolver.forService(
+                          title: v.title,
+                          categoryName: categoryName,
+                        ) !=
+                        null)
+                ? Image.network(
+                    v.image?.isNotEmpty == true
+                        ? v.image!
+                        : CatalogImageResolver.forService(
+                            title: v.title,
+                            categoryName: categoryName,
+                          )!,
+                    width: 76,
+                    height: 76,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _optionImagePlaceholder(),
+                  )
+                : _optionImagePlaceholder(),
           )
         else
           _optionImagePlaceholder(),
@@ -431,15 +442,26 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         if (a.title.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              a.image?.isNotEmpty == true
-                  ? a.image!
-                  : CatalogImageResolver.forService(title: a.title, categoryName: categoryName),
-              width: 58,
-              height: 58,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _optionImagePlaceholder(size: 58),
-            ),
+            child: (a.image?.isNotEmpty == true ||
+                    CatalogImageResolver.forService(
+                          title: a.title,
+                          categoryName: categoryName,
+                        ) !=
+                        null)
+                ? Image.network(
+                    a.image?.isNotEmpty == true
+                        ? a.image!
+                        : CatalogImageResolver.forService(
+                            title: a.title,
+                            categoryName: categoryName,
+                          )!,
+                    width: 58,
+                    height: 58,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _optionImagePlaceholder(size: 58),
+                  )
+                : _optionImagePlaceholder(size: 58),
           )
         else
           _optionImagePlaceholder(size: 58),
