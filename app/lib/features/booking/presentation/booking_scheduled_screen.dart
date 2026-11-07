@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
+import 'package:airway/features/location/presentation/address_picker_screen.dart';
+import 'package:airway/features/location/presentation/location_selection_screen.dart';
 
 class _Ui {
   static const violet = Color(0xFF315C46);
@@ -338,6 +341,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         slivers.addAll([
           _sectionHeader('Select service address'),
           _addressPicker(),
+          _addAddressButton(),
         ]);
         break;
       case 'Summary':
@@ -441,6 +445,49 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       ),
     );
   }
+
+  Future<void> _addAddress() async {
+    final current = _addresses.firstWhere(
+      (address) => address['id'] == _selectedAddressId,
+      orElse: () => <String, dynamic>{},
+    );
+    final latitude = double.tryParse(current['latitude']?.toString() ?? '') ?? 24.93;
+    final longitude = double.tryParse(current['longitude']?.toString() ?? '') ?? 75.59;
+    final result = await Navigator.of(context).push<AddressPickerResult>(
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(
+          mapCenter: ll.LatLng(latitude, longitude),
+        ),
+      ),
+    );
+    if (result?.location == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LocationSelectionScreen(initialLocation: result!.location),
+      ),
+    );
+    if (!mounted) return;
+    final refreshed = await _loadAddresses();
+    if (refreshed.isEmpty || !mounted) return;
+    setState(() => _addresses = refreshed);
+    final preferred = refreshed.firstWhere(
+      (address) => address['is_default'] == true,
+      orElse: () => refreshed.last,
+    );
+    final id = int.tryParse(preferred['id']?.toString() ?? '');
+    if (id != null) await _changeAddress(id);
+  }
+
+  Widget _addAddressButton() => SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      child: OutlinedButton.icon(
+        onPressed: _addressCheckBusy ? null : _addAddress,
+        icon: const Icon(Icons.add_location_alt_outlined),
+        label: const Text('Add a new address'),
+      ),
+    ),
+  );
 
   Widget _addressPicker() {
     if (_addresses.isEmpty) {
