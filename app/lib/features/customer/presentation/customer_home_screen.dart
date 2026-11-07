@@ -183,21 +183,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final isBeauty = categoryIdentity.contains('beauty') ||
         categoryIdentity.contains('salon') ||
         categoryIdentity.contains('wellness');
-    if (isBeauty) {
-      Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceListScreen(
-            categoryId: category.id,
-            categoryTitle: category.title,
-            addressId: addressId,
-            initialAnswers: answers,
-            includeDescendants: true,
-          ),
-        ),
-      );
-      return;
-    }
     if (category.children.isNotEmpty) {
       Navigator.push<void>(
         context,
