@@ -53,6 +53,7 @@ class Category {
   final String title;
   final String? titleHi;
   final String slug;
+  final int? parentId;
   final String? image;
   final List<Map<String, dynamic>> flowSteps;
   final bool isActive;
@@ -63,6 +64,7 @@ class Category {
     required this.title,
     this.titleHi,
     required this.slug,
+    this.parentId,
     this.image,
     this.flowSteps = const [],
     required this.isActive,
@@ -73,6 +75,7 @@ class Category {
   /// for the four launch categories and can be replaced from the Admin panel.
   List<Map<String, dynamic>> get customerFlowSteps {
     if (flowSteps.isNotEmpty) return flowSteps;
+    if (parentId != null) return const [];
     final identity = '${slug.toLowerCase()} ${title.toLowerCase()}';
     if (identity.contains('car') || identity.contains('vehicle')) {
       return [
@@ -126,6 +129,7 @@ class Category {
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
       slug: map['slug'] ?? '',
+      parentId: int.tryParse(map['parent']?.toString() ?? ''),
       image: _resolveMediaUrl(map['image']),
       flowSteps: (map['flow_steps'] as List? ?? [])
           .whereType<Map>()
