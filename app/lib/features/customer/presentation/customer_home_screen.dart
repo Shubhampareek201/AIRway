@@ -1316,6 +1316,72 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ),
   );
 
+  String _photoForService(Service service) {
+    final name = '${service.title} ${service.categoryName}'.toLowerCase();
+    if (name.contains('sofa') || name.contains('upholstery')) {
+      return 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('garden') || name.contains('plant') || name.contains('lawn')) {
+      return 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('kitchen')) {
+      return 'https://images.unsplash.com/photo-1600489000022-c2086d79f9d4?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('bathroom')) {
+      return 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('bedroom') || name.contains('living room') || name.contains('home cleaning') || name.contains('cleaning')) {
+      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('car') || name.contains('vehicle') || name.contains('wash')) {
+      return 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('beauty') || name.contains('salon') || name.contains('hair')) {
+      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('electric') || name.contains('wiring')) {
+      return 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('plumb')) {
+      return 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('paint')) {
+      return 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=900&q=85';
+    }
+    if (name.contains('repair') || name.contains('handyman')) {
+      return 'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?auto=format&fit=crop&w=900&q=85';
+    }
+    return 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=900&q=85';
+  }
+
+  String _photoForBanner(String title, int index) {
+    final value = title.toLowerCase();
+    if (value.contains('repair') || value.contains('electric')) {
+      return 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1400&q=88';
+    }
+    if (value.contains('garden') || value.contains('plant')) {
+      return 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1400&q=88';
+    }
+    if (value.contains('sofa') || value.contains('furniture')) {
+      return 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1400&q=88';
+    }
+    if (value.contains('beauty') || value.contains('salon')) {
+      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1400&q=88';
+    }
+    if (value.contains('car')) {
+      return 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=1400&q=88';
+    }
+    if (value.contains('clean') || value.contains('home')) {
+      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1400&q=88';
+    }
+    const defaults = [
+      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1400&q=88',
+      'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=1400&q=88',
+      'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=1400&q=88',
+    ];
+    return defaults[index % defaults.length];
+  }
+
   Widget _popularStrip(int? addressId) {
     if (_catalogLoading && _popularCatalogServices.isEmpty) {
       return const SizedBox(
@@ -1365,7 +1431,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               ? service.image
                               : service.images.isNotEmpty
                                   ? service.images.first.image
-                                  : _categoryImageForService(service);
+                                  : _categoryImageForService(service) ??
+                                      _photoForService(service);
                           if (imageUrl == null || imageUrl.isEmpty) {
                             return Container(
                               color: _Ui.pale,
@@ -1432,23 +1499,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Widget _offerCarousel(int? addressId) {
-    // Admin-managed banner records are preferred. If none are published,
-    // use the first popular service's real uploaded image as a safe fallback.
-    final hasBanners = _homeBanners.isNotEmpty;
-    final fallbackService = _popularCatalogServices
-        .where((service) =>
-            (service.image?.isNotEmpty == true) || service.images.isNotEmpty)
-        .firstOrNull;
-    final fallbackCategoryImage = _catalogCategories
-        .map((category) => category.image)
-        .whereType<String>()
-        .firstOrNull;
+    // Keep the hero directly below search visible even before admin banners
+    // are uploaded. Every fallback image is a real service-related photograph.
+    final adminBanners = _homeBanners;
+    final fallbackTitles = [
+      'Clean Spaces, Happier Days',
+      'Repairs Made Simple',
+      'Professional Care at Your Doorstep',
+    ];
+    final count = adminBanners.isNotEmpty ? adminBanners.length : fallbackTitles.length;
 
-    if (!hasBanners && fallbackService == null && fallbackCategoryImage == null) {
-      return const SizedBox.shrink();
-    }
-
-    final count = hasBanners ? _homeBanners.length : 1;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: SizedBox(
@@ -1457,12 +1517,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           itemCount: count,
           controller: _bannerController,
           itemBuilder: (context, index) {
-            final banner = hasBanners ? _homeBanners[index] : null;
-            final imageUrl = banner?.image ??
-                fallbackService?.image ??
-                fallbackService?.images.firstOrNull?.image ??
-                fallbackCategoryImage;
-            final title = banner?.title ?? 'Clean Spaces, Happier Days';
+            final banner = adminBanners.isNotEmpty ? adminBanners[index] : null;
+            final title = banner?.title.trim().isNotEmpty == true
+                ? banner!.title
+                : fallbackTitles[index % fallbackTitles.length];
+            final imageUrl = banner?.image?.isNotEmpty == true
+                ? banner!.image!
+                : _photoForBanner(title, index);
+
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: ClipRRect(
@@ -1486,13 +1548,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (imageUrl != null && imageUrl.isNotEmpty)
-                          Image.network(
-                            imageUrl,
+                        Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Image.network(
+                            _photoForBanner(title, index),
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
-                                const ColoredBox(color: Color(0xFFE7F2EC)),
+                                const ColoredBox(color: Color(0xFF245C45)),
                           ),
+                        ),
                         const DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
