@@ -12,6 +12,7 @@ class BookingApi {
     String path, {
     String method = 'GET',
     Map<String, dynamic>? data,
+    Set<int> acceptedStatusCodes = const {},
   }) async {
     final session = await SecureSessionStorage.readSession();
 
@@ -79,7 +80,8 @@ class BookingApi {
       result = await call(access);
     }
 
-    if (result.status < 200 || result.status >= 300) {
+    if ((result.status < 200 || result.status >= 300) &&
+        !acceptedStatusCodes.contains(result.status)) {
       throw Exception(
         'AIRway request failed (${result.status}): ${result.body}',
       );
@@ -288,6 +290,7 @@ class BookingApi {
       '/api/v1/bookings/check_availability/',
       method: 'POST',
       data: data,
+      acceptedStatusCodes: const {409},
     );
 
     return result['available'] == true;
