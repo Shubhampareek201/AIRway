@@ -57,6 +57,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
+  List<ServiceVariant> _matchingVariants(Service service) {
+    return service.variants.where((variant) {
+      if (variant.attributes.isEmpty) return true;
+      return variant.attributes.entries.every((entry) =>
+          widget.initialAnswers[entry.key]?.toString() == entry.value.toString());
+    }).toList();
+  }
+
   void _navigateToBooking() {
     if (_service == null) return;
 
@@ -185,7 +193,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           ),
         ),
-        if (service.variants.isNotEmpty) ...[
+        if (_matchingVariants(service).isNotEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -203,10 +211,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             child: ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: service.variants.length,
+              itemCount: _matchingVariants(service).length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
-                final v = service.variants[index];
+                final v = _matchingVariants(service)[index];
                 return _variantCard(v);
               },
             ),
