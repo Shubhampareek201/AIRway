@@ -13,11 +13,15 @@ class CatalogImageResolver {
     final c = _normalize(categoryName);
     final a = audience.toLowerCase();
 
-    // Beauty audience is considered before generic beauty treatments.
-    if (a == 'men' || t.contains('men ')) {
+    // Audience-specific salon imagery applies only to hair/grooming work.
+    // It must not override title-specific images for nails, facials, waxing,
+    // threading, or other services just because their audience is men/women.
+    final isHairOrGrooming =
+        c.contains('hair') || c.contains('grooming');
+    if (isHairOrGrooming && (a == 'men' || t.contains('men '))) {
       return _photo('1503951914875-452162b0f3f1');
     }
-    if (a == 'women' || t.contains('women ')) {
+    if (isHairOrGrooming && (a == 'women' || t.contains('women '))) {
       return _photo('1560066984-138dadb4c035');
     }
 
