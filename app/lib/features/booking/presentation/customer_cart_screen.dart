@@ -92,9 +92,10 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     for (final row in items) {
       if (row['id'] == id) { item = row; break; }
     }
-    final serviceId = int.tryParse(item?['service']?.toString() ?? '');
+    final selectedItem = item;
+    final serviceId = int.tryParse(selectedItem?['service']?.toString() ?? '');
     final addressId = int.tryParse(cart?['address']?.toString() ?? '');
-    if (item == null || serviceId == null || addressId == null) {
+    if (selectedItem == null || serviceId == null || addressId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select a valid service and address first.')),
       );
@@ -114,7 +115,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       final checks = await Future.wait(candidates.map((slot) {
         final scheduledAt = DateTime(date.year, date.month, date.day, slot.hour);
         DateTime? dropAt;
-        if (item['booking_mode'] == 'pickup_drop') {
+        if (selectedItem['booking_mode'] == 'pickup_drop') {
           final drop = dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0);
           dropAt = DateTime(date.year, date.month, date.day, drop.hour, drop.minute);
           if (!dropAt.isAfter(scheduledAt)) return Future<bool>.value(false);
@@ -123,9 +124,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           serviceId: serviceId,
           scheduledAt: scheduledAt,
           dropScheduledAt: dropAt,
-          variantId: int.tryParse(item['variant']?.toString() ?? ''),
+          variantId: int.tryParse(selectedItem['variant']?.toString() ?? ''),
           addressId: addressId,
-          bookingMode: item['booking_mode']?.toString() ?? 'scheduled',
+          bookingMode: selectedItem['booking_mode']?.toString() ?? 'scheduled',
         );
       }));
       final available = <TimeOfDay>[
@@ -387,6 +388,12 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(item['service_title']?.toString() ?? 'Service', style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
             if ((item['variant_title'] ?? '').toString().isNotEmpty) Text(item['variant_title'].toString(), style: const TextStyle(fontSize: 12, color: sub)),
+            if (item['category_answers'] is Map)
+              for (final entry in (item['category_answers'] as Map).entries)
+                Text(
+                  '${entry.key.toString().replaceAll('_', ' ')}: ${entry.value}',
+                  style: const TextStyle(fontSize: 11, color: sub),
+                ),
             Text('Qty ' + item['quantity'].toString() + ' • ₹' + number(item['line_total']).toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w800, color: violet, fontSize: 12)),
           ])),
           IconButton(onPressed: busy ? null : () => removeItem(id), icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
