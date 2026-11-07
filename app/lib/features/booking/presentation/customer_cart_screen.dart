@@ -126,6 +126,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           dropScheduledAt: dropAt,
           variantId: int.tryParse(selectedItem['variant']?.toString() ?? ''),
           addressId: addressId,
+          quantity: int.tryParse(selectedItem['quantity']?.toString() ?? '1') ?? 1,
           bookingMode: selectedItem['booking_mode']?.toString() ?? 'scheduled',
         );
       }));
