@@ -36,6 +36,21 @@ class CatalogImageResolver {
         c.contains('switch socket') || c.contains('wiring') ||
         c.contains('inverter') || c.contains('geyser');
     if (isElectrical) {
+      // Fan services use distinct Commons photographs per fan type. The
+      // source file pages and licence/author details are recorded in
+      // ELECTRICAL_IMAGE_ATTRIBUTION.md.
+      if (t == 'ceiling fan') {
+        return _commonsPhoto('Fan,ceiling,Tamil Nadu493.jpg');
+      }
+      if (t == 'wall fan') {
+        return _commonsPhoto('Wall Mount Electric Fan.jpg');
+      }
+      if (t == 'exhaust fan') {
+        return _commonsPhoto('Exhaust fan.jpg');
+      }
+      if (t == 'decorative fan') {
+        return _commonsPhoto('Ceiling fan with lamp.jpg');
+      }
       if (_has(t, ['fan'])) return _photo('1706973320036-b5049d93b580');
       if (_has(t, ['bulb', 'led'])) return _photo('1674659719067-8735479ba10c');
       if (_has(t, ['wall light', 'wall lamp', 'sconce'])) {
@@ -118,6 +133,9 @@ class CatalogImageResolver {
 
   static bool _has(String value, List<String> terms) =>
       terms.any((term) => value.contains(term));
+
+  static String _commonsPhoto(String fileName) =>
+      'https://commons.wikimedia.org/wiki/Special:FilePath/${Uri.encodeComponent(fileName)}?width=900';
 
   static String _photo(String id) =>
       'https://images.unsplash.com/photo-$id?auto=format&fit=crop&w=900&q=85';
