@@ -66,7 +66,7 @@ class ServiceVariantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ServiceVariant
-        fields = ["id", "title", "title_hi", "mrp", "price", "discount_percent", "duration_minutes", "sort_order", "is_active"]
+        fields = ["id", "title", "title_hi", "description", "mrp", "price", "discount_percent", "duration_minutes", "sort_order", "is_active"]
         read_only_fields = ["discount_percent"]
 
 
@@ -75,7 +75,7 @@ class AddOnSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AddOn
-        fields = ["id", "title", "title_hi", "mrp", "price", "discount_percent", "sort_order", "is_active"]
+        fields = ["id", "title", "title_hi", "description", "mrp", "price", "discount_percent", "sort_order", "is_active"]
         read_only_fields = ["discount_percent"]
 
 
