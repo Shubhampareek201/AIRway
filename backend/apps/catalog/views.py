@@ -1,10 +1,12 @@
 from rest_framework import generics, permissions
 from rest_framework.exceptions import ValidationError
+from django.db.models import Q
+from django.utils import timezone
 
 from apps.accounts.models import Address
 from apps.workers.eligibility import eligible_worker_profiles
-from .models import Category, CityService, Service
-from .serializers import CategoryTreeSerializer, ServiceSerializer
+from .models import Banner, Category, CityService, Service
+from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer
 
 
 def _location_from_address(request):
@@ -164,3 +166,24 @@ class ServiceDetailView(generics.RetrieveAPIView):
             city, zone = location
             queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
         return queryset
+
+
+class BannerListView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = BannerSerializer
+
+    def get_queryset(self):
+        now = timezone.now()
+        queryset = Banner.objects.filter(is_active=True).filter(
+            Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+            Q(ends_at__isnull=True) | Q(ends_at__gte=now),
+        ).select_related("link_service", "city")
+
+        location = _location_from_address(self.request)
+        if location is None:
+            queryset = queryset.filter(city__isnull=True)
+        else:
+            city, _zone = location
+            queryset = queryset.filter(Q(city__isnull=True) | Q(city=city))
+
+        return queryset.order_by("sort_order", "id")
