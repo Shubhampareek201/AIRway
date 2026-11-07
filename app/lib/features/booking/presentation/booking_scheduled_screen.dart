@@ -599,6 +599,20 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (variant.image?.isNotEmpty == true)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          variant.image!,
+                          height: 92,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _choiceImagePlaceholder(),
+                        ),
+                      )
+                    else
+                      _choiceImagePlaceholder(),
+                    const SizedBox(height: 10),
                     Text(
                       variant.title,
                       style: const TextStyle(
@@ -703,6 +717,20 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                           : null,
                     ),
                     const SizedBox(width: 12),
+                    if (addon.image?.isNotEmpty == true)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          addon.image!,
+                          width: 62,
+                          height: 62,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _choiceImagePlaceholder(size: 62),
+                        ),
+                      )
+                    else
+                      _choiceImagePlaceholder(size: 62),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,14 +792,54 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
             Widget input;
             switch (field.fieldType) {
               case 'select':
-                input = DropdownButtonFormField<String>(
-                  value: _formAnswers[field.key]?.toString(),
-                  decoration: decoration,
-                  items: field.options.map((option) {
-                    final value = option.toString();
-                    return DropdownMenuItem(value: value, child: Text(value));
+              case 'choice':
+                input = Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: field.options.map((rawOption) {
+                    final option = rawOption is Map
+                        ? Map<String, dynamic>.from(rawOption)
+                        : <String, dynamic>{'label': rawOption.toString(), 'value': rawOption.toString()};
+                    final value = option['value']?.toString() ?? option['label']?.toString() ?? '';
+                    final label = option['label']?.toString() ?? value;
+                    final image = option['image']?.toString();
+                    final selected = _formAnswers[field.key]?.toString() == value;
+                    return GestureDetector(
+                      onTap: () => setState(() => _formAnswers[field.key] = value),
+                      child: Container(
+                        width: (MediaQuery.of(context).size.width - 50) / 2,
+                        decoration: BoxDecoration(
+                          color: selected ? _Ui.pale : Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: selected ? _Ui.violet : _Ui.line, width: selected ? 2 : 1),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (image != null && image.isNotEmpty)
+                              Image.network(
+                                image,
+                                height: 86,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => _choiceImagePlaceholder(height: 86),
+                              )
+                            else
+                              _choiceImagePlaceholder(height: 86),
+                            Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _Ui.ink))),
+                                  if (selected) const Icon(Icons.check_circle, color: _Ui.violet, size: 18),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
                   }).toList(),
-                  onChanged: (value) => setState(() => _formAnswers[field.key] = value),
                 );
                 break;
               case 'photo':
@@ -802,6 +870,14 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       ),
     );
   }
+
+  Widget _choiceImagePlaceholder({double height = 86, double? size}) => Container(
+    height: height,
+    width: size,
+    color: _Ui.pale,
+    alignment: Alignment.center,
+    child: const Icon(Icons.photo_outlined, color: _Ui.sub, size: 28),
+  );
 
   Widget _summaryCard() {
     final service = _service!;
