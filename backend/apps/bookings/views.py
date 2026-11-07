@@ -500,6 +500,7 @@ class CustomerCheckoutView(APIView):
                     "variant_title": item.variant.title if item.variant else None,
                     "cart_item_id": item.id,
                     "form_answers": item.form_answers,
+                    "category_answers": item.category_answers,
                     "notes": item.notes,
                 },
                 pricing_snapshot=base_snapshot,
