@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
+import 'package:airway/features/booking/presentation/booking_tracking_screen.dart';
 
 class BookingListScreen extends StatefulWidget {
   const BookingListScreen({super.key});
@@ -54,42 +55,18 @@ class _BookingListScreenState extends State<BookingListScreen> {
 
   Future<void> track(Booking booking) async {
     setState(() => trackingId = booking.id);
-    try {
-      final result = await BookingApi.trackBooking(booking.id);
-      if (!mounted) return;
-      setState(() => trackingId = null);
-      final assigned = result['is_assigned'] == true;
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        backgroundColor: Colors.white,
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.fromLTRB(22, 8, 22, 28),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Service tracking', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: ink)),
-            const SizedBox(height: 14),
-            Text('Booking #' + booking.id.toString() + ' • ' + booking.serviceTitle, style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
-            const SizedBox(height: 12),
-            if (assigned) ...[
-              const Text('Professional assigned', style: TextStyle(color: sub)),
-              const SizedBox(height: 6),
-              Text(result['worker_name']?.toString() ?? 'Service professional', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: violet)),
-              if (result['worker_phone'] != null) Text(result['worker_phone'].toString(), style: const TextStyle(color: sub)),
-              if (result['worker_rating'] != null) Text('Rating: ' + result['worker_rating'].toString(), style: const TextStyle(color: sub)),
-              const SizedBox(height: 10),
-              Text('Status: ' + BookingStatus.display(result['status']?.toString() ?? booking.status), style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
-            ] else
-              const Text('We are finding an available professional for your service. Please check again shortly.', style: TextStyle(color: sub, height: 1.4)),
-            const SizedBox(height: 18),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))),
-          ]),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BookingTrackingScreen(
+          bookingId: booking.id,
+          serviceTitle: booking.serviceTitle,
+          initialStatus: booking.status,
         ),
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() => trackingId = null);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not load tracking: ' + e.toString())));
-      }
+      ),
+    );
+    if (mounted) {
+      setState(() => trackingId = null);
+      await loadBookings();
     }
   }
 
