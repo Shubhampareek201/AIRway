@@ -194,6 +194,7 @@ class ServiceVariant {
   final String? description;
   final String? image;
   final Map<String, dynamic> attributes;
+  final List<String> includedTasks;
   final double mrp;
   final double price;
   final int discountPercent;
@@ -208,6 +209,7 @@ class ServiceVariant {
     this.description,
     this.image,
     this.attributes = const {},
+    this.includedTasks = const [],
     required this.mrp,
     required this.price,
     required this.discountPercent,
@@ -224,6 +226,7 @@ class ServiceVariant {
       description: map['description']?.toString(),
       image: _resolveMediaUrl(map['image']),
       attributes: Map<String, dynamic>.from(map['attributes'] as Map? ?? {}),
+      includedTasks: (map['included_tasks'] as List? ?? []).map((item) => item.toString()).toList(),
       mrp: double.tryParse(map['mrp'].toString()) ?? 0,
       price: double.tryParse(map['price'].toString()) ?? 0,
       discountPercent: map['discount_percent'] ?? 0,
