@@ -357,6 +357,20 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(v.description!, style: const TextStyle(fontSize: 11, color: _Ui.sub)),
                 ),
+              if (v.includedTasks.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...v.includedTasks.map((task) => Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.check_circle_outline, size: 14, color: _Ui.violet),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(task, style: const TextStyle(fontSize: 11, color: _Ui.ink))),
+                    ],
+                  ),
+                )),
+              ],
               if (v.durationMinutes != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
