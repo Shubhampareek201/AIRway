@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart' as ll;
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/location/presentation/address_picker_screen.dart';
@@ -210,6 +211,15 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
 
   void _continueFlow() {
     final service = _service!;
+    final serviceImage = service.image?.isNotEmpty == true
+        ? service.image
+        : service.images.isNotEmpty
+            ? service.images.first.image
+            : CatalogImageResolver.forService(
+                title: service.title,
+                categoryName: service.categoryName,
+                audience: service.audience,
+              );
     final steps = _flowSteps(service);
     final current = steps[_flowStep];
     if (current == 'Package' &&
@@ -252,12 +262,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     final step = steps[_flowStep];
     final isLast = _flowStep == steps.length - 1;
     final slivers = <Widget>[
-      if ((service.image?.isNotEmpty ?? false) || service.images.isNotEmpty)
-        _imageSliver(
-          service.image?.isNotEmpty == true
-              ? service.image
-              : service.images.first.image,
-        ),
+      if (serviceImage?.isNotEmpty == true) _imageSliver(serviceImage),
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
