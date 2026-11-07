@@ -86,6 +86,7 @@ class DispatcherService:
             duration_minutes=duration_minutes,
             drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
             exclude_booking_id=booking.id,
+            exclude_customer_id=booking.customer_id,
         )
 
         if not eligible_workers:
