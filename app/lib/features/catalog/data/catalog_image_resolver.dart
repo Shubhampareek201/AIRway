@@ -2,9 +2,9 @@
 /// a service image. Uploaded catalogue media always takes priority.
 class CatalogImageResolver {
   static String forService({required String title, required String categoryName}) {
-    final title = title.toLowerCase();
+    final normalizedTitle = title.toLowerCase();
     final category = categoryName.toLowerCase();
-    final name = '$title $category';
+    final name = '$normalizedTitle $category';
 
     // Match the actual service first. Do not let a broad category word such
     // as "cleaning" override a more specific car, electrical or beauty image.
