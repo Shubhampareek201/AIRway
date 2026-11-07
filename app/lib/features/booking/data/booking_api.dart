@@ -265,6 +265,7 @@ class BookingApi {
     required DateTime scheduledAt,
     DateTime? dropScheduledAt,
     int? variantId,
+    int? addressId,
     String bookingMode = 'scheduled',
   }) async {
     final data = {
@@ -272,6 +273,7 @@ class BookingApi {
       'scheduled_at': scheduledAt.toIso8601String(),
       'booking_mode': bookingMode,
     };
+    if (addressId != null) data['address_id'] = addressId;
 
     if (dropScheduledAt != null) {
       data['drop_scheduled_at'] = dropScheduledAt.toIso8601String();
