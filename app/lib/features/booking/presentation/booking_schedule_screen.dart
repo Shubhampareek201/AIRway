@@ -92,7 +92,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
     });
 
     final candidates = <TimeOfDay>[];
-    for (var hour = 9; hour <= 19; hour++) {
+    for (var hour = 9; hour <= 18; hour++) {
       final slot = TimeOfDay(hour: hour, minute: 0);
       final startsAt = _at(slot);
       if (!startsAt.isAfter(DateTime.now())) continue;
