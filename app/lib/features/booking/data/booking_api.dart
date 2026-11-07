@@ -172,7 +172,7 @@ class BookingApi {
     final data = <String, dynamic>{
       'service': serviceId,
       'booking_mode': bookingMode,
-      'scheduled_at': scheduledAt.toIso8601String(),
+      'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'address_id': addressId,
     };
 
@@ -180,7 +180,7 @@ class BookingApi {
       data['variant'] = variantId;
     }
     if (dropScheduledAt != null) {
-      data['drop_scheduled_at'] = dropScheduledAt.toIso8601String();
+      data['drop_scheduled_at'] = dropScheduledAt.toUtc().toIso8601String();
     }
     if (addonIds != null && addonIds.isNotEmpty) {
       data['addon_ids'] = addonIds;
