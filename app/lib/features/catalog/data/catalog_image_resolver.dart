@@ -27,7 +27,24 @@ class CatalogImageResolver {
     if (_has(t, ['interior cleaning', 'inside cleaning', 'room cleaning', 'full home', 'deep home', 'house cleaning', 'home cleaning'])) {
       return _photo('1581578731548-c64695cc6952');
     }
-    if (_has(t, ['fan'])) return _photo('1558618666-fcd25c85cd64');
+    // Electrical: use real, title-relevant Unsplash photos that were opened
+    // and visually checked during implementation. These are separate from the
+    // older generic category fallbacks below.
+    if (_has(t, ['fan'])) {
+      // One verified ceiling-fan photograph is suitable for the fan service
+      // family; do not let a broad "light" match steal fan titles.
+      return _photo('1706973320036-b5049d93b580');
+    }
+    if (_has(t, ['bulb', 'led'])) {
+      return _photo('1674659719067-8735479ba10c');
+    }
+    if (_has(t, ['wall light', 'wall lamp', 'sconce'])) {
+      return _photo('1747655760627-c53acf6b9b8c');
+    }
+    if (_has(t, ['tube light', 'panel light', 'ceiling light', 'chandelier',
+                 'decorative light', 'outdoor light', 'strip light', 'lighting'])) {
+      return _photo('1724054913772-afffd0933162');
+    }
     if (_has(t, ['nail', 'manicure', 'pedicure'])) return _photo('1610992015732-2449b76344bc');
     if (_has(t, ['eyebrow', 'threading', 'upper lip', 'lower lip', 'chin thread'])) return _photo('1512290923902-8a9f81dc236c');
     if (_has(t, ['wax'])) return _photo('1512290923902-8a9f81dc236c');
