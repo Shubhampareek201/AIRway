@@ -15,14 +15,10 @@ class CatalogImageResolver {
 
     // Beauty audience is considered before generic beauty treatments.
     if (a == 'men' || t.contains('men ')) {
-      if (_has(t, ['haircut', 'hair cut', 'hair styling', 'hair wash', 'beard', 'shave', 'grooming'])) {
-        return _photo('1503951914875-452162b0f3f1');
-      }
+      return _photo('1503951914875-452162b0f3f1');
     }
     if (a == 'women' || t.contains('women ')) {
-      if (_has(t, ['hair', 'facial', 'makeup', 'thread', 'wax', 'beauty', 'bridal', 'saree'])) {
-        return _photo('1560066984-138dadb4c035');
-      }
+      return _photo('1560066984-138dadb4c035');
     }
 
     // Exact/high-specificity jobs must be tested before broad terms.
