@@ -223,6 +223,32 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (offer.serviceTitle?.isNotEmpty == true)
+              Text(offer.serviceTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
+            if (offer.variantTitle?.isNotEmpty == true || offer.quantity > 1)
+              Text(
+                [if (offer.variantTitle?.isNotEmpty == true) offer.variantTitle!, 'Qty ${offer.quantity}'].join(' • '),
+                style: const TextStyle(fontSize: 12),
+              ),
+            if (offer.scheduledAt != null)
+              Text('Requested: ${_formatDateTime(offer.scheduledAt!)}'),
+            if (offer.serviceAddress?.isNotEmpty == true)
+              Text('Area: ${offer.serviceAddress}', maxLines: 2, overflow: TextOverflow.ellipsis),
+            for (final entry in offer.customerAnswers.entries)
+              Text(
+                '${entry.key.replaceAll('_', ' ')}: ${entry.value}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            for (final answer in offer.formResponses)
+              Text(
+                '${answer['label'] ?? answer['key']}: ${answer['value']}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            if (offer.addons.isNotEmpty)
+              Text(
+                'Add-ons: ${offer.addons.map((addon) => addon['title']).join(', ')}',
+                style: const TextStyle(fontSize: 12),
+              ),
             Text('Offered: ${_formatDateTime(offer.offeredAt)}'),
             if (offer.expiresAt != null && offer.status == WorkerOffer.pending)
               _buildExpiryCountdown(offer),
