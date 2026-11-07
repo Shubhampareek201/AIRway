@@ -178,11 +178,12 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
 
             duration = variant.duration_minutes if variant else service.duration_minutes
+            duration = (duration or 60) * data.get("quantity", 1)
 
             check_slot_availability(
                 service=service,
                 scheduled_at=scheduled_at,
-                duration_minutes=duration or 60,
+                duration_minutes=duration,
                 booking_mode=booking_mode,
                 drop_scheduled_at=drop_scheduled_at,
             )
@@ -431,6 +432,7 @@ class CustomerCheckoutView(APIView):
                 "addon_ids": [row["id"] for row in item.addon_selections],
                 "form_responses": item.form_answers,
                 "category_answers": item.category_answers,
+                "quantity": item.quantity,
                 "notes": item.notes,
             }
             serializer = BookingCreateSerializer(
