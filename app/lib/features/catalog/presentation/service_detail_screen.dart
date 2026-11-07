@@ -281,6 +281,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           .where((image) => image.isNotEmpty),
     ];
     if (imageUrls.isEmpty) {
+      imageUrls.add(CatalogImageResolver.forService(
+        title: service.title,
+        categoryName: service.categoryName,
+      ));
+    }
+    if (imageUrls.isEmpty) {
       return SliverToBoxAdapter(
         child: Container(
           height: 190,
