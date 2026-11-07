@@ -41,6 +41,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   List<Map<String, dynamic>> _addresses = [];
   List<Category> _catalogCategories = [];
   List<Service> _popularCatalogServices = [];
+  List<CatalogBanner> _homeBanners = [];
   bool _catalogLoading = false;
   String? _catalogError;
   bool _loading = true;
@@ -135,17 +136,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         // Never keep the previous city's catalog visible while a new one loads.
         _catalogCategories = [];
         _popularCatalogServices = [];
+        _homeBanners = [];
       });
     }
     try {
       final results = await Future.wait([
         CatalogApi.listCategories(addressId: addressId),
         CatalogApi.listServices(popular: true, addressId: addressId),
+        CatalogApi.listBanners(addressId: addressId),
       ]);
       if (!mounted) return;
       setState(() {
         _catalogCategories = results[0] as List<Category>;
         _popularCatalogServices = results[1] as List<Service>;
+        _homeBanners = results[2] as List<CatalogBanner>;
       });
     } catch (e) {
       if (!mounted) return;
@@ -533,7 +537,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               child: _buildWorkerHomeStatusCard(),
             ),
           if (_query.isEmpty) ...[
-            _offerCarousel(),
+            _offerCarousel(addressId),
             _sectionHeading('Service Categories', onSeeAll: _openAllServices),
             _categoryStrip(addressId),
             _sectionHeading('Popular Services', onSeeAll: _openAllServices),
@@ -1396,95 +1400,129 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _offerCarousel() {
+  Widget _offerCarousel(int? addressId) {
+    // Admin-managed banner records are preferred. If none are published,
+    // use the first popular service's real uploaded image as a safe fallback.
+    final hasBanners = _homeBanners.isNotEmpty;
+    final fallbackService = _popularCatalogServices
+        .where((service) =>
+            (service.image?.isNotEmpty == true) || service.images.isNotEmpty)
+        .firstOrNull;
+
+    if (!hasBanners && fallbackService == null) {
+      return const SizedBox.shrink();
+    }
+
+    final count = hasBanners ? _homeBanners.length : 1;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Material(
-        color: const Color(0xFFE7F2EC),
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: _openAllServices,
-          child: SizedBox(
-            height: 174,
-            child: Stack(
-              children: [
-                if (_popularCatalogServices.isNotEmpty &&
-                    _popularCatalogServices.first.image?.isNotEmpty == true)
-                  Positioned.fill(
-                    child: Image.network(
-                      _popularCatalogServices.first.image!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
-                  ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xE6FFFFFF),
-                          const Color(0xBFFFFFFF),
-                          Colors.transparent,
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 15),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'Clean Spaces',
-                        style: TextStyle(
-                          color: _Ui.ink,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const Text(
-                        'Happier Days',
-                        style: TextStyle(
-                          color: _Ui.ink,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      const Text(
-                        'A cleaner home for a brighter you.',
-                        style: TextStyle(color: _Ui.sub, fontSize: 11.5),
-                      ),
-                      const SizedBox(height: 11),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _Ui.violet,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text(
-                          'Book Now',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
+      child: SizedBox(
+        height: 174,
+        child: PageView.builder(
+          itemCount: count,
+          controller: PageController(viewportFraction: 0.96),
+          itemBuilder: (context, index) {
+            final banner = hasBanners ? _homeBanners[index] : null;
+            final imageUrl = banner?.image ??
+                fallbackService?.image ??
+                fallbackService?.images.firstOrNull?.image;
+            final title = banner?.title ?? 'Clean Spaces, Happier Days';
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Material(
+                  color: const Color(0xFFE7F2EC),
+                  child: InkWell(
+                    onTap: () {
+                      final serviceId = banner?.linkServiceId;
+                      if (serviceId != null) {
+                        final service = _popularCatalogServices
+                            .where((item) => item.id == serviceId)
+                            .firstOrNull;
+                        if (service != null) {
+                          _openCatalogService(service, addressId);
+                          return;
+                        }
+                      }
+                      _openAllServices();
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (imageUrl != null && imageUrl.isNotEmpty)
+                          Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const ColoredBox(color: Color(0xFFE7F2EC)),
+                          ),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Color(0xE6000000),
+                                Color(0x88000000),
+                                Colors.transparent,
+                              ],
+                              stops: [0, 0.58, 1],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 18, 18, 16),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: SizedBox(
+                              width: 225,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 21,
+                                      height: 1.12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Text(
+                                      'Book Now',
+                                      style: TextStyle(
+                                        color: _Ui.violet,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
