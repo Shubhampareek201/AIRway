@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/presentation/booking_tracking_screen.dart';
 import 'package:airway/features/payment/data/payment_api.dart';
 
 class CustomerOrderScreen extends StatefulWidget {
@@ -227,70 +228,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Future<void> trackService(Map<String, dynamic> row) async {
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null) return;
-    try {
-      final tracking = await BookingApi.trackBooking(bookingId);
-      if (!mounted) return;
-      final assigned = tracking['is_assigned'] == true;
-      final status = tracking['status']?.toString() ??
-          row['booking_status']?.toString() ?? 'pending';
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        backgroundColor: Colors.white,
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Service tracking', style: TextStyle(
-                fontSize: 20, fontWeight: FontWeight.w900, color: ink,
-              )),
-              const SizedBox(height: 6),
-              Text('Booking #$bookingId', style: const TextStyle(color: sub)),
-              const SizedBox(height: 16),
-              _trackingStep('Booking placed', true, 'Your request has been received.'),
-              _trackingStep('Professional assigned',
-                  assigned || status == 'in_progress' || status == 'completed',
-                  assigned ? (tracking['worker_name']?.toString() ?? 'Professional confirmed')
-                      : 'We are finding an available professional.'),
-              _trackingStep('Service started',
-                  status == 'in_progress' || status == 'completed',
-                  status == 'in_progress' || status == 'completed'
-                      ? 'The professional has started the service.'
-                      : 'This step updates when the professional starts the job.'),
-              _trackingStep('Service completed', status == 'completed',
-                  status == 'completed' ? 'Your service is complete.' : 'Waiting for completion.'),
-              const SizedBox(height: 10),
-              if (assigned) ...[
-                Text(tracking['worker_name']?.toString() ?? 'Assigned professional',
-                    style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
-                if (tracking['worker_phone'] != null)
-                  Text(tracking['worker_phone'].toString(), style: const TextStyle(color: sub)),
-              ],
-              const SizedBox(height: 8),
-              const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(Icons.info_outline, size: 17, color: sub),
-                SizedBox(width: 8),
-                Expanded(child: Text(
-                  'Live map location is not available yet. AIRway will show it once worker GPS sharing is connected.',
-                  style: TextStyle(color: sub, fontSize: 12, height: 1.35),
-                )),
-              ]),
-              const SizedBox(height: 16),
-              SizedBox(width: double.infinity, child: FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Done'),
-              )),
-            ],
-          ),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BookingTrackingScreen(
+          bookingId: bookingId,
+          serviceTitle: (row['service'] is Map
+                  ? row['service']['service_title']
+                  : null)?.toString() ??
+              'AIRway Service',
+          initialStatus: row['booking_status']?.toString() ?? 'pending',
         ),
-      );
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load tracking: $e')),
-      );
-    }
+      ),
+    );
+    if (mounted) await loadOrder(showLoader: false);
   }
 
   Widget _trackingStep(String title, bool complete, String detail) {
