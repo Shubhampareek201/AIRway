@@ -178,6 +178,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (selected == null || !mounted) return;
       answers = selected;
     }
+    final categoryIdentity = '${category.slug} ${category.title}'.toLowerCase();
+    final isBeauty = categoryIdentity.contains('beauty') ||
+        categoryIdentity.contains('salon') ||
+        categoryIdentity.contains('wellness');
+    if (isBeauty) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceListScreen(
+            categoryId: category.id,
+            categoryTitle: category.title,
+            addressId: addressId,
+            initialAnswers: answers,
+            includeDescendants: true,
+          ),
+        ),
+      );
+      return;
+    }
     if (category.children.isNotEmpty) {
       Navigator.push<void>(
         context,
@@ -822,6 +841,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return null;
   }
 
+  String _photoForCategory(String name) {
+    final value = name.toLowerCase();
+    if (value.contains('beauty') || value.contains('salon') || value.contains('wellness')) {
+      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=700&auto=format&fit=crop';
+    }
+    if (value.contains('car') || value.contains('wash') || value.contains('vehicle')) {
+      return 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?w=700&auto=format&fit=crop';
+    }
+    if (value.contains('electric') || value.contains('fan') || value.contains('light')) {
+      return 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=700&auto=format&fit=crop';
+    }
+    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=700&auto=format&fit=crop';
+  }
+
   Widget _categoryStrip(int? addressId) {
     if (_catalogLoading && _catalogCategories.isEmpty) {
       return const SizedBox(
@@ -864,10 +897,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       color: _Ui.pale,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(
-                      _categoryIcon(category.title),
-                      color: _Ui.violet,
-                      size: 29,
+                    clipBehavior: Clip.antiAlias,
+                    child: Image.network(
+                      category.image?.isNotEmpty == true
+                          ? category.image!
+                          : _photoForCategory(category.title),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Icon(
+                        _categoryIcon(category.title),
+                        color: _Ui.violet,
+                        size: 29,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
