@@ -3,7 +3,6 @@ from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Address
 from apps.workers.eligibility import eligible_worker_profiles
-from apps.workers.models import WorkerProfile
 from .models import Category, CityService, Service
 from .serializers import CategoryTreeSerializer, ServiceSerializer
 
@@ -29,40 +28,29 @@ def _location_from_address(request):
 
 def _city_service_ids(city, zone=None):
     """
-    Return services configured for the city OR assigned to an approved worker
-    serving the city/zone. Worker online status and schedules must not hide
-    catalogue entries; those are represented separately by is_available.
+    Active services are browseable catalogue content by default.
+
+    CityService is an explicit city-level opt-out: an inactive row hides that
+    service in the selected city. Worker online status, schedules and worker
+    assignments affect is_available, not whether customers can browse the
+    service catalogue.
     """
     if city is None:
         return None
 
-    # City-level catalogue configuration is one source of visibility.
-    configured_ids = set(
+    hidden_ids = set(
         CityService.objects.filter(
             city=city,
-            is_active=True,
-            service__is_active=True,
-            service__category__is_active=True,
+            is_active=False,
         ).values_list("service_id", flat=True)
     )
-
-    # A worker's explicitly selected service + service zone is also a valid
-    # signal that the service should appear in that area, even if an admin
-    # has not separately created its CityService row yet.
-    worker_services = WorkerProfile.objects.filter(
-        status=WorkerProfile.Status.APPROVED,
-        worker_zones__zone__city=city,
-        worker_services__service__is_active=True,
-        worker_services__service__category__is_active=True,
+    active_ids = set(
+        Service.objects.filter(
+            is_active=True,
+            category__is_active=True,
+        ).values_list("id", flat=True)
     )
-    if zone is not None:
-        worker_services = worker_services.filter(worker_zones__zone=zone)
-
-    assigned_ids = set(
-        worker_services.values_list("worker_services__service_id", flat=True)
-    )
-    return configured_ids | assigned_ids
-
+    return active_ids - hidden_ids
 
 def _available_service_ids(city, zone=None):
     if city is None:
@@ -102,27 +90,18 @@ class CategoryListView(generics.ListAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        location = _location_from_address(self.request)
-        if location is None:
-            context["visible_category_ids"] = None
-            return context
-
-        city, zone = location
-        context["visible_category_ids"] = _visible_category_ids(
-            _city_service_ids(city, zone=zone)
+        # Category visibility follows the active catalogue tree, not worker
+        # presence or the completeness of CityService mapping rows.
+        context["visible_category_ids"] = set(
+            Category.objects.filter(is_active=True).values_list("id", flat=True)
         )
         return context
 
     def get_queryset(self):
-        location = _location_from_address(self.request)
-        queryset = Category.objects.filter(is_active=True, parent__isnull=True)
-        if location is not None:
-            city, zone = location
-            visible_ids = _visible_category_ids(
-                _city_service_ids(city, zone=zone)
-            )
-            queryset = queryset.filter(id__in=visible_ids)
-        return queryset.prefetch_related("children")
+        return Category.objects.filter(
+            is_active=True,
+            parent__isnull=True,
+        ).prefetch_related("children")
 
 
 class ServiceListView(generics.ListAPIView):
