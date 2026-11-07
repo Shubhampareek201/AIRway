@@ -88,6 +88,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       return;
     }
 
+    final item = selectedItem;
     final previousDate = dates[id];
     final previousTime = times[id];
     final previousDrop = dropTimes[id];
@@ -96,9 +97,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         builder: (_) => BookingScheduleScreen(
           serviceId: serviceId,
           addressId: addressId,
-          variantId: int.tryParse(selectedItem['variant']?.toString() ?? ''),
-          quantity: int.tryParse(selectedItem['quantity']?.toString() ?? '1') ?? 1,
-          bookingMode: selectedItem['booking_mode']?.toString() ?? 'scheduled',
+          variantId: int.tryParse(item['variant']?.toString() ?? ''),
+          quantity: int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
+          bookingMode: item['booking_mode']?.toString() ?? 'scheduled',
           initialDate: previousDate,
           initialTime: previousTime,
           initialDropTime: previousDrop,
