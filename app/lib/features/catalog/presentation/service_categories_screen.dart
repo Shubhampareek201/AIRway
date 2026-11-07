@@ -5,17 +5,20 @@ import 'package:airway/core/widgets/airway_components.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
+import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
 
 class ServiceCategoriesScreen extends StatefulWidget {
   final List<Category>? initialCategories;
   final int? addressId;
   final String title;
+  final Map<String, dynamic> initialAnswers;
 
   const ServiceCategoriesScreen({
     super.key,
     this.initialCategories,
     this.addressId,
     this.title = 'Browse Services',
+    this.initialAnswers = const {},
   });
 
   @override
@@ -62,7 +65,21 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     }
   }
 
-  void _openCategory(Category category) {
+  Future<void> _openCategory(Category category) async {
+    var answers = Map<String, dynamic>.from(widget.initialAnswers);
+    if (category.flowSteps.isNotEmpty) {
+      final selected = await Navigator.push<Map<String, dynamic>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CategoryDecisionScreen(
+            categoryTitle: category.title,
+            steps: category.flowSteps,
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      answers.addAll(selected);
+    }
     if (category.children.isNotEmpty) {
       Navigator.push<void>(
         context,
@@ -71,6 +88,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
             initialCategories: category.children,
             addressId: widget.addressId,
             title: category.title,
+            initialAnswers: answers,
           ),
         ),
       );
@@ -84,6 +102,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           categoryId: category.id,
           categoryTitle: category.title,
           addressId: widget.addressId,
+          initialAnswers: answers,
         ),
       ),
     );
