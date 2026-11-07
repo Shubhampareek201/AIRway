@@ -53,6 +53,14 @@ class WorkerOffer {
   final DateTime? expiresAt;
   final String? workerName;
   final String? workerPhone;
+  final String? serviceTitle;
+  final String? variantTitle;
+  final DateTime? scheduledAt;
+  final String? serviceAddress;
+  final Map<String, dynamic> customerAnswers;
+  final List<Map<String, dynamic>> formResponses;
+  final List<Map<String, dynamic>> addons;
+  final int quantity;
   final bool canAccept;
   final bool canDecline;
   final bool canWithdraw;
@@ -66,6 +74,14 @@ class WorkerOffer {
     this.expiresAt,
     this.workerName,
     this.workerPhone,
+    this.serviceTitle,
+    this.variantTitle,
+    this.scheduledAt,
+    this.serviceAddress,
+    this.customerAnswers = const {},
+    this.formResponses = const [],
+    this.addons = const [],
+    this.quantity = 1,
     required this.canAccept,
     required this.canDecline,
     required this.canWithdraw,
@@ -81,6 +97,14 @@ class WorkerOffer {
       expiresAt: map['expires_at'] != null ? DateTime.parse(map['expires_at'] as String) : null,
       workerName: map['worker_name'] as String?,
       workerPhone: map['worker_phone'] as String?,
+      serviceTitle: map['service_title'] as String?,
+      variantTitle: map['variant_title'] as String?,
+      scheduledAt: map['scheduled_at'] != null ? DateTime.parse(map['scheduled_at'] as String) : null,
+      serviceAddress: map['service_address'] as String?,
+      customerAnswers: Map<String, dynamic>.from(map['customer_answers'] as Map? ?? {}),
+      formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
+      addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
+      quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       canAccept: map['can_accept'] as bool? ?? false,
       canDecline: map['can_decline'] as bool? ?? false,
       canWithdraw: map['can_withdraw'] as bool? ?? false,
