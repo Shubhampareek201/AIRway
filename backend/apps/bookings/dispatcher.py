@@ -132,6 +132,7 @@ class DispatcherService:
     def _get_eligible_workers(
         cls, service, zone, scheduled_at, duration_minutes,
         drop_scheduled_at=None, exclude_booking_id=None,
+        exclude_customer_id=None,
     ):
         """Return workers who can cover every visit without a schedule or job conflict."""
         from apps.workers.models import WorkerProfile
@@ -145,7 +146,10 @@ class DispatcherService:
 
         eligible_workers = eligible_workers_for_service(
             service, zone=zone,
-        ).exclude(user_id=booking.customer_id).prefetch_related("schedules", "leaves")
+        )
+        if exclude_customer_id is not None:
+            eligible_workers = eligible_workers.exclude(user_id=exclude_customer_id)
+        eligible_workers = eligible_workers.prefetch_related("schedules", "leaves")
 
         duration_minutes = max(int(duration_minutes or service.duration_minutes or 60), 1)
         duration = timedelta(minutes=duration_minutes)
