@@ -147,6 +147,10 @@ class WorkerAssignmentDetail {
   final String? notes;
   final String? workerNotes;
   final List<Map<String, dynamic>> formResponses;
+  final Map<String, dynamic> customerAnswers;
+  final String? variantTitle;
+  final int quantity;
+  final List<Map<String, dynamic>> addons;
   final WorkerAssignmentInfo assignment;
 
   WorkerAssignmentDetail({
@@ -164,6 +168,10 @@ class WorkerAssignmentDetail {
     this.notes,
     this.workerNotes,
     required this.formResponses,
+    this.customerAnswers = const {},
+    this.variantTitle,
+    this.quantity = 1,
+    this.addons = const [],
     required this.assignment,
   });
 
@@ -182,7 +190,11 @@ class WorkerAssignmentDetail {
       amount: double.tryParse(map['amount'].toString()) ?? 0.0,
       notes: map['notes'],
       workerNotes: map['worker_notes'],
-      formResponses: (map['form_responses'] as List).map((e) => Map<String, dynamic>.from(e)).toList(),
+      formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
+      customerAnswers: Map<String, dynamic>.from(map['customer_answers'] as Map? ?? {}),
+      variantTitle: map['variant_title']?.toString(),
+      quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
+      addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
     );
   }
