@@ -159,6 +159,13 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking_mode = data["booking_mode"]
         scheduled_at = data["scheduled_at"]
         drop_scheduled_at = data.get("drop_scheduled_at")
+        category_answers = data.get("category_answers", {})
+
+        from apps.workers.eligibility import required_worker_gender_for_booking
+        try:
+            required_gender = required_worker_gender_for_booking(service, category_answers)
+        except ValueError as exc:
+            return Response({"available": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         address = None
         if data.get("address_id"):
@@ -187,6 +194,25 @@ class BookingViewSet(viewsets.ModelViewSet):
                 booking_mode=booking_mode,
                 drop_scheduled_at=drop_scheduled_at,
             )
+            if required_gender:
+                from apps.bookings.services import has_eligible_worker_for_slot
+                if not has_eligible_worker_for_slot(
+                    service=service,
+                    address=address,
+                    scheduled_at=scheduled_at,
+                    duration_minutes=duration,
+                    required_gender=required_gender,
+                    drop_scheduled_at=drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
+                    exclude_customer_id=request.user.id,
+                ):
+                    return Response({
+                        "available": False,
+                        "message": (
+                            "No female professional is available for this time slot. "
+                            "Choose another time or change the preference to No preference."
+                        ),
+                        "reason": "female_professional_unavailable",
+                    })
 
             return Response({"available": True, "message": "Slot is available for booking."})
 
