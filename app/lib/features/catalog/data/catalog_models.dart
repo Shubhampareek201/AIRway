@@ -287,6 +287,7 @@ class CatalogFormField {
   final String fieldTypeDisplay;
   final List<dynamic> options;
   final bool isRequired;
+  final List<Map<String, dynamic>> visibilityRules;
   final int sortOrder;
 
   CatalogFormField({
@@ -298,6 +299,7 @@ class CatalogFormField {
     required this.fieldTypeDisplay,
     required this.options,
     required this.isRequired,
+    this.visibilityRules = const [],
     required this.sortOrder,
   });
 
@@ -311,6 +313,10 @@ class CatalogFormField {
       fieldTypeDisplay: map['field_type_display'] ?? '',
       options: List<dynamic>.from(map['options'] ?? []),
       isRequired: map['is_required'] ?? false,
+      visibilityRules: (map['visibility_rules'] as List? ?? [])
+          .whereType<Map>()
+          .map((rule) => Map<String, dynamic>.from(rule))
+          .toList(),
       sortOrder: map['sort_order'] ?? 0,
     );
   }
