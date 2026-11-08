@@ -109,31 +109,9 @@ class DispatcherService:
                 logger.warning("Order %s has inconsistent service addresses; dispatch skipped", order.pk)
                 return []
 
-            # One worker cannot perform two separate service lines at the
-            # same time. Each line must have a non-overlapping reserved window.
-            from apps.bookings.services import _booking_intervals, _intervals_overlap
-            occupied_order_intervals = []
-            for line in bookings:
-                line_duration = (
-                    line.variant.duration_minutes
-                    if line.variant_id and line.variant.duration_minutes
-                    else line.service.duration_minutes
-                ) or 60
-                line_quantity = max(int((line.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
-                line_intervals = _booking_intervals(
-                    line.scheduled_at,
-                    line_duration * line_quantity,
-                    line.service.buffer_minutes,
-                    line.drop_scheduled_at if line.booking_mode == line.BookingMode.PICKUP_DROP else None,
-                )
-                if any(
-                    _intervals_overlap(current, previous)
-                    for current in line_intervals
-                    for previous in occupied_order_intervals
-                ):
-                    logger.info("Order %s has overlapping service times; dispatch skipped", order.pk)
-                    return []
-                occupied_order_intervals.extend(line_intervals)
+            if not cls.order_schedule_is_compatible(bookings):
+                logger.info("Order %s has overlapping service times; dispatch skipped", order.pk)
+                return []
 
             eligible_ids = None
             for booking in bookings:
@@ -182,6 +160,34 @@ class DispatcherService:
                 batch_number=batch_number, expiry_minutes=config.offer_expiry_minutes,
                 service_titles=[booking.service.title for booking in bookings],
             )
+
+    @classmethod
+    def order_schedule_is_compatible(cls, bookings):
+        """A single worker must not be scheduled for overlapping order lines."""
+        from apps.bookings.services import _booking_intervals, _intervals_overlap
+
+        occupied = []
+        for booking in bookings:
+            duration = (
+                booking.variant.duration_minutes
+                if booking.variant_id and booking.variant.duration_minutes
+                else booking.service.duration_minutes
+            ) or 60
+            quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+            intervals = _booking_intervals(
+                booking.scheduled_at,
+                duration * quantity,
+                booking.service.buffer_minutes,
+                booking.drop_scheduled_at
+                if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
+            )
+            if any(
+                _intervals_overlap(candidate, previous)
+                for candidate in intervals for previous in occupied
+            ):
+                return False
+            occupied.extend(intervals)
+        return True
 
     @classmethod
     def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles):
