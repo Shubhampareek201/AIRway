@@ -35,9 +35,17 @@ class DispatcherService:
     """
 
     @classmethod
+    @transaction.atomic
     def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None):
         """Dispatch a standalone booking through configured priority batches."""
-        from apps.bookings.models import WorkerOffer, DispatchConfiguration
+        from apps.bookings.models import Booking, WorkerOffer, DispatchConfiguration
+        booking = Booking.objects.select_for_update().select_related(
+            "service__category", "variant", "address__zone__city"
+        ).get(pk=booking.pk)
+        # A booking that belongs to a parent order must never be dispatched
+        # independently; the order-level worker must cover every line.
+        if hasattr(booking, "order_item"):
+            return cls.dispatch_order(booking.order_item.order)
         config = DispatchConfiguration.get_solo()
         if not config.is_enabled or booking.status not in (booking.Status.PENDING, booking.Status.CONFIRMED):
             return []
