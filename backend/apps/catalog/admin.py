@@ -10,7 +10,7 @@ from .models import (
 class CategoryAudienceOptionInline(TabularInline):
     model = CategoryAudienceOption
     extra = 0
-    fields = ("audience", "title", "subtitle", "image", "sort_order", "is_active")
+    fields = ("audience", "title", "subtitle", "image", "image_secondary", "sort_order", "is_active")
 
 
 class VariantInline(TabularInline):
