@@ -76,7 +76,7 @@ BEAUTY_CATALOGUE = {
             "duration": 180,
             "packages": [("Groom Essential", ["Haircut and styling", "Beard grooming", "Face cleanup"], 150), ("Groom Premium", ["Haircut and styling", "Beard grooming", "Facial", "Manicure", "Pedicure"], 240), ("Groom Luxury", ["Premium haircut and styling", "Beard grooming", "Premium facial", "Manicure", "Pedicure", "Head and shoulder massage"], 300)],
             "questions": [
-                ("event_date", "When is the wedding?", "text", [], True),
+                ("event_date", "When is the wedding?", "date", [], True),
                 ("groom_event_type", "What are you preparing for?", "select", ["Wedding day", "Engagement", "Pre-wedding function", "Other"], True),
                 ("reference_photos", "Any reference style? Share a photo URL with the team.", "photo", [], False),
             ],
