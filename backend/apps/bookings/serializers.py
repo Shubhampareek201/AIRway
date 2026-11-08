@@ -519,6 +519,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
     customer_answers = serializers.JSONField(source="booking.customer_answers", read_only=True)
+    professional_preference = serializers.SerializerMethodField()
     form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
     addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
     quantity = serializers.SerializerMethodField()
@@ -535,10 +536,13 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "offered_at", "expires_at", "accepted_at", "responded_at",
             "booking_status", "worker_name", "worker_phone", "service_title",
             "variant_title", "scheduled_at", "service_address", "customer_answers",
-            "form_responses", "addons", "quantity",
+            "professional_preference", "form_responses", "addons", "quantity",
             "can_accept", "can_decline", "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_professional_preference(self, obj):
+        return (obj.booking.customer_answers or {}).get("professional_preference", "any")
 
     def get_quantity(self, obj):
         order_item = getattr(obj.booking, "order_item", None)
