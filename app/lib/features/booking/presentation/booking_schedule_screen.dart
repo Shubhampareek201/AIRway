@@ -20,6 +20,7 @@ class BookingScheduleScreen extends StatefulWidget {
   final int? variantId;
   final int quantity;
   final String bookingMode;
+  final Map<String, dynamic> categoryAnswers;
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final TimeOfDay? initialDropTime;
@@ -31,6 +32,7 @@ class BookingScheduleScreen extends StatefulWidget {
     this.variantId,
     this.quantity = 1,
     this.bookingMode = 'scheduled',
+    this.categoryAnswers = const {},
     this.initialDate,
     this.initialTime,
     this.initialDropTime,
@@ -110,6 +112,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
           addressId: widget.addressId,
           quantity: widget.quantity,
           bookingMode: widget.bookingMode,
+          categoryAnswers: widget.categoryAnswers,
         );
       }));
       if (!mounted) return;
