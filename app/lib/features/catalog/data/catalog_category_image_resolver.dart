@@ -3,7 +3,7 @@
 class CatalogCategoryImageResolver {
   static const Map<String, String> _images = {
     'beauty': 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=900&auto=format&fit=crop',
-    'hair-services': 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=900&auto=format&fit=crop',
+    'hair-services': 'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=900&auto=format&fit=crop',
     'facial-skin-care': 'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=900&auto=format&fit=crop',
     'grooming-massage': 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=900&auto=format&fit=crop',
     'makeup-occasion-styling': 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=900&auto=format&fit=crop',
