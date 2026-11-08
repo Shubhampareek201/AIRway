@@ -3235,6 +3235,38 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(booking_addon.quantity, 3)
         self.assertEqual(booking_addon.total_price, Decimal("300.00"))
 
+    def test_checkout_rejects_overlapping_service_windows_before_creating_order(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            quantity=1,
+            pricing_snapshot={"line_total": "500.00"},
+        )
+        same_time = (timezone.now() + timedelta(days=2)).isoformat()
+
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [
+                {"cart_item_id": self.cart_item.id, "scheduled_at": same_time},
+                {"cart_item_id": second_item.id, "scheduled_at": same_time},
+            ]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data["code"], "order_schedule_overlap")
+        self.assertFalse(Order.objects.filter(customer=self.customer).exists())
+        self.assertFalse(Booking.objects.filter(customer=self.customer).exists())
+        self.assertEqual(self.cart.items.count(), 2)
+
     def test_multi_service_dispatch_only_offers_worker_eligible_for_every_line(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
