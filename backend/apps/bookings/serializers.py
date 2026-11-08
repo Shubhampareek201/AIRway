@@ -197,12 +197,17 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                     drop_scheduled_at=drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
                     exclude_customer_id=user.id,
                 ):
-                    raise serializers.ValidationError({
-                        "category_answers": (
-                            "No female professional is available for this time slot. "
-                            "Please choose another time or change the preference to No preference."
-                        )
-                    })
+                    preference_can_change = (
+                        category_answers.get("professional_preference") == "female"
+                        and not service.requires_female_worker
+                    )
+                    message = (
+                        "No female professional is available for this time slot. "
+                        "Please choose another time or change the preference to No preference."
+                        if preference_can_change
+                        else "No female professional is available for this service at the selected time. Please choose another time."
+                    )
+                    raise serializers.ValidationError({"category_answers": message})
         except Address.DoesNotExist:
             raise serializers.ValidationError({"address_id": "Invalid address."})
 
