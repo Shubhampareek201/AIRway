@@ -476,7 +476,11 @@ class WorkerJobDetailView(APIView):
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
             "variant_title": booking.variant.title if booking.variant_id else None,
-            "quantity": booking.order_item.quantity if hasattr(booking, "order_item") else 1,
+            "quantity": (
+                booking.order_item.quantity
+                if hasattr(booking, "order_item")
+                else int((booking.pricing_snapshot or {}).get("quantity", 1))
+            ),
             "customer_answers": customer_answers,
             "notes": booking.notes,
             "worker_notes": booking.worker_notes,
