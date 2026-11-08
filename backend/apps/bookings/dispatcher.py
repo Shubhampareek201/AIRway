@@ -67,6 +67,7 @@ class DispatcherService:
             exclude_booking_id=booking.pk,
             exclude_customer_id=booking.customer_id,
             required_gender=gender,
+            priority_order=config.priority_order,
         )
         already_offered = set(existing.values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
@@ -155,7 +156,7 @@ class DispatcherService:
                 WorkerProfile.objects.filter(pk__in=eligible_ids)
                 .exclude(pk__in=already_offered)
                 .select_related("user")
-                .order_by("-rating_avg", "pk")[:batch_size]
+                .order_by(*cls._priority_ordering(config.priority_order))[:batch_size]
             )
             return cls._create_offers(
                 booking=anchor, order=order, workers=workers,
@@ -221,11 +222,24 @@ class DispatcherService:
         logger.info("Dispatched %s offers for %s %s in batch %s", len(created), "order" if order else "booking", order.pk if order else booking.pk, batch_number)
         return created
 
+    @staticmethod
+    def _priority_ordering(priority_order):
+        """Translate the Admin-selected priority strategy into stable DB ordering."""
+        from apps.bookings.models import DispatchConfiguration
+
+        if priority_order == DispatchConfiguration.PRIORITY_ACCEPTANCE:
+            return ("-acceptance_rate", "-rating_avg", "pk")
+        if priority_order == DispatchConfiguration.PRIORITY_RATING_ACCEPTANCE:
+            return ("-rating_avg", "-acceptance_rate", "pk")
+        if priority_order == DispatchConfiguration.PRIORITY_CANCELLATIONS:
+            return ("cancellation_count", "-rating_avg", "pk")
+        return ("-rating_avg", "pk")
+
     @classmethod
     def _get_eligible_workers(
         cls, service, zone, scheduled_at, duration_minutes,
         drop_scheduled_at=None, exclude_booking_id=None,
-        exclude_customer_id=None, required_gender=None,
+        exclude_customer_id=None, required_gender=None, priority_order=None,
     ):
         """Return workers who can cover every visit without a schedule or job conflict."""
         from apps.workers.models import WorkerProfile
@@ -260,8 +274,6 @@ class DispatcherService:
             Booking.Status.IN_PROGRESS,
         ]
         eligible_ids = []
-        worker_ratings = {}
-
         for worker in eligible_workers:
             schedule_ok = True
             for visit_start, visit_end in visit_windows:
@@ -327,10 +339,8 @@ class DispatcherService:
             if conflict:
                 continue
 
-            worker_ratings[worker.id] = worker.rating_avg or 0
             eligible_ids.append(worker.id)
 
-        eligible_ids.sort(key=lambda worker_id: worker_ratings.get(worker_id, 0), reverse=True)
         return WorkerProfile.objects.filter(id__in=eligible_ids).order_by(
-            "-rating_avg"
+            *cls._priority_ordering(priority_order)
         ).select_related("user")
