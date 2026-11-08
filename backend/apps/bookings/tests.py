@@ -152,6 +152,22 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertIn("category_answers", response.data)
         self.assertIn("No female professional", str(response.data))
 
+    def test_beauty_slot_availability_reports_female_worker_unavailable(self):
+        beauty = Category.objects.create(title="Beauty", slug="beauty-root")
+        service = self._create_service(beauty, title="Facial")
+        variant = self._create_variant(service)
+        response = self.client.post("/api/v1/bookings/check_availability/", {
+            "service": service.id,
+            "variant_id": variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "category_answers": {"professional_preference": "female"},
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["available"])
+        self.assertEqual(response.data["reason"], "female_professional_unavailable")
+
     def test_non_beauty_booking_rejects_female_professional_preference(self):
         response = self.client.post("/api/v1/bookings/", {
             "service": self.service.id,
