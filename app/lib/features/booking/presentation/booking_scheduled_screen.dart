@@ -52,6 +52,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   List<Map<String, dynamic>> _addresses = [];
   int _quantity = 1;
   int _flowStep = 0;
+  String _professionalPreference = 'any';
 
   List<ServiceVariant> _availableVariants(Service service) {
     if (_categoryAnswers.isEmpty) return service.variants;
@@ -99,6 +100,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _addresses = addresses;
         _selectedAddressId = selectedAddressId;
         _categoryAnswers.addAll(widget.initialCategoryAnswers);
+        _professionalPreference =
+            _categoryAnswers['professional_preference']?.toString() ?? 'any';
         _loading = false;
 
         // Auto-select first variant if exactly one exists.
@@ -136,6 +139,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _categoryAnswers
           ..clear()
           ..addAll(widget.initialCategoryAnswers);
+        _professionalPreference =
+            _categoryAnswers['professional_preference']?.toString() ?? 'any';
         _addressCheckBusy = false;
       });
       _updateSummary();
@@ -220,6 +225,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     if (service.variants.isNotEmpty) 'Package',
     if (_visibleFormFields().isNotEmpty) 'Service Details',
     if (service.addons.isNotEmpty) 'Add-ons',
+    if (service.supportsProfessionalPreference) 'Professional preference',
     'Address',
     'Summary',
   ];
@@ -232,6 +238,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         return 'Share the details needed to complete this service.';
       case 'Add-ons':
         return 'Personalize your booking with optional extras.';
+      case 'Professional preference':
+        return 'Choose who you would be comfortable having for this Beauty service.';
       case 'Address':
         return 'Where should our service professional visit?';
       default:
@@ -371,6 +379,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
           _sectionHeader('Optional extras'),
           _addonPicker(),
         ]);
+        break;
+      case 'Professional preference':
+        slivers.add(_professionalPreferenceStep());
         break;
       case 'Address':
         slivers.addAll([
@@ -997,6 +1008,80 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _professionalPreferenceStep() => SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            children: [
+              _preferenceOption(
+                value: 'any',
+                title: 'No preference',
+                subtitle: 'Any eligible Beauty professional can be assigned.',
+                icon: Icons.people_alt_outlined,
+              ),
+              const SizedBox(height: 12),
+              _preferenceOption(
+                value: 'female',
+                title: 'Female professional',
+                subtitle: 'Only female professionals will be considered.',
+                icon: Icons.person_outline_rounded,
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _preferenceOption({
+    required String value,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final selected = _professionalPreference == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => setState(() {
+        _professionalPreference = value;
+        _categoryAnswers['professional_preference'] = value;
+      }),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFEAF1EA) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? _Ui.violet : _Ui.line,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: _Ui.violet, size: 25),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(
+                    color: _Ui.ink, fontWeight: FontWeight.w800,
+                  )),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(
+                    color: _Ui.sub, fontSize: 12, height: 1.35,
+                  )),
+                ],
+              ),
+            ),
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected ? _Ui.violet : _Ui.sub,
+            ),
+          ],
         ),
       ),
     );
