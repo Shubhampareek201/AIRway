@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("catalog", "0012_correct_beauty_audience_metadata"),
+        ("catalog", "0015_audience_option_secondary_image"),
     ]
 
     operations = [
