@@ -21,6 +21,7 @@ class BookingScheduleScreen extends StatefulWidget {
   final int quantity;
   final String bookingMode;
   final Map<String, dynamic> categoryAnswers;
+  final int? cartItemId;
   final DateTime? initialDate;
   final TimeOfDay? initialTime;
   final TimeOfDay? initialDropTime;
@@ -33,6 +34,7 @@ class BookingScheduleScreen extends StatefulWidget {
     this.quantity = 1,
     this.bookingMode = 'scheduled',
     this.categoryAnswers = const {},
+    this.cartItemId,
     this.initialDate,
     this.initialTime,
     this.initialDropTime,
@@ -55,6 +57,8 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   List<TimeOfDay> _availableSlots = [];
   bool _checking = false;
   String? _slotError;
+  bool _femalePreferenceUnavailable = false;
+  bool _updatingPreference = false;
   int _page = 0;
 
   bool get _isPickupDrop => widget.bookingMode == 'pickup_drop';
@@ -90,6 +94,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
     setState(() {
       _checking = true;
       _slotError = null;
+      _femalePreferenceUnavailable = false;
       _availableSlots = [];
     });
 
@@ -118,13 +123,19 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
       if (!mounted) return;
       final available = <TimeOfDay>[
         for (var i = 0; i < candidates.length; i++)
-          if (results[i]) candidates[i],
+          if (results[i]['available'] == true) candidates[i],
       ];
       setState(() {
         _availableSlots = available;
         _checking = false;
         if (available.isEmpty) {
-          _slotError = 'No available slots for this date. Choose another date.';
+          final preferenceFailure = results.cast<Map<String, dynamic>?>().firstWhere(
+            (result) => result?['reason'] == 'female_professional_unavailable',
+            orElse: () => null,
+          );
+          _femalePreferenceUnavailable = preferenceFailure != null;
+          _slotError = preferenceFailure?['message']?.toString() ??
+              'No available slots for this date. Choose another date.';
         } else if (_selectedTime != null &&
             !available.any((slot) =>
                 slot.hour == _selectedTime!.hour &&
@@ -138,6 +149,36 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
         _checking = false;
         _slotError = 'Could not check availability. Please retry. $e';
       });
+    }
+  }
+
+  Future<void> _changeToNoPreference() async {
+    if (widget.cartItemId == null || _updatingPreference) return;
+    setState(() => _updatingPreference = true);
+    try {
+      final answers = Map<String, dynamic>.from(widget.categoryAnswers)
+        ..['professional_preference'] = 'any';
+      await BookingApi.updateCartItem(
+        itemId: widget.cartItemId!,
+        data: {'category_answers': answers},
+      );
+      if (!mounted) return;
+      widget.categoryAnswers
+        ..clear()
+        ..addAll(answers);
+      setState(() {
+        _femalePreferenceUnavailable = false;
+        _slotError = null;
+        _selectedTime = null;
+        _updatingPreference = false;
+      });
+      await _loadSlots();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _updatingPreference = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update preference: $e')),
+      );
     }
   }
 
@@ -276,9 +317,28 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                           color: const Color(0xFFFFF5E9),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Text(
-                          _slotError ?? 'No available slots. Please choose another date.',
-                          style: const TextStyle(color: Color(0xFF80551D)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _slotError ?? 'No available slots. Please choose another date.',
+                              style: const TextStyle(color: Color(0xFF80551D)),
+                            ),
+                            if (_femalePreferenceUnavailable) ...[
+                              const SizedBox(height: 12),
+                              const Text(
+                                'You can also keep this time and allow any eligible Beauty professional.',
+                                style: TextStyle(color: Color(0xFF80551D), fontSize: 12),
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton(
+                                onPressed: _updatingPreference ? null : _changeToNoPreference,
+                                child: Text(_updatingPreference
+                                    ? 'Updating…'
+                                    : 'Change to No preference'),
+                              ),
+                            ],
+                          ],
                         ),
                       )
                     else
