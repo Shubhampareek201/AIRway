@@ -533,6 +533,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
     addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
     quantity = serializers.SerializerMethodField()
+    order_services = serializers.SerializerMethodField()
+    order_id = serializers.IntegerField(read_only=True)
     offered_at = serializers.DateTimeField(read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     can_accept = serializers.SerializerMethodField()
@@ -542,14 +544,33 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     class Meta:
         model = __import__("apps.bookings.models", fromlist=["WorkerOffer"]).WorkerOffer
         fields = [
-            "id", "booking", "worker", "status", "status_display",
-            "offered_at", "expires_at", "accepted_at", "responded_at",
-            "booking_status", "worker_name", "worker_phone", "service_title",
-            "variant_title", "scheduled_at", "service_address", "customer_answers",
-            "professional_preference", "form_responses", "addons", "quantity",
-            "can_accept", "can_decline", "can_withdraw",
+            "id", "booking", "order", "order_id", "order_services", "batch_number",
+            "worker", "status", "status_display", "offered_at", "expires_at",
+            "accepted_at", "responded_at", "booking_status", "worker_name",
+            "worker_phone", "service_title", "variant_title", "scheduled_at",
+            "service_address", "customer_answers", "professional_preference",
+            "form_responses", "addons", "quantity", "can_accept", "can_decline",
+            "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_order_services(self, obj):
+        if not obj.order_id:
+            return [{
+                "booking_id": obj.booking_id,
+                "service_id": obj.booking.service_id,
+                "service_title": obj.booking.service.title,
+                "variant_title": obj.booking.variant.title if obj.booking.variant_id else None,
+                "scheduled_at": obj.booking.scheduled_at,
+            }]
+        return [{
+            "booking_id": item.booking_id,
+            "service_id": item.booking.service_id,
+            "service_title": item.booking.service.title,
+            "variant_title": item.booking.variant.title if item.booking.variant_id else None,
+            "scheduled_at": item.booking.scheduled_at,
+            "quantity": item.quantity,
+        } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
 
     def get_customer_answers(self, obj):
         answers = dict(obj.booking.customer_answers or {})
@@ -564,9 +585,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def get_quantity(self, obj):
         order_item = getattr(obj.booking, "order_item", None)
-        return order_item.quantity if order_item else int(
-            (obj.booking.pricing_snapshot or {}).get("quantity", 1)
-        )
+        return order_item.quantity if order_item else int((obj.booking.pricing_snapshot or {}).get("quantity", 1))
 
     def get_can_accept(self, obj):
         from django.utils import timezone
