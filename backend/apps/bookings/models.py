@@ -377,6 +377,16 @@ class DispatchConfiguration(TimeStampedModel):
     """Singleton Admin-controlled settings for worker priority-batch dispatch."""
 
     PRIORITY_RATING = "rating_desc"
+    PRIORITY_ACCEPTANCE = "acceptance_desc"
+    PRIORITY_RATING_ACCEPTANCE = "rating_acceptance"
+    PRIORITY_CANCELLATIONS = "cancellations_asc"
+
+    PRIORITY_CHOICES = [
+        (PRIORITY_RATING, "Worker rating: highest first"),
+        (PRIORITY_ACCEPTANCE, "Acceptance rate: highest first"),
+        (PRIORITY_RATING_ACCEPTANCE, "Rating, then acceptance rate"),
+        (PRIORITY_CANCELLATIONS, "Fewest cancellations, then rating"),
+    ]
 
     is_enabled = models.BooleanField(default=True)
     batch_size = models.PositiveSmallIntegerField(default=5)
@@ -384,7 +394,7 @@ class DispatchConfiguration(TimeStampedModel):
     offer_expiry_minutes = models.PositiveSmallIntegerField(default=5)
     priority_order = models.CharField(
         max_length=32,
-        choices=[(PRIORITY_RATING, "Worker rating: highest first")],
+        choices=PRIORITY_CHOICES,
         default=PRIORITY_RATING,
     )
 
