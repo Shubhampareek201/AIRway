@@ -336,7 +336,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                             if (_femalePreferenceUnavailable) ...[
                               const SizedBox(height: 12),
                               const Text(
-                                'You can also keep this time and allow any eligible Beauty professional.',
+                                'You can also allow any eligible Beauty professional and check availability again.',
                                 style: TextStyle(color: Color(0xFF80551D), fontSize: 12),
                               ),
                               const SizedBox(height: 8),
