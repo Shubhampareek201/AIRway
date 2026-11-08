@@ -261,7 +261,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.categoryTitle ?? 'Services',
+                      _audienceTitle,
                       style: const TextStyle(
                         color: AirwayColors.text,
                         fontSize: 18,
@@ -296,6 +296,20 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         ],
       ],
     );
+  }
+
+  String get _audienceTitle {
+    final category = widget.categoryTitle ?? 'Services';
+    switch (widget.initialAnswers['beauty_audience']?.toString()) {
+      case BeautyAudience.men:
+        return "Men's $category";
+      case BeautyAudience.women:
+        return "Women's $category";
+      case BeautyAudience.both:
+        return "Unisex $category";
+      default:
+        return category;
+    }
   }
 
   Widget _serviceImage(Service service) {
