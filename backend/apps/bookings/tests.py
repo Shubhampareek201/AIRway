@@ -97,6 +97,45 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.variant = self._create_variant(self.service)
         self.address = self._create_address(self.user)
 
+    def test_dispatcher_only_returns_female_workers_when_preferred(self):
+        beauty = Category.objects.create(title="Beauty", slug="beauty-root")
+        service = self._create_service(beauty, title="Facial")
+        zone = self.address.zone
+        local_start = timezone.localtime(timezone.now() + timedelta(days=2)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        female_user = self._create_user("+919876543221")
+        male_user = self._create_user("+919876543222")
+        female = WorkerProfile.objects.create(
+            user=female_user, status=WorkerProfile.Status.APPROVED,
+            gender=WorkerProfile.Gender.FEMALE, is_online=True,
+        )
+        male = WorkerProfile.objects.create(
+            user=male_user, status=WorkerProfile.Status.APPROVED,
+            gender=WorkerProfile.Gender.MALE, is_online=True,
+        )
+        for worker in (female, male):
+            WorkerService.objects.create(worker=worker, service=service)
+            WorkerZone.objects.create(worker=worker, zone=zone)
+            WorkerSchedule.objects.create(
+                worker=worker,
+                weekday=local_start.weekday(),
+                start_time=time(0, 0),
+                end_time=time(23, 59),
+                is_active=True,
+            )
+
+        from apps.bookings.dispatcher import DispatcherService
+        eligible = DispatcherService._get_eligible_workers(
+            service=service,
+            zone=zone,
+            scheduled_at=local_start,
+            duration_minutes=60,
+            exclude_customer_id=self.user.id,
+            required_gender=WorkerProfile.Gender.FEMALE,
+        )
+        self.assertEqual(list(eligible.values_list("id", flat=True)), [female.id])
+
     def test_beauty_booking_accepts_female_professional_preference(self):
         beauty = Category.objects.create(title="Beauty", slug="beauty-root")
         service = self._create_service(beauty, title="Facial")
