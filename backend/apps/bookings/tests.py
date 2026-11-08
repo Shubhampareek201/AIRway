@@ -19,6 +19,7 @@ from apps.workers.models import (
 from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, CustomerCart, CartItem, Order, OrderItem
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
+from apps.bookings.serializers import CartItemSerializer
 
 
 class BookingAPITestMixin:
@@ -377,6 +378,78 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("form_responses", response.data)
+
+    def test_create_booking_accepts_valid_iso_date_answer(self):
+        FormField.objects.create(
+            service=self.service, key="event_date", label="Event date",
+            field_type="date", is_required=True,
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"event_date": "2026-12-20"},
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["form_responses"][0]["value"], "2026-12-20")
+
+    def test_create_booking_rejects_invalid_iso_date_answer(self):
+        FormField.objects.create(
+            service=self.service, key="event_date", label="Event date",
+            field_type="date", is_required=True,
+        )
+        for invalid_date in ("20-12-2026", "2026-02-30", "2026-2-03"):
+            with self.subTest(invalid_date=invalid_date):
+                response = self.client.post("/api/v1/bookings/", {
+                    "service": self.service.id,
+                    "variant": self.variant.id,
+                    "booking_mode": "scheduled",
+                    "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+                    "address_id": self.address.id,
+                    "form_responses": {"event_date": invalid_date},
+                }, format="json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("form_responses", response.data)
+
+    def test_create_booking_requires_visible_conditional_date_answer(self):
+        FormField.objects.create(
+            service=self.service, key="occasion", label="Occasion",
+            field_type="select", options=["Wedding", "Party"], is_required=True,
+        )
+        FormField.objects.create(
+            service=self.service, key="event_date", label="Event date",
+            field_type="date", is_required=True,
+            visibility_rules=[{"field": "occasion", "operator": "equals", "value": "Wedding"}],
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"occasion": "Wedding"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
+    def test_cart_rejects_invalid_date_answer(self):
+        FormField.objects.create(
+            service=self.service, key="event_date", label="Event date",
+            field_type="date", is_required=True,
+        )
+        serializer = CartItemSerializer(data={
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "quantity": 1,
+            "addon_selections": [],
+            "form_answers": {"event_date": "2026-02-30"},
+            "category_answers": {},
+            "notes": "",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("form_answers", serializer.errors)
 
     def test_create_booking_does_not_require_hidden_conditional_answer(self):
         FormField.objects.create(
@@ -1530,7 +1603,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         accept_resp = worker2_client.post(f"/api/v1/workers/offers/{offer2.id}/accept/", format="json")
 
         self.assertEqual(accept_resp.status_code, 400)
-        self.assertIn("already assigned", accept_resp.data["detail"].lower())
+        self.assertIn("already been assigned", accept_resp.data["detail"].lower())
 
     def test_5_customer_sees_assigned_worker(self):
         """Customer can see the assigned worker in booking details."""
