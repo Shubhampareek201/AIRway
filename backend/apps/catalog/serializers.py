@@ -67,7 +67,7 @@ class FormFieldSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FormField
-        fields = ["id", "key", "label", "label_hi", "field_type", "field_type_display", "options", "is_required", "sort_order"]
+        fields = ["id", "key", "label", "label_hi", "field_type", "field_type_display", "options", "is_required", "visibility_rules", "sort_order"]
         read_only_fields = ["field_type_display"]
 
 
