@@ -35,7 +35,7 @@ class BeautyAudienceScreen extends StatelessWidget {
     return const [
       {'audience': 'men', 'title': 'Men', 'subtitle': 'Haircut, beard, grooming and more', 'image': _menImage},
       {'audience': 'women', 'title': 'Women', 'subtitle': 'Hair, skin care, makeup and more', 'image': _womenImage},
-      {'audience': 'both', 'title': 'Both', 'subtitle': 'Unisex services for everyone', 'image': _womenImage},
+      {'audience': 'both', 'title': 'Both', 'subtitle': 'Unisex services for everyone', 'image': _menImage, 'image_secondary': _womenImage},
     ];
   }
 
@@ -71,6 +71,7 @@ class BeautyAudienceScreen extends StatelessWidget {
               title: option['title']?.toString() ?? '',
               subtitle: option['subtitle']?.toString() ?? '',
               image: option['image']?.toString() ?? '',
+              secondaryImage: option['image_secondary']?.toString() ?? '',
             ),
             const SizedBox(height: 14),
           ],
@@ -91,6 +92,7 @@ class BeautyAudienceScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     required String image,
+    required String secondaryImage,
   }) {
     return Material(
       color: Colors.white,
@@ -106,16 +108,26 @@ class BeautyAudienceScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (image.isNotEmpty)
+              if (value == BeautyAudience.both && image.isNotEmpty && secondaryImage.isNotEmpty)
                 SizedBox(
-                height: 174,
-                width: double.infinity,
-                child: Image.network(
-                  image,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _imageFallback(),
+                  height: 174,
+                  child: Row(
+                    children: [
+                      Expanded(child: Image.network(image, height: 174, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
+                      Expanded(child: Image.network(secondaryImage, height: 174, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
+                    ],
+                  ),
+                )
+              else if (image.isNotEmpty)
+                SizedBox(
+                  height: 174,
+                  width: double.infinity,
+                  child: Image.network(
+                    image,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _imageFallback(),
+                  ),
                 ),
-              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 13, 16, 15),
                 child: Row(
