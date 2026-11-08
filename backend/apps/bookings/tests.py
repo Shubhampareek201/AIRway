@@ -225,6 +225,74 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("form_responses", response.data)
 
+    def test_create_booking_does_not_require_hidden_conditional_answer(self):
+        FormField.objects.create(
+            service=self.service, key="vehicle_type", label="Vehicle type",
+            field_type="select", options=["Sedan", "SUV"], is_required=True,
+        )
+        FormField.objects.create(
+            service=self.service, key="seat_count", label="Seat count",
+            field_type="number", is_required=True,
+            visibility_rules=[{
+                "field": "vehicle_type", "operator": "equals", "value": "SUV",
+            }],
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"vehicle_type": "Sedan"},
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_create_booking_requires_visible_conditional_answer(self):
+        FormField.objects.create(
+            service=self.service, key="vehicle_type", label="Vehicle type",
+            field_type="select", options=["Sedan", "SUV"], is_required=True,
+        )
+        FormField.objects.create(
+            service=self.service, key="seat_count", label="Seat count",
+            field_type="number", is_required=True,
+            visibility_rules=[{
+                "field": "vehicle_type", "operator": "equals", "value": "SUV",
+            }],
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"vehicle_type": "SUV"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
+    def test_create_booking_rejects_answer_for_hidden_conditional_question(self):
+        FormField.objects.create(
+            service=self.service, key="vehicle_type", label="Vehicle type",
+            field_type="select", options=["Sedan", "SUV"], is_required=True,
+        )
+        FormField.objects.create(
+            service=self.service, key="seat_count", label="Seat count",
+            field_type="number", is_required=False,
+            visibility_rules=[{
+                "field": "vehicle_type", "operator": "equals", "value": "SUV",
+            }],
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {"vehicle_type": "Sedan", "seat_count": "5"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
     def test_create_booking_fails_with_past_date(self):
         """Should reject booking with past scheduled time."""
         past_time = timezone.now() - timezone.timedelta(hours=1)
