@@ -1035,19 +1035,26 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="decline")
     def decline(self, request, pk=None):
-        """Decline a job offer."""
+        """Decline an offer and advance dispatch when the current batch is exhausted."""
         offer = self.get_object()
-
-        if offer.status != WorkerOffer.Status.PENDING:
-            return Response(
-                {"detail": f"Offer is already {offer.get_status_display().lower()}."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        offer.status = WorkerOffer.Status.DECLINED
-        offer.responded_at = timezone.now()
-        offer.save()
-
+        with transaction.atomic():
+            offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
+            if offer.worker.user_id != request.user.id:
+                return Response({"detail": "This offer does not belong to you."}, status=status.HTTP_404_NOT_FOUND)
+            if offer.status != WorkerOffer.Status.PENDING:
+                return Response({"detail": f"Offer is already {offer.get_status_display().lower()}."}, status=status.HTTP_400_BAD_REQUEST)
+            offer.status = WorkerOffer.Status.DECLINED
+            offer.responded_at = timezone.now()
+            offer.save(update_fields=["status", "responded_at", "updated_at"])
+            order_id = offer.order_id
+            booking_id = offer.booking_id
+        if order_id and not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
+            from apps.bookings.models import Order
+            from apps.bookings.dispatcher import DispatcherService
+            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+        elif not order_id and not WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING).exists():
+            from apps.bookings.dispatcher import DispatcherService
+            DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
         return Response({"detail": "Offer declined."})
 
     @action(detail=True, methods=["post"], url_path="withdraw")
