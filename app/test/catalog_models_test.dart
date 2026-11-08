@@ -170,6 +170,20 @@ void main() {
   });
 
   group('Category', () {
+    test('Beauty root does not show the legacy duplicate audience form', () {
+      final category = Category.fromMap({
+        'id': 6,
+        'title': 'Beauty',
+        'slug': 'beauty',
+        'parent': null,
+        'image': null,
+        'flow_steps': [],
+        'is_active': true,
+        'children': [],
+      });
+      expect(category.customerFlowSteps, isEmpty);
+    });
+
     test('fromMap parses correctly', () {
       final map = {'id': 1, 'title': 'Car Wash', 'title_hi': null, 'slug': 'car-wash', 'image': null, 'is_active': true};
       final c = Category.fromMap(map);
