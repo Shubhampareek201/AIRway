@@ -480,6 +480,48 @@ class CustomerCheckoutView(APIView):
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
 
+        # A parent order is fulfilled by one worker. Reject overlapping
+        # service windows before creating any booking/order records; otherwise
+        # checkout could succeed but no worker could ever accept the order.
+        from apps.bookings.services import _booking_intervals, _intervals_overlap
+        occupied_order_intervals = []
+        for item, serializer in prepared:
+            attrs = serializer.validated_data
+            service = attrs["service"]
+            variant = attrs.get("variant")
+            duration = (
+                variant.duration_minutes
+                if variant and variant.duration_minutes
+                else service.duration_minutes
+            ) or 60
+            quantity = attrs.get("quantity", 1)
+            intervals = _booking_intervals(
+                attrs["scheduled_at"],
+                duration * quantity,
+                service.buffer_minutes,
+                attrs.get("drop_scheduled_at")
+                if attrs.get("booking_mode") == Booking.BookingMode.PICKUP_DROP
+                else None,
+            )
+            if any(
+                _intervals_overlap(candidate, occupied)
+                for candidate in intervals
+                for occupied in occupied_order_intervals
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Services in one order must have non-overlapping appointment "
+                            "times, including service buffer and pickup/drop windows. "
+                            "Please choose different times."
+                        ),
+                        "code": "order_schedule_overlap",
+                        "cart_item_id": item.id,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            occupied_order_intervals.extend(intervals)
+
         order = Order.objects.create(
             customer=request.user,
             address=cart.address,
