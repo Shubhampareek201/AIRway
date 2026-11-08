@@ -130,6 +130,15 @@ void main() {
       expect(image, contains('1570172619644-dfd03ed5d881'));
     });
 
+    test('women hair service uses women-specific hair image even with a generic title', () {
+      final image = CatalogImageResolver.forService(
+        title: 'Hair Trimming',
+        categoryName: 'Hair Services',
+        audience: 'women',
+      );
+      expect(image, contains('1560066984-138dadb4c035'));
+    });
+
     test('men hair service still uses men-specific hair image', () {
       final image = CatalogImageResolver.forService(
         title: "Men's Haircut",
