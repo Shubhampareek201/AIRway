@@ -270,9 +270,11 @@ class BookingApi {
     int? addressId,
     int quantity = 1,
     String bookingMode = 'scheduled',
+    Map<String, dynamic> categoryAnswers = const {},
   }) async {
     final data = {
       'service': serviceId,
+      'category_answers': categoryAnswers,
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'booking_mode': bookingMode,
       'quantity': quantity,
