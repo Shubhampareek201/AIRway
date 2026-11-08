@@ -1365,10 +1365,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ),
   );
 
-  String _photoForService(Service service) =>
+  String? _photoForService(Service service) =>
       CatalogImageResolver.forService(
         title: service.title,
         categoryName: service.categoryName,
+        audience: service.audience,
       );
 
   String _photoForBanner(String title, int index) {
