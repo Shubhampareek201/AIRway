@@ -1072,23 +1072,28 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="withdraw")
     def withdraw(self, request, pk=None):
-        """Withdraw a job offer (worker retracts their offer)."""
+        """Withdraw a pending offer and advance dispatch when its batch is exhausted."""
         offer = self.get_object()
-
-        if offer.worker.user != request.user:
-            return Response(
-                {"detail": "Cannot withdraw offer from another user."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if offer.status not in [WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]:
-            return Response(
-                {"detail": f"Cannot withdraw offer in {offer.get_status_display().state} state."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        offer.status = WorkerOffer.Status.WITHDRAWN
-        offer.responded_at = timezone.now()
-        offer.save()
-
+        with transaction.atomic():
+            offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
+            if offer.worker.user_id != request.user.id:
+                return Response({"detail": "Cannot withdraw offer from another user."}, status=status.HTTP_403_FORBIDDEN)
+            if offer.status != WorkerOffer.Status.PENDING:
+                return Response(
+                    {"detail": f"Cannot withdraw offer in {offer.get_status_display().lower()} state."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            offer.status = WorkerOffer.Status.WITHDRAWN
+            offer.responded_at = timezone.now()
+            offer.save(update_fields=["status", "responded_at", "updated_at"])
+            order_id, booking_id = offer.order_id, offer.booking_id
+        if order_id and not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
+            from apps.bookings.models import Order
+            from apps.bookings.dispatcher import DispatcherService
+            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+        elif not order_id and not WorkerOffer.objects.filter(
+            booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING
+        ).exists():
+            from apps.bookings.dispatcher import DispatcherService
+            DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
         return Response({"detail": "Offer withdrawn."})
