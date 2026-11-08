@@ -16,11 +16,29 @@ class BeautyAudienceScreen extends StatelessWidget {
   static const _womenImage =
       'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=900&auto=format&fit=crop';
 
-  static Future<String?> choose(BuildContext context) {
+  final List<Map<String, dynamic>> options;
+
+  const BeautyAudienceScreen({super.key, this.options = const []});
+
+  static Future<String?> choose(
+    BuildContext context, {
+    List<Map<String, dynamic>> options = const [],
+  }) {
     return Navigator.push<String>(
       context,
-      MaterialPageRoute(builder: (_) => const BeautyAudienceScreen()),
+      MaterialPageRoute(builder: (_) => BeautyAudienceScreen(options: options)),
     );
+  }
+
+  List<Map<String, dynamic>> get _visibleOptions {
+    final configured = options.where((item) => item['is_active'] != false).toList()
+      ..sort((a, b) => (a['sort_order'] as num? ?? 0).compareTo(b['sort_order'] as num? ?? 0));
+    if (configured.isNotEmpty) return configured;
+    return const [
+      {'audience': 'men', 'title': 'Men', 'subtitle': 'Haircut, beard, grooming and more'},
+      {'audience': 'women', 'title': 'Women', 'subtitle': 'Hair, skin care, makeup and more'},
+      {'audience': 'both', 'title': 'Both', 'subtitle': 'Unisex services for everyone'},
+    ];
   }
 
   @override
@@ -48,26 +66,19 @@ class BeautyAudienceScreen extends StatelessWidget {
             style: TextStyle(color: _muted, height: 1.45),
           ),
           const SizedBox(height: 22),
-          _audienceCard(
-            context,
-            value: BeautyAudience.men,
-            title: 'Men',
-            subtitle: 'Haircut, beard, grooming and more',
-            image: _menImage,
-          ),
-          const SizedBox(height: 14),
-          _audienceCard(
-            context,
-            value: BeautyAudience.women,
-            title: 'Women',
-            subtitle: 'Hair, skin care, makeup and more',
-            image: _womenImage,
-          ),
-          const SizedBox(height: 14),
-          _bothCard(context),
+          for (final option in _visibleOptions) ...[
+            _audienceCard(
+              context,
+              value: option['audience']?.toString() ?? '',
+              title: option['title']?.toString() ?? '',
+              subtitle: option['subtitle']?.toString() ?? '',
+              image: option['image']?.toString() ?? '',
+            ),
+            const SizedBox(height: 14),
+          ],
           const SizedBox(height: 16),
           const Text(
-            'Unisex services are shown in Both. Your selection only filters the services; it does not determine your professional preference.',
+            'Your selection only filters the services; it does not determine your professional preference.',
             textAlign: TextAlign.center,
             style: TextStyle(color: _muted, fontSize: 11, height: 1.45),
           ),
@@ -97,7 +108,8 @@ class BeautyAudienceScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
+              if (image.isNotEmpty)
+                SizedBox(
                 height: 174,
                 width: double.infinity,
                 child: Image.network(
