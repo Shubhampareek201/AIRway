@@ -6,6 +6,8 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
+import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
+import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
 
 class ServiceCategoriesScreen extends StatefulWidget {
   final List<Category>? initialCategories;
@@ -64,6 +66,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
 
   Future<void> _openCategory(Category category) async {
     var answers = Map<String, dynamic>.from(widget.initialAnswers);
+    if (category.slug == 'beauty' && answers['beauty_audience'] == null) {
+      final audience = await BeautyAudienceScreen.choose(context);
+      if (audience == null || !mounted) return;
+      answers['beauty_audience'] = audience;
+    }
     if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
@@ -122,22 +129,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     );
   }
 
-  String _categoryPhoto(String name) {
-    final value = name.toLowerCase();
-    if (value.contains('beauty') || value.contains('salon') || value.contains('wellness')) {
-      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=900&auto=format&fit=crop';
-    }
-    if (value.contains('car') || value.contains('wash') || value.contains('vehicle')) {
-      return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=900&auto=format&fit=crop';
-    }
-    if (value.contains('electric') || value.contains('fan') || value.contains('light')) {
-      return 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=900&auto=format&fit=crop';
-    }
-    if (value.contains('clean') || value.contains('home') || value.contains('kitchen')) {
-      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=900&auto=format&fit=crop';
-    }
-    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=900&auto=format&fit=crop';
-  }
+  String? _categoryPhoto(Category category) =>
+      CatalogCategoryImageResolver.forCategory(
+        slug: category.slug,
+        title: category.title,
+      );
 
   IconData _categoryIcon(String name) {
     final value = name.toLowerCase();
@@ -154,7 +150,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   Widget _categoryCard(Category category) {
     final imageUrl = category.image?.isNotEmpty == true
         ? category.image!
-        : _categoryPhoto(category.title);
+        : _categoryPhoto(category);
     return Ingram(
       onTap: () => _openCategory(category),
       child: Container(
@@ -167,19 +163,21 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
               child: SizedBox(
                 width: double.infinity,
                 height: 112,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Image.network(
-                    _categoryPhoto(category.title),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: AirwayColors.primarySoft,
-                      alignment: Alignment.center,
-                      child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
-                    ),
-                  ),
-                ),
+                child: imageUrl == null
+                    ? Container(
+                        color: AirwayColors.primarySoft,
+                        alignment: Alignment.center,
+                        child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
+                      )
+                    : Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: AirwayColors.primarySoft,
+                          alignment: Alignment.center,
+                          child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 12),
