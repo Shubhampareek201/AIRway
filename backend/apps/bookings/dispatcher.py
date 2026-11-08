@@ -48,7 +48,7 @@ class DispatcherService:
             return []
         from django.db.models import Max
         batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
-        if batch_number > config.max_batches:
+        if batch_number > max(int(config.max_batches or 1), 1):
             return []
         duration = (booking.variant.duration_minutes if booking.variant_id and booking.variant.duration_minutes else booking.service.duration_minutes) or 60
         quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
@@ -146,18 +146,20 @@ class DispatcherService:
             if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
                 return []
             batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
-            if batch_number > config.max_batches:
+            if batch_number > max(int(config.max_batches or 1), 1):
                 return []
             already_offered = set(existing.values_list("worker_id", flat=True))
+            batch_size = max(int(config.batch_size or 1), 1)
+            expiry_minutes = max(int(config.offer_expiry_minutes or 1), 1)
             workers = list(
                 WorkerProfile.objects.filter(pk__in=eligible_ids)
                 .exclude(pk__in=already_offered)
                 .select_related("user")
-                .order_by("-rating_avg", "pk")[:config.batch_size]
+                .order_by("-rating_avg", "pk")[:batch_size]
             )
             return cls._create_offers(
                 booking=anchor, order=order, workers=workers,
-                batch_number=batch_number, expiry_minutes=config.offer_expiry_minutes,
+                batch_number=batch_number, expiry_minutes=expiry_minutes,
                 service_titles=[booking.service.title for booking in bookings],
             )
 
