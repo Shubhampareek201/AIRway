@@ -134,6 +134,7 @@ class Category {
           .map((rawOption) {
             final option = Map<String, dynamic>.from(rawOption);
             option['image'] = _resolveMediaUrl(option['image']);
+            option['image_secondary'] = _resolveMediaUrl(option['image_secondary']);
             return option;
           })
           .toList(),
