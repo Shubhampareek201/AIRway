@@ -262,7 +262,7 @@ class BookingApi {
     return Map<String, dynamic>.from(result);
   }
 
-  static Future<bool> checkSlotAvailability({
+  static Future<Map<String, dynamic>> checkSlotAvailability({
     required int serviceId,
     required DateTime scheduledAt,
     DateTime? dropScheduledAt,
@@ -295,6 +295,6 @@ class BookingApi {
       acceptedStatusCodes: const {409},
     );
 
-    return result['available'] == true;
+    return Map<String, dynamic>.from(result);
   }
 }
