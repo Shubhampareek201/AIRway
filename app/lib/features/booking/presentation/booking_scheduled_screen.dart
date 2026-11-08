@@ -184,9 +184,65 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     );
   }
 
+  List<CatalogFormField> _visibleFormFields() {
+    final answers = <String, dynamic>{
+      ..._categoryAnswers,
+      ..._formAnswers,
+    };
+    return _service?.formFields.where((field) {
+      for (final rule in field.visibilityRules) {
+        final dependency = rule['field']?.toString();
+        if (dependency == null || dependency.isEmpty || !answers.containsKey(dependency)) {
+          return false;
+        }
+        final actual = answers[dependency];
+        final expected = rule['value'];
+        final operator = rule['operator']?.toString() ?? 'equals';
+        var matches = false;
+        switch (operator) {
+          case 'equals':
+            matches = actual == expected;
+            break;
+          case 'not_equals':
+            matches = actual != expected;
+            break;
+          case 'in':
+            final values = expected is List ? expected : [expected];
+            matches = values.contains(actual);
+            break;
+          default:
+            return false;
+        }
+        if (!matches) return false;
+      }
+      return true;
+    }).toList() ?? const <CatalogFormField>[];
+  }
+
+  void _setFormAnswer(String key, dynamic value) {
+    setState(() {
+      _formAnswers[key] = value;
+      // Remove stale answers when a parent choice makes a question irrelevant.
+      var changed = true;
+      while (changed) {
+        changed = false;
+        final visibleKeys = _visibleFormFields().map((field) => field.key).toSet();
+        final staleKeys = _formAnswers.keys
+            .where((answerKey) => !visibleKeys.contains(answerKey))
+            .toList();
+        if (staleKeys.isNotEmpty) {
+          for (final staleKey in staleKeys) {
+            _formAnswers.remove(staleKey);
+          }
+          changed = true;
+        }
+      }
+    });
+  }
+
   List<String> _flowSteps(Service service) => [
     if (service.variants.isNotEmpty) 'Package',
-    if (service.formFields.isNotEmpty) 'Service Details',
+    if (_visibleFormFields().isNotEmpty) 'Service Details',
     if (service.addons.isNotEmpty) 'Add-ons',
     'Address',
     'Summary',
@@ -220,7 +276,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       return;
     }
     if (current == 'Service Details') {
-      for (final field in service.formFields) {
+      for (final field in _visibleFormFields()) {
         if (field.isRequired &&
             (_formAnswers[field.key] == null ||
                 _formAnswers[field.key].toString().trim().isEmpty)) {
@@ -773,7 +829,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   }
 
   Widget _formFields() {
-    final fields = _service!.formFields;
+    final fields = _visibleFormFields();
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -808,7 +864,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                     final image = option['image']?.toString();
                     final selected = _formAnswers[field.key]?.toString() == value;
                     return GestureDetector(
-                      onTap: () => setState(() => _formAnswers[field.key] = value),
+                      onTap: () => _setFormAnswer(field.key, value),
                       child: Container(
                         width: (MediaQuery.of(context).size.width - 50) / 2,
                         decoration: BoxDecoration(
@@ -850,7 +906,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                   initialValue: _formAnswers[field.key]?.toString() ?? '',
                   decoration: decoration.copyWith(hintText: 'Paste an image URL'),
                   keyboardType: TextInputType.url,
-                  onChanged: (value) => _formAnswers[field.key] = value,
+                  onChanged: (value) => _setFormAnswer(field.key, value),
                 );
                 break;
               default:
@@ -1006,7 +1062,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       );
       return;
     }
-    for (final field in _service!.formFields) {
+    for (final field in _visibleFormFields()) {
       if (field.isRequired &&
           (_formAnswers[field.key] == null ||
               _formAnswers[field.key].toString().trim().isEmpty)) {
