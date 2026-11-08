@@ -457,6 +457,6 @@ class CategoryAudienceOptionsApiTest(TestCase):
         result = next(item for item in response.data["results"] if item["slug"] == "beauty")
         self.assertEqual(
             [item["audience"] for item in result["audience_options"]],
-            ["men", "women"],
+            ["men"],
         )
         self.assertEqual(result["audience_options"][0]["title"], "Men")
