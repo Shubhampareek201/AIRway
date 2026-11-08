@@ -353,13 +353,13 @@ Use these metrics to tune batch size, expiry and priority. Do not optimize solel
 3. Two existing tests expected HTTP 400 for an already-assigned offer; endpoint was changed back to 400 to preserve the established API contract.
 4. Checkout now rejects overlapping service windows before creating the parent order. A regression test was added.
 5. Worker priority choices are configurable, but rating/acceptance/cancellation data quality and minimum sample size are not yet governed.
-6. Standalone booking dispatch and multi-service order dispatch both exist; they must share the same locking, retry, expiry and cancellation guarantees.
+6. Standalone dispatch now serializes on the booking row; parent-order booking lines are routed to order-level dispatch and cannot be individually confirmed. Regression coverage is being added for this invariant.
 7. Existing customer cancellation is booking-level. Parent-order cancellation, partial cancellation and accepted-worker reassignment are not yet a complete unified workflow.
 8. Worker acceptance of a parent order does not create a booking-linked Razorpay order; parent-order payment is a separate customer flow. Keep this distinction explicit.
 9. The current checkout calculates 18% tax in code. Finance must approve the actual tax treatment before launch.
 10. Customer order tracking currently exposes basic line status and worker identity; the full live dispatch timeline, batch progress and support exceptions still need product/UI work.
 11. Worker offer payload now contains order service details, but worker app must be updated to render the complete order and prevent treating it as one standalone anchor booking.
-12. Notification delivery, worker online changes, capability revocation, cancellation races and same-worker concurrent acceptance need dedicated tests.
+12. Notification delivery, worker online changes, capability revocation, cancellation races and same-worker concurrent acceptance still need dedicated tests.
 13. The current worker model has service and zone links, but does not yet prove a complete approved capability matrix for every variant, skill or required equipment.
 14. Worker payout, commission, travel/material charges, cancellation fees, refund rules and payout timing are not specified and must not be guessed.
 
