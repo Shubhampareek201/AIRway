@@ -10,10 +10,7 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-BATCH_SIZE = 5
-MAX_BATCHES = 3
-OFFER_EXPIRY_MINUTES = 5
+# Payment timeout fallback; dispatch settings are read from Admin configuration.
 PAYMENT_TIMEOUT_MINUTES = 5
 
 
@@ -243,26 +240,16 @@ def timeout_pending_payments():
 
                 from apps.bookings.dispatcher import DispatcherService
 
-                existing_offers = WorkerOffer.objects.filter(booking=booking).count()
-                batch_limit = MAX_BATCHES * BATCH_SIZE
-                if existing_offers < batch_limit:
-                    offers = DispatcherService.dispatch_offers(
-                        booking,
-                        batch_size=BATCH_SIZE,
+                offers = DispatcherService.dispatch_offers(booking)
+                if offers:
+                    logger.info(
+                        "Re-dispatched booking %s after payment timeout: created %s new offers",
+                        booking.id, len(offers),
                     )
-                    if offers:
-                        logger.info(
-                            f"Re-dispatched booking {booking.id} after payment timeout: "
-                            f"created {len(offers)} new offers"
-                        )
-                    else:
-                        logger.info(
-                            f"No eligible workers for re-dispatch of booking {booking.id}"
-                        )
                 else:
                     logger.info(
-                        f"Skipping re-dispatch for booking {booking.id}: "
-                        f"already has {existing_offers} offers (max {batch_limit})"
+                        "No eligible workers or Admin dispatch limit reached for booking %s",
+                        booking.id,
                     )
 
                 logger.info(
