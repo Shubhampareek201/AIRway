@@ -47,6 +47,8 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
+    audience_options = CategoryAudienceOptionSerializer(many=True, read_only=True)
+
     class Meta:
         model = Category
         fields = ["id", "title", "title_hi", "slug", "image", "audience_options", "is_active", "parent"]
