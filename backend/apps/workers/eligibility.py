@@ -8,6 +8,34 @@ and overlapping assignments) remain in the dispatcher.
 from apps.workers.models import WorkerProfile
 
 
+def required_worker_gender_for_booking(service, category_answers=None):
+    """Resolve the required worker gender from service policy and customer choice.
+
+    The customer preference is optional and currently supported only for the
+    Beauty launch category. A service-level female-worker requirement always
+    takes precedence over a customer's 'any professional' preference.
+    """
+    answers = category_answers if isinstance(category_answers, dict) else {}
+    preference = answers.get("professional_preference", "any")
+    if preference not in ("any", "female"):
+        raise ValueError("Choose a valid professional preference.")
+
+    category = service.category
+    while category.parent_id:
+        category = category.parent
+
+    is_beauty = (
+        "beauty" in (category.slug or "").lower()
+        or "beauty" in (category.title or "").lower()
+    )
+    if preference == "female" and not is_beauty:
+        raise ValueError("Female professional preference is only available for Beauty services.")
+
+    if service.requires_female_worker or preference == "female":
+        return WorkerProfile.Gender.FEMALE
+    return None
+
+
 def eligible_worker_profiles(*, city=None, zone=None):
     """
     Base pool of workers who can currently serve at least one configured
