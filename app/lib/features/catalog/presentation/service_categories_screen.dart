@@ -99,7 +99,10 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   Future<void> _openCategory(Category category) async {
     var answers = Map<String, dynamic>.from(widget.initialAnswers);
     if (category.slug == 'beauty' && answers['beauty_audience'] == null) {
-      final audience = await BeautyAudienceScreen.choose(context);
+      final audience = await BeautyAudienceScreen.choose(
+        context,
+        options: category.audienceOptions,
+      );
       if (audience == null || !mounted) return;
       answers['beauty_audience'] = audience;
     }
