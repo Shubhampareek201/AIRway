@@ -1,10 +1,26 @@
 from rest_framework import serializers
-from .models import Banner, Category, Service, ServiceVariant, AddOn, FormField, ServiceImage
+from .models import Banner, Category, CategoryAudienceOption, Service, ServiceVariant, AddOn, FormField, ServiceImage
+
+
+class CategoryAudienceOptionSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CategoryAudienceOption
+        fields = ["id", "audience", "title", "subtitle", "image", "sort_order", "is_active"]
+
+    def get_image(self, obj):
+        if not obj.image:
+            return None
+        request = self.context.get("request")
+        url = obj.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
+    audience_options = CategoryAudienceOptionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Category
