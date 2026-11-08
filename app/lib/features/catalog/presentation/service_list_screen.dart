@@ -8,8 +8,8 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 
-/// Final backend-driven service listing. Catalogue photos will be added after
-/// the image assets have been reviewed and matched to their service titles.
+/// Backend-driven service listing. Service photography uses the same canonical
+/// resolver as Home and service details; admin-uploaded images take priority.
 class ServiceListScreen extends StatefulWidget {
   final int categoryId;
   final String? categoryTitle;
