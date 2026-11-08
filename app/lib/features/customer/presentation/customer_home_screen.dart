@@ -21,6 +21,7 @@ import 'package:airway/features/catalog/presentation/service_categories_screen.d
 import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
 import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
 import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
+import 'package:airway/features/catalog/data/beauty_audience.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
     as catalog;
@@ -228,7 +229,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _searchFocus.unfocus();
     var answers = <String, dynamic>{};
     final root = _rootCategoryForService(service.categoryId);
-    if (root != null && root.customerFlowSteps.isNotEmpty) {
+    if (root?.slug == 'beauty') {
+      final audience = await BeautyAudienceScreen.choose(context);
+      if (audience == null || !mounted) return;
+      if (!BeautyAudience.includes(
+        selected: audience,
+        serviceAudience: service.audience,
+      )) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              service.audience == 'men'
+                  ? 'This service is listed under Men. Choose Men to continue.'
+                  : 'This service is listed under Women. Choose Women to continue.',
+            ),
+          ),
+        );
+        return;
+      }
+      answers['beauty_audience'] = audience;
+    } else if (root != null && root.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
