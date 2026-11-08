@@ -115,6 +115,12 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() {
       dates[id] = result.scheduledAt;
       times[id] = TimeOfDay.fromDateTime(result.scheduledAt);
+      for (final row in (cart?['items'] as List? ?? []).whereType<Map>()) {
+        if (row['id'] == id) {
+          row['category_answers'] = Map<String, dynamic>.from(result.categoryAnswers);
+          break;
+        }
+      }
       if (result.dropScheduledAt != null) {
         dropTimes[id] = TimeOfDay.fromDateTime(result.dropScheduledAt!);
       }
