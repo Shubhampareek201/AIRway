@@ -103,6 +103,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           categoryAnswers: Map<String, dynamic>.from(
             item['category_answers'] as Map? ?? const {},
           ),
+          cartItemId: id,
           initialDate: previousDate,
           initialTime: previousTime,
           initialDropTime: previousDrop,
