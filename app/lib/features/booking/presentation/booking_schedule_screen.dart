@@ -5,10 +5,12 @@ import 'package:airway/features/booking/data/booking_api.dart';
 class BookingScheduleResult {
   final DateTime scheduledAt;
   final DateTime? dropScheduledAt;
+  final Map<String, dynamic> categoryAnswers;
 
   const BookingScheduleResult({
     required this.scheduledAt,
     this.dropScheduledAt,
+    this.categoryAnswers = const {},
   });
 }
 
@@ -212,7 +214,11 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
       return;
     }
     Navigator.of(context).pop(
-      BookingScheduleResult(scheduledAt: start, dropScheduledAt: drop),
+      BookingScheduleResult(
+        scheduledAt: start,
+        dropScheduledAt: drop,
+        categoryAnswers: Map<String, dynamic>.from(_categoryAnswers),
+      ),
     );
   }
 
