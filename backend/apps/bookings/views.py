@@ -205,13 +205,23 @@ class BookingViewSet(viewsets.ModelViewSet):
                     drop_scheduled_at=drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
                     exclude_customer_id=request.user.id,
                 ):
+                    preference_can_change = (
+                        category_answers.get("professional_preference") == "female"
+                        and not service.requires_female_worker
+                    )
                     return Response({
                         "available": False,
                         "message": (
                             "No female professional is available for this time slot. "
                             "Choose another time or change the preference to No preference."
+                            if preference_can_change
+                            else "No female professional is available for this service at the selected time. Choose another time."
                         ),
-                        "reason": "female_professional_unavailable",
+                        "reason": (
+                            "female_professional_unavailable"
+                            if preference_can_change
+                            else "required_female_worker_unavailable"
+                        ),
                     })
 
             return Response({"available": True, "message": "Slot is available for booking."})
