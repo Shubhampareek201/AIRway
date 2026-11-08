@@ -128,6 +128,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         addressId: addressId,
       );
       if (!mounted) return;
+      final professionalPreference = _categoryAnswers['professional_preference'];
       setState(() {
         _selectedAddressId = addressId;
         _service = service;
@@ -139,6 +140,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         _categoryAnswers
           ..clear()
           ..addAll(widget.initialCategoryAnswers);
+        if (professionalPreference != null) {
+          _categoryAnswers['professional_preference'] = professionalPreference;
+        }
         _professionalPreference =
             _categoryAnswers['professional_preference']?.toString() ?? 'any';
         _addressCheckBusy = false;
