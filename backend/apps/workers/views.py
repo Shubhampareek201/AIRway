@@ -923,7 +923,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 if offer.status != WorkerOffer.Status.PENDING:
                     return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
-                    Booking.objects.select_for_update().filter(order_item__order=order)
+                    Booking.objects.select_for_update(of=("self",)).filter(order_item__order=order)
                     .select_related("service__category", "variant", "address__zone__city")
                     .order_by("pk")
                 )
@@ -932,7 +932,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 if order.status != Order.Status.AWAITING_ASSIGNMENT:
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
             else:
-                bookings = [Booking.objects.select_for_update().select_related(
+                bookings = [Booking.objects.select_for_update(of=("self",)).select_related(
                     "service__category", "variant", "address__zone__city"
                 ).get(pk=offer.booking_id)]
 
