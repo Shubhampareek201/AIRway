@@ -79,6 +79,15 @@ class DispatcherService:
         booking_end = scheduled_at + timedelta(minutes=duration_minutes)
 
         # Find eligible workers
+        from apps.workers.eligibility import required_worker_gender_for_booking
+        try:
+            required_gender = required_worker_gender_for_booking(
+                service, booking.customer_answers
+            )
+        except ValueError:
+            logger.exception("Invalid worker preference on booking %s", booking.id)
+            return []
+
         eligible_workers = cls._get_eligible_workers(
             service=service,
             zone=address.zone,
@@ -87,6 +96,7 @@ class DispatcherService:
             drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
             exclude_booking_id=booking.id,
             exclude_customer_id=booking.customer_id,
+            required_gender=required_gender,
         )
 
         if not eligible_workers:
@@ -133,7 +143,7 @@ class DispatcherService:
     def _get_eligible_workers(
         cls, service, zone, scheduled_at, duration_minutes,
         drop_scheduled_at=None, exclude_booking_id=None,
-        exclude_customer_id=None,
+        exclude_customer_id=None, required_gender=None,
     ):
         """Return workers who can cover every visit without a schedule or job conflict."""
         from apps.workers.models import WorkerProfile
@@ -148,6 +158,8 @@ class DispatcherService:
         eligible_workers = eligible_workers_for_service(
             service, zone=zone,
         )
+        if required_gender:
+            eligible_workers = eligible_workers.filter(gender=required_gender)
         if exclude_customer_id is not None:
             eligible_workers = eligible_workers.exclude(user_id=exclude_customer_id)
         eligible_workers = eligible_workers.prefetch_related("schedules", "leaves")
