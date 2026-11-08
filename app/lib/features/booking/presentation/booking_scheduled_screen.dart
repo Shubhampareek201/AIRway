@@ -948,6 +948,23 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                   color: _Ui.ink,
                 ),
               ),
+              if (service.supportsProfessionalPreference) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline_rounded, size: 14, color: _Ui.sub),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        _professionalPreference == 'female'
+                            ? 'Professional: Female professional'
+                            : 'Professional: No preference',
+                        style: const TextStyle(fontSize: 13, color: _Ui.sub),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (_selectedVariantId != null) ...[
                 const SizedBox(height: 8),
                 Row(
