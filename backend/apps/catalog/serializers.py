@@ -89,6 +89,14 @@ class ServiceSerializer(serializers.ModelSerializer):
         # catalogue behaviour; address-scoped requests get a real availability flag.
         return True if available_ids is None else obj.id in available_ids
 
+    def get_supports_professional_preference(self, obj):
+        category = obj.category
+        while category.parent_id:
+            category = category.parent
+        return "beauty" in (category.slug or "").lower() or "beauty" in (category.title or "").lower()
+
+    supports_professional_preference = serializers.SerializerMethodField()
+
     class Meta:
         model = Service
         fields = [
@@ -96,7 +104,7 @@ class ServiceSerializer(serializers.ModelSerializer):
             "is_available",
             "image", "booking_mode", "booking_mode_display", "pricing_type", "pricing_type_display",
             "unit_label", "visit_fee", "duration_minutes", "buffer_minutes",
-            "audience", "audience_display", "requires_female_worker",
+            "audience", "audience_display", "requires_female_worker", "supports_professional_preference",
             "is_popular", "sort_order", "is_active",
             "images", "variants", "addons", "form_fields",
             "created_at", "updated_at"
