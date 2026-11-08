@@ -24,7 +24,7 @@ class AddOnInline(TabularInline):
 class FormFieldInline(TabularInline):
     model = FormField
     extra = 0
-    fields = ("label", "key", "field_type", "options", "is_required", "sort_order", "is_active")
+    fields = ("label", "key", "field_type", "options", "is_required", "visibility_rules", "sort_order", "is_active")
     show_change_link = True
 
 
