@@ -3,6 +3,7 @@ import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
+import 'package:airway/features/catalog/data/beauty_audience.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
@@ -102,18 +103,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
 
   List<Service> get _filteredServices {
     final lower = _query.trim().toLowerCase();
-    final beautyType = widget.initialAnswers['beauty_type']?.toString();
+    final beautyAudience = widget.initialAnswers['beauty_audience']?.toString();
     final electricalGroup = widget.initialAnswers['electrical_group']?.toString();
     return _services.where((service) {
-      if (beautyType == "Men's Beauty" &&
-          service.audience != 'men' &&
-          service.audience != 'all') return false;
-      if (beautyType == "Women's Beauty" &&
-          service.audience != 'women' &&
-          service.audience != 'all') return false;
-      if (beautyType == 'Common Services' && service.audience != 'all') {
-        return false;
-      }
+      if (beautyAudience != null &&
+          !BeautyAudience.includes(
+            selected: beautyAudience,
+            serviceAudience: service.audience,
+          )) return false;
       if (electricalGroup != null && service.categoryName != electricalGroup) {
         return false;
       }
