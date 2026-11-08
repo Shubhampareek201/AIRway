@@ -236,7 +236,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
               Text('Area: ${offer.serviceAddress}', maxLines: 2, overflow: TextOverflow.ellipsis),
             for (final entry in offer.customerAnswers.entries)
               Text(
-                '${entry.key.replaceAll('_', ' ')}: ${entry.value}',
+                workerCustomerAnswerLabel(entry.key, entry.value),
                 style: const TextStyle(fontSize: 12),
               ),
             for (final answer in offer.formResponses)
