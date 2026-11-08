@@ -3235,6 +3235,26 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(booking_addon.quantity, 3)
         self.assertEqual(booking_addon.total_price, Decimal("300.00"))
 
+    def test_parent_order_booking_line_cannot_be_confirmed_independently(self):
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [{"cart_item_id": self.cart_item.id, "scheduled_at": scheduled_at}]},
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        booking_id = checkout.data["items"][0]["booking_id"]
+
+        response = self.client.post(
+            f"/api/v1/bookings/{booking_id}/confirm/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("parent order", response.data["detail"].lower())
+        self.assertFalse(WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True).exists())
+
     def test_checkout_rejects_overlapping_service_windows_before_creating_order(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
