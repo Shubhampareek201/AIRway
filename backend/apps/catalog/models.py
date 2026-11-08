@@ -182,6 +182,7 @@ class FormField(TimeStampedModel):
         NUMBER = "number", "Number"
         SELECT = "select", "Image choice cards"
         PHOTO = "photo", "Photo"
+        DATE = "date", "Date"
 
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="form_fields")
     key = models.SlugField(help_text="Jaise: car_type, area_sqft, problem")
