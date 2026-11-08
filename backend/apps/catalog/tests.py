@@ -460,3 +460,41 @@ class CategoryAudienceOptionsApiTest(TestCase):
             ["men"],
         )
         self.assertEqual(result["audience_options"][0]["title"], "Men")
+
+class BeautyCatalogueStagingCommandTest(TestCase):
+    def test_beauty_catalogue_command_stages_new_records_inactive_and_idempotently(self):
+        from django.core.management import call_command
+
+        root = Category.objects.create(title="Beauty", slug="beauty")
+        Category.objects.create(
+            title="Grooming & Massage",
+            slug="grooming-massage",
+            parent=root,
+        )
+
+        call_command("configure_beauty_catalogue", verbosity=0)
+
+        service = Service.objects.get(
+            category__parent=root,
+            title="Men's Face Cleanup",
+        )
+        self.assertFalse(service.is_active)
+        self.assertEqual(service.audience, Service.Audience.MEN)
+        self.assertTrue(service.variants.exists())
+        self.assertTrue(service.form_fields.exists())
+
+        variant = service.variants.first()
+        self.assertFalse(variant.is_active)
+        self.assertEqual(variant.price, 0)
+
+        # Admin changes must survive a rerun of the staging command.
+        service.description = "Admin-approved description draft"
+        service.save(update_fields=["description", "updated_at"])
+        call_command("configure_beauty_catalogue", verbosity=0)
+        service.refresh_from_db()
+        self.assertEqual(service.description, "Admin-approved description draft")
+        self.assertEqual(
+            Service.objects.filter(category__parent=root, title="Men's Face Cleanup").count(),
+            1,
+        )
+
