@@ -9,6 +9,12 @@ class CategoryAudienceOptionSerializer(serializers.ModelSerializer):
         model = CategoryAudienceOption
         fields = ["id", "audience", "title", "subtitle", "image", "sort_order", "is_active"]
 
+    def get_audience_options(self, obj):
+        options = obj.audience_options.filter(is_active=True)
+        return CategoryAudienceOptionSerializer(
+            options, many=True, context=self.context
+        ).data
+
     def get_image(self, obj):
         if not obj.image:
             return None
@@ -20,7 +26,7 @@ class CategoryAudienceOptionSerializer(serializers.ModelSerializer):
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
-    audience_options = CategoryAudienceOptionSerializer(many=True, read_only=True)
+    audience_options = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
@@ -47,7 +53,13 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    audience_options = CategoryAudienceOptionSerializer(many=True, read_only=True)
+    audience_options = serializers.SerializerMethodField()
+
+    def get_audience_options(self, obj):
+        options = obj.audience_options.filter(is_active=True)
+        return CategoryAudienceOptionSerializer(
+            options, many=True, context=self.context
+        ).data
 
     class Meta:
         model = Category
