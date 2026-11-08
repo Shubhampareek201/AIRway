@@ -4,6 +4,8 @@ import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
+import 'package:airway/features/catalog/data/beauty_audience.dart';
+import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
 
 class _Ui {
   static const violet = Color(0xFF315C46);
@@ -66,17 +68,42 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }).toList();
   }
 
-  void _navigateToBooking() {
-    if (_service == null) return;
+  Future<void> _navigateToBooking() async {
+    final service = _service;
+    if (service == null) return;
 
+    final answers = Map<String, dynamic>.from(widget.initialAnswers);
+    if (service.supportsProfessionalPreference &&
+        answers['beauty_audience'] == null) {
+      final audience = await BeautyAudienceScreen.choose(context);
+      if (audience == null || !mounted) return;
+      if (!BeautyAudience.includes(
+        selected: audience,
+        serviceAudience: service.audience,
+      )) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              service.audience == 'men'
+                  ? 'This service is listed under Men. Choose Men to continue.'
+                  : 'This service is listed under Women. Choose Women to continue.',
+            ),
+          ),
+        );
+        return;
+      }
+      answers['beauty_audience'] = audience;
+    }
+
+    if (!mounted) return;
     Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => BookingScheduledScreen(
-          serviceId: _service!.id,
-          serviceTitle: _service!.title,
+          serviceId: service.id,
+          serviceTitle: service.title,
           addressId: widget.addressId,
-          initialCategoryAnswers: widget.initialAnswers,
+          initialCategoryAnswers: answers,
         ),
       ),
     );
