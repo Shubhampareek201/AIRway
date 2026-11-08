@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/features/catalog/data/beauty_audience.dart';
 
 /// First step of the Beauty journey: explicitly choose the intended audience.
 /// "Both" is limited to catalogue services configured as unisex.
@@ -49,7 +50,7 @@ class BeautyAudienceScreen extends StatelessWidget {
           const SizedBox(height: 22),
           _audienceCard(
             context,
-            value: 'men',
+            value: BeautyAudience.men,
             title: 'Men',
             subtitle: 'Haircut, beard, grooming and more',
             image: _menImage,
@@ -57,7 +58,7 @@ class BeautyAudienceScreen extends StatelessWidget {
           const SizedBox(height: 14),
           _audienceCard(
             context,
-            value: 'women',
+            value: BeautyAudience.women,
             title: 'Women',
             subtitle: 'Hair, skin care, makeup and more',
             image: _womenImage,
@@ -140,7 +141,7 @@ class BeautyAudienceScreen extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.pop(context, 'both'),
+        onTap: () => Navigator.pop(context, BeautyAudience.both),
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(color: _line),
