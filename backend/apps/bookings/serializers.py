@@ -380,8 +380,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             note="Booking created",
         )
 
-        # Create worker offers for this booking
-        offers = create_worker_offers_for_booking(booking)
+        # Defer checkout dispatch until every order line has been persisted.
+        offers = [] if self.context.get("defer_worker_dispatch") else create_worker_offers_for_booking(booking)
 
         # Notify customer about offers
         if offers:
