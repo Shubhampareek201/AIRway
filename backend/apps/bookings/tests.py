@@ -232,6 +232,20 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.data["service"], self.service.id)
         self.assertEqual(response.data["status"], "pending")
 
+    def test_create_booking_preserves_quantity_in_price_snapshot(self):
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "quantity": 2,
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["pricing_snapshot"]["quantity"], 2)
+        self.assertEqual(response.data["pricing_snapshot"]["subtotal"], "1000.00")
+        self.assertEqual(response.data["pricing_snapshot"]["total"], "1180.0000")
+
     def test_create_booking_with_addons(self):
         """Should create booking with add-ons and calculate pricing."""
         addon = AddOn.objects.create(
