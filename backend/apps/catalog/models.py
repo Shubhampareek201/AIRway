@@ -15,15 +15,6 @@ class Category(TimeStampedModel):
     title_hi = models.CharField("Title (Hindi)", max_length=100, blank=True)
     slug = models.SlugField(unique=True)
     image = models.ImageField(upload_to="categories/", blank=True)
-    audience_options = models.JSONField(
-        default=list,
-        blank=True,
-        help_text=(
-            "Audience cards for category entry. Beauty root example: "
-            "[{audience: men|women|both, title, subtitle, image, sort_order, is_active}]. "
-            "Upload stable image assets and use their absolute media URL."
-        ),
-    )
     flow_steps = models.JSONField(
         default=list,
         blank=True,
@@ -42,6 +33,36 @@ class Category(TimeStampedModel):
 
     def __str__(self):
         return f"{self.parent.title} > {self.title}" if self.parent else self.title
+
+
+
+class CategoryAudienceOption(TimeStampedModel):
+    class Audience(models.TextChoices):
+        MEN = "men", "Men"
+        WOMEN = "women", "Women"
+        BOTH = "both", "Both / Unisex"
+
+    category = models.ForeignKey(
+        Category, on_delete=models.CASCADE, related_name="audience_options"
+    )
+    audience = models.CharField(max_length=10, choices=Audience.choices)
+    title = models.CharField(max_length=80)
+    subtitle = models.CharField(max_length=180, blank=True)
+    image = models.ImageField(upload_to="category_audiences/")
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["category", "audience"],
+                name="unique_category_audience_option",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.category.title} - {self.title}"
 
 
 class Service(TimeStampedModel):
