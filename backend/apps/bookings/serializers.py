@@ -13,6 +13,7 @@ from .services import check_slot_availability, check_service_available, create_w
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
 from apps.catalog.form_rules import visible_form_fields
 from apps.accounts.models import Address
+from apps.workers.eligibility import required_worker_gender_for_booking
 from apps.notifications.models import Notification
 
 
@@ -125,6 +126,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         if variant and variant.service != service:
             raise serializers.ValidationError({"variant": "Variant does not belong to this service."})
         category_answers = attrs.get("category_answers", {})
+        try:
+            required_gender = required_worker_gender_for_booking(service, category_answers)
+        except ValueError as exc:
+            raise serializers.ValidationError({"category_answers": str(exc)})
         if variant and isinstance(category_answers, dict):
             required_attributes = variant.attributes or {}
             if any(category_answers.get(key) != value for key, value in required_attributes.items()):
@@ -180,6 +185,24 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             except ServiceUnavailableError as e:
                 raise serializers.ValidationError({"service": str(e)})
             attrs["_address"] = address
+            if required_gender:
+                from apps.bookings.services import has_eligible_worker_for_slot
+                duration = variant.duration_minutes if variant else service.duration_minutes
+                if not has_eligible_worker_for_slot(
+                    service=service,
+                    address=address,
+                    scheduled_at=scheduled_at,
+                    duration_minutes=(duration or 60) * quantity,
+                    required_gender=required_gender,
+                    drop_scheduled_at=drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
+                    exclude_customer_id=user.id,
+                ):
+                    raise serializers.ValidationError({
+                        "category_answers": (
+                            "No female professional is available for this time slot. "
+                            "Please choose another time or change the preference to No preference."
+                        )
+                    })
         except Address.DoesNotExist:
             raise serializers.ValidationError({"address_id": "Invalid address."})
 
@@ -445,6 +468,7 @@ class BookingAvailabilitySerializer(serializers.Serializer):
     audience = serializers.CharField(required=False, default="all")
     address_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     quantity = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
+    category_answers = serializers.DictField(required=False, default=dict)
 
     def validate_scheduled_at(self, value):
         from django.utils import timezone
@@ -567,6 +591,11 @@ class CartItemSerializer(serializers.ModelSerializer):
         addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
         answers = attrs.get("form_answers", instance.form_answers if instance else {})
         category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
+
+        try:
+            required_worker_gender_for_booking(service, category_answers)
+        except ValueError as exc:
+            raise serializers.ValidationError({"category_answers": str(exc)})
 
         if quantity < 1 or quantity > 20:
             raise serializers.ValidationError({"quantity": "Quantity must be between 1 and 20."})
