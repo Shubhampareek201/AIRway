@@ -886,21 +886,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: Image.network(
-                      category.image?.isNotEmpty == true
-                          ? category.image!
-                          : _photoForCategory(category),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Image.network(
-                        _photoForCategory(category.title),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Icon(
-                          _categoryIcon(category.title),
-                          color: _Ui.violet,
-                          size: 29,
-                        ),
-                      ),
-                    ),
+                    child: _categoryPhotoWidget(category, size: 58),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -950,23 +936,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Image.network(
-                        category.image?.isNotEmpty == true
-                            ? category.image!
-                            : _photoForCategory(category.title),
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Image.network(
-                          _photoForCategory(category.title),
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
-                            _categoryIcon(category.title),
-                            color: _Ui.violet,
-                            size: 34,
-                          ),
-                        ),
-                      ),
+                      child: _categoryPhotoWidget(category),
                     ),
                     const SizedBox(height: 8),
                     Text(
