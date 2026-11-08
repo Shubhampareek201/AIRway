@@ -2,9 +2,15 @@ from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 
 from .models import (
-    AddOn, Banner, Category, CityService, FormField, Service,
+    AddOn, Banner, Category, CategoryAudienceOption, CityService, FormField, Service,
     ServiceImage, ServiceVariant,
 )
+
+
+class CategoryAudienceOptionInline(TabularInline):
+    model = CategoryAudienceOption
+    extra = 0
+    fields = ("audience", "title", "subtitle", "image", "sort_order", "is_active")
 
 
 class VariantInline(TabularInline):
@@ -44,8 +50,9 @@ class CategoryAdmin(ModelAdmin):
     ordering = ("parent__title", "sort_order", "title")
     list_per_page = 30
     save_on_top = True
+    inlines = [CategoryAudienceOptionInline]
     fieldsets = (
-        ("Category details", {"fields": ("title", "title_hi", "slug", "parent", "image", "audience_options")}),
+        ("Category details", {"fields": ("title", "title_hi", "slug", "parent", "image")}),
         ("Customer flow", {"fields": ("flow_steps",), "description": "Configure pre-service questions as a JSON list. Leave empty when the category only needs subcategory selection."}),
         ("Display & availability", {"fields": ("sort_order", "is_active")}),
     )
