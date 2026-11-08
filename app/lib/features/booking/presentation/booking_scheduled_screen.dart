@@ -960,9 +960,11 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        _professionalPreference == 'female'
-                            ? 'Professional: Female professional'
-                            : 'Professional: No preference',
+                        service.requiresFemaleWorker
+                            ? 'Professional: Female professional required'
+                            : _professionalPreference == 'female'
+                                ? 'Professional: Female professional'
+                                : 'Professional: No preference',
                         style: const TextStyle(fontSize: 13, color: _Ui.sub),
                       ),
                     ),
@@ -1037,23 +1039,37 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
   Widget _professionalPreferenceStep() => SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          child: Column(
-            children: [
-              _preferenceOption(
-                value: 'any',
-                title: 'No preference',
-                subtitle: 'Any eligible Beauty professional can be assigned.',
-                icon: Icons.people_alt_outlined,
-              ),
-              const SizedBox(height: 12),
-              _preferenceOption(
-                value: 'female',
-                title: 'Female professional',
-                subtitle: 'Only female professionals will be considered.',
-                icon: Icons.person_outline_rounded,
-              ),
-            ],
-          ),
+          child: _service!.requiresFemaleWorker
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF1EA),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _Ui.line),
+                  ),
+                  child: const Text(
+                    'This service requires a female professional. AIRway will only check female professionals for your selected time.',
+                    style: TextStyle(color: _Ui.ink, height: 1.4),
+                  ),
+                )
+              : Column(
+                  children: [
+                    _preferenceOption(
+                      value: 'any',
+                      title: 'No preference',
+                      subtitle: 'Any eligible Beauty professional can be assigned.',
+                      icon: Icons.people_alt_outlined,
+                    ),
+                    const SizedBox(height: 12),
+                    _preferenceOption(
+                      value: 'female',
+                      title: 'Female professional',
+                      subtitle: 'Only female professionals will be considered.',
+                      icon: Icons.person_outline_rounded,
+                    ),
+                  ],
+                ),
         ),
       );
 
