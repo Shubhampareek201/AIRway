@@ -35,7 +35,7 @@ class DispatcherService:
     """
 
     @classmethod
-    def dispatch_offers(cls, booking, batch_size=BATCH_SIZE, expiry_minutes=OFFER_EXPIRY_MINUTES):
+    def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None):
         """
         Create worker offers for a booking.
 
@@ -53,7 +53,16 @@ class DispatcherService:
         from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
         from apps.availability.models import WorkerBlockedSlot
         from apps.notifications.models import Notification
-        from apps.bookings.models import WorkerOffer
+        from apps.bookings.models import WorkerOffer, DispatchConfiguration
+
+        config = DispatchConfiguration.get_solo()
+        if not config.is_enabled:
+            logger.info("Worker dispatch is disabled in Admin configuration")
+            return []
+        batch_size = max(int(batch_size if batch_size is not None else config.batch_size), 1)
+        expiry_minutes = max(int(
+            expiry_minutes if expiry_minutes is not None else config.offer_expiry_minutes
+        ), 1)
 
         # Validate booking status - can dispatch for PENDING or CONFIRMED
         if booking.status not in [booking.Status.PENDING, booking.Status.CONFIRMED]:
