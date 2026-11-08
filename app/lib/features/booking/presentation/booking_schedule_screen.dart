@@ -131,10 +131,13 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
         _availableSlots = available;
         _checking = false;
         if (available.isEmpty) {
-          final preferenceFailure = results.cast<Map<String, dynamic>?>().firstWhere(
-            (result) => result?['reason'] == 'female_professional_unavailable',
-            orElse: () => null,
-          );
+          Map<String, dynamic>? preferenceFailure;
+          for (final result in results) {
+            if (result['reason'] == 'female_professional_unavailable') {
+              preferenceFailure = result;
+              break;
+            }
+          }
           _femalePreferenceUnavailable = preferenceFailure != null;
           _slotError = preferenceFailure?['message']?.toString() ??
               'No available slots for this date. Choose another date.';
