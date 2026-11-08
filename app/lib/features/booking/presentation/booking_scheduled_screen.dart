@@ -893,7 +893,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                       ? TextInputType.number
                       : TextInputType.text,
                   maxLines: field.fieldType == 'textarea' ? 3 : 1,
-                  onChanged: (value) => _formAnswers[field.key] = value,
+                  onChanged: (value) => _setFormAnswer(field.key, value),
                 );
             }
             return Padding(
