@@ -193,6 +193,32 @@ def get_available_slots(
     return available_slots
 
 
+def has_eligible_worker_for_slot(
+    service,
+    address,
+    scheduled_at,
+    duration_minutes,
+    required_gender=None,
+    drop_scheduled_at=None,
+    exclude_customer_id=None,
+):
+    """Check whether at least one eligible worker can cover this exact slot."""
+    if not address or not address.zone_id:
+        return False
+
+    from apps.bookings.dispatcher import DispatcherService
+
+    return DispatcherService._get_eligible_workers(
+        service=service,
+        zone=address.zone,
+        scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
+        drop_scheduled_at=drop_scheduled_at,
+        exclude_customer_id=exclude_customer_id,
+        required_gender=required_gender,
+    ).exists()
+
+
 def create_worker_offers_for_booking(booking: Booking) -> list:
     """
     Create worker offers for eligible workers for a given booking.
