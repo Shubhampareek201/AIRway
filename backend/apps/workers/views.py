@@ -936,6 +936,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     "service__category", "variant", "address__zone__city"
                 ).get(pk=offer.booking_id)]
 
+            if order:
+                from apps.bookings.dispatcher import DispatcherService
+                if not DispatcherService.order_schedule_is_compatible(bookings):
+                    return Response({"detail": "The service times in this order overlap. Please reschedule the order before worker assignment."}, status=status.HTTP_409_CONFLICT)
+
             if any(
                 booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
                 or BookingAssignment.objects.filter(booking=booking).exists()
