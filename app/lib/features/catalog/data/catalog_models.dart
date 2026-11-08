@@ -131,7 +131,11 @@ class Category {
       image: _resolveMediaUrl(map['image']),
       audienceOptions: (map['audience_options'] as List? ?? [])
           .whereType<Map>()
-          .map((option) => Map<String, dynamic>.from(option))
+          .map((rawOption) {
+            final option = Map<String, dynamic>.from(rawOption);
+            option['image'] = _resolveMediaUrl(option['image']);
+            return option;
+          })
           .toList(),
       flowSteps: (map['flow_steps'] as List? ?? [])
           .whereType<Map>()
