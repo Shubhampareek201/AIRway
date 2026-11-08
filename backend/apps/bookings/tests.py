@@ -293,6 +293,25 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("form_responses", response.data)
 
+    def test_create_booking_fails_closed_for_invalid_visibility_configuration(self):
+        FormField.objects.create(
+            service=self.service, key="special_detail", label="Special detail",
+            field_type="text", is_required=True,
+            visibility_rules=[{
+                "field": "vehicle_type", "operator": "unsupported", "value": "SUV",
+            }],
+        )
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "form_responses": {},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("form_responses", response.data)
+
     def test_create_booking_fails_with_past_date(self):
         """Should reject booking with past scheduled time."""
         past_time = timezone.now() - timezone.timedelta(hours=1)
