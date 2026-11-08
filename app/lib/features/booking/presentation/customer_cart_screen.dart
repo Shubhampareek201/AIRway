@@ -100,6 +100,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           variantId: int.tryParse(item['variant']?.toString() ?? ''),
           quantity: int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
           bookingMode: item['booking_mode']?.toString() ?? 'scheduled',
+          categoryAnswers: Map<String, dynamic>.from(
+            item['category_answers'] as Map? ?? const {},
+          ),
           initialDate: previousDate,
           initialTime: previousTime,
           initialDropTime: previousDrop,
