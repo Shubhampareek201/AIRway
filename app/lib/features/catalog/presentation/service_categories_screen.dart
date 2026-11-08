@@ -8,6 +8,7 @@ import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
 import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
 import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
+import 'package:airway/features/catalog/data/beauty_audience.dart';
 
 class ServiceCategoriesScreen extends StatefulWidget {
   final List<Category>? initialCategories;
@@ -38,8 +39,39 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     if (widget.initialCategories != null) {
       _categories = widget.initialCategories!;
       _loading = false;
+      if (widget.initialAnswers['beauty_audience'] != null) {
+        _filterCategoriesForAudience();
+      }
     } else {
       _loadCategories();
+    }
+  }
+
+  Future<void> _filterCategoriesForAudience() async {
+    final selected = widget.initialAnswers['beauty_audience']?.toString();
+    if (selected == null) return;
+    try {
+      final services = await CatalogApi.listServices(addressId: widget.addressId);
+      final visibleCategoryIds = services
+          .where((service) => BeautyAudience.includes(
+                selected: selected,
+                serviceAudience: service.audience,
+              ))
+          .map((service) => service.categoryId)
+          .toSet();
+
+      bool hasVisibleService(Category category) {
+        if (visibleCategoryIds.contains(category.id)) return true;
+        return category.children.any(hasVisibleService);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _categories = _categories.where(hasVisibleService).toList();
+      });
+    } catch (_) {
+      // Keep the category tree visible if the audience filter request fails;
+      // the service list itself still applies the authoritative audience filter.
     }
   }
 
