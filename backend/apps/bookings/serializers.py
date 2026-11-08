@@ -276,7 +276,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         addon_ids = validated_data.pop("addon_ids", [])
         form_responses = validated_data.pop("form_responses", {})
         category_answers = validated_data.pop("category_answers", {})
-        validated_data.pop("quantity", 1)
+        quantity = validated_data.pop("quantity", 1)
         address = validated_data.pop("_address")
         user = self.context["request"].user
 
@@ -330,10 +330,13 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         # Calculate totals
         from decimal import Decimal
-        subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total)) + Decimal(str(visit_fee))
+        unit_subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total)) + Decimal(str(visit_fee))
+        subtotal = unit_subtotal * quantity
         tax = subtotal * Decimal("0.18")  # 18% GST
         total = subtotal + tax
 
+        pricing["quantity"] = quantity
+        pricing["unit_subtotal"] = str(unit_subtotal)
         pricing["subtotal"] = str(subtotal)
         pricing["tax"] = str(tax)
         pricing["total"] = str(total)
@@ -559,7 +562,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def get_quantity(self, obj):
         order_item = getattr(obj.booking, "order_item", None)
-        return order_item.quantity if order_item else 1
+        return order_item.quantity if order_item else int(
+            (obj.booking.pricing_snapshot or {}).get("quantity", 1)
+        )
 
     def get_can_accept(self, obj):
         from django.utils import timezone
