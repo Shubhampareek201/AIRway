@@ -97,6 +97,28 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.variant = self._create_variant(self.service)
         self.address = self._create_address(self.user)
 
+    def test_booking_api_rejects_service_outside_selected_beauty_audience(self):
+        beauty = Category.objects.create(title="Beauty", slug="beauty")
+        hair = Category.objects.create(
+            title="Hair Services", slug="hair-services", parent=beauty
+        )
+        service = self._create_service(hair, title="Men's Haircut")
+        service.audience = "men"
+        service.save(update_fields=["audience"])
+        variant = self._create_variant(service)
+
+        response = self.client.post("/api/v1/bookings/", {
+            "service": service.id,
+            "variant": variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+            "address_id": self.address.id,
+            "category_answers": {"beauty_audience": "women"},
+        }, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not listed for the selected Beauty audience", str(response.data))
+
     def test_dispatcher_only_returns_female_workers_when_preferred(self):
         beauty = Category.objects.create(title="Beauty", slug="beauty-root")
         service = self._create_service(beauty, title="Facial")
