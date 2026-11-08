@@ -137,18 +137,17 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(list(eligible.values_list("id", flat=True)), [female.id])
 
         variant = self._create_variant(service)
-        booking = Booking.objects.create(
-            customer=self.user,
-            address=self.address,
-            service=service,
-            variant=variant,
-            booking_mode=Booking.BookingMode.SCHEDULED,
-            scheduled_at=local_start,
-            status=Booking.Status.PENDING,
-            customer_answers={"professional_preference": "female"},
-        )
-        from apps.bookings.services import create_worker_offers_for_booking
-        offers = create_worker_offers_for_booking(booking)
+        response = self.client.post("/api/v1/bookings/", {
+            "service": service.id,
+            "variant": variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": local_start.isoformat(),
+            "address_id": self.address.id,
+            "category_answers": {"professional_preference": "female"},
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        booking = Booking.objects.get(pk=response.data["id"])
+        offers = list(WorkerOffer.objects.filter(booking=booking))
         self.assertEqual([offer.worker_id for offer in offers], [female.id])
         from apps.bookings.serializers import WorkerOfferSerializer
         offer_data = WorkerOfferSerializer(offers[0]).data
@@ -157,7 +156,7 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
             offer_data["customer_answers"]["professional_preference"], "female"
         )
 
-    def test_beauty_booking_accepts_female_professional_preference(self):
+    def test_beauty_booking_rejects_preference_when_no_female_worker_is_available(self):
         beauty = Category.objects.create(title="Beauty", slug="beauty-root")
         service = self._create_service(beauty, title="Facial")
         variant = self._create_variant(service)
