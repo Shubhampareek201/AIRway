@@ -216,7 +216,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final v = _matchingVariants(service)[index];
-                return _variantCard(v, service.categoryName);
+                return _variantCard(v, service.categoryName, service.audience);
               },
             ),
           ),
@@ -337,7 +337,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
   );
 
-  Widget _variantCard(ServiceVariant v, String categoryName) => Container(
+  Widget _variantCard(ServiceVariant v, String categoryName, String audience) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
@@ -353,6 +353,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     CatalogImageResolver.forService(
                           title: v.title,
                           categoryName: categoryName,
+                          audience: audience,
                         ) !=
                         null)
                 ? Image.network(
@@ -361,6 +362,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                         : CatalogImageResolver.forService(
                             title: v.title,
                             categoryName: categoryName,
+                            audience: audience,
                           )!,
                     width: 76,
                     height: 76,
