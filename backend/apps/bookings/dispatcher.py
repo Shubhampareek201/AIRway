@@ -36,119 +36,156 @@ class DispatcherService:
 
     @classmethod
     def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None):
-        """
-        Create worker offers for a booking.
-
-        Args:
-            booking: Booking instance (must be PENDING or CONFIRMED status)
-            batch_size: Number of workers per batch (default 5)
-            expiry_minutes: Offer expiry time window in minutes (default 5)
-
-        Returns:
-            list: Created WorkerOffer instances
-
-        Raises:
-            ValueError: If booking has no address/zone or invalid status
-        """
-        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
-        from apps.availability.models import WorkerBlockedSlot
-        from apps.notifications.models import Notification
+        """Dispatch a standalone booking through configured priority batches."""
         from apps.bookings.models import WorkerOffer, DispatchConfiguration
-
         config = DispatchConfiguration.get_solo()
-        if not config.is_enabled:
-            logger.info("Worker dispatch is disabled in Admin configuration")
+        if not config.is_enabled or booking.status not in (booking.Status.PENDING, booking.Status.CONFIRMED):
             return []
-        batch_size = max(int(batch_size if batch_size is not None else config.batch_size), 1)
-        expiry_minutes = max(int(
-            expiry_minutes if expiry_minutes is not None else config.offer_expiry_minutes
-        ), 1)
-
-        # Validate booking status - can dispatch for PENDING or CONFIRMED
-        if booking.status not in [booking.Status.PENDING, booking.Status.CONFIRMED]:
-            logger.warning(f"Cannot dispatch for booking {booking.id} in status {booking.status}")
+        batch_size = max(int(batch_size or config.batch_size), 1)
+        expiry_minutes = max(int(expiry_minutes or config.offer_expiry_minutes), 1)
+        existing = WorkerOffer.objects.filter(booking=booking, order__isnull=True)
+        if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
             return []
-
-        # Get address and zone
-        address = booking.address
-        if not address or not address.zone:
-            logger.warning(f"Booking {booking.id} has no address or zone for dispatch")
+        from django.db.models import Max
+        batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
+        if batch_number > config.max_batches:
             return []
-
-        service = booking.service
-        scheduled_at = booking.scheduled_at
-        unit_duration = (booking.variant.duration_minutes if booking.variant else service.duration_minutes) or 60
-        quantity = int((booking.pricing_snapshot or {}).get("quantity", 1) or 1)
-        duration_minutes = unit_duration * max(quantity, 1)
-
-        if not scheduled_at:
-            logger.warning(f"Booking {booking.id} has no scheduled_at time")
-            return []
-
-        # Calculate booking time window
-        from datetime import timedelta
-        booking_end = scheduled_at + timedelta(minutes=duration_minutes)
-
-        # Find eligible workers
+        duration = (booking.variant.duration_minutes if booking.variant_id and booking.variant.duration_minutes else booking.service.duration_minutes) or 60
+        quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
         from apps.workers.eligibility import required_worker_gender_for_booking
         try:
-            required_gender = required_worker_gender_for_booking(
-                service, booking.customer_answers
-            )
+            gender = required_worker_gender_for_booking(booking.service, booking.customer_answers)
         except ValueError:
-            logger.exception("Invalid worker preference on booking %s", booking.id)
+            logger.exception("Invalid worker preference for booking %s", booking.pk)
             return []
-
-        eligible_workers = cls._get_eligible_workers(
-            service=service,
-            zone=address.zone,
-            scheduled_at=scheduled_at,
-            duration_minutes=duration_minutes,
+        candidates = cls._get_eligible_workers(
+            service=booking.service,
+            zone=booking.address.zone if booking.address_id else None,
+            scheduled_at=booking.scheduled_at,
+            duration_minutes=duration * quantity,
             drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
-            exclude_booking_id=booking.id,
+            exclude_booking_id=booking.pk,
             exclude_customer_id=booking.customer_id,
-            required_gender=required_gender,
+            required_gender=gender,
+        )
+        already_offered = set(existing.values_list("worker_id", flat=True))
+        candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
+        return cls._create_offers(
+            booking=booking, order=None, workers=candidates,
+            batch_number=batch_number, expiry_minutes=expiry_minutes,
+            service_titles=[booking.service.title],
         )
 
-        if not eligible_workers:
-            logger.info(f"No eligible workers found for booking {booking.id}")
-            return []
+    @classmethod
+    def dispatch_order(cls, order):
+        """Offer a parent order only to workers eligible for every service line."""
+        from apps.bookings.models import Booking, BookingAssignment, WorkerOffer, DispatchConfiguration, Order
+        from apps.workers.models import WorkerProfile
+        from django.db.models import Max
 
-        # Create offers with notifications
-        offers_created = []
-        offer_expiry = timezone.now() + timedelta(minutes=expiry_minutes)
+        with transaction.atomic():
+            order = Order.objects.select_for_update().get(pk=order.pk)
+            config = DispatchConfiguration.get_solo()
+            if not config.is_enabled or order.status != Order.Status.AWAITING_ASSIGNMENT:
+                return []
+            items = list(order.items.select_related(
+                "booking__service__category", "booking__variant", "booking__address__zone__city"
+            ).order_by("created_at"))
+            if not items:
+                return []
+            bookings = [item.booking for item in items]
+            if any(
+                booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                or BookingAssignment.objects.filter(booking=booking).exists()
+                for booking in bookings
+            ):
+                return []
+            anchor = bookings[0]
+            zone_id = anchor.address.zone_id if anchor.address_id else None
+            if not zone_id or any(
+                booking.address_id != anchor.address_id or booking.address.zone_id != zone_id
+                for booking in bookings
+            ):
+                logger.warning("Order %s has inconsistent service addresses; dispatch skipped", order.pk)
+                return []
 
-        for worker in eligible_workers[:batch_size]:
-            # Check for duplicate offer
-            if WorkerOffer.objects.filter(booking=booking, worker=worker).exists():
-                continue
+            eligible_ids = None
+            for booking in bookings:
+                duration = (
+                    booking.variant.duration_minutes
+                    if booking.variant_id and booking.variant.duration_minutes
+                    else booking.service.duration_minutes
+                ) or 60
+                quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                from apps.workers.eligibility import required_worker_gender_for_booking
+                try:
+                    gender = required_worker_gender_for_booking(booking.service, booking.customer_answers)
+                except ValueError:
+                    logger.exception("Invalid worker preference on booking %s", booking.pk)
+                    return []
+                line_workers = cls._get_eligible_workers(
+                    service=booking.service,
+                    zone=booking.address.zone,
+                    scheduled_at=booking.scheduled_at,
+                    duration_minutes=duration * quantity,
+                    drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
+                    exclude_booking_id=booking.pk,
+                    exclude_customer_id=booking.customer_id,
+                    required_gender=gender,
+                )
+                line_ids = set(line_workers.values_list("pk", flat=True))
+                eligible_ids = line_ids if eligible_ids is None else eligible_ids.intersection(line_ids)
+                if not eligible_ids:
+                    return []
 
-            # Create the offer
-            offer = WorkerOffer.objects.create(
-                booking=booking,
-                worker=worker,
-                expires_at=offer_expiry
+            existing = WorkerOffer.objects.filter(order=order)
+            if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
+                return []
+            batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
+            if batch_number > config.max_batches:
+                return []
+            already_offered = set(existing.values_list("worker_id", flat=True))
+            workers = list(
+                WorkerProfile.objects.filter(pk__in=eligible_ids)
+                .exclude(pk__in=already_offered)
+                .select_related("user")
+                .order_by("-rating_avg", "pk")[:config.batch_size]
             )
-            offers_created.append(offer)
+            return cls._create_offers(
+                booking=anchor, order=order, workers=workers,
+                batch_number=batch_number, expiry_minutes=config.offer_expiry_minutes,
+                service_titles=[booking.service.title for booking in bookings],
+            )
 
-            # Create notification for worker
+    @classmethod
+    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles):
+        from datetime import timedelta
+        from apps.bookings.models import WorkerOffer
+        from apps.notifications.models import Notification
+        expiry = timezone.now() + timedelta(minutes=max(int(expiry_minutes), 1))
+        created = []
+        summary = ", ".join(service_titles)
+        for worker in workers:
+            offer = WorkerOffer.objects.create(
+                booking=booking, order=order, worker=worker,
+                batch_number=batch_number, expires_at=expiry,
+            )
+            created.append(offer)
             Notification.objects.create(
                 user=worker.user,
                 type=Notification.Type.WORKER_OFFER,
-                title="Job Offer",
-                body=f"A new job request for {service.title} at {scheduled_at.strftime('%d %b, %H:%M')}",
+                title="New Service Order" if order else "Job Offer",
+                body=(f"New order ({len(service_titles)} services): {summary}" if order else f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"),
                 channel=Notification.Channel.IN_APP,
                 data={
-                    "offer_id": offer.id,
-                    "booking_id": booking.id,
-                    "service_id": service.id,
-                    "scheduled_at": scheduled_at.isoformat(),
-                }
+                    "offer_id": offer.pk, "booking_id": booking.pk,
+                    "order_id": order.pk if order else None,
+                    "service_ids": list(order.items.values_list("booking__service_id", flat=True)) if order else [booking.service_id],
+                    "scheduled_at": booking.scheduled_at.isoformat(),
+                },
             )
-            logger.info(f"Created offer {offer.id} for worker {worker.user.phone} -> booking {booking.id}")
-
-        logger.info(f"Dispatched {len(offers_created)} offers for booking {booking.id}")
-        return offers_created
+        logger.info("Dispatched %s offers for %s %s in batch %s", len(created), "order" if order else "booking", order.pk if order else booking.pk, batch_number)
+        return created
 
     @classmethod
     def _get_eligible_workers(
