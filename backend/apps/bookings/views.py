@@ -475,7 +475,7 @@ class CustomerCheckoutView(APIView):
             }
             serializer = BookingCreateSerializer(
                 data=booking_data,
-                context={"request": request},
+                context={"request": request, "defer_worker_dispatch": True},
             )
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
@@ -563,21 +563,18 @@ class CustomerCheckoutView(APIView):
             tax_total += line_tax
             grand_total += line_total
 
-            # Dispatch the newly created booking immediately. Without this,
-            # checkout leaves every order permanently awaiting assignment.
-            # BookingCreateSerializer.create() already dispatches offers.
-            # Read the persisted offers instead of dispatching a second time;
-            # the second call would skip duplicates and incorrectly report zero.
-            offers_sent = WorkerOffer.objects.filter(booking=booking).count()
-            dispatch_results.append({
-                "booking_id": booking.id,
-                "offers_sent": offers_sent,
-            })
+            # Dispatch is deferred until every OrderItem exists.
+            dispatch_results.append({"booking_id": booking.id, "offers_sent": 0})
 
         order.subtotal = subtotal
         order.tax_amount = tax_total
         order.total_amount = grand_total
         order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
+
+        from apps.bookings.dispatcher import DispatcherService
+        order_offers = DispatcherService.dispatch_order(order)
+        if dispatch_results:
+            dispatch_results[0]["offers_sent"] = len(order_offers)
 
         cart.items.all().delete()
         return Response({
