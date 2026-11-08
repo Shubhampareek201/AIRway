@@ -279,3 +279,19 @@ Before exposing a service:
 - Test positive, negative, unavailable-worker, invalid-answer, changed-answer and rescheduling scenarios.
 
 Do not change existing prices, activate services, publish unverified packages, or promise service availability as part of this design-only proposal.
+
+
+## 9. First implementation slice
+
+The first customer-facing slice is implemented on `work/airway-foundation-audit`:
+
+- Beauty opens a dedicated photo-led **Men / Women / Both** selector from Home and catalogue category entry points.
+- Men includes `men` and `all` services; Women includes `women` and `all`; Both includes only services explicitly configured as `all`.
+- Subcategories with no services for the selected audience are hidden; the service list applies the same audience filter.
+- Direct entry to a Beauty service from Home/service detail also requires a compatible audience selection.
+- Cart, booking creation and slot availability validate the selected audience on the backend when supplied.
+- The legacy Beauty generic category-flow selector has been removed as the default, avoiding a duplicate audience question.
+- A shared category image resolver is used on Home and category browsing. Service cards, Home popular services and service detail use the shared service image resolver, with service/gallery uploads taking priority.
+- A data migration corrects the existing Men's Hair Wash and Bridal Facial audience metadata so these named services do not appear in Both incorrectly.
+
+This implementation does not create new unverified service packages, change prices, or activate services without approved worker coverage. The next catalogue slice is the Groom's wedding collection and additional verified grooming services.
