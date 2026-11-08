@@ -599,7 +599,7 @@ class CustomerCheckoutView(APIView):
             "next_step": (
                 "Worker offers sent. Track assignment in the order; payment unlocks after every service is assigned."
                 if any(row["offers_sent"] for row in dispatch_results)
-                else "No eligible online worker was available at checkout. The order is waiting for worker assignment."
+                else "No single approved worker is currently eligible and available for every service and selected time in this order. The order is waiting for worker assignment."
             ),
         }, status=status.HTTP_201_CREATED)
 
