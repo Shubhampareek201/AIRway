@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
+from django.utils.text import slugify
 
 from apps.catalog.models import AddOn, Category, FormField, Service, ServiceVariant
 
@@ -192,7 +193,7 @@ class Command(BaseCommand):
         for category_title, service_rows in BEAUTY_CATALOGUE.items():
             category, category_created = Category.objects.get_or_create(
                 parent=root,
-                slug=__import__("django.utils.text", fromlist=["slugify"]).slugify(category_title),
+                slug=slugify(category_title),
                 defaults={"title": category_title, "is_active": True},
             )
             if category_created:
