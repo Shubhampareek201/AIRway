@@ -49,6 +49,7 @@ class CategoryAudienceOption(TimeStampedModel):
     title = models.CharField(max_length=80)
     subtitle = models.CharField(max_length=180, blank=True)
     image = models.ImageField(upload_to="category_audiences/")
+    image_secondary = models.ImageField(upload_to="category_audiences/", blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
