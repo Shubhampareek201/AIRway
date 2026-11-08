@@ -22,12 +22,12 @@ def is_form_field_visible(form_field, answers):
 
         actual = answers[key]
         if operator == "equals":
-            matched = actual == expected
+            matched = str(actual) == str(expected)
         elif operator == "not_equals":
-            matched = actual != expected
+            matched = str(actual) != str(expected)
         elif operator == "in":
             values = expected if isinstance(expected, list) else [expected]
-            matched = actual in values
+            matched = any(str(actual) == str(item) for item in values)
         else:
             return False
 
