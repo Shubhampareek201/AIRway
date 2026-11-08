@@ -189,34 +189,10 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       ..._categoryAnswers,
       ..._formAnswers,
     };
-    return _service?.formFields.where((field) {
-      for (final rule in field.visibilityRules) {
-        final dependency = rule['field']?.toString();
-        if (dependency == null || dependency.isEmpty || !answers.containsKey(dependency)) {
-          return false;
-        }
-        final actual = answers[dependency];
-        final expected = rule['value'];
-        final operator = rule['operator']?.toString() ?? 'equals';
-        var matches = false;
-        switch (operator) {
-          case 'equals':
-            matches = actual.toString() == expected?.toString();
-            break;
-          case 'not_equals':
-            matches = actual.toString() != expected?.toString();
-            break;
-          case 'in':
-            final values = expected is List ? expected : [expected];
-            matches = values.any((item) => item?.toString() == actual.toString());
-            break;
-          default:
-            return false;
-        }
-        if (!matches) return false;
-      }
-      return true;
-    }).toList() ?? const <CatalogFormField>[];
+    return _service?.formFields
+            .where((field) => field.isVisibleFor(answers))
+            .toList() ??
+        const <CatalogFormField>[];
   }
 
   void _setFormAnswer(String key, dynamic value) {
