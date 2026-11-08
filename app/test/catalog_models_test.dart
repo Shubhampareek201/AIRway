@@ -193,6 +193,9 @@ void main() {
       expect(f.visibilityRules, hasLength(1));
       expect(f.visibilityRules.first['field'], 'vehicle_type');
       expect(f.visibilityRules.first['value'], 'SUV');
+      expect(f.isVisibleFor({'vehicle_type': 'SUV'}), isTrue);
+      expect(f.isVisibleFor({'vehicle_type': 'Sedan'}), isFalse);
+      expect(f.isVisibleFor({}), isFalse);
     });
   });
 }
