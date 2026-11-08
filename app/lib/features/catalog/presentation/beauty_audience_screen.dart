@@ -4,8 +4,6 @@ import 'package:airway/features/catalog/data/beauty_audience.dart';
 /// First step of the Beauty journey: explicitly choose the intended audience.
 /// "Both" is limited to catalogue services configured as unisex.
 class BeautyAudienceScreen extends StatelessWidget {
-  const BeautyAudienceScreen({super.key});
-
   static const _green = Color(0xFF315C46);
   static const _ink = Color(0xFF1E2923);
   static const _muted = Color(0xFF748078);
@@ -35,9 +33,9 @@ class BeautyAudienceScreen extends StatelessWidget {
       ..sort((a, b) => (a['sort_order'] as num? ?? 0).compareTo(b['sort_order'] as num? ?? 0));
     if (configured.isNotEmpty) return configured;
     return const [
-      {'audience': 'men', 'title': 'Men', 'subtitle': 'Haircut, beard, grooming and more'},
-      {'audience': 'women', 'title': 'Women', 'subtitle': 'Hair, skin care, makeup and more'},
-      {'audience': 'both', 'title': 'Both', 'subtitle': 'Unisex services for everyone'},
+      {'audience': 'men', 'title': 'Men', 'subtitle': 'Haircut, beard, grooming and more', 'image': _menImage},
+      {'audience': 'women', 'title': 'Women', 'subtitle': 'Hair, skin care, makeup and more', 'image': _womenImage},
+      {'audience': 'both', 'title': 'Both', 'subtitle': 'Unisex services for everyone', 'image': _womenImage},
     ];
   }
 
