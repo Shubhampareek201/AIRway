@@ -45,7 +45,7 @@ class CategoryAdmin(ModelAdmin):
     list_per_page = 30
     save_on_top = True
     fieldsets = (
-        ("Category details", {"fields": ("title", "title_hi", "slug", "parent", "image")}),
+        ("Category details", {"fields": ("title", "title_hi", "slug", "parent", "image", "audience_options")}),
         ("Customer flow", {"fields": ("flow_steps",), "description": "Configure pre-service questions as a JSON list. Leave empty when the category only needs subcategory selection."}),
         ("Display & availability", {"fields": ("sort_order", "is_active")}),
     )
