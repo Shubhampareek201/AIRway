@@ -1,6 +1,29 @@
 """Shared visibility evaluation for configurable service questions."""
 
 
+SUPPORTED_VISIBILITY_OPERATORS = {"equals", "not_equals", "in"}
+
+
+def validate_visibility_rules(rules):
+    """Reject malformed admin configuration instead of silently hiding fields."""
+    if not isinstance(rules, list):
+        raise ValueError("Visibility rules must be a list.")
+
+    for rule in rules:
+        if not isinstance(rule, dict):
+            raise ValueError("Each visibility rule must be an object.")
+        key = rule.get("field")
+        operator = rule.get("operator", "equals")
+        if not isinstance(key, str) or not key:
+            raise ValueError("Each visibility rule needs a dependency field.")
+        if operator not in SUPPORTED_VISIBILITY_OPERATORS:
+            raise ValueError(f"Unsupported visibility operator: {operator}.")
+        if "value" not in rule:
+            raise ValueError("Each visibility rule needs a comparison value.")
+        if operator == "in" and not isinstance(rule["value"], list):
+            raise ValueError("The 'in' operator requires a list of values.")
+
+
 def is_form_field_visible(form_field, answers):
     """Return whether a FormField is visible for the supplied combined answers.
 
@@ -8,28 +31,22 @@ def is_form_field_visible(form_field, answers):
     Missing dependency answers never satisfy a rule.
     """
     rules = form_field.visibility_rules or []
-    if not isinstance(rules, list):
-        return False
+    validate_visibility_rules(rules)
 
     for rule in rules:
-        if not isinstance(rule, dict):
-            return False
-        key = rule.get("field")
-        operator = rule.get("operator", "equals")
-        expected = rule.get("value")
-        if not isinstance(key, str) or not key or key not in answers:
+        key = rule["field"]
+        if key not in answers:
             return False
 
         actual = answers[key]
+        expected = rule["value"]
+        operator = rule.get("operator", "equals")
         if operator == "equals":
             matched = str(actual) == str(expected)
         elif operator == "not_equals":
             matched = str(actual) != str(expected)
-        elif operator == "in":
-            values = expected if isinstance(expected, list) else [expected]
-            matched = any(str(actual) == str(item) for item in values)
-        else:
-            return False
+        else:  # in
+            matched = any(str(actual) == str(item) for item in expected)
 
         if not matched:
             return False
