@@ -1,5 +1,14 @@
 // Standalone model file - no part directive
 
+String workerCustomerAnswerLabel(String key, dynamic value) {
+  if (key == 'professional_preference') {
+    return value?.toString() == 'female'
+        ? 'Professional preference: Female professional'
+        : 'Professional preference: No preference';
+  }
+  return '${key.replaceAll('_', ' ')}: $value';
+}
+
 class WorkerProfile {
   final int? id;
   final String status;
