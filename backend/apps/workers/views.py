@@ -898,6 +898,13 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
         payment_order_id = None
         now = timezone.now()
         with transaction.atomic():
+            # Lock the parent order before any offer rows. This consistent lock
+            # order prevents deadlocks when two workers accept different offers
+            # for the same order at nearly the same time.
+            order = None
+            if offer.order_id:
+                from apps.bookings.models import Order
+                order = Order.objects.select_for_update().get(pk=offer.order_id)
             offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
             if worker.user_id != request.user.id:
@@ -912,13 +919,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
                 return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
 
-            order = None
-            if offer.order_id:
-                from apps.bookings.models import Order
-                order = Order.objects.select_for_update().get(pk=offer.order_id)
-                # A competing worker may have accepted while this request
-                # waited for the parent-order lock and withdrawn this offer.
-                offer.refresh_from_db(fields=["status", "expires_at"])
+            if order:
                 if offer.status != WorkerOffer.Status.PENDING:
                     return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
