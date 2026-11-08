@@ -424,3 +424,39 @@ class BeautyAudienceValidationTest(TestCase):
 
         with self.assertRaisesMessage(ValueError, "Choose Men, Women or Both"):
             validate_beauty_audience(self.unisex_service, {"beauty_audience": "children"})
+
+
+
+class CategoryAudienceOptionsApiTest(TestCase):
+    def test_category_tree_exposes_admin_managed_audience_options(self):
+        from apps.catalog.models import CategoryAudienceOption
+
+        beauty = Category.objects.create(title="Beauty", slug="beauty")
+        CategoryAudienceOption.objects.create(
+            category=beauty,
+            audience="men",
+            title="Men",
+            subtitle="Haircut and grooming",
+            image="",
+            sort_order=1,
+            is_active=True,
+        )
+        CategoryAudienceOption.objects.create(
+            category=beauty,
+            audience="women",
+            title="Women",
+            subtitle="Hair, skin and makeup",
+            image="",
+            sort_order=2,
+            is_active=False,
+        )
+
+        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        result = next(item for item in response.data["results"] if item["slug"] == "beauty")
+        self.assertEqual(
+            [item["audience"] for item in result["audience_options"]],
+            ["men", "women"],
+        )
+        self.assertEqual(result["audience_options"][0]["title"], "Men")
