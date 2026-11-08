@@ -4,10 +4,18 @@ from .models import Banner, Category, CategoryAudienceOption, Service, ServiceVa
 
 class CategoryAudienceOptionSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    image_secondary = serializers.SerializerMethodField()
 
     class Meta:
         model = CategoryAudienceOption
-        fields = ["id", "audience", "title", "subtitle", "image", "sort_order", "is_active"]
+        fields = ["id", "audience", "title", "subtitle", "image", "image_secondary", "sort_order", "is_active"]
+
+    def get_image_secondary(self, obj):
+        if not obj.image_secondary:
+            return None
+        request = self.context.get("request")
+        url = obj.image_secondary.url
+        return request.build_absolute_uri(url) if request else url
 
     def get_image(self, obj):
         if not obj.image:
