@@ -75,9 +75,6 @@ def retry_failed_dispatches():
             WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED
         ]).exists():
             continue
-        before = WorkerOffer.objects.filter(order=order).count()
-        if before >= config.batch_size * config.max_batches:
-            continue
         offers = DispatcherService.dispatch_order(order)
         if offers:
             dispatched += 1
@@ -91,9 +88,6 @@ def retry_failed_dispatches():
             booking=booking, order__isnull=True,
             status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED],
         ).exists():
-            continue
-        before = WorkerOffer.objects.filter(booking=booking, order__isnull=True).count()
-        if before >= config.batch_size * config.max_batches:
             continue
         if DispatcherService.dispatch_offers(booking):
             dispatched += 1
