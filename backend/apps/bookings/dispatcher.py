@@ -68,7 +68,9 @@ class DispatcherService:
 
         service = booking.service
         scheduled_at = booking.scheduled_at
-        duration_minutes = (booking.variant.duration_minutes if booking.variant else service.duration_minutes) or 60
+        unit_duration = (booking.variant.duration_minutes if booking.variant else service.duration_minutes) or 60
+        quantity = int((booking.pricing_snapshot or {}).get("quantity", 1) or 1)
+        duration_minutes = unit_duration * max(quantity, 1)
 
         if not scheduled_at:
             logger.warning(f"Booking {booking.id} has no scheduled_at time")
