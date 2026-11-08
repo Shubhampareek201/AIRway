@@ -553,6 +553,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         return answers
 
     def get_professional_preference(self, obj):
+        if obj.booking.service.requires_female_worker:
+            return "female"
         return (obj.booking.customer_answers or {}).get("professional_preference", "any")
 
     def get_quantity(self, obj):
