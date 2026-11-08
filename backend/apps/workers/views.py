@@ -863,10 +863,12 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
         ).select_related(
-            "booking__service", "booking__variant", "booking__address", "worker__user"
+            "booking__service", "booking__variant", "booking__address", "worker__user", "order"
         ).prefetch_related(
             "booking__form_responses__form_field",
             "booking__booking_addons__addon",
+            "order__items__booking__service",
+            "order__items__booking__variant",
         )
 
     def get_serializer_class(self):
