@@ -303,6 +303,35 @@ class CatalogFormField {
     required this.sortOrder,
   });
 
+  bool isVisibleFor(Map<String, dynamic> answers) {
+    for (final rule in visibilityRules) {
+      final dependency = rule['field']?.toString();
+      if (dependency == null || dependency.isEmpty || !answers.containsKey(dependency)) {
+        return false;
+      }
+      final actual = answers[dependency].toString();
+      final expected = rule['value'];
+      final operator = rule['operator']?.toString() ?? 'equals';
+      var matches = false;
+      switch (operator) {
+        case 'equals':
+          matches = actual == expected?.toString();
+          break;
+        case 'not_equals':
+          matches = actual != expected?.toString();
+          break;
+        case 'in':
+          final values = expected is List ? expected : [expected];
+          matches = values.any((item) => item?.toString() == actual);
+          break;
+        default:
+          return false;
+      }
+      if (!matches) return false;
+    }
+    return true;
+  }
+
   factory CatalogFormField.fromMap(Map<String, dynamic> map) {
     return CatalogFormField(
       id: map['id'],
