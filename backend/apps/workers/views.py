@@ -946,7 +946,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 or BookingAssignment.objects.filter(booking=booking).exists()
                 for booking in bookings
             ):
-                return Response({"detail": "This booking or order has already been assigned."}, status=status.HTTP_409_CONFLICT)
+                return Response({"detail": "This booking or order has already been assigned."}, status=status.HTTP_400_BAD_REQUEST)
 
             from apps.bookings.dispatcher import DispatcherService
             from apps.workers.eligibility import required_worker_gender_for_booking
