@@ -21,6 +21,7 @@ from .serializers import (
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.notifications.models import Notification
 from apps.accounts.models import Address
+from apps.catalog.audience import validate_beauty_audience
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -163,6 +164,7 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         from apps.workers.eligibility import required_worker_gender_for_booking
         try:
+            validate_beauty_audience(service, category_answers)
             required_gender = required_worker_gender_for_booking(service, category_answers)
         except ValueError as exc:
             return Response({"available": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
