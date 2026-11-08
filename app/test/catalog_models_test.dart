@@ -174,5 +174,25 @@ void main() {
       expect(f.isRequired, true);
       expect(f.options.isEmpty, true);
     });
+
+    test('fromMap parses conditional visibility rules', () {
+      final f = CatalogFormField.fromMap({
+        'id': 2,
+        'key': 'seat_count',
+        'label': 'Seat count',
+        'field_type': 'number',
+        'field_type_display': 'Number',
+        'options': [],
+        'is_required': true,
+        'visibility_rules': [
+          {'field': 'vehicle_type', 'operator': 'equals', 'value': 'SUV'},
+        ],
+        'sort_order': 2,
+      });
+
+      expect(f.visibilityRules, hasLength(1));
+      expect(f.visibilityRules.first['field'], 'vehicle_type');
+      expect(f.visibilityRules.first['value'], 'SUV');
+    });
   });
 }
