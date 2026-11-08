@@ -100,33 +100,6 @@ class Category {
         {'key': 'vehicle_model', 'title': 'Car model (optional)', 'type': 'text', 'required': false},
       ];
     }
-    if (identity.contains('beauty') || identity.contains('salon') || identity.contains('wellness')) {
-      return [
-        {
-          'key': 'beauty_type',
-          'title': 'Who is this service for?',
-          'type': 'select',
-          'required': true,
-          'options': [
-            {
-              'label': "Men's Beauty",
-              'value': "Men's Beauty",
-              'image': 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=900&auto=format&fit=crop',
-            },
-            {
-              'label': "Women's Beauty",
-              'value': "Women's Beauty",
-              'image': 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=900&auto=format&fit=crop',
-            },
-            {
-              'label': 'Common Services',
-              'value': 'Common Services',
-              'image': 'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=900&auto=format&fit=crop',
-            },
-          ],
-        },
-      ];
-    }
     if (identity.contains('electrical') || identity.contains('electrician')) {
       return [
         {
