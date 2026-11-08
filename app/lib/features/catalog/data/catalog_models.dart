@@ -371,6 +371,7 @@ class Service {
   final String audience;
   final String audienceDisplay;
   final bool requiresFemaleWorker;
+  final bool supportsProfessionalPreference;
   final bool isPopular;
   final int sortOrder;
   final bool isActive;
@@ -402,6 +403,7 @@ class Service {
     required this.audience,
     required this.audienceDisplay,
     required this.requiresFemaleWorker,
+    this.supportsProfessionalPreference = false,
     required this.isPopular,
     required this.sortOrder,
     required this.isActive,
@@ -435,6 +437,8 @@ class Service {
       audience: map['audience'] ?? '',
       audienceDisplay: map['audience_display'] ?? '',
       requiresFemaleWorker: map['requires_female_worker'] ?? false,
+      supportsProfessionalPreference:
+          map['supports_professional_preference'] ?? false,
       isPopular: map['is_popular'] ?? false,
       sortOrder: map['sort_order'] ?? 0,
       isActive: map['is_active'] ?? false,
