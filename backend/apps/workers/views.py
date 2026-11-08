@@ -891,161 +891,143 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="accept")
     def accept(self, request, pk=None):
-        """
-        Accept an offer only after rechecking the worker's current eligibility
-        and the complete booking time window inside a transaction.
-        """
+        """Atomically accept either a standalone booking or every line in an order."""
         offer = self.get_object()
         payment_order_id = None
-
+        now = timezone.now()
         with transaction.atomic():
             offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
-            booking = Booking.objects.select_for_update(of=("self",)).select_related(
-                "service", "service__category", "variant", "address__zone__city",
-            ).get(pk=offer.booking_id)
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
-
-            # Recheck ownership after locking in case the offer changed after
-            # the initial permission-scoped get_object() query.
             if worker.user_id != request.user.id:
-                return Response(
-                    {"detail": "This offer does not belong to you."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
+                return Response({"detail": "This offer does not belong to you."}, status=status.HTTP_404_NOT_FOUND)
             if offer.status != WorkerOffer.Status.PENDING:
-                return Response(
-                    {"detail": f"Offer is already {offer.get_status_display().lower()}."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            now = timezone.now()
+                return Response({"detail": f"Offer is already {offer.get_status_display().lower()}."}, status=status.HTTP_400_BAD_REQUEST)
             if offer.expires_at <= now:
                 offer.status = WorkerOffer.Status.EXPIRED
                 offer.responded_at = now
                 offer.save(update_fields=["status", "responded_at", "updated_at"])
-                return Response(
-                    {"detail": "This job offer has expired."},
-                    status=status.HTTP_410_GONE,
-                )
+                return Response({"detail": "This job offer has expired."}, status=status.HTTP_410_GONE)
+            if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
+                return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
 
-            if worker.status != WorkerProfile.Status.APPROVED:
-                return Response(
-                    {"detail": "Worker profile is not approved."},
-                    status=status.HTTP_403_FORBIDDEN,
+            order = None
+            if offer.order_id:
+                from apps.bookings.models import Order
+                order = Order.objects.select_for_update().get(pk=offer.order_id)
+                bookings = list(
+                    Booking.objects.select_for_update().filter(order_item__order=order)
+                    .select_related("service__category", "variant", "address__zone__city")
+                    .order_by("pk")
                 )
-            if not worker.is_online:
-                return Response(
-                    {"detail": "You are offline and can no longer accept this offer."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+                if not bookings:
+                    return Response({"detail": "This order no longer has service bookings."}, status=status.HTTP_409_CONFLICT)
+                if order.status != Order.Status.AWAITING_ASSIGNMENT:
+                    return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
+            else:
+                bookings = [Booking.objects.select_for_update().select_related(
+                    "service__category", "variant", "address__zone__city"
+                ).get(pk=offer.booking_id)]
 
-            # Check the assignment first so retries by other workers get a
-            # precise conflict response instead of a generic status message.
-            if BookingAssignment.objects.filter(booking=booking).exists():
-                return Response(
-                    {"detail": "Booking already assigned."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if booking.status not in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
-                return Response(
-                    {"detail": f"Cannot accept offer for booking in {booking.get_status_display()} state."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            address = booking.address
-            zone = address.zone if address else None
-            if not (
-                booking.service.is_active
-                and booking.service.category.is_active
-                and zone
-                and zone.is_active
-                and zone.city.is_active
+            if any(
+                booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                or BookingAssignment.objects.filter(booking=booking).exists()
+                for booking in bookings
             ):
-                return Response(
-                    {"detail": "This service or booking area is no longer active."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-            duration_minutes = (
-                booking.variant.duration_minutes
-                if booking.variant_id and booking.variant.duration_minutes
-                else booking.service.duration_minutes
-            ) or 60
+                return Response({"detail": "This booking or order has already been assigned."}, status=status.HTTP_409_CONFLICT)
 
             from apps.bookings.dispatcher import DispatcherService
-            eligible_now = DispatcherService._get_eligible_workers(
-                service=booking.service,
-                zone=zone,
-                scheduled_at=booking.scheduled_at,
-                duration_minutes=duration_minutes,
-                drop_scheduled_at=(
-                    booking.drop_scheduled_at
-                    if booking.booking_mode == Booking.BookingMode.PICKUP_DROP
-                    else None
-                ),
-                exclude_booking_id=booking.id,
-                exclude_customer_id=booking.customer_id,
-            ).filter(pk=worker.pk).exists()
+            from apps.workers.eligibility import required_worker_gender_for_booking
+            for booking in bookings:
+                zone = booking.address.zone if booking.address_id else None
+                if not (
+                    booking.service.is_active and booking.service.category.is_active
+                    and zone and zone.is_active and zone.city.is_active
+                ):
+                    return Response({"detail": "A service or booking area is no longer active."}, status=status.HTTP_409_CONFLICT)
+                duration = (
+                    booking.variant.duration_minutes
+                    if booking.variant_id and booking.variant.duration_minutes
+                    else booking.service.duration_minutes
+                ) or 60
+                quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                try:
+                    required_gender = required_worker_gender_for_booking(
+                        booking.service, booking.customer_answers
+                    )
+                except ValueError:
+                    return Response({"detail": "A service has an invalid professional preference."}, status=status.HTTP_409_CONFLICT)
+                eligible = DispatcherService._get_eligible_workers(
+                    service=booking.service,
+                    zone=zone,
+                    scheduled_at=booking.scheduled_at,
+                    duration_minutes=duration * quantity,
+                    drop_scheduled_at=(
+                        booking.drop_scheduled_at
+                        if booking.booking_mode == Booking.BookingMode.PICKUP_DROP else None
+                    ),
+                    exclude_booking_id=booking.pk,
+                    exclude_customer_id=booking.customer_id,
+                    required_gender=required_gender,
+                ).filter(pk=worker.pk).exists()
+                if not eligible:
+                    return Response(
+                        {"detail": "You are no longer eligible or available for every service in this order." if order else "You are no longer eligible or available for this booking time."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
 
-            if not eligible_now:
-                return Response(
-                    {"detail": "You are no longer eligible or available for this booking time."},
-                    status=status.HTTP_409_CONFLICT,
+            assignments = []
+            for booking in bookings:
+                assignment = BookingAssignment.objects.create(
+                    booking=booking, worker=worker, accepted_at=now,
                 )
-
-            assignment = BookingAssignment.objects.create(
-                booking=booking,
-                worker=worker,
-                accepted_at=now,
-            )
+                assignments.append(assignment)
+                old_status = booking.status
+                booking.status = Booking.Status.ASSIGNED
+                booking.save(update_fields=["status", "updated_at"])
+                BookingStatusHistory.objects.create(
+                    booking=booking, from_status=old_status,
+                    to_status=Booking.Status.ASSIGNED, changed_by=worker.user,
+                    note="Worker accepted complete order offer" if order else "Worker accepted job offer",
+                )
+                Notification.objects.create(
+                    user=booking.customer,
+                    type=Notification.Type.BOOKING_ASSIGNED,
+                    title="Worker Assigned",
+                    body=f"Your service is now assigned to {worker.user.name or worker.user.phone}.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": booking.pk, "order_id": order.pk if order else None, "worker_id": worker.pk},
+                )
 
             offer.status = WorkerOffer.Status.ACCEPTED
             offer.accepted_at = now
             offer.responded_at = now
             offer.save(update_fields=["status", "accepted_at", "responded_at", "updated_at"])
+            if order:
+                WorkerOffer.objects.filter(
+                    order=order, status=WorkerOffer.Status.PENDING
+                ).exclude(pk=offer.pk).update(
+                    status=WorkerOffer.Status.WITHDRAWN, responded_at=now
+                )
+                order.status = Order.Status.AWAITING_PAYMENT
+                order.save(update_fields=["status", "updated_at"])
 
-            old_status = booking.status
-            booking.status = Booking.Status.ASSIGNED
-            booking.save(update_fields=["status", "updated_at"])
-
-            BookingStatusHistory.objects.create(
-                booking=booking,
-                from_status=old_status,
-                to_status=Booking.Status.ASSIGNED,
-                changed_by=worker.user,
-                note="Worker accepted job offer",
-            )
-
-            Notification.objects.create(
-                user=booking.customer,
-                type=Notification.Type.BOOKING_ASSIGNED,
-                title="Worker Assigned",
-                body=f"Your service is now assigned to {worker.user.name or worker.user.phone}.",
-                channel=Notification.Channel.IN_APP,
-                data={"booking_id": booking.id, "worker_id": worker.id},
-            )
-
-        # Parent orders are paid once all their child bookings are assigned.
-        if not hasattr(booking, "order_item"):
+        if not order:
             try:
                 from apps.payments.views import create_or_get_payment
-                payment, payment_order_id, already_existed = create_or_get_payment(
-                    booking=booking,
-                    customer=booking.customer,
+                _, payment_order_id, _ = create_or_get_payment(
+                    booking=bookings[0], customer=bookings[0].customer,
                     trigger_source="worker_accept",
                 )
             except Exception as exc:
-                logger.warning(
-                    "Payment creation failed for booking %s after worker accept: %s",
-                    booking.id, exc,
-                )
+                logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
 
         response_data = {
             "status": "accepted",
-            "detail": "Offer accepted successfully.",
-            "booking_status": booking.status,
-            "assignment_id": assignment.id,
+            "detail": "Complete order accepted successfully." if order else "Offer accepted successfully.",
+            "booking_status": bookings[0].status,
+            "assignment_id": assignments[0].pk,
+            "assigned_booking_ids": [booking.pk for booking in bookings],
+            "order_id": order.pk if order else None,
         }
         if payment_order_id:
             response_data["payment_order_id"] = payment_order_id
