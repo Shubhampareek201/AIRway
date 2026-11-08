@@ -19,6 +19,8 @@ import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/catalog/presentation/service_categories_screen.dart';
 import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
+import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
+import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
     as catalog;
@@ -166,6 +168,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _openCatalogCategory(Category category, int? addressId) async {
     _searchFocus.unfocus();
     var answers = <String, dynamic>{};
+    if (category.slug == 'beauty') {
+      final audience = await BeautyAudienceScreen.choose(context);
+      if (audience == null || !mounted) return;
+      answers['beauty_audience'] = audience;
+    }
     if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
@@ -809,18 +816,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Icons.grid_view_rounded;
   }
 
-  String _photoForCategory(String name) {
-    final value = name.toLowerCase();
-    if (value.contains('beauty') || value.contains('salon') || value.contains('wellness')) {
-      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=700&auto=format&fit=crop';
-    }
-    if (value.contains('car') || value.contains('wash') || value.contains('vehicle')) {
-      return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=700&auto=format&fit=crop';
-    }
-    if (value.contains('electric') || value.contains('fan') || value.contains('light')) {
-      return 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=700&auto=format&fit=crop';
-    }
-    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=700&auto=format&fit=crop';
+  String? _photoForCategory(Category category) =>
+      CatalogCategoryImageResolver.forCategory(
+        slug: category.slug,
+        title: category.title,
+      );
+
+  Widget _categoryPhotoWidget(Category category, {double? size}) {
+    final url = category.image?.isNotEmpty == true
+        ? category.image
+        : _photoForCategory(category);
+    final placeholder = Container(
+      width: size,
+      height: size,
+      color: _Ui.pale,
+      alignment: Alignment.center,
+      child: Icon(_categoryIcon(category.title), color: _Ui.violet, size: 30),
+    );
+    if (url == null) return placeholder;
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => placeholder,
+    );
   }
 
   Widget _categoryStrip(int? addressId) {
@@ -869,7 +889,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     child: Image.network(
                       category.image?.isNotEmpty == true
                           ? category.image!
-                          : _photoForCategory(category.title),
+                          : _photoForCategory(category),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Image.network(
                         _photoForCategory(category.title),
