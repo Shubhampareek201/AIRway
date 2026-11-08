@@ -19,117 +19,89 @@ PAYMENT_TIMEOUT_MINUTES = 5
 
 @shared_task
 def expire_pending_offers():
-    """
-    Find PENDING offers whose expires_at has passed and mark them EXPIRED.
-    This task is idempotent - re-running it on already expired offers is safe.
-    """
-    from apps.bookings.models import WorkerOffer, BookingStatusHistory
+    """Expire offers and advance each exhausted order/booking to its next batch."""
+    from apps.bookings.models import WorkerOffer, Order, Booking
+    from apps.bookings.dispatcher import DispatcherService
     from apps.notifications.models import Notification
 
     now = timezone.now()
+    expired = list(
+        WorkerOffer.objects.filter(
+            status=WorkerOffer.Status.PENDING, expires_at__lte=now
+        ).select_related("booking__service", "booking__customer", "worker__user")
+    )
+    order_ids, booking_ids = set(), set()
+    for offer in expired:
+        updated = WorkerOffer.objects.filter(
+            pk=offer.pk, status=WorkerOffer.Status.PENDING
+        ).update(status=WorkerOffer.Status.EXPIRED, responded_at=now)
+        if not updated:
+            continue
+        if offer.order_id:
+            order_ids.add(offer.order_id)
+        else:
+            booking_ids.add(offer.booking_id)
+        Notification.objects.create(
+            user=offer.worker.user,
+            type=Notification.Type.WORKER_OFFER_EXPIRED,
+            title="Offer Expired",
+            body=f"The job offer for {offer.booking.service.title} has expired.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": offer.booking_id, "order_id": offer.order_id, "offer_id": offer.pk},
+        )
 
-    # Find pending offers that have expired
-    expired_offers = WorkerOffer.objects.filter(
-        status=WorkerOffer.Status.PENDING,
-        expires_at__lt=now
-    ).select_related('booking', 'worker__user')
-
-    count = expired_offers.count()
-    if count > 0:
-        for offer in expired_offers:
-            offer.status = WorkerOffer.Status.EXPIRED
-            offer.responded_at = now
-            offer.save()
-
-            # Notify affected worker
-            Notification.objects.create(
-                user=offer.worker.user,
-                type=Notification.Type.WORKER_OFFER_EXPIRED,
-                title="Offer Expired",
-                body=f"The job offer for {offer.booking.service.title} has expired.",
-                channel=Notification.Channel.IN_APP,
-                data={"booking_id": offer.booking.id, "offer_id": offer.id}
-            )
-
-            # Notify customer if this was the last pending offer
-            has_pending = WorkerOffer.objects.filter(
-                booking=offer.booking,
-                status=WorkerOffer.Status.PENDING
-            ).exists()
-            if not has_pending:
-                # Check if all offers for this booking are non-pending
-                all_offers = WorkerOffer.objects.filter(booking=offer.booking).count()
-                pending_offers = WorkerOffer.objects.filter(
-                    booking=offer.booking,
-                    status=WorkerOffer.Status.PENDING
-                ).count()
-                if pending_offers == 0 and all_offers > 0:
-                    Notification.objects.create(
-                        user=offer.booking.customer,
-                        type=Notification.Type.BOOKING_OFFERS_EXPIRED,
-                        title="Offers Expired",
-                        body="No workers accepted your booking. We'll try again.",
-                        channel=Notification.Channel.IN_APP,
-                        data={"booking_id": offer.booking.id}
-                    )
-
-        logger.info(f"Expired {count} pending worker offers")
-    else:
-        logger.info("No pending offers to expire")
-
-    return count
+    for order_id in order_ids:
+        if not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
+            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+    for booking_id in booking_ids:
+        if not WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING).exists():
+            booking = Booking.objects.filter(pk=booking_id).first()
+            if booking:
+                DispatcherService.dispatch_offers(booking)
+    logger.info("Expired %s worker offers; advanced %s orders and %s bookings", len(expired), len(order_ids), len(booking_ids))
+    return len(expired)
 
 
 @shared_task
 def retry_failed_dispatches():
-    """
-    Identify bookings where all current offers have expired or been declined
-    and no worker is assigned. Create a new batch of offers if within retry limit.
-    """
-    from apps.bookings.models import Booking, WorkerOffer
+    """Recover eligible unassigned orders and standalone bookings using Admin limits."""
+    from apps.bookings.models import Booking, Order, WorkerOffer, DispatchConfiguration
     from apps.bookings.dispatcher import DispatcherService
 
-    batch_count = 0
-
-    # Find CONFIRMED bookings without assignment and no pending offers
-    # (all previous offers expired/declined/withdrawn)
-    candidate_bookings = Booking.objects.filter(
-        status=Booking.Status.CONFIRMED
-    ).exclude(
-        assignment__isnull=False
-    )
-
-    for booking in candidate_bookings:
-        # Check if all offers are non-pending
-        has_pending_offers = WorkerOffer.objects.filter(
-            booking=booking,
-            status=WorkerOffer.Status.PENDING
-        ).exists()
-
-        if has_pending_offers:
+    config = DispatchConfiguration.get_solo()
+    if not config.is_enabled:
+        return 0
+    dispatched = 0
+    orders = Order.objects.filter(status=Order.Status.AWAITING_ASSIGNMENT).order_by("created_at")
+    for order in orders:
+        if WorkerOffer.objects.filter(order=order, status__in=[
+            WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED
+        ]).exists():
             continue
-
-        if booking.status != Booking.Status.CONFIRMED:
+        before = WorkerOffer.objects.filter(order=order).count()
+        if before >= config.batch_size * config.max_batches:
             continue
+        offers = DispatcherService.dispatch_order(order)
+        if offers:
+            dispatched += 1
 
-        # Count existing offers to check retry limit
-        existing_offers = WorkerOffer.objects.filter(booking=booking).count()
-
-        if existing_offers >= MAX_BATCHES * BATCH_SIZE:
+    standalone = Booking.objects.filter(
+        status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED],
+        order_item__isnull=True,
+    ).exclude(assignment__isnull=False)
+    for booking in standalone:
+        if WorkerOffer.objects.filter(
+            booking=booking, order__isnull=True,
+            status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED],
+        ).exists():
             continue
-
-        # Redispatch
-        if booking.status == Booking.Status.CONFIRMED:
-            offers = DispatcherService.dispatch_offers(booking, batch_size=BATCH_SIZE)
-            if offers:
-                batch_count += 1
-                logger.info(
-                    f"Redispatched booking {booking.id}: "
-                    f"created {len(offers)} new offers"
-                )
-
-    logger.info(f"Retry batch: created {batch_count} new offer batches")
-    return batch_count
+        before = WorkerOffer.objects.filter(booking=booking, order__isnull=True).count()
+        if before >= config.batch_size * config.max_batches:
+            continue
+        if DispatcherService.dispatch_offers(booking):
+            dispatched += 1
+    logger.info("Retry dispatch: created %s new batches", dispatched)
+    return dispatched
 
 
 @shared_task
