@@ -11,6 +11,7 @@ from .models import (
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
+from apps.catalog.form_rules import visible_form_fields
 from apps.accounts.models import Address
 from apps.notifications.models import Notification
 
@@ -193,14 +194,22 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         # Validate every active configured field, including required answers
         # omitted by the client. Never trust client-side form validation alone.
         form_responses = attrs.get("form_responses", {})
-        service_fields = {f.key: f for f in service.form_fields.filter(is_active=True)}
+        service_fields = list(service.form_fields.filter(is_active=True))
         if not isinstance(form_responses, dict):
             raise serializers.ValidationError({"form_responses": "Answers must be an object."})
-        unknown_fields = set(form_responses) - set(service_fields)
-        if unknown_fields:
+        field_map = {field.key: field for field in service_fields}
+        if set(form_responses) - set(field_map):
             raise serializers.ValidationError({"form_responses": "Unknown form field supplied."})
-        for key, field in service_fields.items():
-            value = form_responses.get(key)
+        visible_fields = visible_form_fields(
+            service_fields, category_answers=category_answers, form_answers=form_responses
+        )
+        visible_keys = {field.key for field in visible_fields}
+        if set(form_responses) - visible_keys:
+            raise serializers.ValidationError({
+                "form_responses": "An answer was supplied for a question that is not applicable."
+            })
+        for field in visible_fields:
+            value = form_responses.get(field.key)
             if field.is_required and value in (None, ""):
                 raise serializers.ValidationError({
                     "form_responses": f"Field '{field.label}' is required."
@@ -583,11 +592,20 @@ class CartItemSerializer(serializers.ModelSerializer):
         if set(addon_ids) != set(addon_map):
             raise serializers.ValidationError({"addon_selections": "An add-on does not belong to this service."})
 
-        fields = {obj.key: obj for obj in service.form_fields.filter(is_active=True)}
-        if set(answers) - set(fields):
+        service_fields = list(service.form_fields.filter(is_active=True))
+        field_map = {obj.key: obj for obj in service_fields}
+        if set(answers) - set(field_map):
             raise serializers.ValidationError({"form_answers": "An unknown question was supplied."})
-        for key, field in fields.items():
-            value = answers.get(key)
+        visible_fields = visible_form_fields(
+            service_fields, category_answers=category_answers, form_answers=answers
+        )
+        visible_keys = {field.key for field in visible_fields}
+        if set(answers) - visible_keys:
+            raise serializers.ValidationError({
+                "form_answers": "An answer was supplied for a question that is not applicable."
+            })
+        for field in visible_fields:
+            value = answers.get(field.key)
             if field.is_required and value in (None, ""):
                 raise serializers.ValidationError({"form_answers": f"{field.label} is required."})
             if value in (None, ""):
