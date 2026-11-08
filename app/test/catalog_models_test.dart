@@ -93,10 +93,29 @@ void main() {
       expect(s.categoryName, 'Car Wash');
       expect(s.categorySlug, 'car-wash');
       expect(s.isPopular, true);
+      expect(s.supportsProfessionalPreference, false);
       expect(s.variants.length, 1);
       expect(s.variants.first.title, 'Hatchback');
       expect(s.addons.isEmpty, true);
       expect(s.formFields.isEmpty, true);
+    });
+
+    test('fromMap reads Beauty professional preference capability', () {
+      final map = {
+        'id': 8, 'category': 3, 'category_name': 'Beauty',
+        'category_slug': 'beauty', 'title': 'Facial',
+        'booking_mode': 'scheduled', 'booking_mode_display': 'Scheduled',
+        'pricing_type': 'fixed', 'pricing_type_display': 'Fixed price',
+        'unit_label': '', 'visit_fee': '0.00', 'duration_minutes': 60,
+        'buffer_minutes': 30, 'audience': 'all', 'audience_display': 'All',
+        'requires_female_worker': false,
+        'supports_professional_preference': true,
+        'is_popular': false, 'sort_order': 0, 'is_active': true,
+        'images': [], 'variants': [], 'addons': [], 'form_fields': [],
+        'created_at': '', 'updated_at': '',
+      };
+      final service = Service.fromMap(map);
+      expect(service.supportsProfessionalPreference, isTrue);
     });
 
     test('fromMap handles empty nested lists', () {
