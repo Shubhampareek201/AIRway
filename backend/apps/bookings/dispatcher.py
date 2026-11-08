@@ -47,7 +47,7 @@ class DispatcherService:
         if order_id:
             from apps.bookings.models import Order
             return cls.dispatch_order(Order.objects.get(pk=order_id))
-        booking = Booking.objects.select_for_update().select_related(
+        booking = Booking.objects.select_for_update(of=("self",)).select_related(
             "service__category", "variant", "address__zone__city"
         ).get(pk=booking.pk)
         config = DispatchConfiguration.get_solo()
