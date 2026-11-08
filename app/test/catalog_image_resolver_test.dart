@@ -1,7 +1,47 @@
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
+import 'package:airway/features/catalog/data/beauty_audience.dart';
+import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('BeautyAudience', () {
+    test('Men sees men and unisex services, not women-only services', () {
+      expect(BeautyAudience.includes(selected: BeautyAudience.men, serviceAudience: 'men'), isTrue);
+      expect(BeautyAudience.includes(selected: BeautyAudience.men, serviceAudience: 'all'), isTrue);
+      expect(BeautyAudience.includes(selected: BeautyAudience.men, serviceAudience: 'women'), isFalse);
+    });
+
+    test('Women sees women and unisex services, not men-only services', () {
+      expect(BeautyAudience.includes(selected: BeautyAudience.women, serviceAudience: 'women'), isTrue);
+      expect(BeautyAudience.includes(selected: BeautyAudience.women, serviceAudience: 'all'), isTrue);
+      expect(BeautyAudience.includes(selected: BeautyAudience.women, serviceAudience: 'men'), isFalse);
+    });
+
+    test('Both shows only services explicitly configured as unisex', () {
+      expect(BeautyAudience.includes(selected: BeautyAudience.both, serviceAudience: 'all'), isTrue);
+      expect(BeautyAudience.includes(selected: BeautyAudience.both, serviceAudience: 'men'), isFalse);
+      expect(BeautyAudience.includes(selected: BeautyAudience.both, serviceAudience: 'women'), isFalse);
+    });
+  });
+
+  group('CatalogCategoryImageResolver', () {
+    test('same category has one canonical fallback image across screens', () {
+      final homeImage = CatalogCategoryImageResolver.forCategory(
+        slug: 'facial-skin-care', title: 'Facial & Skin Care');
+      final listingImage = CatalogCategoryImageResolver.forCategory(
+        slug: 'facial-skin-care', title: 'Facial & Skin Care');
+      expect(homeImage, isNotNull);
+      expect(listingImage, homeImage);
+    });
+
+    test('unknown categories use placeholder instead of unrelated stock image', () {
+      expect(
+        CatalogCategoryImageResolver.forCategory(slug: 'unknown', title: 'Unknown'),
+        isNull,
+      );
+    });
+  });
+
   group('CatalogImageResolver electrical catalogue coverage', () {
     const electricalGroups = <String, List<String>>{
       'Fan Services': [
