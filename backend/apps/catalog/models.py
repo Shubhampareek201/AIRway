@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.db.models import F, Q
 from simple_history.models import HistoricalRecords
 
@@ -173,6 +174,15 @@ class FormField(TimeStampedModel):
         ),
     )
     sort_order = models.PositiveIntegerField(default=0)
+
+    def clean(self):
+        super().clean()
+        from apps.catalog.form_rules import validate_visibility_rules
+
+        try:
+            validate_visibility_rules(self.visibility_rules or [])
+        except ValueError as exc:
+            raise ValidationError({"visibility_rules": str(exc)})
 
     class Meta:
         ordering = ["sort_order"]
