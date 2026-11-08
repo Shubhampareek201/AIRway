@@ -111,6 +111,12 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        if hasattr(booking, "order_item"):
+            return Response(
+                {"detail": "This booking is part of a parent order. Track and manage worker assignment from the complete order, not an individual booking line."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if booking.status != Booking.Status.PENDING:
             return Response(
                 {"detail": f"Booking cannot be confirmed in {booking.get_status_display()} state."},
