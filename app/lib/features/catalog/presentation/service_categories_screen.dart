@@ -179,6 +179,19 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     return Icons.grid_view_rounded;
   }
 
+  String get _audienceSubtitle {
+    switch (widget.initialAnswers['beauty_audience']?.toString()) {
+      case BeautyAudience.men:
+        return "Men's services available in your selected area";
+      case BeautyAudience.women:
+        return "Women's services available in your selected area";
+      case BeautyAudience.both:
+        return "Unisex services available in your selected area";
+      default:
+        return 'Explore services available in your selected area';
+    }
+  }
+
   Widget _categoryCard(Category category) {
     final imageUrl = category.image?.isNotEmpty == true
         ? category.image!
@@ -269,9 +282,9 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AirwayColors.text),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          'Explore services available in your selected area',
-                          style: TextStyle(fontSize: 14, color: AirwayColors.textSecondary),
+                        Text(
+                          _audienceSubtitle,
+                          style: const TextStyle(fontSize: 13, color: AirwayColors.textSecondary),
                         ),
                         const SizedBox(height: 20),
                         ..._buildCategoryGrid(),
