@@ -24,6 +24,10 @@
 - **Electrical:** Choose appliance/issue and work type → quantity/property/material → describe issue + optional photos → show fixed price or inspection/visit-fee explanation → date & time → address → review.
 - **Home Cleaning:** Choose room/area/property → choose package/depth → enter size/count where needed → select add-ons → optional photos/access notes → date & time → address → review.
 
+## Beauty detailed journey and image specification
+
+The expanded Men / Women / Both taxonomy, groom and bridal occasion journeys, service-specific intake examples, professional and safety gates, and app-wide canonical image rules are maintained in [BEAUTY_CUSTOMER_JOURNEYS_AND_IMAGE_GUIDELINES.md](BEAUTY_CUSTOMER_JOURNEYS_AND_IMAGE_GUIDELINES.md). Treat it as a design proposal; do not publish unverified services, packages, prices, images, or worker capability.
+
 ## Service-level matrix
 Fields marked * are currently required in the exported catalogue. Existing fields are not automatically approved as the ideal customer experience; gaps are explicitly called out.
 
