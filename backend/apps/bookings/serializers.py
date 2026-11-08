@@ -12,6 +12,7 @@ from .models import (
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
 from apps.catalog.form_rules import visible_form_fields
+from apps.catalog.audience import validate_beauty_audience
 from apps.accounts.models import Address
 from apps.workers.eligibility import required_worker_gender_for_booking
 from apps.notifications.models import Notification
@@ -127,6 +128,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"variant": "Variant does not belong to this service."})
         category_answers = attrs.get("category_answers", {})
         try:
+            validate_beauty_audience(service, category_answers)
             required_gender = required_worker_gender_for_booking(service, category_answers)
         except ValueError as exc:
             raise serializers.ValidationError({"category_answers": str(exc)})
@@ -615,6 +617,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
 
         try:
+            validate_beauty_audience(service, category_answers)
             required_worker_gender_for_booking(service, category_answers)
         except ValueError as exc:
             raise serializers.ValidationError({"category_answers": str(exc)})
