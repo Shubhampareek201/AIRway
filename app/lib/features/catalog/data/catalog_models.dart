@@ -56,6 +56,7 @@ class Category {
   final int? parentId;
   final String? image;
   final List<Map<String, dynamic>> flowSteps;
+  final List<Map<String, dynamic>> audienceOptions;
   final bool isActive;
   final List<Category> children;
 
@@ -67,6 +68,7 @@ class Category {
     this.parentId,
     this.image,
     this.flowSteps = const [],
+    this.audienceOptions = const [],
     required this.isActive,
     this.children = const [],
   });
@@ -127,6 +129,10 @@ class Category {
       slug: map['slug'] ?? '',
       parentId: int.tryParse(map['parent']?.toString() ?? ''),
       image: _resolveMediaUrl(map['image']),
+      audienceOptions: (map['audience_options'] as List? ?? [])
+          .whereType<Map>()
+          .map((option) => Map<String, dynamic>.from(option))
+          .toList(),
       flowSteps: (map['flow_steps'] as List? ?? [])
           .whereType<Map>()
           .map((step) => Map<String, dynamic>.from(step))
