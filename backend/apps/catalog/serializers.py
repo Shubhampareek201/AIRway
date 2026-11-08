@@ -9,12 +9,6 @@ class CategoryAudienceOptionSerializer(serializers.ModelSerializer):
         model = CategoryAudienceOption
         fields = ["id", "audience", "title", "subtitle", "image", "sort_order", "is_active"]
 
-    def get_audience_options(self, obj):
-        options = obj.audience_options.filter(is_active=True)
-        return CategoryAudienceOptionSerializer(
-            options, many=True, context=self.context
-        ).data
-
     def get_image(self, obj):
         if not obj.image:
             return None
@@ -32,6 +26,12 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         model = Category
         fields = ["id", "title", "title_hi", "slug", "image", "audience_options", "flow_steps", "is_active", "parent", "children"]
         read_only_fields = ["slug", "children"]
+
+    def get_audience_options(self, obj):
+        options = obj.audience_options.filter(is_active=True)
+        return CategoryAudienceOptionSerializer(
+            options, many=True, context=self.context
+        ).data
 
     def get_image(self, obj):
         # Category tiles must use the category's own uploaded image.
