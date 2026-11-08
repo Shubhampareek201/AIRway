@@ -523,7 +523,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
-    customer_answers = serializers.JSONField(source="booking.customer_answers", read_only=True)
+    customer_answers = serializers.SerializerMethodField()
     professional_preference = serializers.SerializerMethodField()
     form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
     addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
@@ -545,6 +545,12 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "can_accept", "can_decline", "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_customer_answers(self, obj):
+        answers = dict(obj.booking.customer_answers or {})
+        if obj.booking.service.requires_female_worker:
+            answers["professional_preference"] = "female"
+        return answers
 
     def get_professional_preference(self, obj):
         return (obj.booking.customer_answers or {}).get("professional_preference", "any")
