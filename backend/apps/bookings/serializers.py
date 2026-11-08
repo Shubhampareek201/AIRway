@@ -200,9 +200,14 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         field_map = {field.key: field for field in service_fields}
         if set(form_responses) - set(field_map):
             raise serializers.ValidationError({"form_responses": "Unknown form field supplied."})
-        visible_fields = visible_form_fields(
-            service_fields, category_answers=category_answers, form_answers=form_responses
-        )
+        try:
+            visible_fields = visible_form_fields(
+                service_fields, category_answers=category_answers, form_answers=form_responses
+            )
+        except ValueError:
+            raise serializers.ValidationError({
+                "form_responses": "This service has an invalid question configuration. Please contact support."
+            })
         visible_keys = {field.key for field in visible_fields}
         if set(form_responses) - visible_keys:
             raise serializers.ValidationError({
@@ -596,9 +601,14 @@ class CartItemSerializer(serializers.ModelSerializer):
         field_map = {obj.key: obj for obj in service_fields}
         if set(answers) - set(field_map):
             raise serializers.ValidationError({"form_answers": "An unknown question was supplied."})
-        visible_fields = visible_form_fields(
-            service_fields, category_answers=category_answers, form_answers=answers
-        )
+        try:
+            visible_fields = visible_form_fields(
+                service_fields, category_answers=category_answers, form_answers=answers
+            )
+        except ValueError:
+            raise serializers.ValidationError({
+                "form_answers": "This service has an invalid question configuration. Please contact support."
+            })
         visible_keys = {field.key for field in visible_fields}
         if set(answers) - visible_keys:
             raise serializers.ValidationError({
