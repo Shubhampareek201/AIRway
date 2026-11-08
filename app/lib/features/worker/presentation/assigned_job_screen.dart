@@ -220,7 +220,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    '${entry.key.replaceAll('_', ' ')}: ${entry.value}',
+                    workerCustomerAnswerLabel(entry.key, entry.value),
                     style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
                   ),
                 ),
