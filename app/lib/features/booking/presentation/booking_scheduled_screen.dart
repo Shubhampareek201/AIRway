@@ -841,6 +841,40 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
             );
             Widget input;
             switch (field.fieldType) {
+              case 'date':
+                final selectedDate = DateTime.tryParse(
+                  _formAnswers[field.key]?.toString() ?? '',
+                );
+                final dateLabel = selectedDate == null
+                    ? 'Select date'
+                    : '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}';
+                input = InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate ?? DateTime.now(),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      final isoDate = '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                      _setFormAnswer(field.key, isoDate);
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: decoration.copyWith(
+                      suffixIcon: const Icon(Icons.calendar_today_outlined),
+                    ),
+                    child: Text(
+                      dateLabel,
+                      style: TextStyle(
+                        color: selectedDate == null ? _Ui.sub : _Ui.ink,
+                      ),
+                    ),
+                  ),
+                );
+                break;
               case 'select':
               case 'choice':
                 input = Wrap(
