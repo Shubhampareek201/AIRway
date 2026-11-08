@@ -461,6 +461,9 @@ class WorkerJobDetailView(APIView):
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
+        customer_answers = dict(booking.customer_answers or {})
+        if booking.service.requires_female_worker:
+            customer_answers["professional_preference"] = "female"
         return Response({
             "id": assign.id,
 "booking_id": booking.id,
@@ -474,7 +477,7 @@ class WorkerJobDetailView(APIView):
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
             "variant_title": booking.variant.title if booking.variant_id else None,
             "quantity": booking.order_item.quantity if hasattr(booking, "order_item") else 1,
-            "customer_answers": booking.customer_answers or {},
+            "customer_answers": customer_answers,
             "notes": booking.notes,
             "worker_notes": booking.worker_notes,
             "addons": [
