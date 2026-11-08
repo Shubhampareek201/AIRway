@@ -226,7 +226,17 @@ class WorkerOffer(TimeStampedModel):
         Booking,
         on_delete=models.CASCADE,
         related_name="worker_offers",
+        help_text="For an order offer, this is the first booking line used as the offer's display anchor.",
     )
+    order = models.ForeignKey(
+        "Order",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="worker_offers",
+        help_text="Set for a parent-order offer covering every booking line.",
+    )
+    batch_number = models.PositiveIntegerField(default=1)
     worker = models.ForeignKey(
         "workers.WorkerProfile",
         on_delete=models.PROTECT,
@@ -361,3 +371,38 @@ class CartItem(TimeStampedModel):
     def line_total(self):
         from decimal import Decimal
         return Decimal(str(self.pricing_snapshot.get("line_total", "0")))
+
+
+class DispatchConfiguration(TimeStampedModel):
+    """Singleton Admin-controlled settings for worker priority-batch dispatch."""
+
+    PRIORITY_RATING = "rating_desc"
+
+    is_enabled = models.BooleanField(default=True)
+    batch_size = models.PositiveSmallIntegerField(default=5)
+    max_batches = models.PositiveSmallIntegerField(default=3)
+    offer_expiry_minutes = models.PositiveSmallIntegerField(default=5)
+    priority_order = models.CharField(
+        max_length=32,
+        choices=[(PRIORITY_RATING, "Worker rating: highest first")],
+        default=PRIORITY_RATING,
+    )
+
+    class Meta:
+        verbose_name = "Worker dispatch configuration"
+        verbose_name_plural = "Worker dispatch configuration"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("Dispatch configuration cannot be deleted.")
+
+    @classmethod
+    def get_solo(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Worker dispatch configuration"
