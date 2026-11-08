@@ -118,7 +118,7 @@ class CategoryListView(generics.ListAPIView):
         )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
-        return queryset.prefetch_related("children")
+        return queryset.prefetch_related("children", "audience_options", "children__audience_options")
 
 
 class ServiceListView(generics.ListAPIView):
