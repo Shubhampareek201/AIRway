@@ -59,6 +59,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   String? _slotError;
   bool _femalePreferenceUnavailable = false;
   bool _updatingPreference = false;
+  late Map<String, dynamic> _categoryAnswers;
   int _page = 0;
 
   bool get _isPickupDrop => widget.bookingMode == 'pickup_drop';
@@ -71,6 +72,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
     _selectedDate = DateTime(initial.year, initial.month, initial.day);
     _selectedTime = widget.initialTime;
     _dropTime = widget.initialDropTime ?? const TimeOfDay(hour: 17, minute: 0);
+    _categoryAnswers = Map<String, dynamic>.from(widget.categoryAnswers);
   }
 
   DateTime _at(TimeOfDay time) => DateTime(
@@ -117,7 +119,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
           addressId: widget.addressId,
           quantity: widget.quantity,
           bookingMode: widget.bookingMode,
-          categoryAnswers: widget.categoryAnswers,
+          categoryAnswers: _categoryAnswers,
         );
       }));
       if (!mounted) return;
@@ -156,16 +158,14 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
     if (widget.cartItemId == null || _updatingPreference) return;
     setState(() => _updatingPreference = true);
     try {
-      final answers = Map<String, dynamic>.from(widget.categoryAnswers)
+      final answers = Map<String, dynamic>.from(_categoryAnswers)
         ..['professional_preference'] = 'any';
       await BookingApi.updateCartItem(
         itemId: widget.cartItemId!,
         data: {'category_answers': answers},
       );
       if (!mounted) return;
-      widget.categoryAnswers
-        ..clear()
-        ..addAll(answers);
+      _categoryAnswers = answers;
       setState(() {
         _femalePreferenceUnavailable = false;
         _slotError = null;
