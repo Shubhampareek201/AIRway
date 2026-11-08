@@ -11,6 +11,7 @@ from .models import (
     CartItem,
     Order,
     OrderItem,
+    DispatchConfiguration,
 )
 
 
@@ -86,3 +87,19 @@ class BookingAdmin(ModelAdmin):
 class BookingAssignmentAdmin(ModelAdmin):
     list_display = ("booking", "worker", "assigned_at", "accepted_at", "started_at", "completed_at")
     search_fields = ("booking__id", "worker__user__phone")
+
+@admin.register(DispatchConfiguration)
+class DispatchConfigurationAdmin(ModelAdmin):
+    list_display = ("is_enabled", "batch_size", "max_batches", "offer_expiry_minutes", "priority_order")
+    fieldsets = (
+        ("Dispatch control", {"fields": ("is_enabled",)}),
+        ("Priority batches", {"fields": ("batch_size", "max_batches", "offer_expiry_minutes", "priority_order")}),
+        ("Audit", {"fields": ("created_at", "updated_at")}),
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return not DispatchConfiguration.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
