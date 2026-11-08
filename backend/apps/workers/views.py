@@ -916,6 +916,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             if offer.order_id:
                 from apps.bookings.models import Order
                 order = Order.objects.select_for_update().get(pk=offer.order_id)
+                # A competing worker may have accepted while this request
+                # waited for the parent-order lock and withdrawn this offer.
+                offer.refresh_from_db(fields=["status", "expires_at"])
+                if offer.status != WorkerOffer.Status.PENDING:
+                    return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
                     Booking.objects.select_for_update().filter(order_item__order=order)
                     .select_related("service__category", "variant", "address__zone__city")
