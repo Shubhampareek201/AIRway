@@ -201,14 +201,14 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         var matches = false;
         switch (operator) {
           case 'equals':
-            matches = actual == expected;
+            matches = actual.toString() == expected?.toString();
             break;
           case 'not_equals':
-            matches = actual != expected;
+            matches = actual.toString() != expected?.toString();
             break;
           case 'in':
             final values = expected is List ? expected : [expected];
-            matches = values.contains(actual);
+            matches = values.any((item) => item?.toString() == actual.toString());
             break;
           default:
             return false;
