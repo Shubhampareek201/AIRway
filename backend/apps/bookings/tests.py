@@ -3235,6 +3235,94 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(booking_addon.quantity, 3)
         self.assertEqual(booking_addon.total_price, Decimal("300.00"))
 
+    def test_multi_service_dispatch_only_offers_worker_eligible_for_every_line(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        partial_user = self._create_user("+919876543281")
+        full_user = self._create_user("+919876543282")
+        partial_worker = WorkerProfile.objects.create(
+            user=partial_user, status=WorkerProfile.Status.APPROVED, is_online=True
+        )
+        full_worker = WorkerProfile.objects.create(
+            user=full_user, status=WorkerProfile.Status.APPROVED, is_online=True
+        )
+        for worker, services in (
+            (partial_worker, [self.service]),
+            (full_worker, [self.service, second_service]),
+        ):
+            WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+            for service in services:
+                WorkerService.objects.create(worker=worker, service=service)
+            for weekday in range(7):
+                WorkerSchedule.objects.create(
+                    worker=worker, weekday=weekday, is_active=True,
+                    start_time=time(0, 0), end_time=time(23, 59),
+                )
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        first_time = timezone.now() + timedelta(days=2)
+        second_time = timezone.now() + timedelta(days=3)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [
+                {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
+                {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+            ]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        offers = WorkerOffer.objects.filter(order=order)
+        self.assertEqual(offers.count(), 1)
+        self.assertEqual(offers.get().worker, full_worker)
+        self.assertFalse(WorkerOffer.objects.filter(order=order, worker=partial_worker).exists())
+
+    def test_one_worker_accepts_and_is_assigned_to_every_order_line(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        worker_user = self._create_user("+919876543283")
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED, is_online=True
+        )
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        for service in (self.service, second_service):
+            WorkerService.objects.create(worker=worker, service=service)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker, weekday=weekday, is_active=True,
+                start_time=time(0, 0), end_time=time(23, 59),
+            )
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        first_time = timezone.now() + timedelta(days=2)
+        second_time = timezone.now() + timedelta(days=3)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [
+                {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
+                {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+            ]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        offer = WorkerOffer.objects.get(order=order, worker=worker)
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        accepted = worker_client.post(f"/api/v1/workers/offers/{offer.pk}/accept/", {}, format="json")
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        self.assertEqual(BookingAssignment.objects.filter(booking__order_item__order=order).count(), 2)
+        self.assertEqual(
+            set(BookingAssignment.objects.filter(booking__order_item__order=order).values_list("worker_id", flat=True)),
+            {worker.pk},
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
+
     def test_checkout_creates_multiple_service_lines_in_one_order(self):
         second_service = self._create_service(
             self.category,
