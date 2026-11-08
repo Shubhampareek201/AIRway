@@ -3,8 +3,8 @@
 String workerCustomerAnswerLabel(String key, dynamic value) {
   if (key == 'professional_preference') {
     return value?.toString() == 'female'
-        ? 'Professional preference: Female professional'
-        : 'Professional preference: No preference';
+        ? 'Professional requirement: Female professional'
+        : 'Professional requirement: No preference';
   }
   return '${key.replaceAll('_', ' ')}: $value';
 }
