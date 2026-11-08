@@ -381,3 +381,46 @@ class LaunchCatalogueScopeTest(TestCase):
             f"/api/v1/catalog/services/{self.services['test'].id}/?launch_only=true"
         )
         self.assertEqual(response.status_code, 404)
+
+
+
+class BeautyAudienceValidationTest(TestCase):
+    def setUp(self):
+        self.root = Category.objects.create(title="Beauty", slug="beauty")
+        self.hair = Category.objects.create(
+            title="Hair Services", slug="hair-services", parent=self.root
+        )
+        self.mens_service = Service.objects.create(
+            category=self.hair, title="Men's Haircut", audience="men"
+        )
+        self.womens_service = Service.objects.create(
+            category=self.hair, title="Women's Haircut", audience="women"
+        )
+        self.unisex_service = Service.objects.create(
+            category=self.hair, title="Head Massage", audience="all"
+        )
+
+    def test_men_selection_accepts_men_and_unisex_services(self):
+        from apps.catalog.audience import validate_beauty_audience
+
+        validate_beauty_audience(self.mens_service, {"beauty_audience": "men"})
+        validate_beauty_audience(self.unisex_service, {"beauty_audience": "men"})
+
+    def test_women_selection_rejects_mens_only_service(self):
+        from apps.catalog.audience import validate_beauty_audience
+
+        with self.assertRaisesMessage(ValueError, "not listed for the selected Beauty audience"):
+            validate_beauty_audience(self.mens_service, {"beauty_audience": "women"})
+
+    def test_both_selection_accepts_only_unisex_services(self):
+        from apps.catalog.audience import validate_beauty_audience
+
+        validate_beauty_audience(self.unisex_service, {"beauty_audience": "both"})
+        with self.assertRaises(ValueError):
+            validate_beauty_audience(self.womens_service, {"beauty_audience": "both"})
+
+    def test_invalid_beauty_audience_is_rejected(self):
+        from apps.catalog.audience import validate_beauty_audience
+
+        with self.assertRaisesMessage(ValueError, "Choose Men, Women or Both"):
+            validate_beauty_audience(self.unisex_service, {"beauty_audience": "children"})
