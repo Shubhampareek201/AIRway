@@ -163,6 +163,15 @@ class FormField(TimeStampedModel):
     )
     is_active = models.BooleanField(default=True, help_text="Admin sawaal ko form mein chhod sakta hai")
     is_required = models.BooleanField(default=True)
+    visibility_rules = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Optional AND rules controlling visibility. Each rule: "
+            "{'field': 'vehicle_type', 'operator': 'equals', 'value': 'SUV'}. "
+            "The field may refer to category answers or another service question."
+        ),
+    )
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
