@@ -97,6 +97,48 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.variant = self._create_variant(self.service)
         self.address = self._create_address(self.user)
 
+    def test_beauty_booking_accepts_female_professional_preference(self):
+        beauty = Category.objects.create(title="Beauty", slug="beauty-root")
+        service = self._create_service(beauty, title="Facial")
+        variant = self._create_variant(service)
+        response = self.client.post("/api/v1/bookings/", {
+            "service": service.id,
+            "variant": variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "category_answers": {"professional_preference": "female"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("category_answers", response.data)
+        self.assertIn("No female professional", str(response.data))
+
+    def test_non_beauty_booking_rejects_female_professional_preference(self):
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+            "category_answers": {"professional_preference": "female"},
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("category_answers", response.data)
+
+    def test_beauty_booking_defaults_to_no_professional_preference(self):
+        beauty = Category.objects.create(title="Beauty", slug="beauty-root")
+        service = self._create_service(beauty, title="Facial")
+        variant = self._create_variant(service)
+        response = self.client.post("/api/v1/bookings/", {
+            "service": service.id,
+            "variant": variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timezone.timedelta(days=1, hours=2)).isoformat(),
+            "address_id": self.address.id,
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["customer_answers"].get("professional_preference", "any"), "any")
+
     def test_create_booking_with_minimal_data(self):
         """Should create booking with required fields only."""
         future_time = timezone.now() + timezone.timedelta(days=1, hours=2)
