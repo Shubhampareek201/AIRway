@@ -175,93 +175,103 @@ def issue_service_otp(*, booking_id, purpose, requested_by):
     return challenge, plaintext
 
 
-@transaction.atomic
 def verify_service_otp(*, booking_id, purpose, code, worker_user):
-    """Atomically verify the assigned worker's OTP and transition the booking."""
-    booking = Booking.objects.select_for_update().get(pk=booking_id)
-    assignment = BookingAssignment.objects.select_for_update().filter(
-        booking=booking,
-    ).select_related("worker__user").first()
-    if assignment is None or assignment.worker.user_id != worker_user.pk:
-        raise PaymentLifecycleError("Only the currently assigned worker can verify this OTP.")
+    """Atomically verify OTP and persist failed-attempt counters on rejection."""
+    error = None
+    completed_booking = None
+    with transaction.atomic():
+        booking = Booking.objects.select_for_update().get(pk=booking_id)
+        assignment = BookingAssignment.objects.select_for_update().filter(
+            booking=booking,
+        ).select_related("worker__user").first()
+        if assignment is None or assignment.worker.user_id != worker_user.pk:
+            error = "Only the currently assigned worker can verify this OTP."
+        else:
+            expected_state = (
+                Booking.Status.ASSIGNED
+                if purpose == ServiceOTPChallenge.Purpose.START
+                else Booking.Status.IN_PROGRESS
+            )
+            target_state = (
+                Booking.Status.IN_PROGRESS
+                if purpose == ServiceOTPChallenge.Purpose.START
+                else Booking.Status.COMPLETED
+            )
+            if purpose not in (
+                ServiceOTPChallenge.Purpose.START,
+                ServiceOTPChallenge.Purpose.COMPLETION,
+            ):
+                error = "Invalid service OTP purpose."
+            elif booking.status != expected_state:
+                error = "This booking is not in the required state for this OTP."
+            else:
+                challenge = ServiceOTPChallenge.objects.select_for_update().filter(
+                    booking=booking,
+                    purpose=purpose,
+                    consumed_at__isnull=True,
+                    invalidated_at__isnull=True,
+                ).order_by("-created_at").first()
+                now = timezone.now()
+                if challenge is None:
+                    error = "No active OTP exists. Ask the customer to request a new one."
+                elif challenge.expires_at <= now:
+                    challenge.invalidated_at = now
+                    challenge.save(update_fields=["invalidated_at", "updated_at"])
+                    error = "The OTP has expired. Ask the customer to request a new one."
+                elif challenge.attempts >= challenge.max_attempts:
+                    challenge.invalidated_at = now
+                    challenge.save(update_fields=["invalidated_at", "updated_at"])
+                    error = "Maximum OTP attempts exceeded."
+                elif (
+                    not isinstance(code, str)
+                    or len(code) != 6
+                    or not code.isdigit()
+                    or not check_password(code, challenge.code_hash)
+                ):
+                    challenge.attempts += 1
+                    if challenge.attempts >= challenge.max_attempts:
+                        challenge.invalidated_at = now
+                    challenge.save(update_fields=["attempts", "invalidated_at", "updated_at"])
+                    error = "The OTP is incorrect."
+                else:
+                    old_status = booking.status
+                    challenge.consumed_at = now
+                    challenge.save(update_fields=["consumed_at", "updated_at"])
+                    booking.status = target_state
+                    update_fields = ["status", "updated_at"]
+                    if purpose == ServiceOTPChallenge.Purpose.START:
+                        assignment.started_at = now
+                        assignment.save(update_fields=["started_at", "updated_at"])
+                    else:
+                        booking.completed_at = now
+                        update_fields.append("completed_at")
+                        assignment.completed_at = now
+                        assignment.save(update_fields=["completed_at", "updated_at"])
+                        final_installment = PaymentInstallment.objects.select_for_update().get(
+                            financial_plan__booking=booking,
+                            kind=PaymentInstallment.Kind.FINAL_BALANCE,
+                        )
+                        final_installment.status = PaymentInstallment.Status.DUE
+                        final_installment.due_at = now
+                        final_installment.save(update_fields=["status", "due_at", "updated_at"])
+                    booking.save(update_fields=update_fields)
+                    BookingStatusHistory.objects.create(
+                        booking=booking,
+                        from_status=old_status,
+                        to_status=target_state,
+                        changed_by=worker_user,
+                        note=(
+                            "Service started after successful start OTP verification."
+                            if purpose == ServiceOTPChallenge.Purpose.START
+                            else "Service completed after successful completion OTP verification."
+                        ),
+                    )
+                    completed_booking = booking
 
-    expected_state = (
-        Booking.Status.ASSIGNED
-        if purpose == ServiceOTPChallenge.Purpose.START
-        else Booking.Status.IN_PROGRESS
-    )
-    target_state = (
-        Booking.Status.IN_PROGRESS
-        if purpose == ServiceOTPChallenge.Purpose.START
-        else Booking.Status.COMPLETED
-    )
-    if purpose not in (ServiceOTPChallenge.Purpose.START, ServiceOTPChallenge.Purpose.COMPLETION):
-        raise PaymentLifecycleError("Invalid service OTP purpose.")
-    if booking.status != expected_state:
-        raise PaymentLifecycleError("This booking is not in the required state for this OTP.")
-
-    challenge = ServiceOTPChallenge.objects.select_for_update().filter(
-        booking=booking,
-        purpose=purpose,
-        consumed_at__isnull=True,
-        invalidated_at__isnull=True,
-    ).order_by("-created_at").first()
-    if challenge is None:
-        raise PaymentLifecycleError("No active OTP exists. Ask the customer to request a new one.")
-
-    now = timezone.now()
-    if challenge.expires_at <= now:
-        challenge.invalidated_at = now
-        challenge.save(update_fields=["invalidated_at", "updated_at"])
-        raise PaymentLifecycleError("The OTP has expired. Ask the customer to request a new one.")
-    if challenge.attempts >= challenge.max_attempts:
-        challenge.invalidated_at = now
-        challenge.save(update_fields=["invalidated_at", "updated_at"])
-        raise PaymentLifecycleError("Maximum OTP attempts exceeded.")
-
-    if not isinstance(code, str) or len(code) != 6 or not code.isdigit() or not check_password(code, challenge.code_hash):
-        challenge.attempts += 1
-        if challenge.attempts >= challenge.max_attempts:
-            challenge.invalidated_at = now
-        challenge.save(update_fields=["attempts", "invalidated_at", "updated_at"])
-        raise PaymentLifecycleError("The OTP is incorrect.")
-
-    old_status = booking.status
-    challenge.consumed_at = now
-    challenge.save(update_fields=["consumed_at", "updated_at"])
-    booking.status = target_state
-    update_fields = ["status", "updated_at"]
-    if purpose == ServiceOTPChallenge.Purpose.START:
-        assignment.started_at = now
-        assignment.save(update_fields=["started_at", "updated_at"])
-    else:
-        booking.completed_at = now
-        update_fields.append("completed_at")
-        assignment.completed_at = now
-        assignment.save(update_fields=["completed_at", "updated_at"])
-        final_installment = PaymentInstallment.objects.select_for_update().get(
-            financial_plan__booking=booking,
-            kind=PaymentInstallment.Kind.FINAL_BALANCE,
-        )
-        final_installment.status = PaymentInstallment.Status.DUE
-        final_installment.due_at = now
-        final_installment.save(update_fields=["status", "due_at", "updated_at"])
-
-    booking.save(update_fields=update_fields)
-    BookingStatusHistory.objects.create(
-        booking=booking,
-        from_status=old_status,
-        to_status=target_state,
-        changed_by=worker_user,
-        note=(
-            "Service started after successful start OTP verification."
-            if purpose == ServiceOTPChallenge.Purpose.START
-            else "Service completed after successful completion OTP verification."
-        ),
-    )
-    return booking
-
-
+    # Raise outside atomic so failed attempts and expiry invalidation are committed.
+    if error:
+        raise PaymentLifecycleError(error)
+    return completed_booking
 def create_customer_cancellation_refund_record(*, booking, payment_attempt, idempotency_key):
     """Create an auditable refund request record; gateway submission is a later step."""
     if booking.status == Booking.Status.IN_PROGRESS or booking.status == Booking.Status.COMPLETED:
