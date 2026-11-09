@@ -755,6 +755,37 @@ class PaymentWebhookView(APIView):
                     if refund_record is None and record_id:
                         refund_record = refund_query.filter(pk=record_id).first()
                     if refund_record:
+                        # The signed webhook must still reconcile to the exact
+                        # tender and original payment recorded by AIRway.
+                        expected_payment_id = (
+                            refund_record.payment.razorpay_payment_id
+                            if refund_record.payment_id
+                            else refund_record.payment_attempt.provider_payment_id
+                            if refund_record.payment_attempt_id
+                            else None
+                        )
+                        received_payment_id = refund_entity.get("payment_id")
+                        received_amount = refund_entity.get("amount")
+                        try:
+                            amount_matches = (
+                                received_amount is not None
+                                and int(received_amount)
+                                == int(refund_record.gateway_refund_amount * 100)
+                            )
+                        except (TypeError, ValueError):
+                            amount_matches = False
+                        if (
+                            not expected_payment_id
+                            or str(received_payment_id or "") != str(expected_payment_id)
+                            or not amount_matches
+                        ):
+                            logger.error(
+                                "Refund webhook does not match AIRway ledger: "
+                                "refund_record=%s provider_refund_id=%s",
+                                refund_record.pk, provider_refund_id,
+                            )
+                            refund_record = None
+                    if refund_record:
                         # Lock the refund and linked attempt in one transaction.
                         # Duplicate/out-of-order events must not regress a processed refund.
                         if refund_record.status != RefundRecord.Status.PROCESSED:
