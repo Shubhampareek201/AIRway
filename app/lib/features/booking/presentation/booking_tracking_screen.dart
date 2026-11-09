@@ -457,7 +457,11 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                 onPressed: _payingFinalBalance ? null : _payFinalBalance,
                 child: _payingFinalBalance
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text('Pay final balance ₹${outstanding.toStringAsFixed(2)}'),
+                    : Text(
+                        _selectedWalletAmount >= outstanding && outstanding > 0
+                            ? 'Pay with AIRway wallet'
+                            : 'Pay ₹${(outstanding - _selectedWalletAmount).clamp(0, outstanding).toStringAsFixed(2)} online',
+                      ),
               ),
             ),
           ],
