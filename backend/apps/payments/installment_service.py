@@ -391,6 +391,56 @@ def settle_final_balance_attempt(
         return attempt
 
 
+def reconcile_refund_record(*, record_id):
+    """Look up an uncertain refund at Razorpay; never submit a second refund.
+
+    A refund is matched only by the AIRway record ID stored in provider notes,
+    and its amount must match the immutable gateway refund amount.
+    """
+    from django.conf import settings
+    from .models import RefundRecord
+
+    record = RefundRecord.objects.select_related("payment").get(pk=record_id)
+    if record.status == RefundRecord.Status.PROCESSED:
+        return record
+    payment_id = (
+        record.payment.razorpay_payment_id if record.payment_id
+        else record.payment_attempt.provider_payment_id if record.payment_attempt_id
+        else ""
+    )
+    if not payment_id or record.gateway_refund_amount <= ZERO:
+        raise InstallmentPaymentError("Refund has no gateway payment to reconcile.")
+
+    gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    result = gateway.payment.fetch_multiple_refund(payment_id, {"count": 100})
+    refunds = result.get("items", []) if isinstance(result, dict) else []
+    match = next((
+        item for item in refunds
+        if str((item.get("notes") or {}).get("airway_refund_record_id", "")) == str(record.pk)
+    ), None)
+    if match is None:
+        with transaction.atomic():
+            locked = RefundRecord.objects.select_for_update().get(pk=record.pk)
+            locked.status = RefundRecord.Status.PENDING
+            locked.provider_payload = {
+                **(locked.provider_payload or {}),
+                "reconciliation": "No matching provider refund found; no new refund was submitted. Verify Razorpay dashboard before manual action.",
+                "reconciled_at": timezone.now().isoformat(),
+            }
+            locked.save(update_fields=["status", "provider_payload", "updated_at"])
+        return locked
+
+    if int(match.get("amount", -1)) != int(record.gateway_refund_amount * 100):
+        raise InstallmentPaymentError(
+            "Provider refund amount does not match AIRway ledger; manual reconciliation required."
+        )
+    return _persist_refund_submission(
+        record_id=record.pk,
+        provider_refund=match,
+        attempt_id=record.payment_attempt_id,
+    )
+
+
 def _persist_refund_submission(*, record_id, provider_refund=None, submission_error=None, attempt_id=None):
     """Persist provider response without regressing a webhook-confirmed terminal state."""
     from .models import RefundRecord
