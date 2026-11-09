@@ -140,6 +140,19 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
             PaymentInstallment.Status.FAILED,
         ):
             raise InstallmentPaymentError("The final balance is not due yet.")
+        from .models import RefundRecord
+        unresolved_refund = RefundRecord.objects.filter(
+            payment_attempt__installment=installment,
+            status__in=(
+                RefundRecord.Status.REQUESTED,
+                RefundRecord.Status.PENDING,
+                RefundRecord.Status.FAILED,
+            ),
+        ).exists()
+        if unresolved_refund:
+            raise InstallmentPaymentError(
+                "A previous captured payment is awaiting refund reconciliation. Please contact AIRway support before retrying."
+            )
         outstanding = installment.amount_due - installment.amount_captured
         if outstanding <= ZERO:
             raise InstallmentPaymentError("No final balance remains outstanding.")
@@ -499,9 +512,12 @@ def mark_final_balance_attempt_failed(*, attempt_id, provider_order_id, payload=
         attempt = PaymentAttempt.objects.select_for_update().select_related("installment").get(pk=attempt_id)
         if attempt.provider_order_id != provider_order_id:
             raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
-        if attempt.status == PaymentAttempt.Status.CAPTURED:
-            return attempt
-        if attempt.status == PaymentAttempt.Status.FAILED:
+        if attempt.status in (
+            PaymentAttempt.Status.CAPTURED,
+            PaymentAttempt.Status.REFUND_PENDING,
+            PaymentAttempt.Status.REFUNDED,
+            PaymentAttempt.Status.FAILED,
+        ):
             return attempt
         attempt.status = PaymentAttempt.Status.FAILED
         attempt.failed_at = timezone.now()
