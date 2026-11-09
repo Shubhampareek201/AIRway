@@ -69,7 +69,11 @@ class PaymentAllocationAdmin(ReadOnlyLedgerAdmin):
 
 @admin.register(RefundRecord)
 class RefundRecordAdmin(ReadOnlyLedgerAdmin):
-    list_display = ("id", "booking", "reason", "gross_amount", "platform_fee", "refund_amount", "status", "requested_at", "processed_at")
+    list_display = (
+        "id", "booking", "reason", "gross_amount", "platform_fee",
+        "refund_amount", "gateway_refund_amount", "wallet_refund_amount",
+        "status", "requested_at", "processed_at",
+    )
     list_filter = ("reason", "status")
     search_fields = ("provider_refund_id", "idempotency_key", "booking__id")
 
