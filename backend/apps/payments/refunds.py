@@ -5,6 +5,7 @@ import razorpay
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from apps.wallet.models import Wallet, WalletTransaction
 
 from .models import Payment, PaymentAttempt, PaymentInstallment, PaymentRefund
 
@@ -24,13 +25,16 @@ def request_installment_refund(*, attempt, idempotency_key, reason, deduct_platf
             return existing
         if locked.status != PaymentAttempt.Status.PAID or not locked.razorpay_payment_id:
             raise ValueError("Only a captured Razorpay installment can be refunded.")
-        paid = Decimal(locked.amount).quantize(CENT)
-        fee = min(CANCELLATION_FEE, paid) if deduct_platform_fee else Decimal("0.00")
-        refund_amount = max(paid - fee, Decimal("0.00")).quantize(CENT)
+        paid_total = (Decimal(locked.amount) + Decimal(locked.wallet_amount)).quantize(CENT)
+        fee = min(CANCELLATION_FEE, paid_total) if deduct_platform_fee else Decimal("0.00")
+        total_refund = max(paid_total - fee, Decimal("0.00")).quantize(CENT)
+        gateway_refund = min(Decimal(locked.amount), total_refund).quantize(CENT)
+        wallet_refund = (total_refund - gateway_refund).quantize(CENT)
         refund = PaymentRefund.objects.create(
             attempt=locked,
             idempotency_key=idempotency_key,
-            gateway_amount=refund_amount,
+            gateway_amount=gateway_refund,
+            wallet_amount=wallet_refund,
             platform_fee=fee,
             reason=reason[:255],
             status=PaymentRefund.Status.PENDING,
@@ -90,6 +94,21 @@ def _finalize_refunded_attempt(refund):
             return
         attempt = PaymentAttempt.objects.select_for_update().get(pk=refund.attempt_id)
         payment = Payment.objects.select_for_update().get(pk=attempt.installment.payment_id)
+        if attempt.status != PaymentAttempt.Status.REFUNDED and refund.wallet_amount > 0:
+            wallet, _ = Wallet.objects.get_or_create(user=payment.customer)
+            wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+            wallet.balance += refund.wallet_amount
+            wallet.save(update_fields=["balance", "updated_at"])
+            WalletTransaction.objects.get_or_create(
+                wallet=wallet,
+                reference_id=f"payment_refund:{refund.pk}",
+                type=WalletTransaction.Type.CREDIT,
+                defaults={
+                    "amount": refund.wallet_amount,
+                    "description": f"Wallet refund for AIRway payment #{payment.pk}",
+                    "status": WalletTransaction.Status.COMPLETED,
+                },
+            )
         attempt.status = PaymentAttempt.Status.REFUNDED
         attempt.save(update_fields=["status", "updated_at"])
         payment.status = Payment.Status.REFUNDED
