@@ -254,6 +254,10 @@ class BookingViewSet(viewsets.ModelViewSet):
             response_data["refund_id"] = refund_record.pk
         if provider_error:
             response_data["refund_message"] = provider_error
+        elif refund_record and refund_record.status == RefundRecord.Status.PROCESSED:
+            response_data["refund_message"] = "Razorpay has confirmed the refund as processed."
+        elif refund_record and refund_record.status == RefundRecord.Status.FAILED:
+            response_data["refund_message"] = "Razorpay refund failed. AIRway support must reconcile this refund."
         elif refund_record and refund_record.refund_amount > 0:
             response_data["refund_message"] = "Refund request submitted to Razorpay; final settlement is pending provider confirmation."
         return Response(response_data)
