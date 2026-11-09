@@ -1708,6 +1708,7 @@ class PaymentIdempotencyTests(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "590.00"},
         )
 
         from unittest.mock import patch
@@ -1750,6 +1751,7 @@ class PaymentIdempotencyTests(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "590.00"},
         )
 
         from unittest.mock import patch, MagicMock
@@ -1788,6 +1790,7 @@ class PaymentIdempotencyTests(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "590.00"},
         )
 
         from unittest.mock import patch
@@ -1833,6 +1836,7 @@ class PaymentIdempotencyTests(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "590.00"},
         )
 
         from unittest.mock import patch
