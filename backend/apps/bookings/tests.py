@@ -3374,7 +3374,9 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         WorkerService.objects.create(worker=worker, service=self.service)
         WorkerZone.objects.create(worker=worker, zone=self.address.zone)
-        scheduled_at = timezone.now() + timedelta(days=2)
+        scheduled_at = timezone.localtime(
+            timezone.now() + timedelta(days=2)
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
         local_scheduled_at = timezone.localtime(scheduled_at)
         WorkerSchedule.objects.create(
             worker=worker,
@@ -3566,8 +3568,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             cart=self.cart, service=second_service, variant=second_variant,
             quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
-        first_time = timezone.now() + timedelta(days=2)
-        second_time = timezone.now() + timedelta(days=3)
+        first_time = timezone.localtime(
+            timezone.now() + timedelta(days=2)
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
+        second_time = timezone.localtime(
+            timezone.now() + timedelta(days=3)
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
@@ -3602,8 +3608,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             cart=self.cart, service=second_service, variant=second_variant,
             quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
-        first_time = timezone.now() + timedelta(days=2)
-        second_time = timezone.now() + timedelta(days=3)
+        first_time = timezone.localtime(
+            timezone.now() + timedelta(days=2)
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
+        second_time = timezone.localtime(
+            timezone.now() + timedelta(days=3)
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
