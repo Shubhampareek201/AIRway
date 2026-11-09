@@ -415,8 +415,10 @@ class BookingListSerializer(serializers.ModelSerializer):
 
     def get_can_cancel(self, obj):
         from .models import OrderItem
+        assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
         return bool(
             obj.can_cancel
+            and not (assignment and assignment.started_at)
             and not OrderItem.objects.filter(booking_id=obj.pk).exists()
         )
 
@@ -431,7 +433,8 @@ class BookingListSerializer(serializers.ModelSerializer):
                 "policy": "parent_order",
                 "message": "This service belongs to a multi-service order. Contact AIRway support to change the order safely.",
             }
-        if not obj.can_cancel:
+        assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
+        if not obj.can_cancel or (assignment and assignment.started_at):
             return {
                 "available": False,
                 "policy": "service_started_or_closed",
@@ -444,7 +447,6 @@ class BookingListSerializer(serializers.ModelSerializer):
                 "message": "Cancellation terms for this older booking follow its original payment flow.",
             }
 
-        assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
         worker_accepted = bool(assignment and assignment.accepted_at)
         payment = Payment.objects.filter(
             booking_id=obj.pk, status=Payment.Status.PAID,
