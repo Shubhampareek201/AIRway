@@ -815,6 +815,7 @@ class PaymentWebhookView(APIView):
                 mark_final_balance_attempt_failed,
                 refund_late_final_capture,
                 refund_duplicate_final_capture,
+                refund_mismatched_final_capture,
                 settle_final_balance_attempt,
             )
             attempt = None
@@ -845,10 +846,26 @@ class PaymentWebhookView(APIView):
                 currency = entity.get("currency")
                 if not payment_id or not isinstance(amount_paise, int) or not currency:
                     return Response({"detail": "Captured event is missing payment ID, amount, or currency."}, status=status.HTTP_400_BAD_REQUEST)
-                if amount_paise != int(attempt.gateway_amount * 100):
-                    return Response({"detail": "Amount mismatch"}, status=status.HTTP_400_BAD_REQUEST)
                 if currency.upper() != attempt.currency:
-                    return Response({"detail": "Currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({"detail": "Currency mismatch requires manual provider reconciliation."}, status=status.HTTP_400_BAD_REQUEST)
+                if amount_paise != int(attempt.gateway_amount * 100):
+                    try:
+                        refund_record = refund_mismatched_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            amount_paise=amount_paise,
+                            currency=currency,
+                            payload=payload,
+                        )
+                    except InstallmentPaymentError as exc:
+                        logger.exception("Mismatched final-payment capture needs reconciliation for attempt %s", attempt.pk)
+                        return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+                    return Response({
+                        "status": "ok",
+                        "reconciled": "mismatched_capture_refund",
+                        "refund_status": refund_record.status,
+                    })
                 try:
                     if (
                         attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED)
