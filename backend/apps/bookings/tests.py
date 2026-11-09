@@ -2207,6 +2207,17 @@ class FailedDispatchRetryTaskTest(TestCase):
             status=Booking.Status.CONFIRMED,
         )
 
+        from apps.payments.models import Payment, PaymentInstallment
+        payment = Payment.objects.create(
+            booking=booking, customer=self.customer, amount=500,
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PARTIALLY_PAID,
+        )
+        PaymentInstallment.objects.create(
+            payment=payment, kind=PaymentInstallment.Kind.ADVANCE,
+            amount=250, status=PaymentInstallment.Status.PAID,
+            paid_at=timezone.now(),
+        )
+
         # Run the task
         batch_count = retry_failed_dispatches()
 
