@@ -355,9 +355,17 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                             financial_plan__booking=booking,
                             kind=PaymentInstallment.Kind.FINAL_BALANCE,
                         )
-                        final_installment.status = PaymentInstallment.Status.DUE
                         final_installment.due_at = now
-                        final_installment.save(update_fields=["status", "due_at", "updated_at"])
+                        if final_installment.amount_due == ZERO:
+                            final_installment.amount_captured = ZERO
+                            final_installment.status = PaymentInstallment.Status.PAID
+                            final_installment.settled_at = now
+                            final_installment.save(update_fields=[
+                                "amount_captured", "status", "due_at", "settled_at", "updated_at",
+                            ])
+                        else:
+                            final_installment.status = PaymentInstallment.Status.DUE
+                            final_installment.save(update_fields=["status", "due_at", "updated_at"])
                     booking.save(update_fields=update_fields)
                     order_id = OrderItem.objects.filter(
                         booking_id=booking.pk
@@ -370,11 +378,18 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                             all_lines_completed = not parent_order.items.exclude(
                                 booking__status=Booking.Status.COMPLETED
                             ).exists()
-                            parent_order.status = (
-                                Order.Status.AWAITING_FINAL_PAYMENT
-                                if all_lines_completed
-                                else Order.Status.IN_PROGRESS
-                            )
+                            if all_lines_completed:
+                                all_balances_paid = not PaymentInstallment.objects.filter(
+                                    financial_plan__booking__order_item__order=parent_order,
+                                    kind=PaymentInstallment.Kind.FINAL_BALANCE,
+                                ).exclude(status=PaymentInstallment.Status.PAID).exists()
+                                parent_order.status = (
+                                    Order.Status.COMPLETED
+                                    if all_balances_paid
+                                    else Order.Status.AWAITING_FINAL_PAYMENT
+                                )
+                            else:
+                                parent_order.status = Order.Status.IN_PROGRESS
                         parent_order.save(update_fields=["status", "updated_at"])
                     BookingStatusHistory.objects.create(
                         booking=booking,
