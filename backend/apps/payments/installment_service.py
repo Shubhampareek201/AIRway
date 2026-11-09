@@ -438,16 +438,19 @@ def reconcile_refund_record(*, record_id):
         record_id=record.pk,
         provider_refund=match,
         attempt_id=record.payment_attempt_id,
+        reconciliation=True,
     )
 
 
-def _persist_refund_submission(*, record_id, provider_refund=None, submission_error=None, attempt_id=None):
+def _persist_refund_submission(*, record_id, provider_refund=None, submission_error=None, attempt_id=None, reconciliation=False):
     """Persist provider response without regressing a webhook-confirmed terminal state."""
     from .models import RefundRecord
 
     with transaction.atomic():
         record = RefundRecord.objects.select_for_update().get(pk=record_id)
-        if record.status not in (RefundRecord.Status.PROCESSED, RefundRecord.Status.FAILED):
+        if record.status != RefundRecord.Status.PROCESSED and (
+            reconciliation or record.status != RefundRecord.Status.FAILED
+        ):
             if provider_refund is not None:
                 provider_id = provider_refund.get("id")
                 if provider_id and not record.provider_refund_id:
