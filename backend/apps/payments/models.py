@@ -210,6 +210,15 @@ class RefundRecord(TimeStampedModel):
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name="refund_records")
     payment_attempt = models.ForeignKey(
         PaymentAttempt, on_delete=models.PROTECT, related_name="refunds",
+        null=True, blank=True,
+    )
+    payment = models.ForeignKey(
+        Payment, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="refund_records",
+    )
+    payment_allocation = models.ForeignKey(
+        "PaymentAllocation", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="refund_records",
     )
     idempotency_key = models.CharField(max_length=120, unique=True)
     reason = models.CharField(max_length=32, choices=Reason.choices)
