@@ -113,3 +113,66 @@ def _finalize_refunded_attempt(refund):
         attempt.save(update_fields=["status", "updated_at"])
         payment.status = Payment.Status.REFUNDED
         payment.save(update_fields=["status", "updated_at"])
+
+
+
+def refund_late_expired_capture(*, attempt, razorpay_payment_id):
+    """Refund gateway money captured after AIRway expired and released the attempt's wallet hold."""
+    with transaction.atomic():
+        locked = PaymentAttempt.objects.select_for_update().select_related("installment__payment").get(pk=attempt.pk)
+        if locked.status == PaymentAttempt.Status.REFUNDED:
+            return locked.refunds.order_by("-created_at").first()
+        if locked.status != PaymentAttempt.Status.FAILED:
+            raise ValueError("Only an expired or failed attempt can use late-capture reconciliation.")
+        locked.status = PaymentAttempt.Status.PAID
+        locked.razorpay_payment_id = razorpay_payment_id
+        locked.paid_at = timezone.now()
+        locked.save(update_fields=["status", "razorpay_payment_id", "paid_at", "updated_at"])
+        payment = Payment.objects.select_for_update().get(pk=locked.installment.payment_id)
+        payment.status = Payment.Status.REFUND_PENDING
+        payment.save(update_fields=["status", "updated_at"])
+        refund, created = PaymentRefund.objects.get_or_create(
+            idempotency_key=f"late_capture_attempt_{locked.pk}",
+            defaults={
+                "attempt": locked,
+                "gateway_amount": locked.amount,
+                "wallet_amount": Decimal("0.00"),
+                "platform_fee": Decimal("0.00"),
+                "reason": "Razorpay captured after the AIRway payment attempt expired; wallet reservation was released.",
+                "status": PaymentRefund.Status.PENDING,
+            },
+        )
+    if not created or refund.gateway_amount <= 0:
+        if refund.gateway_amount <= 0:
+            refund.status = PaymentRefund.Status.PROCESSED
+            refund.processed_at = timezone.now()
+            refund.save(update_fields=["status", "processed_at", "updated_at"])
+            _finalize_refunded_attempt(refund)
+        return refund
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        result = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": int((refund.gateway_amount * 100).to_integral_value(rounding=ROUND_HALF_UP)),
+                "notes": {
+                    "airway_refund_key": refund.idempotency_key,
+                    "reason": "Late capture after installment expiry; retry checkout required.",
+                },
+            },
+        )
+    except Exception:
+        logger.exception("Could not refund late capture for expired installment attempt %s", locked.pk)
+        refund.status = PaymentRefund.Status.FAILED
+        refund.raw_response = {"error": "Late capture refund failed; manual reconciliation required."}
+        refund.save(update_fields=["status", "raw_response", "updated_at"])
+        return refund
+    refund.gateway_refund_id = result.get("id", "")
+    refund.raw_response = result
+    if result.get("status") == "processed":
+        refund.status = PaymentRefund.Status.PROCESSED
+        refund.processed_at = timezone.now()
+    refund.save(update_fields=["gateway_refund_id", "raw_response", "status", "processed_at", "updated_at"])
+    if refund.status == PaymentRefund.Status.PROCESSED:
+        _finalize_refunded_attempt(refund)
+    return refund
