@@ -464,9 +464,12 @@ class WorkerJobDetailView(APIView):
         customer_answers = dict(booking.customer_answers or {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
+        from apps.payments.models import BookingFinancialPlan
+        requires_service_otp = BookingFinancialPlan.objects.filter(booking_id=booking.pk).exists()
         return Response({
             "id": assign.id,
 "booking_id": booking.id,
+            "requires_service_otp": requires_service_otp,
             "status": booking.status,
             "service_title": booking.service.title,
             "customer_name": booking.customer.name or booking.customer.phone,
