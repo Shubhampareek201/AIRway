@@ -1430,6 +1430,7 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
 
         start_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
