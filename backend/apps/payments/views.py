@@ -347,6 +347,7 @@ class CreateInstallmentOrderView(APIView):
                 )
                 payment, installment, attempt, existed = create_installment_gateway_order(
                     order=target, customer=request.user, kind=kind,
+                    wallet_amount=request.data.get("wallet_amount", "0.00"),
                 )
                 target_id = target.pk
             else:
@@ -361,6 +362,7 @@ class CreateInstallmentOrderView(APIView):
                 )
                 payment, installment, attempt, existed = create_installment_gateway_order(
                     booking=target, customer=request.user, kind=kind,
+                    wallet_amount=request.data.get("wallet_amount", "0.00"),
                 )
                 target_id = target.pk
         except ValueError as exc:
@@ -392,6 +394,7 @@ class CreateInstallmentOrderView(APIView):
             "target_id": target_id,
             "installment": installment.kind,
             "installment_amount": str(installment.amount),
+            "wallet_amount": str(attempt.wallet_amount),
             "total_amount": str(payment.amount),
             "payment_exists": existed,
         })
