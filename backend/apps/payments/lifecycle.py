@@ -172,6 +172,34 @@ def customer_cancellation_terms(scheduled_at, collected_amount, *, worker_accept
     }
 
 
+def create_customer_cancellation_refund_record(*, booking, payment, terms):
+    """Persist one idempotent line refund request against the captured payment."""
+    if payment is None or payment.status != "paid":
+        return None, False
+    amount = as_money(terms["refund_amount"])
+    collected = as_money(payment.amount)
+    key = f"customer-cancel:booking:{booking.pk}:payment:{payment.pk}"
+    record, created = RefundRecord.objects.get_or_create(
+        idempotency_key=key,
+        defaults={
+            "booking": booking,
+            "payment": payment,
+            "reason": RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            "gross_amount": collected,
+            "platform_fee": as_money(terms["platform_fee"]),
+            "refund_amount": amount,
+            "status": (
+                RefundRecord.Status.REQUESTED
+                if amount > ZERO else RefundRecord.Status.PROCESSED
+            ),
+            "requested_at": timezone.now(),
+            "processed_at": timezone.now() if amount == ZERO else None,
+            "provider_payload": {"policy": terms["policy"]},
+        },
+    )
+    return record, created
+
+
 def _new_otp():
     return f"{secrets.randbelow(1_000_000):06d}"
 
