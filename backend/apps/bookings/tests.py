@@ -679,7 +679,7 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
         self.address = self._create_address(self.user)
 
     def _create_paid_booking(self, scheduled_at, *, accepted=False):
-        response = self.client.post("/api/v1/bookings/", {
+        response = self.client.post("/api/v1/bookings/checkout/", {
             "service": self.service.id,
             "variant": self.variant.id,
             "booking_mode": "scheduled",
