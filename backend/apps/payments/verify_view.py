@@ -794,6 +794,7 @@ class PaymentWebhookView(APIView):
                 InstallmentPaymentError,
                 mark_final_balance_attempt_failed,
                 refund_late_final_capture,
+                refund_duplicate_final_capture,
                 settle_final_balance_attempt,
             )
             attempt = None
@@ -831,6 +832,17 @@ class PaymentWebhookView(APIView):
                 if currency.upper() != attempt.currency:
                     return Response({"detail": "Currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
                 try:
+                    if (
+                        attempt.status == PaymentAttempt.Status.CAPTURED
+                        and attempt.provider_payment_id != payment_id
+                    ):
+                        refund_duplicate_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "duplicate_capture_refund"})
                     if attempt.status == PaymentAttempt.Status.FAILED:
                         refund_late_final_capture(
                             attempt_id=attempt.pk,
