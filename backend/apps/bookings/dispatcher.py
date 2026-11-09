@@ -50,6 +50,17 @@ class DispatcherService:
         booking = Booking.objects.select_for_update(of=("self",)).select_related(
             "service__category", "variant", "address__zone__city"
         ).get(pk=booking.pk)
+        # Financial-plan bookings cannot enter dispatch until their exact
+        # advance installment is captured. Legacy bookings retain old behavior.
+        from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+        financial_plan = BookingFinancialPlan.objects.filter(booking=booking).first()
+        if financial_plan:
+            advance = PaymentInstallment.objects.filter(
+                financial_plan=financial_plan,
+                kind=PaymentInstallment.Kind.ADVANCE,
+            ).first()
+            if advance is None or advance.status != PaymentInstallment.Status.PAID:
+                return []
         config = DispatchConfiguration.get_solo()
         if not config.is_enabled or booking.status not in (booking.Status.PENDING, booking.Status.CONFIRMED):
             return []
@@ -107,6 +118,23 @@ class DispatcherService:
             if not items:
                 return []
             bookings = [item.booking for item in items]
+            # A parent order containing any financial-plan line must contain
+            # plans for every line, and every advance must be fully captured.
+            from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+            plans = [
+                BookingFinancialPlan.objects.filter(booking=booking).first()
+                for booking in bookings
+            ]
+            if any(plans):
+                if not all(plans):
+                    return []
+                for plan in plans:
+                    advance = PaymentInstallment.objects.filter(
+                        financial_plan=plan,
+                        kind=PaymentInstallment.Kind.ADVANCE,
+                    ).first()
+                    if advance is None or advance.status != PaymentInstallment.Status.PAID:
+                        return []
             if any(
                 booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
                 or BookingAssignment.objects.filter(booking=booking).exists()
