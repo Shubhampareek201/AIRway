@@ -164,8 +164,99 @@ def _process_verified_payment(
         }
         payment.save()
 
-        # Parent-order payment: settle each service booking atomically while
-        # retaining the legacy single-booking verification path below.
+        # New split-payment orders settle line-level advance installments
+        # before any worker offer is created. Legacy orders keep the path below.
+        if payment.order_id:
+            from .models import (
+                BookingFinancialPlan, PaymentInstallment, PaymentAllocation,
+            )
+            from decimal import Decimal
+
+            parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            order_items = list(
+                parent_order.items.select_related("booking").order_by("id")
+            )
+            plans = [
+                BookingFinancialPlan.objects.select_for_update().filter(
+                    booking_id=item.booking_id
+                ).first()
+                for item in order_items
+            ]
+            if order_items and all(plans):
+                if parent_order.status != Order.Status.AWAITING_PAYMENT:
+                    raise ValueError("Split-payment order is not awaiting its advance.")
+                installments = []
+                for plan in plans:
+                    installment = PaymentInstallment.objects.select_for_update().get(
+                        financial_plan=plan,
+                        kind=PaymentInstallment.Kind.ADVANCE,
+                    )
+                    if installment.status == PaymentInstallment.Status.PAID:
+                        raise ValueError("An advance installment was already settled by another payment.")
+                    if installment.amount_due <= 0:
+                        raise ValueError("Zero-value advances cannot be settled through this payment.")
+                    installments.append((plan, installment))
+
+                total_advance = sum(
+                    (row.amount_due for _, row in installments), Decimal("0.00")
+                )
+                wallet_remaining = payment.wallet_amount
+                gateway_remaining = payment.amount
+                if total_advance != wallet_remaining + gateway_remaining:
+                    raise ValueError("Captured tender does not equal the order's aggregate advance.")
+                for plan, installment in installments:
+                    wallet_part = min(installment.amount_due, wallet_remaining)
+                    wallet_remaining -= wallet_part
+                    gateway_part = installment.amount_due - wallet_part
+                    if gateway_part > gateway_remaining:
+                        raise ValueError("Payment allocation exceeds the captured gateway amount.")
+                    gateway_remaining -= gateway_part
+                    PaymentAllocation.objects.create(
+                        payment=payment,
+                        installment=installment,
+                        amount=installment.amount_due,
+                        gateway_amount=gateway_part,
+                        wallet_amount=wallet_part,
+                    )
+                    installment.amount_captured = installment.amount_due
+                    installment.status = PaymentInstallment.Status.PAID
+                    installment.settled_at = timezone.now()
+                    installment.save(update_fields=[
+                        "amount_captured", "status", "settled_at", "updated_at"
+                    ])
+                    plan.advance_captured = installment.amount_due
+                    plan.save(update_fields=["advance_captured", "updated_at"])
+
+                if wallet_remaining != 0 or gateway_remaining != 0:
+                    raise ValueError("Aggregate advance allocation did not reconcile exactly.")
+
+                parent_order.status = Order.Status.AWAITING_ASSIGNMENT
+                parent_order.save(update_fields=["status", "updated_at"])
+                booking_ids = [item.booking_id for item in order_items]
+                Notification.objects.create(
+                    user=payment.customer,
+                    type=Notification.Type.PAYMENT_SUCCESS,
+                    title="Booking advance received",
+                    body=f"Your 50% booking advance for AIRway order #{parent_order.id} was received. We are finding an eligible professional.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"order_id": parent_order.id, "payment_id": payment.id, "booking_ids": booking_ids},
+                )
+                def dispatch_paid_order(order_id):
+                    from apps.bookings.dispatcher import DispatcherService
+                    paid_order = Order.objects.get(pk=order_id)
+                    DispatcherService.dispatch_order(paid_order)
+                transaction.on_commit(lambda order_id=parent_order.id: dispatch_paid_order(order_id))
+                return Response({
+                    "detail": "Booking advance captured and allocated. Worker dispatch has been queued.",
+                    "status": payment.status,
+                    "payment_id": payment.id,
+                    "airway_order_id": parent_order.id,
+                    "booking_ids": booking_ids,
+                    "advance_total": str(total_advance),
+                    "razorpay_payment_id": razorpay_payment_id,
+                }, status=status.HTTP_200_OK)
+
+        # Parent-order payment: legacy full-payment settlement.
         if payment.order_id:
             parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
             order_bookings = list(
