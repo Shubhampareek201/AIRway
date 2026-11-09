@@ -737,6 +737,17 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
         self.assertEqual(refund.payment_id, payment.pk)
         self.assertEqual(refund.refund_amount, plan.advance_due)
         self.assertEqual(refund.status, RefundRecord.Status.PENDING)
+        detail = self.client.get(f"/api/v1/bookings/{booking.pk}/")
+        self.assertEqual(detail.status_code, 200, detail.data)
+        self.assertTrue(detail.data["can_cancel"])
+        self.assertEqual(
+            detail.data["cancellation_terms"]["policy"],
+            "same_day_before_worker_acceptance",
+        )
+        self.assertEqual(
+            Decimal(detail.data["cancellation_terms"]["refund_amount"]),
+            plan.advance_due,
+        )
 
     def test_same_day_cancel_after_worker_acceptance_is_non_refundable(self):
         from apps.payments.models import RefundRecord
@@ -756,6 +767,12 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
         self.assertEqual(Decimal(response.data["refund_amount"]), Decimal("0.00"))
         self.assertEqual(response.data["refund_status"], "not_refundable")
         self.assertFalse(RefundRecord.objects.filter(booking=booking).exists())
+        detail = self.client.get(f"/api/v1/bookings/{booking.pk}/")
+        self.assertEqual(detail.status_code, 200, detail.data)
+        self.assertTrue(detail.data["can_cancel"])
+        self.assertFalse(detail.data["cancellation_terms"]["refundable"])
+        self.assertTrue(detail.data["cancellation_terms"]["worker_accepted"])
+        self.assertIn("non-refundable", detail.data["cancellation_terms"]["message"])
 
 
 class BookingTrackTest(BookingAPITestMixin, TestCase):
