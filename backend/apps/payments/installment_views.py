@@ -139,6 +139,24 @@ class VerifyInstallmentPaymentView(APIView):
                 source="checkout",
             )
         except InstallmentPaymentError as exc:
+            attempt.refresh_from_db()
+            if (
+                attempt.status == PaymentAttempt.Status.CAPTURED
+                and attempt.provider_payment_id != payment_id
+            ):
+                try:
+                    refund_duplicate_final_capture(
+                        attempt_id=attempt.pk,
+                        razorpay_payment_id=payment_id,
+                        provider_order_id=order_id,
+                        payload=provider_payment,
+                    )
+                except InstallmentPaymentError as refund_error:
+                    return Response({"detail": str(refund_error)}, status=status.HTTP_409_CONFLICT)
+                return Response({
+                    "detail": "This installment was already settled. The duplicate capture has been sent for refund reconciliation.",
+                    "status": "duplicate_capture_refund",
+                }, status=status.HTTP_200_OK)
             return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response({
             "detail": "Final payment captured and allocated.",
