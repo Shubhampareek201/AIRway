@@ -100,68 +100,32 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm_booking(self, request, pk=None):
-        """Confirm a booking and trigger worker offer creation."""
-        from apps.notifications.models import Notification
-
+        """Legacy confirmation endpoint; dispatch is released only by captured advance."""
         booking = self.get_object()
-
-        if booking.customer != request.user:
-            return Response(
-                {"detail": "Only the booking owner can confirm this booking."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
+        if booking.customer_id != request.user.id:
+            return Response({"detail": "Only the booking owner can confirm this booking."}, status=status.HTTP_403_FORBIDDEN)
         if hasattr(booking, "order_item"):
-            return Response(
-                {"detail": "This booking is part of a parent order. Track and manage worker assignment from the complete order, not an individual booking line."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if booking.status != Booking.Status.PENDING:
-            return Response(
-                {"detail": f"Booking cannot be confirmed in {booking.get_status_display()} state."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        old_status = booking.status
-        booking.status = Booking.Status.CONFIRMED
-        booking.save()
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.CONFIRMED,
-            changed_by=request.user,
-            note="Customer confirmed booking",
-        )
-
+            return Response({"detail": "This booking belongs to a parent order."}, status=status.HTTP_400_BAD_REQUEST)
         from apps.payments.models import PaymentInstallment
         if not PaymentInstallment.objects.filter(
             payment__booking=booking,
             kind=PaymentInstallment.Kind.ADVANCE,
             status=PaymentInstallment.Status.PAID,
         ).exists():
-            return Response(
-                {"detail": "Capture the 50% booking advance before worker dispatch."},
-                status=status.HTTP_409_CONFLICT,
+            return Response({"detail": "Pay the 50% advance before worker assignment."}, status=status.HTTP_409_CONFLICT)
+        if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+            return Response({"detail": "Booking cannot be confirmed in its current state."}, status=status.HTTP_400_BAD_REQUEST)
+        if booking.status == Booking.Status.PENDING:
+            old_status = booking.status
+            booking.status = Booking.Status.CONFIRMED
+            booking.save(update_fields=["status", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=booking, from_status=old_status,
+                to_status=Booking.Status.CONFIRMED, changed_by=request.user,
+                note="Customer confirmed after advance payment.",
             )
         offers = create_worker_offers_for_booking(booking)
-
-        # Notify customer about confirm
-        Notification.objects.create(
-            user=booking.customer,
-            type=Notification.Type.BOOKING_CONFIRMED,
-            title="Booking Confirmed",
-            body="Your booking is confirmed. A worker will be assigned soon.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
-
-        return Response({
-            "detail": "Booking confirmed and worker offers created.",
-            "status": booking.status,
-            "offers_count": len(offers),
-        })
+        return Response({"detail": "Booking released for worker assignment.", "status": booking.status, "offers_count": len(offers)})
 
     @action(detail=False, methods=["post"])
     def check_availability(self, request, pk=None):
@@ -656,13 +620,15 @@ class CustomerOrderDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, order_id):
+        from apps.payments.models import Payment, PaymentInstallment
+
         order = get_object_or_404(
             Order.objects.prefetch_related("items__booking__assignment__worker__user"),
-            pk=order_id,
-            customer=request.user,
+            pk=order_id, customer=request.user,
         )
+        rows = list(order.items.all())
         items = []
-        for row in order.items.all():
+        for row in rows:
             booking = row.booking
             assignment = getattr(booking, "assignment", None)
             items.append({
@@ -671,56 +637,62 @@ class CustomerOrderDetailView(APIView):
                 "service": row.service_snapshot,
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
-                "worker": (
-                    {
-                        "id": assignment.worker_id,
-                        "name": assignment.worker.user.name or assignment.worker.user.phone,
-                    }
-                    if assignment else None
-                ),
+                "worker": ({
+                    "id": assignment.worker_id,
+                    "name": assignment.worker.user.name or assignment.worker.user.phone,
+                } if assignment else None),
                 "quantity": row.quantity,
                 "line_total": str(row.line_total),
+                "can_cancel": booking.can_cancel,
             })
-        if order.items.exists() and all(row["booking_status"] == Booking.Status.ASSIGNED for row in items):
-            if order.status != Order.Status.AWAITING_PAYMENT:
-                order.status = Order.Status.AWAITING_PAYMENT
-                order.save(update_fields=["status", "updated_at"])
+        payment = Payment.objects.filter(order=order, customer=request.user).first()
+        installments = {
+            row.kind: row for row in (
+                payment.installments.all() if payment else []
+            )
+        }
+        advance = installments.get(PaymentInstallment.Kind.ADVANCE)
+        balance = installments.get(PaymentInstallment.Kind.BALANCE)
+        all_assigned = bool(rows) and all(getattr(row.booking, "assignment", None) for row in rows)
+        all_completed = bool(rows) and all(row.booking.status == Booking.Status.COMPLETED for row in rows)
         return Response({
             "id": order.id,
             "status": order.status,
             "currency": order.currency,
+            "total_amount": str(order.total_amount),
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
-            "total_amount": str(order.total_amount),
             "items": items,
-            "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
+            "payment_status": payment.status if payment else "pending",
+            "advance_amount": str(advance.amount) if advance else str((order.total_amount / Decimal("2")).quantize(Decimal("0.01"))),
+            "advance_status": advance.status if advance else "pending",
+            "balance_amount": str(balance.amount) if balance else str(order.total_amount - (order.total_amount / Decimal("2")).quantize(Decimal("0.01"))),
+            "balance_status": balance.status if balance else "pending",
+            "ready_for_advance": not advance or advance.status != PaymentInstallment.Status.PAID,
+            "ready_for_payment": all_completed and bool(advance and advance.status == PaymentInstallment.Status.PAID) and (not balance or balance.status != PaymentInstallment.Status.PAID),
+            "ready_for_balance": all_completed and bool(advance and advance.status == PaymentInstallment.Status.PAID) and (not balance or balance.status != PaymentInstallment.Status.PAID),
+            "all_assigned": all_assigned,
+            "all_completed": all_completed,
         })
 
 
 class CustomerOrderListView(APIView):
-    """List the authenticated customer's multi-service orders."""
+    """List the authenticated customer's multi-service orders without mutating lifecycle state."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        orders = Order.objects.filter(customer=request.user).prefetch_related(
-            "items__booking"
-        ).order_by("-created_at")
+        orders = Order.objects.filter(customer=request.user).prefetch_related("items__booking").order_by("-created_at")
         results = []
         for order in orders:
-            statuses = [row.booking.status for row in order.items.all()]
-            ready = bool(statuses) and all(
-                value == Booking.Status.ASSIGNED for value in statuses
-            )
-            if ready and order.status == Order.Status.AWAITING_ASSIGNMENT:
-                order.status = Order.Status.AWAITING_PAYMENT
-                order.save(update_fields=["status", "updated_at"])
+            bookings = [row.booking for row in order.items.all()]
             results.append({
                 "id": order.id,
                 "status": order.status,
                 "total_amount": str(order.total_amount),
                 "created_at": order.created_at,
-                "item_count": len(statuses),
-                "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
+                "item_count": len(bookings),
+                "ready_for_advance": order.status == Order.Status.AWAITING_PAYMENT,
+                "ready_for_balance": bool(bookings) and all(b.status == Booking.Status.COMPLETED for b in bookings),
             })
         return Response(results)
 
