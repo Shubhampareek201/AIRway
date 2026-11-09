@@ -2,6 +2,12 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def backfill_attempt_tender_sources(apps, schema_editor):
+    PaymentAttempt = apps.get_model("payments", "PaymentAttempt")
+    PaymentAttempt.objects.filter(provider="wallet").update(wallet_amount=models.F("amount"))
+    PaymentAttempt.objects.exclude(provider="wallet").update(gateway_amount=models.F("amount"))
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("payments", "0007_refund_payment_links"),
@@ -18,6 +24,7 @@ class Migration(migrations.Migration):
             name="wallet_amount",
             field=models.DecimalField(decimal_places=2, default=0, max_digits=12),
         ),
+        migrations.RunPython(backfill_attempt_tender_sources, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name="paymentattempt",
             constraint=models.CheckConstraint(
