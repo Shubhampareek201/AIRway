@@ -147,10 +147,13 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
         return already_paid_payment, already_paid_payment.razorpay_order_id, True
 
     from .models import BookingFinancialPlan
-    order_items = list(order.items.select_related("booking").order_by("id"))
+    order_items = list(
+        order.items.exclude(booking__status=Booking.Status.CANCELLED)
+        .select_related("booking").order_by("id")
+    )
     booking_statuses = [item.booking.status for item in order_items]
     if not booking_statuses:
-        raise ValueError("This order has no service bookings.")
+        raise ValueError("This order has no active service bookings remaining.")
     split_plans = [
         BookingFinancialPlan.objects.filter(booking_id=item.booking_id).first()
         for item in order_items
