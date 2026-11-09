@@ -623,13 +623,15 @@ class PaymentWebhookView(APIView):
                     provider_refund_id=provider_refund_id
                 ).first()
                 if refund_record:
-                    if event_type == "refund.processed":
-                        refund_record.status = RefundRecord.Status.PROCESSED
-                        refund_record.processed_at = timezone.now()
-                    elif event_type == "refund.failed":
-                        refund_record.status = RefundRecord.Status.FAILED
-                    else:
-                        if refund_record.status != RefundRecord.Status.PROCESSED:
+                    # Provider events can be duplicated or arrive out of order.
+                    # A processed refund is terminal and must never regress.
+                    if refund_record.status != RefundRecord.Status.PROCESSED:
+                        if event_type == "refund.processed":
+                            refund_record.status = RefundRecord.Status.PROCESSED
+                            refund_record.processed_at = timezone.now()
+                        elif event_type == "refund.failed":
+                            refund_record.status = RefundRecord.Status.FAILED
+                        else:
                             refund_record.status = RefundRecord.Status.PENDING
                     refund_record.provider_payload = payload
                     refund_record.save(update_fields=[
