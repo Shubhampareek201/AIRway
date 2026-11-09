@@ -10,9 +10,10 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, Order, OrderItem
+from apps.bookings.models import Booking, BookingAssignment, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
+from apps.workers.models import WorkerProfile
 from apps.payments.installment_service import (
     InstallmentPaymentError,
     create_final_balance_attempt,
@@ -20,6 +21,8 @@ from apps.payments.installment_service import (
     refund_duplicate_final_capture,
     refund_late_final_capture,
     settle_final_balance_attempt,
+    issue_service_otp,
+    verify_service_otp,
 )
 from apps.payments.models import (
     BookingFinancialPlan, PaymentAllocation, PaymentAttempt, PaymentInstallment,
@@ -288,6 +291,53 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(attempt.status, PaymentAttempt.Status.CAPTURED)
         self.assertEqual(self.final.amount_captured, Decimal("500.00"))
         self.assertEqual(PaymentAllocation.objects.filter(installment=self.final).count(), 1)
+
+    def test_start_and_completion_otp_gate_service_and_make_balance_due(self):
+        worker_user = User.objects.create_user(
+            phone="+919876540002", password="worker-password",
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED,
+        )
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.completed_at = None
+        self.booking.save(update_fields=["status", "completed_at", "updated_at"])
+        assignment = BookingAssignment.objects.create(
+            booking=self.booking, worker=worker, accepted_at=timezone.now(),
+        )
+
+        _, start_code = issue_service_otp(
+            booking_id=self.booking.pk,
+            purpose="start",
+            requested_by=self.customer,
+        )
+        started = verify_service_otp(
+            booking_id=self.booking.pk,
+            purpose="start",
+            code=start_code,
+            worker_user=worker_user,
+        )
+        assignment.refresh_from_db()
+        self.assertEqual(started.status, Booking.Status.IN_PROGRESS)
+        self.assertIsNotNone(assignment.started_at)
+
+        _, completion_code = issue_service_otp(
+            booking_id=self.booking.pk,
+            purpose="completion",
+            requested_by=self.customer,
+        )
+        completed = verify_service_otp(
+            booking_id=self.booking.pk,
+            purpose="completion",
+            code=completion_code,
+            worker_user=worker_user,
+        )
+        self.final.refresh_from_db()
+        assignment.refresh_from_db()
+        self.assertEqual(completed.status, Booking.Status.COMPLETED)
+        self.assertIsNotNone(assignment.completed_at)
+        self.assertEqual(self.final.status, PaymentInstallment.Status.DUE)
+        self.assertEqual(self.final.due_at, assignment.completed_at)
 
     def test_parent_order_completes_only_after_every_line_balance_is_paid(self):
         order = Order.objects.create(
