@@ -5,6 +5,7 @@ import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/booking_tracking_screen.dart';
 import 'package:airway/features/payment/data/payment_api.dart';
+import 'package:airway/features/wallet/data/wallet_api.dart';
 
 class CustomerOrderScreen extends StatefulWidget {
   final int orderId;
@@ -26,6 +27,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Map<String, dynamic>? order;
   bool loading = true;
   bool paying = false;
+  double walletBalance = 0;
+  bool walletLoading = true;
+  final TextEditingController walletAmountController = TextEditingController(text: '0.00');
   String? error;
   Timer? refreshTimer;
 
@@ -36,9 +40,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, onPaymentError);
     razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, onExternalWallet);
     loadOrder();
+    loadWalletBalance();
     refreshTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       if (mounted && !paying) {
         loadOrder(showLoader: false);
+        loadWalletBalance();
       }
     });
   }
@@ -47,6 +53,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   void dispose() {
     refreshTimer?.cancel();
     razorpay.clear();
+    walletAmountController.dispose();
     super.dispose();
   }
 
@@ -60,15 +67,41 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
+  Future<void> loadWalletBalance() async {
+    try {
+      final wallet = await WalletApi.fetchBalance();
+      if (mounted) setState(() { walletBalance = wallet.balance; walletLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() => walletLoading = false);
+    }
+  }
+
   double amount(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 
   Future<void> startPayment() async {
     final readyAdvance = order?['ready_for_advance'] == true;
     final readyBalance = order?['ready_for_balance'] == true;
     if ((!readyAdvance && !readyBalance) || paying) return;
+    final installmentDue = readyAdvance
+        ? amount(order?['advance_amount'])
+        : amount(order?['balance_amount']);
+    final rawWallet = walletAmountController.text.trim();
+    final parsedWallet = rawWallet.isEmpty ? 0.0 : double.tryParse(rawWallet);
+    if (parsedWallet == null || !parsedWallet.isFinite || parsedWallet < 0 ||
+        parsedWallet > walletBalance || parsedWallet > installmentDue ||
+        (parsedWallet * 100).roundToDouble() != parsedWallet * 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid wallet amount within your available balance and current installment.')),
+      );
+      return;
+    }
     setState(() => paying = true);
     try {
-      final payment = await PaymentApi.createOrderForParent(widget.orderId);
+      final payment = await PaymentApi.createOrderForParent(
+        widget.orderId,
+        walletAmount: parsedWallet.toStringAsFixed(2),
+      );
+      await loadWalletBalance();
       if (payment['already_paid'] == true) {
         if (!mounted) return;
         setState(() => paying = false);
@@ -92,6 +125,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => paying = false);
+        loadWalletBalance();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not start payment: ' + e.toString())),
         );
@@ -145,6 +179,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   void onPaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
     setState(() => paying = false);
+    loadWalletBalance();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(response.message ?? 'Payment was not completed. You can try again.')),
     );
@@ -239,6 +274,26 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           ),
           const SizedBox(height: 14),
           paymentBreakdown(advanceAmount, balanceAmount, order?['advance_status']?.toString() ?? 'pending', order?['balance_status']?.toString() ?? 'pending'),
+          if (readyAdvance || readyBalance) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Use AIRway wallet', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: ink)),
+                const SizedBox(height: 5),
+                Text(walletLoading ? 'Loading wallet balance…' : 'Available balance: ₹${walletBalance.toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 12)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: walletAmountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Wallet contribution (optional)', prefixText: '₹', border: OutlineInputBorder(), isDense: true),
+                ),
+                const SizedBox(height: 5),
+                Text('The remaining installment amount will be collected through Razorpay.', style: TextStyle(color: sub, fontSize: 11)),
+              ]),
+            ),
+          ],
           const SizedBox(height: 14),
           orderProgress(rows, paid),
           const SizedBox(height: 18),
