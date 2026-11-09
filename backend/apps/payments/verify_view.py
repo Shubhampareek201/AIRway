@@ -650,6 +650,40 @@ class PaymentWebhookView(APIView):
                 status=status.HTTP_200_OK,
             )
 
+        # Split-payment attempts have their own Razorpay orders and ledger rows.
+        if event_type == "payment.captured" and order_id:
+            attempt = PaymentAttempt.objects.filter(
+                razorpay_order_id=order_id
+            ).select_related("installment__payment").first()
+            if attempt is not None:
+                entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+                expected_paise = int(attempt.amount * 100)
+                if (
+                    entity.get("status") != "captured"
+                    or entity.get("id") != payment_id
+                    or entity.get("order_id") != attempt.razorpay_order_id
+                    or entity.get("amount") != expected_paise
+                    or str(entity.get("currency", "")).upper() != "INR"
+                ):
+                    logger.warning("Split installment webhook validation failed for attempt %s", attempt.pk)
+                    return Response({"detail": "Captured payment details do not match this installment."},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                return _process_verified_attempt(
+                    attempt=attempt, razorpay_payment_id=payment_id,
+                    razorpay_order_id=order_id,
+                    customer=attempt.installment.payment.customer, source="webhook",
+                )
+
+        if event_type in ("payment.failed", "payment.canceled") and order_id:
+            attempt = PaymentAttempt.objects.filter(razorpay_order_id=order_id).first()
+            if attempt is not None:
+                if attempt.status == PaymentAttempt.Status.PENDING:
+                    attempt.status = PaymentAttempt.Status.FAILED
+                    attempt.failed_at = timezone.now()
+                    attempt.raw_response = payload
+                    attempt.save(update_fields=["status", "failed_at", "raw_response", "updated_at"])
+                return Response({"status": "ok"})
+
         # Only a captured event may settle a booking or parent order.
         if event_type == "payment.captured":
             # Get the payment record by order_id or payment_id.
