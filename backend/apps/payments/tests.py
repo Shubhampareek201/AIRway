@@ -10,6 +10,7 @@ from .lifecycle import (
     calculate_platform_refund,
     cancellation_cutoff,
     customer_cancellation_is_refundable,
+    customer_cancellation_terms,
     split_total,
 )
 
@@ -68,6 +69,40 @@ class CancellationPolicyTests(SimpleTestCase):
     def test_naive_datetimes_are_rejected(self):
         with self.assertRaises(PaymentLifecycleError):
             cancellation_cutoff(datetime(2026, 11, 10, 10, 0))
+
+
+    def test_same_day_before_worker_acceptance_gets_full_refund(self):
+        same_day_now = datetime(2026, 11, 10, 8, 0, tzinfo=self.ist)
+        terms = customer_cancellation_terms(
+            self.service_time, "500.00", worker_accepted=False, now=same_day_now,
+        )
+        self.assertEqual(terms["policy"], "same_day_before_worker_acceptance")
+        self.assertEqual(terms["refund_amount"], Decimal("500.00"))
+        self.assertEqual(terms["platform_fee"], Decimal("0.00"))
+
+    def test_same_day_after_worker_acceptance_gets_no_refund(self):
+        same_day_now = datetime(2026, 11, 10, 8, 0, tzinfo=self.ist)
+        terms = customer_cancellation_terms(
+            self.service_time, "500.00", worker_accepted=True, now=same_day_now,
+        )
+        self.assertEqual(terms["policy"], "same_day_after_worker_acceptance")
+        self.assertEqual(terms["refund_amount"], Decimal("0.00"))
+        self.assertFalse(terms["refundable"])
+
+    def test_future_booking_before_cutoff_keeps_fixed_fee(self):
+        terms = customer_cancellation_terms(
+            self.service_time, "500.00", worker_accepted=True,
+            now=datetime(2026, 11, 9, 21, 59, tzinfo=self.ist),
+        )
+        self.assertEqual(terms["refund_amount"], Decimal("460.00"))
+        self.assertEqual(terms["platform_fee"], Decimal("40.00"))
+
+    def test_future_booking_after_cutoff_has_no_refund(self):
+        terms = customer_cancellation_terms(
+            self.service_time, "500.00", worker_accepted=False,
+            now=datetime(2026, 11, 9, 22, 1, tzinfo=self.ist),
+        )
+        self.assertEqual(terms["refund_amount"], Decimal("0.00"))
 
 
 class RefundCalculationTests(SimpleTestCase):
