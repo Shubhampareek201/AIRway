@@ -1065,18 +1065,32 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 ).exclude(pk=offer.pk).update(
                     status=WorkerOffer.Status.WITHDRAWN, responded_at=now
                 )
-                order.status = Order.Status.AWAITING_PAYMENT
+                from apps.payments.models import BookingFinancialPlan
+                is_split_order = all(
+                    BookingFinancialPlan.objects.filter(booking_id=row.pk).exists()
+                    for row in bookings
+                )
+                order.status = (
+                    Order.Status.AWAITING_SERVICE
+                    if is_split_order
+                    else Order.Status.AWAITING_PAYMENT
+                )
                 order.save(update_fields=["status", "updated_at"])
 
         if not order:
-            try:
-                from apps.payments.views import create_or_get_payment
-                _, payment_order_id, _ = create_or_get_payment(
-                    booking=bookings[0], customer=bookings[0].customer,
-                    trigger_source="worker_accept",
-                )
-            except Exception as exc:
-                logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
+            from apps.payments.models import BookingFinancialPlan
+            has_financial_plan = BookingFinancialPlan.objects.filter(
+                booking_id=bookings[0].pk
+            ).exists()
+            if not has_financial_plan:
+                try:
+                    from apps.payments.views import create_or_get_payment
+                    _, payment_order_id, _ = create_or_get_payment(
+                        booking=bookings[0], customer=bookings[0].customer,
+                        trigger_source="worker_accept",
+                    )
+                except Exception as exc:
+                    logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
 
         response_data = {
             "status": "accepted",
