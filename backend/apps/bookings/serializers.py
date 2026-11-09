@@ -640,7 +640,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "variant_title": item.booking.variant.title if item.booking.variant_id else None,
             "scheduled_at": item.booking.scheduled_at,
             "quantity": item.quantity,
-        } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
+        } for item in obj.order.items.exclude(
+            booking__status="cancelled",
+        ).select_related("booking__service", "booking__variant").all()]
 
     def get_customer_answers(self, obj):
         answers = dict(obj.booking.customer_answers or {})
