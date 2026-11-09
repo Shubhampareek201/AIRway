@@ -246,12 +246,21 @@ def settle_final_balance_attempt(
 ):
     """Apply an authenticated/captured final tender exactly once."""
     with transaction.atomic():
-        attempt = PaymentAttempt.objects.select_for_update().select_related(
-            "installment__financial_plan__booking",
+        # Lock in the same parent -> plan -> installment -> attempt order used
+        # by checkout creation and OTP completion to avoid cross-flow deadlocks.
+        attempt_ref = PaymentAttempt.objects.select_related(
+            "installment__financial_plan",
         ).get(pk=attempt_id)
-        installment = PaymentInstallment.objects.select_for_update().get(pk=attempt.installment_id)
-        plan = BookingFinancialPlan.objects.select_for_update().get(pk=installment.financial_plan_id)
-        booking = Booking.objects.select_for_update().get(pk=plan.booking_id)
+        booking = Booking.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan.booking_id,
+        )
+        plan = BookingFinancialPlan.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan_id,
+        )
+        installment = PaymentInstallment.objects.select_for_update().get(
+            pk=attempt_ref.installment_id,
+        )
+        attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
 
         if attempt.status == PaymentAttempt.Status.CAPTURED:
             if attempt.provider_payment_id and attempt.provider_payment_id != razorpay_payment_id:
@@ -544,7 +553,19 @@ def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order
 def mark_final_balance_attempt_failed(*, attempt_id, provider_order_id, payload=None):
     """Record a failed gateway attempt without changing service completion."""
     with transaction.atomic():
-        attempt = PaymentAttempt.objects.select_for_update().select_related("installment").get(pk=attempt_id)
+        attempt_ref = PaymentAttempt.objects.select_related(
+            "installment__financial_plan",
+        ).get(pk=attempt_id)
+        Booking.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan.booking_id,
+        )
+        BookingFinancialPlan.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan_id,
+        )
+        installment = PaymentInstallment.objects.select_for_update().get(
+            pk=attempt_ref.installment_id,
+        )
+        attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
         if attempt.provider_order_id != provider_order_id:
             raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
         if attempt.status in (
@@ -558,7 +579,6 @@ def mark_final_balance_attempt_failed(*, attempt_id, provider_order_id, payload=
         attempt.failed_at = timezone.now()
         attempt.provider_payload = payload or {}
         attempt.save(update_fields=["status", "failed_at", "provider_payload", "updated_at"])
-        installment = PaymentInstallment.objects.select_for_update().get(pk=attempt.installment_id)
         installment.status = (
             PaymentInstallment.Status.PARTIALLY_PAID
             if installment.amount_captured > ZERO else PaymentInstallment.Status.DUE
