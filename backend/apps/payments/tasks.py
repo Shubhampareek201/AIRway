@@ -1,4 +1,4 @@
-"""Celery tasks for payment processing and provider reconciliation."""
+""""Celery tasks for payment processing and provider reconciliation."""
 import logging
 
 from celery import shared_task
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task
-def reconcile_unresolved_refunds(self, batch_size=100):
+def reconcile_unresolved_refunds(batch_size=100):
     """Reconcile unresolved provider refunds without submitting new refunds.
 
     Safe to invoke manually or from an approved Celery Beat schedule. The
