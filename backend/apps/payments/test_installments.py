@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 import hashlib
 import hmac
 import json
@@ -59,7 +60,7 @@ class FinalBalanceAttemptTests(TestCase):
             customer=self.customer,
             address=self.address,
             service=self.service,
-            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            scheduled_at=timezone.now() + timedelta(days=1),
             status=Booking.Status.COMPLETED,
             pricing_snapshot={"total": total},
             completed_at=timezone.now(),
