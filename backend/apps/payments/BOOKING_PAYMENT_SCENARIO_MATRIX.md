@@ -45,8 +45,11 @@ Rules:
 - Same-day is a scheduling classification, not permission to skip availability, payment, worker eligibility, or OTP.
 - Reject a slot if the service duration, travel/buffer, worker schedule, or configured minimum lead time cannot fit.
 - Do not promise “ASAP” unless the backend can return a real fulfilment window.
-- Existing previous-day 10 PM cancellation cutoff has already elapsed for a same-day booking. The current approved policy therefore yields no customer refund from the moment such a booking is made. This is a material customer-experience issue and must be resolved as an explicit product decision before same-day launch.
-- Proposed option for product approval (NOT approved or implemented): a short same-day grace period ending at the earlier of five minutes after successful advance capture or the first worker acceptance; customer refund would be captured amount less ₹40. Alternative: keep the strict previous-day cutoff and clearly disclose “non-refundable once booked today.” Do not choose silently in code.
+- Same-day cancellation is governed by worker acceptance, not the previous-day 10 PM cutoff: before any worker accepts, the customer receives a full refund of the captured advance; after a worker accepts, customer cancellation is non-refundable.
+- The worker acceptance timestamp is the authoritative boundary. Merely sending an offer or assigning a worker internally without a successful acceptance must not trigger the non-refundable rule.
+- Once the start OTP is verified, cancellation is blocked; the customer may raise a support/dispute case instead.
+- If AIRway or the worker cannot fulfil the service, this is a platform/provider failure rather than customer cancellation and the captured amount is refunded in full, even if the same-day worker-acceptance boundary had been crossed.
+- Same-day bookings must still pass backend slot, lead-time, capacity, travel/buffer, and worker eligibility checks. No urgent surcharge or guaranteed arrival SLA is implied by this cancellation policy.
 
 ### 2.3 Urgent / ASAP booking
 Flow: customer selects Urgent -> backend checks live eligible capacity and service-specific urgent eligibility -> backend returns a concrete arrival window and any configured disclosed urgent fee -> customer confirms final amount -> 50% captured -> dispatch using existing eligibility and priority rules, with urgency used only as a scheduling signal if supported.
