@@ -431,13 +431,17 @@ def reconcile_refund_record(*, record_id):
     if match is None:
         with transaction.atomic():
             locked = RefundRecord.objects.select_for_update().get(pk=record.pk)
-            locked.status = RefundRecord.Status.PENDING
-            locked.provider_payload = {
-                **(locked.provider_payload or {}),
-                "reconciliation": "No matching provider refund found; no new refund was submitted. Verify Razorpay dashboard before manual action.",
-                "reconciled_at": timezone.now().isoformat(),
-            }
-            locked.save(update_fields=["status", "provider_payload", "updated_at"])
+            # A refund.processed webhook may win the race after the initial
+            # read but before this row lock. Never let a stale "not found"
+            # provider lookup regress a webhook-confirmed terminal state.
+            if locked.status != RefundRecord.Status.PROCESSED:
+                locked.status = RefundRecord.Status.PENDING
+                locked.provider_payload = {
+                    **(locked.provider_payload or {}),
+                    "reconciliation": "No matching provider refund found; no new refund was submitted. Verify Razorpay dashboard before manual action.",
+                    "reconciled_at": timezone.now().isoformat(),
+                }
+                locked.save(update_fields=["status", "provider_payload", "updated_at"])
             if locked.payment_attempt_id:
                 attempt = PaymentAttempt.objects.select_for_update().get(
                     pk=locked.payment_attempt_id,
