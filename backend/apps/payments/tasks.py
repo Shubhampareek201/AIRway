@@ -2,15 +2,13 @@
 import logging
 
 from celery import shared_task
-from django.db.models import Q
-
 from .installment_service import reconcile_refund_record
 from .models import RefundRecord
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+@shared_task
 def reconcile_unresolved_refunds(self, batch_size=100):
     """Reconcile unresolved provider refunds without submitting new refunds.
 
