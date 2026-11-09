@@ -49,12 +49,24 @@ class BookingViewSet(viewsets.ModelViewSet):
         return BookingDetailSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer = self.get_serializer(
+            data=request.data,
+            context={"request": request, "defer_worker_dispatch": True},
+        )
         serializer.is_valid(raise_exception=True)
         booking = serializer.save()
 
-        detail_serializer = BookingDetailSerializer(booking, context={"request": request})
-        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        from apps.payments.lifecycle import create_financial_plan
+        financial_plan = create_financial_plan(booking)
+        detail = BookingDetailSerializer(booking, context={"request": request}).data
+        detail.update({
+            "payment_required": True,
+            "advance_due": str(financial_plan.advance_due),
+            "balance_due": str(financial_plan.balance_due),
+            "dispatch": [],
+            "next_step": "Pay the booking advance. Worker offers will be created only after capture is verified.",
+        })
+        return Response(detail, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
