@@ -3341,6 +3341,29 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             pricing_snapshot={"line_total": "2000.00"},
         )
 
+    def test_split_payment_checkout_is_explicit_and_defers_dispatch(self):
+        from apps.payments.models import BookingFinancialPlan
+
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "payment_flow": "split_v1",
+                "items": [{
+                    "cart_item_id": self.cart_item.id,
+                    "scheduled_at": scheduled_at,
+                }],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        booking = Booking.objects.get(pk=response.data["items"][0]["booking_id"])
+        self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
+        self.assertTrue(BookingFinancialPlan.objects.filter(booking=booking).exists())
+        self.assertTrue(response.data["payment_required"])
+        self.assertEqual(response.data["dispatch"], [])
     def test_checkout_dispatches_offer_to_eligible_worker(self):
         worker_user = self._create_user("+919876543299")
         worker = WorkerProfile.objects.create(
