@@ -139,6 +139,11 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
                 status=PaymentAttempt.Status.CAPTURED,
             ).order_by("-captured_at", "-created_at").first()
             return captured_attempt, True
+
+        # Compute the immutable outstanding amount before checking an active
+        # attempt. PROCESSING installments must still return their existing
+        # checkout idempotently instead of failing the due-state guard below.
+        outstanding = installment.amount_due - installment.amount_captured
         active = PaymentAttempt.objects.select_for_update().filter(
             installment=installment,
             status__in=(PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED),
@@ -170,7 +175,6 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
             raise InstallmentPaymentError(
                 "A previous captured payment is awaiting refund reconciliation. Please contact AIRway support before retrying."
             )
-        outstanding = installment.amount_due - installment.amount_captured
         if outstanding <= ZERO:
             raise InstallmentPaymentError("No final balance remains outstanding.")
         if wallet_requested > outstanding:
