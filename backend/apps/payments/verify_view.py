@@ -782,10 +782,22 @@ class PaymentWebhookView(APIView):
                             pk=refund_record.payment_attempt_id,
                         ).first()
                         if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
-                            if refund_record.status == RefundRecord.Status.PROCESSED:
-                                attempt.status = PaymentAttempt.Status.REFUNDED
-                            elif refund_record.status == RefundRecord.Status.FAILED:
+                            refund_states = list(
+                                RefundRecord.objects.filter(
+                                    payment_attempt=attempt,
+                                ).values_list("status", flat=True)
+                            )
+                            if any(state in (
+                                RefundRecord.Status.REQUESTED,
+                                RefundRecord.Status.PENDING,
+                            ) for state in refund_states):
+                                attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                            elif any(state == RefundRecord.Status.FAILED for state in refund_states):
                                 attempt.status = PaymentAttempt.Status.FAILED
+                            elif refund_states and all(
+                                state == RefundRecord.Status.PROCESSED for state in refund_states
+                            ):
+                                attempt.status = PaymentAttempt.Status.REFUNDED
                             attempt.save(update_fields=["status", "updated_at"])
                 else:
                     logger.warning(
