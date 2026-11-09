@@ -16,6 +16,8 @@ from apps.bookings.models import (
     Booking,
     BookingAssignment,
     BookingStatusHistory,
+    Order,
+    OrderItem,
 )
 from .models import (
     BookingFinancialPlan,
@@ -283,6 +285,23 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                         final_installment.due_at = now
                         final_installment.save(update_fields=["status", "due_at", "updated_at"])
                     booking.save(update_fields=update_fields)
+                    order_id = OrderItem.objects.filter(
+                        booking_id=booking.pk
+                    ).values_list("order_id", flat=True).first()
+                    if order_id:
+                        parent_order = Order.objects.select_for_update().get(pk=order_id)
+                        if purpose == ServiceOTPChallenge.Purpose.START:
+                            parent_order.status = Order.Status.IN_PROGRESS
+                        else:
+                            all_lines_completed = not parent_order.items.exclude(
+                                booking__status=Booking.Status.COMPLETED
+                            ).exists()
+                            parent_order.status = (
+                                Order.Status.AWAITING_FINAL_PAYMENT
+                                if all_lines_completed
+                                else Order.Status.IN_PROGRESS
+                            )
+                        parent_order.save(update_fields=["status", "updated_at"])
                     BookingStatusHistory.objects.create(
                         booking=booking,
                         from_status=old_status,
