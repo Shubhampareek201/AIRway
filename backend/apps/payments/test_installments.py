@@ -375,6 +375,44 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(attempt.status, PaymentAttempt.Status.CAPTURED)
         self.assertEqual(self.final.amount_captured, Decimal("500.00"))
 
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_failed_gateway_attempt_can_be_retried_with_a_new_order(self, client_class):
+        first = self._attempt(order_id="order_first_failed")
+        mark_final_balance_attempt_failed(
+            attempt_id=first.pk, provider_order_id="order_first_failed",
+            payload={"event": "payment.failed"},
+        )
+        client_class.return_value.order.create.return_value = {"id": "order_retry"}
+        second, existed = create_final_balance_attempt(
+            booking_id=self.booking.pk, customer=self.customer,
+            wallet_amount="0.00",
+        )
+        self.assertFalse(existed)
+        self.assertNotEqual(first.pk, second.pk)
+        self.assertEqual(second.provider_order_id, "order_retry")
+        self.assertEqual(second.status, PaymentAttempt.Status.CREATED)
+
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_failed_late_capture_refund_blocks_new_charge_until_reconciled(self, client_class):
+        attempt = self._attempt(order_id="order_refund_failure")
+        mark_final_balance_attempt_failed(
+            attempt_id=attempt.pk, provider_order_id="order_refund_failure",
+            payload={"event": "payment.failed"},
+        )
+        client_class.return_value.payment.refund.side_effect = RuntimeError("provider unavailable")
+        refund = refund_late_final_capture(
+            attempt_id=attempt.pk,
+            razorpay_payment_id="pay_refund_failure",
+            provider_order_id="order_refund_failure",
+            payload={"event": "payment.captured"},
+        )
+        self.assertEqual(refund.status, "failed")
+        with self.assertRaises(InstallmentPaymentError):
+            create_final_balance_attempt(
+                booking_id=self.booking.pk, customer=self.customer,
+                wallet_amount="0.00",
+            )
+
     def test_wallet_overdraft_does_not_create_attempt_or_change_balance(self):
         wallet = Wallet.objects.create(user=self.customer, balance=Decimal("10.00"))
         with self.assertRaises(InstallmentPaymentError):
