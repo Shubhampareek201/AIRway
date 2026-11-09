@@ -430,6 +430,12 @@ def reconcile_refund_record(*, record_id):
         skip += len(refunds)
     if match is None:
         with transaction.atomic():
+            # Global refund lock order: PaymentAttempt, then RefundRecord.
+            attempt = None
+            if record.payment_attempt_id:
+                attempt = PaymentAttempt.objects.select_for_update().get(
+                    pk=record.payment_attempt_id,
+                )
             locked = RefundRecord.objects.select_for_update().get(pk=record.pk)
             # A refund.processed webhook may win the race after the initial
             # read but before this row lock. Never let a stale "not found"
@@ -442,10 +448,7 @@ def reconcile_refund_record(*, record_id):
                     "reconciled_at": timezone.now().isoformat(),
                 }
                 locked.save(update_fields=["status", "provider_payload", "updated_at"])
-            if locked.payment_attempt_id:
-                attempt = PaymentAttempt.objects.select_for_update().get(
-                    pk=locked.payment_attempt_id,
-                )
+            if attempt is not None:
                 refund_states = list(
                     RefundRecord.objects.filter(
                         payment_attempt=attempt,
@@ -483,63 +486,82 @@ def reconcile_refund_record(*, record_id):
 
 
 def _persist_refund_submission(*, record_id, provider_refund=None, submission_error=None, attempt_id=None, reconciliation=False):
-    """Persist provider response without regressing a webhook-confirmed terminal state."""
+    """Persist provider response using the shared attempt -> refund lock order."""
+    from django.db import IntegrityError
     from .models import RefundRecord
 
-    with transaction.atomic():
-        record = RefundRecord.objects.select_for_update().get(pk=record_id)
-        if record.status != RefundRecord.Status.PROCESSED and (
-            reconciliation or record.status != RefundRecord.Status.FAILED
-        ):
-            if provider_refund is not None:
-                provider_id = provider_refund.get("id")
-                if provider_id:
-                    owner = RefundRecord.objects.select_for_update().filter(
-                        provider_refund_id=provider_id,
-                    ).exclude(pk=record.pk).first()
-                    if owner is not None:
-                        raise InstallmentPaymentError(
-                            "Provider refund ID is already owned by another AIRway refund record."
-                        )
-                    if record.provider_refund_id and record.provider_refund_id != provider_id:
-                        raise InstallmentPaymentError(
-                            "Provider refund ID conflicts with the AIRway ledger."
-                        )
-                    record.provider_refund_id = provider_id
-                provider_status = provider_refund.get("status")
-                if provider_status == "processed":
-                    record.status = RefundRecord.Status.PROCESSED
-                    record.processed_at = timezone.now()
-                elif provider_status == "failed":
+    snapshot = RefundRecord.objects.only("payment_attempt_id").get(pk=record_id)
+    linked_attempt_id = snapshot.payment_attempt_id
+    if attempt_id is not None and linked_attempt_id not in (None, attempt_id):
+        raise InstallmentPaymentError("Refund record is linked to a different payment attempt.")
+    attempt_id = attempt_id or linked_attempt_id
+
+    try:
+        with transaction.atomic():
+            attempt = None
+            if attempt_id is not None:
+                attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
+            record = RefundRecord.objects.select_for_update().get(pk=record_id)
+            if record.payment_attempt_id != attempt_id:
+                raise InstallmentPaymentError("Refund record payment-attempt link changed during reconciliation.")
+
+            if record.status != RefundRecord.Status.PROCESSED and (
+                reconciliation or record.status != RefundRecord.Status.FAILED
+            ):
+                if provider_refund is not None:
+                    provider_id = provider_refund.get("id")
+                    if provider_id:
+                        # The unique DB constraint is the final arbiter for
+                        # concurrent claims; this read avoids needless conflicts.
+                        owner_exists = RefundRecord.objects.filter(
+                            provider_refund_id=provider_id,
+                        ).exclude(pk=record.pk).exists()
+                        if owner_exists:
+                            raise InstallmentPaymentError(
+                                "Provider refund ID is already owned by another AIRway refund record."
+                            )
+                        if record.provider_refund_id and record.provider_refund_id != provider_id:
+                            raise InstallmentPaymentError(
+                                "Provider refund ID conflicts with the AIRway ledger."
+                            )
+                        record.provider_refund_id = provider_id
+                    provider_status = provider_refund.get("status")
+                    if provider_status == "processed":
+                        record.status = RefundRecord.Status.PROCESSED
+                        record.processed_at = timezone.now()
+                    elif provider_status == "failed":
+                        record.status = RefundRecord.Status.FAILED
+                    else:
+                        record.status = RefundRecord.Status.PENDING
+                    record.provider_payload = provider_refund
+                elif submission_error is not None:
                     record.status = RefundRecord.Status.FAILED
+                    record.provider_payload = {
+                        **(record.provider_payload or {}),
+                        "submission_error": str(submission_error)[:500],
+                    }
+                record.save(update_fields=[
+                    "provider_refund_id", "status", "processed_at",
+                    "provider_payload", "updated_at",
+                ])
+            if attempt is not None:
+                refund_states = list(
+                    RefundRecord.objects.filter(payment_attempt=attempt).values_list("status", flat=True)
+                )
+                if any(state in (RefundRecord.Status.REQUESTED, RefundRecord.Status.PENDING) for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.FAILED
+                elif refund_states and all(state == RefundRecord.Status.PROCESSED for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.REFUNDED
                 else:
-                    record.status = RefundRecord.Status.PENDING
-                record.provider_payload = provider_refund
-            elif submission_error is not None:
-                record.status = RefundRecord.Status.FAILED
-                record.provider_payload = {
-                    **(record.provider_payload or {}),
-                    "submission_error": str(submission_error)[:500],
-                }
-            record.save(update_fields=[
-                "provider_refund_id", "status", "processed_at",
-                "provider_payload", "updated_at",
-            ])
-        if attempt_id is not None:
-            attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
-            refund_states = list(
-                RefundRecord.objects.filter(payment_attempt=attempt).values_list("status", flat=True)
-            )
-            if any(state in (RefundRecord.Status.REQUESTED, RefundRecord.Status.PENDING) for state in refund_states):
-                attempt.status = PaymentAttempt.Status.REFUND_PENDING
-            elif any(state == RefundRecord.Status.FAILED for state in refund_states):
-                attempt.status = PaymentAttempt.Status.FAILED
-            elif refund_states and all(state == RefundRecord.Status.PROCESSED for state in refund_states):
-                attempt.status = PaymentAttempt.Status.REFUNDED
-            else:
-                attempt.status = PaymentAttempt.Status.REFUND_PENDING
-            attempt.save(update_fields=["status", "updated_at"])
-        return record
+                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                attempt.save(update_fields=["status", "updated_at"])
+            return record
+    except IntegrityError as exc:
+        raise InstallmentPaymentError(
+            "Provider refund ID is already linked to another AIRway refund record; reconciliation required."
+        ) from exc
 
 
 def refund_mismatched_final_capture(
