@@ -61,40 +61,74 @@ class BookingViewSet(viewsets.ModelViewSet):
         from apps.bookings.models import WorkerOffer
 
         booking = self.get_object()
-        serializer = BookingCancelSerializer(data=request.data, context={"booking": booking})
-        serializer.is_valid(raise_exception=True)
+        if OrderItem.objects.filter(booking_id=booking.pk).exists():
+            return Response(
+                {
+                    "detail": "This booking belongs to a parent order. Individual service cancellation is not supported; manage the complete order instead."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        reason = serializer.validated_data.get("reason", "")
-        old_status = booking.status
+        with transaction.atomic():
+            # Match worker acceptance's offer-before-booking lock order so
+            # cancellation cannot race an offer acceptance into an assigned job.
+            list(
+                WorkerOffer.objects.select_for_update()
+                .filter(booking_id=booking.pk)
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
+            booking = Booking.objects.select_for_update().get(
+                pk=booking.pk,
+                customer=request.user,
+            )
+            if OrderItem.objects.filter(booking_id=booking.pk).exists():
+                return Response(
+                    {"detail": "This booking belongs to a parent order and cannot be cancelled independently."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        booking.status = Booking.Status.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.cancellation_reason = reason
-        booking.cancelled_by = request.user
-        booking.save()
+            serializer = BookingCancelSerializer(
+                data=request.data, context={"booking": booking}
+            )
+            serializer.is_valid(raise_exception=True)
 
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.CANCELLED,
-            changed_by=request.user,
-            note=f"Cancelled by customer. Reason: {reason}",
-        )
+            reason = serializer.validated_data.get("reason", "")
+            old_status = booking.status
+            now = timezone.now()
 
-        # Cancel all pending worker offers for this booking
-        WorkerOffer.objects.filter(booking=booking, status=WorkerOffer.Status.PENDING).update(
-            status=WorkerOffer.Status.EXPIRED,
-            responded_at=timezone.now(),
-        )
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = now
+            booking.cancellation_reason = reason
+            booking.cancelled_by = request.user
+            booking.save(update_fields=[
+                "status", "cancelled_at", "cancellation_reason",
+                "cancelled_by", "updated_at",
+            ])
 
-        Notification.objects.create(
-            user=request.user,
-            type=Notification.Type.BOOKING_CANCELLED,
-            title="Booking Cancelled",
-            body="Your booking has been cancelled.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                from_status=old_status,
+                to_status=Booking.Status.CANCELLED,
+                changed_by=request.user,
+                note=f"Cancelled by customer. Reason: {reason}",
+            )
+
+            WorkerOffer.objects.filter(
+                booking=booking, status=WorkerOffer.Status.PENDING
+            ).update(
+                status=WorkerOffer.Status.EXPIRED,
+                responded_at=now,
+            )
+
+            Notification.objects.create(
+                user=request.user,
+                type=Notification.Type.BOOKING_CANCELLED,
+                title="Booking Cancelled",
+                body="Your booking has been cancelled.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id},
+            )
 
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
 
