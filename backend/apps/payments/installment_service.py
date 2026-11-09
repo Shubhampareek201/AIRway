@@ -430,6 +430,11 @@ def reconcile_refund_record(*, record_id):
             locked.save(update_fields=["status", "provider_payload", "updated_at"])
         return locked
 
+    provider_refund_id = match.get("id")
+    if record.provider_refund_id and provider_refund_id != record.provider_refund_id:
+        raise InstallmentPaymentError(
+            "Provider refund ID conflicts with the AIRway ledger; manual reconciliation required."
+        )
     if int(match.get("amount", -1)) != int(record.gateway_refund_amount * 100):
         raise InstallmentPaymentError(
             "Provider refund amount does not match AIRway ledger; manual reconciliation required."
