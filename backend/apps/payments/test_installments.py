@@ -23,11 +23,13 @@ from apps.payments.installment_service import (
     mark_final_balance_attempt_failed,
     refund_duplicate_final_capture,
     refund_late_final_capture,
+    reconcile_refund_record,
     settle_final_balance_attempt,
 )
 from apps.payments.lifecycle import issue_service_otp, verify_service_otp
 from apps.payments.models import (
-    BookingFinancialPlan, PaymentAllocation, PaymentAttempt, PaymentInstallment,
+    BookingFinancialPlan, Payment, PaymentAllocation, PaymentAttempt,
+    PaymentInstallment, RefundRecord,
 )
 from apps.wallet.models import Wallet, WalletReservation, WalletTransaction
 
@@ -539,6 +541,52 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(refund.status, "processed")
         self.assertEqual(refund.provider_refund_id, "rfnd_webhook_race")
         self.assertEqual(attempt.status, PaymentAttempt.Status.REFUNDED)
+
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_refund_reconciliation_matches_provider_note_and_amount(self, client_class):
+        payment = Payment.objects.create(
+            booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+            razorpay_payment_id="pay_refund_reconcile",
+        )
+        record = RefundRecord.objects.create(
+            booking=self.booking, payment=payment,
+            idempotency_key="refund-reconcile-match",
+            reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
+            gateway_refund_amount=Decimal("460.00"),
+            status=RefundRecord.Status.PENDING,
+        )
+        client_class.return_value.payment.fetch_multiple_refund.return_value = {
+            "items": [{
+                "id": "rfnd_reconcile_match", "amount": 46000,
+                "status": "processed",
+                "notes": {"airway_refund_record_id": str(record.pk)},
+            }]
+        }
+        reconciled = reconcile_refund_record(record_id=record.pk)
+        self.assertEqual(reconciled.status, RefundRecord.Status.PROCESSED)
+        self.assertEqual(reconciled.provider_refund_id, "rfnd_reconcile_match")
+
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_missing_provider_refund_stays_pending_without_resubmission(self, client_class):
+        payment = Payment.objects.create(
+            booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+            razorpay_payment_id="pay_refund_not_found",
+        )
+        record = RefundRecord.objects.create(
+            booking=self.booking, payment=payment,
+            idempotency_key="refund-reconcile-missing",
+            reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
+            gateway_refund_amount=Decimal("460.00"),
+            status=RefundRecord.Status.FAILED,
+        )
+        client_class.return_value.payment.fetch_multiple_refund.return_value = {"items": []}
+        reconciled = reconcile_refund_record(record_id=record.pk)
+        self.assertEqual(reconciled.status, RefundRecord.Status.PENDING)
+        client_class.return_value.payment.refund.assert_not_called()
 
     def test_wallet_overdraft_does_not_create_attempt_or_change_balance(self):
         wallet = self._wallet_with_balance("10.00")
