@@ -413,6 +413,42 @@ class BookingListSerializer(serializers.ModelSerializer):
             "address_label", "address_full", "pricing_snapshot", "created_at"
         ]
 
+    def get_service_image(self, obj):
+        if obj.service.image:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.service.image.url)
+        return None
+
+
+class BookingDetailSerializer(serializers.ModelSerializer):
+    service_title = serializers.CharField(source="service.title", read_only=True)
+    service_title_hi = serializers.CharField(source="service.title_hi", read_only=True)
+    service_image = serializers.SerializerMethodField()
+    variant_title = serializers.CharField(source="variant.title", read_only=True)
+    variant_title_hi = serializers.CharField(source="variant.title_hi", read_only=True)
+    address_detail = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    booking_mode_display = serializers.CharField(source="get_booking_mode_display", read_only=True)
+    addons = BookingAddOnSerializer(many=True, read_only=True, source="booking_addons")
+    form_responses = BookingFormResponseSerializer(many=True, read_only=True)
+    status_history = BookingStatusHistorySerializer(many=True, read_only=True)
+    assignment = BookingAssignmentSerializer(read_only=True)
+    can_cancel = serializers.SerializerMethodField()
+    cancellation_terms = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Booking
+        fields = [
+            "id", "service", "service_title", "service_title_hi", "service_image",
+            "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
+            "scheduled_at", "drop_scheduled_at", "status", "status_display",
+            "address_detail", "pricing_snapshot", "notes", "worker_notes",
+            "cancelled_at", "cancellation_reason", "completed_at",
+            "addons", "form_responses", "customer_answers", "status_history", "assignment",
+            "can_cancel", "cancellation_terms", "created_at", "updated_at"
+        ]
+
     def get_can_cancel(self, obj):
         from .models import OrderItem
         assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
@@ -473,42 +509,6 @@ class BookingListSerializer(serializers.ModelSerializer):
             "platform_fee": str(terms["platform_fee"]),
             "message": messages[terms["policy"]],
         }
-
-    def get_service_image(self, obj):
-        if obj.service.image:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(obj.service.image.url)
-        return None
-
-
-class BookingDetailSerializer(serializers.ModelSerializer):
-    service_title = serializers.CharField(source="service.title", read_only=True)
-    service_title_hi = serializers.CharField(source="service.title_hi", read_only=True)
-    service_image = serializers.SerializerMethodField()
-    variant_title = serializers.CharField(source="variant.title", read_only=True)
-    variant_title_hi = serializers.CharField(source="variant.title_hi", read_only=True)
-    address_detail = serializers.SerializerMethodField()
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
-    booking_mode_display = serializers.CharField(source="get_booking_mode_display", read_only=True)
-    addons = BookingAddOnSerializer(many=True, read_only=True, source="booking_addons")
-    form_responses = BookingFormResponseSerializer(many=True, read_only=True)
-    status_history = BookingStatusHistorySerializer(many=True, read_only=True)
-    assignment = BookingAssignmentSerializer(read_only=True)
-    can_cancel = serializers.SerializerMethodField()
-    cancellation_terms = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Booking
-        fields = [
-            "id", "service", "service_title", "service_title_hi", "service_image",
-            "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
-            "scheduled_at", "drop_scheduled_at", "status", "status_display",
-            "address_detail", "pricing_snapshot", "notes", "worker_notes",
-            "cancelled_at", "cancellation_reason", "completed_at",
-            "addons", "form_responses", "customer_answers", "status_history", "assignment",
-            "can_cancel", "cancellation_terms", "created_at", "updated_at"
-        ]
 
     def get_service_image(self, obj):
         if obj.service.image:
