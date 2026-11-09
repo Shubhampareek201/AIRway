@@ -687,6 +687,7 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
             hour=10, minute=0, second=0, microsecond=0,
         )
         return patch("django.utils.timezone.now", return_value=frozen_now), frozen_now
+
     def _create_paid_booking(self, scheduled_at, *, accepted=False):
         response = self.client.post("/api/v1/bookings/checkout/", {
             "service": self.service.id,
@@ -761,7 +762,6 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
             self.assertEqual(refund.status, RefundRecord.Status.PENDING)
 
     def test_same_day_cancel_after_worker_acceptance_is_non_refundable(self):
-        from unittest.mock import patch
         from apps.payments.models import RefundRecord
 
         clock, frozen_now = self._freeze_same_day_clock()
