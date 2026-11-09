@@ -749,11 +749,17 @@ class PaymentWebhookView(APIView):
                 record_id = refund_notes.get("airway_refund_record_id")
                 with transaction.atomic():
                     refund_query = RefundRecord.objects.select_for_update()
-                    refund_record = refund_query.filter(
-                        provider_refund_id=provider_refund_id
-                    ).first()
-                    if refund_record is None and record_id:
-                        refund_record = refund_query.filter(pk=record_id).first()
+                    # Prefer the AIRway record ID carried in signed provider
+                    # notes. A provider ID already attached to a different row
+                    # must never redirect this webhook onto that other record.
+                    refund_record = (
+                        refund_query.filter(pk=record_id).first()
+                        if record_id else None
+                    )
+                    if refund_record is None:
+                        refund_record = refund_query.filter(
+                            provider_refund_id=provider_refund_id
+                        ).first()
                     if refund_record:
                         # The signed webhook must still reconcile to the exact
                         # tender and original payment recorded by AIRway.
