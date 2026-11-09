@@ -643,7 +643,7 @@ class WorkerJobRejectView(APIView):
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         reason = str(request.data.get("reason", "Worker unable to fulfil service"))[:1000]
         with transaction.atomic():
-            if booking.order_item_id:
+            if hasattr(booking, "order_item"):
                 order = Order.objects.select_for_update().get(pk=booking.order_item.order_id)
                 bookings = list(
                     Booking.objects.select_for_update().filter(order_item__order=order).order_by("pk")
