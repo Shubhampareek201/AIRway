@@ -681,10 +681,8 @@ class CustomerOrderDetailView(APIView):
                 "quantity": row.quantity,
                 "line_total": str(row.line_total),
             })
-        if order.items.exists() and all(row["booking_status"] == Booking.Status.ASSIGNED for row in items):
-            if order.status != Order.Status.AWAITING_PAYMENT:
-                order.status = Order.Status.AWAITING_PAYMENT
-                order.save(update_fields=["status", "updated_at"])
+        # GET endpoints must not advance order lifecycle state. Worker offer
+        # acceptance performs the AWAITING_PAYMENT transition atomically.
         return Response({
             "id": order.id,
             "status": order.status,
@@ -707,19 +705,13 @@ class CustomerOrderListView(APIView):
         ).order_by("-created_at")
         results = []
         for order in orders:
-            statuses = [row.booking.status for row in order.items.all()]
-            ready = bool(statuses) and all(
-                value == Booking.Status.ASSIGNED for value in statuses
-            )
-            if ready and order.status == Order.Status.AWAITING_ASSIGNMENT:
-                order.status = Order.Status.AWAITING_PAYMENT
-                order.save(update_fields=["status", "updated_at"])
+            # Order state is changed by the assignment workflow, never by a read.
             results.append({
                 "id": order.id,
                 "status": order.status,
                 "total_amount": str(order.total_amount),
                 "created_at": order.created_at,
-                "item_count": len(statuses),
+                "item_count": order.items.count(),
                 "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
             })
         return Response(results)
