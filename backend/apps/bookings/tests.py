@@ -678,6 +678,15 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
         self.variant = self._create_variant(self.service)
         self.address = self._create_address(self.user)
 
+    def _freeze_same_day_clock(self):
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        local_now = timezone.now().astimezone(ZoneInfo("Asia/Kolkata"))
+        frozen_now = local_now.replace(
+            hour=10, minute=0, second=0, microsecond=0,
+        )
+        return patch("django.utils.timezone.now", return_value=frozen_now), frozen_now
     def _create_paid_booking(self, scheduled_at, *, accepted=False):
         response = self.client.post("/api/v1/bookings/checkout/", {
             "service": self.service.id,
@@ -717,62 +726,67 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
         from unittest.mock import patch
         from apps.payments.models import RefundRecord
 
-        scheduled_at = timezone.now() + timedelta(hours=2)
-        booking, plan, payment = self._create_paid_booking(scheduled_at)
-        detail = self.client.get(f"/api/v1/bookings/{booking.pk}/")
-        self.assertEqual(detail.status_code, 200, detail.data)
-        self.assertTrue(detail.data["can_cancel"])
-        self.assertEqual(
-            detail.data["cancellation_terms"]["policy"],
-            "same_day_before_worker_acceptance",
-        )
-        self.assertEqual(
-            Decimal(detail.data["cancellation_terms"]["refund_amount"]),
-            plan.advance_due,
-        )
-        with patch("razorpay.Client") as client_class:
-            client_class.return_value.payment.refund.return_value = {
-                "id": "rfnd_same_day_full",
-                "status": "pending",
-            }
+        clock, frozen_now = self._freeze_same_day_clock()
+        with clock:
+            scheduled_at = frozen_now + timedelta(hours=2)
+            booking, plan, payment = self._create_paid_booking(scheduled_at)
+            detail = self.client.get(f"/api/v1/bookings/{booking.pk}/")
+            self.assertEqual(detail.status_code, 200, detail.data)
+            self.assertTrue(detail.data["can_cancel"])
+            self.assertEqual(
+                detail.data["cancellation_terms"]["policy"],
+                "same_day_before_worker_acceptance",
+            )
+            self.assertEqual(
+                Decimal(detail.data["cancellation_terms"]["refund_amount"]),
+                plan.advance_due,
+            )
+            with patch("razorpay.Client") as client_class:
+                client_class.return_value.payment.refund.return_value = {
+                    "id": "rfnd_same_day_full",
+                    "status": "pending",
+                }
+                response = self.client.post(
+                    f"/api/v1/bookings/{booking.pk}/cancel/",
+                    {"reason": "Changed my plan"},
+                    format="json",
+                )
+
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data["refund_policy"], "same_day_before_worker_acceptance")
+            self.assertEqual(Decimal(response.data["refund_amount"]), plan.advance_due)
+            refund = RefundRecord.objects.get(booking=booking)
+            self.assertEqual(refund.payment_id, payment.pk)
+            self.assertEqual(refund.refund_amount, plan.advance_due)
+            self.assertEqual(refund.status, RefundRecord.Status.PENDING)
+
+    def test_same_day_cancel_after_worker_acceptance_is_non_refundable(self):
+        from unittest.mock import patch
+        from apps.payments.models import RefundRecord
+
+        clock, frozen_now = self._freeze_same_day_clock()
+        with clock:
+            scheduled_at = frozen_now + timedelta(hours=2)
+            booking, plan, payment = self._create_paid_booking(
+                scheduled_at, accepted=True,
+            )
+            detail = self.client.get(f"/api/v1/bookings/{booking.pk}/")
+            self.assertEqual(detail.status_code, 200, detail.data)
+            self.assertTrue(detail.data["can_cancel"])
+            self.assertFalse(detail.data["cancellation_terms"]["refundable"])
+            self.assertTrue(detail.data["cancellation_terms"]["worker_accepted"])
+            self.assertIn("non-refundable", detail.data["cancellation_terms"]["message"])
             response = self.client.post(
                 f"/api/v1/bookings/{booking.pk}/cancel/",
                 {"reason": "Changed my plan"},
                 format="json",
             )
 
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["refund_policy"], "same_day_before_worker_acceptance")
-        self.assertEqual(Decimal(response.data["refund_amount"]), plan.advance_due)
-        refund = RefundRecord.objects.get(booking=booking)
-        self.assertEqual(refund.payment_id, payment.pk)
-        self.assertEqual(refund.refund_amount, plan.advance_due)
-        self.assertEqual(refund.status, RefundRecord.Status.PENDING)
-
-    def test_same_day_cancel_after_worker_acceptance_is_non_refundable(self):
-        from apps.payments.models import RefundRecord
-
-        scheduled_at = timezone.now() + timedelta(hours=2)
-        booking, plan, payment = self._create_paid_booking(
-            scheduled_at, accepted=True,
-        )
-        detail = self.client.get(f"/api/v1/bookings/{booking.pk}/")
-        self.assertEqual(detail.status_code, 200, detail.data)
-        self.assertTrue(detail.data["can_cancel"])
-        self.assertFalse(detail.data["cancellation_terms"]["refundable"])
-        self.assertTrue(detail.data["cancellation_terms"]["worker_accepted"])
-        self.assertIn("non-refundable", detail.data["cancellation_terms"]["message"])
-        response = self.client.post(
-            f"/api/v1/bookings/{booking.pk}/cancel/",
-            {"reason": "Changed my plan"},
-            format="json",
-        )
-
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["refund_policy"], "same_day_after_worker_acceptance")
-        self.assertEqual(Decimal(response.data["refund_amount"]), Decimal("0.00"))
-        self.assertEqual(response.data["refund_status"], "not_refundable")
-        self.assertFalse(RefundRecord.objects.filter(booking=booking).exists())
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data["refund_policy"], "same_day_after_worker_acceptance")
+            self.assertEqual(Decimal(response.data["refund_amount"]), Decimal("0.00"))
+            self.assertEqual(response.data["refund_status"], "not_refundable")
+            self.assertFalse(RefundRecord.objects.filter(booking=booking).exists())
 
 
 class BookingTrackTest(BookingAPITestMixin, TestCase):
