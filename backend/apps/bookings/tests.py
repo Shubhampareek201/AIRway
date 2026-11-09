@@ -1069,6 +1069,62 @@ class BookingAvailabilityTest(BookingAPITestMixin, TestCase):
         )
 
 
+class BookingPaymentFlowCompatibilityTests(BookingAPITestMixin, TestCase):
+    """Legacy booking creation and split-payment checkout remain separate contracts."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = self._create_user("+919876543245")
+        self.client.force_authenticate(user=self.user)
+        self.category = Category.objects.create(title="Cleaning", slug="payment-flow-cleaning")
+        self.service = self._create_service(self.category)
+        self.variant = self._create_variant(self.service)
+        self.address = self._create_address(self.user)
+
+    def _payload(self):
+        return {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+            "address_id": self.address.id,
+        }
+
+    def test_legacy_booking_endpoint_does_not_enrol_booking_in_split_payment(self):
+        from apps.payments.models import BookingFinancialPlan
+
+        response = self.client.post(
+            "/api/v1/bookings/", self._payload(), format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        booking = Booking.objects.get(pk=response.data["id"])
+        self.assertFalse(BookingFinancialPlan.objects.filter(booking=booking).exists())
+        self.assertNotIn("payment_required", response.data)
+
+    def test_explicit_checkout_endpoint_creates_split_payment_plan(self):
+        from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+
+        response = self.client.post(
+            "/api/v1/bookings/checkout/", self._payload(), format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        booking = Booking.objects.get(pk=response.data["id"])
+        plan = BookingFinancialPlan.objects.get(booking=booking)
+        self.assertTrue(response.data["payment_required"])
+        self.assertEqual(Decimal(response.data["advance_due"]), plan.advance_due)
+        self.assertEqual(Decimal(response.data["balance_due"]), plan.balance_due)
+        self.assertEqual(
+            PaymentInstallment.objects.filter(
+                financial_plan=plan,
+                kind=PaymentInstallment.Kind.ADVANCE,
+            ).count(),
+            1,
+        )
+        self.assertEqual(response.data["dispatch"], [])
+
+
 class BookingDoubleBookingPreventionTest(BookingAPITestMixin, TestCase):
     """Test that double-booking is prevented at the database level."""
 
