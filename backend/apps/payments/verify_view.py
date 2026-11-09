@@ -831,8 +831,6 @@ class PaymentWebhookView(APIView):
                     return Response({"status": "ok"})
                 amount_paise = entity.get("amount")
                 currency = entity.get("currency")
-                if attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED):
-                    return Response({"status": "ok", "reconciled": "already_refunding_or_refunded"})
                 if not payment_id or not isinstance(amount_paise, int) or not currency:
                     return Response({"detail": "Captured event is missing payment ID, amount, or currency."}, status=status.HTTP_400_BAD_REQUEST)
                 if amount_paise != int(attempt.gateway_amount * 100):
@@ -840,6 +838,19 @@ class PaymentWebhookView(APIView):
                 if currency.upper() != attempt.currency:
                     return Response({"detail": "Currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
                 try:
+                    if (
+                        attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED)
+                        and attempt.provider_payment_id == payment_id
+                    ):
+                        return Response({"status": "ok", "reconciled": "already_refunded"})
+                    if attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED):
+                        refund_late_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "additional_late_capture_refund"})
                     if (
                         attempt.status == PaymentAttempt.Status.CAPTURED
                         and attempt.provider_payment_id != payment_id
