@@ -494,15 +494,13 @@ def _persist_refund_submission(*, record_id, provider_refund=None, submission_er
     linked_attempt_id = snapshot.payment_attempt_id
     if attempt_id is not None and linked_attempt_id not in (None, attempt_id):
         raise InstallmentPaymentError("Refund record is linked to a different payment attempt.")
-    attempt_id = attempt_id or linked_attempt_id
-
     try:
         with transaction.atomic():
             attempt = None
             if attempt_id is not None:
                 attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
             record = RefundRecord.objects.select_for_update().get(pk=record_id)
-            if record.payment_attempt_id != attempt_id:
+            if attempt_id is not None and record.payment_attempt_id != attempt_id:
                 raise InstallmentPaymentError("Refund record payment-attempt link changed during reconciliation.")
 
             if record.status != RefundRecord.Status.PROCESSED and (
