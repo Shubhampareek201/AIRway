@@ -1350,6 +1350,7 @@ class WorkerAcceptancePaymentTest(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.CONFIRMED,
+            pricing_snapshot={"total": "590.00"},
         )
 
         offer = WorkerOffer.objects.create(
