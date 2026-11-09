@@ -122,7 +122,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     final otp = _jobDetail!.requiresServiceOtp
         ? await _promptServiceOtp('start')
         : null;
-    if (_jobDetail!.requiresServiceOtp && otp == null) return;
+    if (!mounted || (_jobDetail!.requiresServiceOtp && otp == null)) return;
 
     setState(() {
       _isActionInProgress = true;
@@ -156,7 +156,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     final otp = _jobDetail!.requiresServiceOtp
         ? await _promptServiceOtp('completion')
         : null;
-    if (_jobDetail!.requiresServiceOtp && otp == null) return;
+    if (!mounted || (_jobDetail!.requiresServiceOtp && otp == null)) return;
 
     setState(() {
       _isActionInProgress = true;
