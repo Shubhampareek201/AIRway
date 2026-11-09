@@ -273,7 +273,7 @@ class Order(TimeStampedModel):
 
     class Status(models.TextChoices):
         AWAITING_ASSIGNMENT = "awaiting_assignment", "Awaiting Assignment"
-        AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
+        AWAITING_PAYMENT = "awaiting_payment", "Awaiting Advance Payment"
         PAID = "paid", "Paid"
         ADVANCE_PAID = "advance_paid", "Advance Paid"
         IN_PROGRESS = "in_progress", "In Progress"
