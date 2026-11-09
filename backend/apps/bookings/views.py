@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,6 +23,8 @@ from .services import check_slot_availability, check_service_available, create_w
 from apps.notifications.models import Notification
 from apps.accounts.models import Address
 from apps.catalog.audience import validate_beauty_audience
+
+logger = logging.getLogger(__name__)
 
 
 class BookingViewSet(viewsets.ModelViewSet):
