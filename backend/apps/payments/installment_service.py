@@ -437,6 +437,10 @@ def reconcile_refund_record(*, record_id):
                     pk=record.payment_attempt_id,
                 )
             locked = RefundRecord.objects.select_for_update().get(pk=record.pk)
+            if locked.payment_attempt_id != record.payment_attempt_id:
+                raise InstallmentPaymentError(
+                    "Refund record payment-attempt link changed during reconciliation."
+                )
             # A refund.processed webhook may win the race after the initial
             # read but before this row lock. Never let a stale "not found"
             # provider lookup regress a webhook-confirmed terminal state.
