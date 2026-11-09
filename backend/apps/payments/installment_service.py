@@ -198,8 +198,8 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
         attempt.refresh_from_db()
         return attempt, False
 
-    gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
     try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
         order_data = gateway.order.create(data={
             "amount": int(gateway_amount * 100),
             "currency": plan.currency,
@@ -264,7 +264,11 @@ def settle_final_balance_attempt(
                 raise InstallmentPaymentError("Captured amount does not match the final-payment attempt.")
             if (currency or "").upper() != attempt.currency:
                 raise InstallmentPaymentError("Captured currency does not match the installment.")
-        elif source != "wallet" or amount_paise != 0:
+        elif (
+            source != "wallet"
+            or amount_paise != 0
+            or (currency or "").upper() != attempt.currency
+        ):
             raise InstallmentPaymentError("Invalid wallet-only settlement.")
 
         if booking.status != Booking.Status.COMPLETED:
