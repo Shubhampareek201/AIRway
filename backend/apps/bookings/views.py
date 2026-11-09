@@ -30,12 +30,11 @@ logger = logging.getLogger(__name__)
 def _booking_payment_summary(booking):
     from apps.payments.models import BookingFinancialPlan, PaymentInstallment
 
-    plan = BookingFinancialPlan.objects.filter(booking_id=booking.pk).first()
-    if plan is None:
+    try:
+        plan = booking.financial_plan
+    except BookingFinancialPlan.DoesNotExist:
         return None
-    installments = {
-        row.kind: row for row in PaymentInstallment.objects.filter(financial_plan=plan)
-    }
+    installments = {row.kind: row for row in plan.installments.all()}
     advance = installments.get(PaymentInstallment.Kind.ADVANCE)
     final = installments.get(PaymentInstallment.Kind.FINAL_BALANCE)
     final_due = final.amount_due if final else plan.balance_due
@@ -60,9 +59,10 @@ class BookingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         queryset = Booking.objects.filter(customer=user).select_related(
-            "service", "variant", "address", "assignment__worker__user"
+            "service", "variant", "address", "assignment__worker__user", "financial_plan"
         ).prefetch_related(
-            "booking_addons__addon", "form_responses__form_field", "status_history"
+            "booking_addons__addon", "form_responses__form_field", "status_history",
+            "financial_plan__installments",
         )
 
         status_param = self.request.query_params.get("status")
@@ -1051,7 +1051,10 @@ class CustomerOrderDetailView(APIView):
 
     def get(self, request, order_id):
         order = get_object_or_404(
-            Order.objects.prefetch_related("items__booking__assignment__worker__user"),
+            Order.objects.prefetch_related(
+                "items__booking__assignment__worker__user",
+                "items__booking__financial_plan__installments",
+            ),
             pk=order_id,
             customer=request.user,
         )
