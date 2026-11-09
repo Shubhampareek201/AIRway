@@ -331,12 +331,20 @@ def settle_final_balance_attempt(
         if order_id:
             parent_order = Order.objects.select_for_update().get(pk=order_id)
             all_completed = not parent_order.items.exclude(
-                booking__status=Booking.Status.COMPLETED,
+                booking__status__in=(
+                    Booking.Status.COMPLETED,
+                    Booking.Status.CANCELLED,
+                ),
             ).exists()
             all_balances_paid = not PaymentInstallment.objects.filter(
                 financial_plan__booking__order_item__order=parent_order,
                 kind=PaymentInstallment.Kind.FINAL_BALANCE,
-            ).exclude(status=PaymentInstallment.Status.PAID).exists()
+            ).exclude(
+                status__in=(
+                    PaymentInstallment.Status.PAID,
+                    PaymentInstallment.Status.CANCELLED,
+                )
+            ).exists()
             if all_completed and all_balances_paid:
                 parent_order.status = Order.Status.COMPLETED
             elif all_completed:
