@@ -464,10 +464,18 @@ class BookingDetailSerializer(serializers.ModelSerializer):
         from apps.payments.lifecycle import customer_cancellation_terms
 
         if OrderItem.objects.filter(booking_id=obj.pk).exists():
+            from apps.payments.models import BookingFinancialPlan
+            has_split_plan = BookingFinancialPlan.objects.filter(booking_id=obj.pk).exists()
             return {
                 "available": False,
-                "policy": "parent_order",
-                "message": "This service belongs to a multi-service order. Contact AIRway support to change the order safely.",
+                "policy": "parent_order_line_api",
+                "message": (
+                    "Manage this service line from its parent order."
+                    if has_split_plan
+                    else "This legacy multi-service order requires AIRway support for cancellation."
+                ),
+                "endpoint": "POST /api/v1/bookings/orders/{order_id}/items/{booking_id}/cancel/"
+                if has_split_plan else None,
             }
         assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
         if not obj.can_cancel or (assignment and assignment.started_at):
