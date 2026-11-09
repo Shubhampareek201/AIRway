@@ -85,6 +85,7 @@ class PaymentInstallment(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         PAID = "paid", "Paid"
+        REFUNDED = "refunded", "Refunded"
 
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="installments"
