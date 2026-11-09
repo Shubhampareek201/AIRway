@@ -238,6 +238,7 @@ class RefundRecord(TimeStampedModel):
     wallet_refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     wallet_refunded_at = models.DateTimeField(null=True, blank=True)
     provider_refund_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    provider_idempotency_key = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.REQUESTED, db_index=True)
     requested_at = models.DateTimeField(null=True, blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
