@@ -3695,3 +3695,200 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {self.service.id, second_service.id},
         )
         self.assertFalse(self.cart.items.exists())
+
+class ParentOrderLineCancellationTests(BookingAPITestMixin, TestCase):
+    """Regression coverage for split-payment parent-order line cancellation."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = self._create_user("+919876543288")
+        self.client.force_authenticate(user=self.customer)
+        self.category = Category.objects.create(
+            title="Line Cancellation", slug="line-cancellation",
+        )
+        self.service = self._create_service(
+            self.category, title="Line Cancellation Cleaning",
+        )
+        self.variant = self._create_variant(
+            self.service, price=1000, mrp=1200,
+        )
+        self.address = self._create_address(self.customer)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=self.service,
+            defaults={"is_active": True},
+        )
+        self.cart = CustomerCart.objects.create(
+            customer=self.customer, address=self.address,
+        )
+        self.first_cart_item = CartItem.objects.create(
+            cart=self.cart, service=self.service, variant=self.variant,
+            quantity=1, pricing_snapshot={"line_total": "1000.00"},
+        )
+        self.second_service = self._create_service(
+            self.category, title="Line Cancellation Bathroom",
+        )
+        self.second_variant = self._create_variant(
+            self.second_service, price=500, mrp=600,
+        )
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=self.second_service,
+            defaults={"is_active": True},
+        )
+        self.second_cart_item = CartItem.objects.create(
+            cart=self.cart, service=self.second_service,
+            variant=self.second_variant, quantity=1,
+            pricing_snapshot={"line_total": "500.00"},
+        )
+
+    def _create_paid_split_order(self, *, wallet_tender="100.00"):
+        from apps.payments.models import (
+            BookingFinancialPlan, Payment, PaymentAllocation,
+            PaymentInstallment,
+        )
+
+        first_time = timezone.localtime(
+            timezone.now() + timedelta(days=2),
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
+        second_time = timezone.localtime(
+            timezone.now() + timedelta(days=3),
+        ).replace(hour=10, minute=0, second=0, microsecond=0)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "payment_flow": "split_v1",
+                "items": [
+                    {"cart_item_id": self.first_cart_item.pk, "scheduled_at": first_time.isoformat()},
+                    {"cart_item_id": self.second_cart_item.pk, "scheduled_at": second_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        items = list(order.items.select_related("booking").order_by("id"))
+        plans = [
+            BookingFinancialPlan.objects.get(booking=item.booking)
+            for item in items
+        ]
+        wallet_remaining = Decimal(wallet_tender)
+        advance_total = sum(
+            (plan.advance_due for plan in plans), Decimal("0.00"),
+        )
+        self.assertLessEqual(wallet_remaining, advance_total)
+        payment = Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            amount=advance_total - wallet_remaining,
+            wallet_amount=wallet_remaining,
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_parent_order_advance",
+        )
+        for plan in plans:
+            installment = PaymentInstallment.objects.get(
+                financial_plan=plan,
+                kind=PaymentInstallment.Kind.ADVANCE,
+            )
+            wallet_part = min(installment.amount_due, wallet_remaining)
+            wallet_remaining -= wallet_part
+            gateway_part = installment.amount_due - wallet_part
+            PaymentAllocation.objects.create(
+                payment=payment,
+                installment=installment,
+                amount=installment.amount_due,
+                gateway_amount=gateway_part,
+                wallet_amount=wallet_part,
+            )
+            installment.amount_captured = installment.amount_due
+            installment.status = PaymentInstallment.Status.PAID
+            installment.settled_at = timezone.now()
+            installment.save(update_fields=[
+                "amount_captured", "status", "settled_at", "updated_at",
+            ])
+            plan.advance_captured = installment.amount_due
+            plan.save(update_fields=["advance_captured", "updated_at"])
+        self.assertEqual(wallet_remaining, Decimal("0.00"))
+        order.status = Order.Status.AWAITING_ASSIGNMENT
+        order.save(update_fields=["status", "updated_at"])
+        return order, items, plans, payment
+
+    def test_partial_cancellation_refunds_only_line_and_preserves_other_order_line(self):
+        from unittest.mock import patch
+        from apps.payments.models import RefundRecord
+
+        order, items, plans, payment = self._create_paid_split_order()
+        cancelled_item, remaining_item = items
+        cancelled_plan = plans[0]
+        allocation = cancelled_plan.installments.get(
+            kind="advance",
+        ).payment_allocations.get(payment=payment)
+
+        with patch("razorpay.Client") as client_class, patch(
+            "apps.bookings.dispatcher.DispatcherService.dispatch_order",
+            return_value=[],
+        ):
+            client_class.return_value.payment.refund.return_value = {
+                "id": "rfnd_parent_line_1",
+                "status": "pending",
+            }
+            response = self.client.post(
+                f"/api/v1/bookings/orders/{order.pk}/items/{cancelled_item.booking_id}/cancel/",
+                {"reason": "Customer changed plans"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        cancelled_item.booking.refresh_from_db()
+        remaining_item.booking.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(cancelled_item.booking.status, Booking.Status.CANCELLED)
+        self.assertNotEqual(remaining_item.booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+        self.assertEqual(
+            Decimal(response.data["refund_amount"]),
+            allocation.amount - Decimal("40.00"),
+        )
+        refund = RefundRecord.objects.get(booking=cancelled_item.booking)
+        self.assertEqual(refund.payment_allocation_id, allocation.pk)
+        self.assertEqual(
+            refund.gateway_refund_amount + refund.wallet_refund_amount,
+            refund.refund_amount,
+        )
+        self.assertEqual(refund.wallet_refund_amount, allocation.wallet_amount - Decimal("40.00"))
+        self.assertEqual(client_class.return_value.payment.refund.call_count, 1)
+
+    def test_repeated_line_cancellation_returns_existing_refund_without_resubmitting(self):
+        from unittest.mock import patch
+        from apps.payments.models import RefundRecord
+
+        order, items, plans, _payment = self._create_paid_split_order()
+        booking = items[0].booking
+
+        with patch("razorpay.Client") as client_class, patch(
+            "apps.bookings.dispatcher.DispatcherService.dispatch_order",
+            return_value=[],
+        ):
+            client_class.return_value.payment.refund.return_value = {
+                "id": "rfnd_parent_line_replay",
+                "status": "pending",
+            }
+            first = self.client.post(
+                f"/api/v1/bookings/orders/{order.pk}/items/{booking.pk}/cancel/",
+                {"reason": "First request"},
+                format="json",
+            )
+            second = self.client.post(
+                f"/api/v1/bookings/orders/{order.pk}/items/{booking.pk}/cancel/",
+                {"reason": "Network retry"},
+                format="json",
+            )
+
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertTrue(second.data["idempotent_replay"])
+        self.assertEqual(first.data["refund_id"], second.data["refund_id"])
+        self.assertEqual(RefundRecord.objects.filter(booking=booking).count(), 1)
+        self.assertEqual(client_class.return_value.payment.refund.call_count, 1)
+
