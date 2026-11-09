@@ -186,6 +186,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
       );
       if (payment['already_paid'] == true || payment['payment_status'] == 'captured') {
         await _refresh();
+        await _loadWalletBalance();
         if (mounted) setState(() => _payingFinalBalance = false);
         return;
       }
@@ -257,6 +258,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
         await _refresh();
       }
     } finally {
+      await _loadWalletBalance();
       if (mounted) setState(() => _payingFinalBalance = false);
     }
   }
