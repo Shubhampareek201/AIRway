@@ -1,6 +1,8 @@
 class PaymentStatus {
   static const pending = 'pending';
   static const paid = 'paid';
+  static const partiallyPaid = 'partially_paid';
+  static const refundPending = 'refund_pending';
   static const failed = 'failed';
   static const refunded = 'refunded';
 
@@ -10,6 +12,10 @@ class PaymentStatus {
         return 'Pending';
       case paid:
         return 'Paid';
+      case partiallyPaid:
+        return '50% Paid';
+      case refundPending:
+        return 'Refund Pending';
       case failed:
         return 'Failed';
       case refunded:
