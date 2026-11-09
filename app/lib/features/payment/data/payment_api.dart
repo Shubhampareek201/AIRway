@@ -100,6 +100,35 @@ class PaymentApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> createFinalBalanceOrder(
+    int bookingId, {
+    String walletAmount = '0.00',
+  }) async {
+    final result = await _request(
+      '/api/v1/payments/final-balance/create-order/',
+      method: 'POST',
+      data: {'booking_id': bookingId, 'wallet_amount': walletAmount},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> verifyFinalBalancePayment({
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    final result = await _request(
+      '/api/v1/payments/final-balance/verify/',
+      method: 'POST',
+      data: {
+        'razorpay_order_id': razorpayOrderId,
+        'razorpay_payment_id': razorpayPaymentId,
+        'razorpay_signature': razorpaySignature,
+      },
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> getPaymentStatus(int bookingId) async {
     final result = await _request('/api/v1/bookings/$bookingId/');
     return Map<String, dynamic>.from(result);
