@@ -213,14 +213,21 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
       return;
     }
     try {
-      await PaymentApi.verifyFinalBalancePayment(
+      final verification = await PaymentApi.verifyFinalBalancePayment(
         razorpayOrderId: orderId,
         razorpayPaymentId: paymentId,
         razorpaySignature: signature,
       );
       if (mounted) {
+        final message = verification['status'] == 'duplicate_capture_refund'
+            ? verification['refund_status'] == 'processed'
+                ? 'Duplicate payment was refunded.'
+                : verification['refund_status'] == 'failed'
+                    ? 'Duplicate payment needs AIRway refund support.'
+                    : 'Duplicate payment is being reconciled for refund.'
+            : 'Final payment received successfully.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Final payment received successfully.')),
+          SnackBar(content: Text(message)),
         );
         await _refresh();
       }
