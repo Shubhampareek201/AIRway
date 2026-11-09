@@ -194,6 +194,49 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
+  Future<void> cancelOrder() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel entire order?'),
+        content: const Text('All services in this order will be cancelled. If you cancel by 10:00 PM on the day before the earliest service, the advance refund is the amount paid minus ₹40. After that cutoff, no refund is due. You cannot cancel after any service has started.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep order')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cancel order')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => paying = true);
+    try {
+      final result = await BookingApi.request(
+        '/api/v1/bookings/orders/${widget.orderId}/cancel/',
+        method: 'POST',
+        data: {'reason': 'Customer requested cancellation from the AIRway app.'},
+      );
+      if (!mounted) return;
+      setState(() => paying = false);
+      await loadOrder();
+      if (!mounted) return;
+      final refund = result is Map ? result['refund'] : null;
+      final refundStatus = refund is Map ? refund['status']?.toString() : null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          refundStatus == 'not_eligible'
+              ? 'Order cancelled. The refund cutoff has passed, so no refund is due.'
+              : refundStatus == 'manual_review'
+                  ? 'Order cancelled. AIRway support will reconcile your refund.'
+                  : 'Order cancelled. Your eligible refund has been requested.',
+        )),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => paying = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not cancel order: $e')));
+      }
+    }
+  }
+
   Future<void> trackService(Map<String, dynamic> row) async {
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null) return;
@@ -274,6 +317,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           ),
           const SizedBox(height: 14),
           paymentBreakdown(advanceAmount, balanceAmount, order?['advance_status']?.toString() ?? 'pending', order?['balance_status']?.toString() ?? 'pending'),
+          const SizedBox(height: 8),
+          const Text(
+            'Cancellation: you may cancel before service starts. Refund is available until 10:00 PM on the previous calendar day, minus ₹40. After that time, no refund is due.',
+            style: TextStyle(color: sub, fontSize: 11, height: 1.4),
+          ),
           if (readyAdvance || readyBalance) ...[
             const SizedBox(height: 12),
             Container(
@@ -317,6 +365,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             const Text('Your order status and payment milestones update automatically.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
           if (paid)
             const Text('Both installments paid successfully', style: TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800)),
+          if (order?['can_cancel'] == true)
+            SizedBox(width: double.infinity, child: TextButton(
+              onPressed: paying ? null : cancelOrder,
+              child: const Text('Cancel entire order', style: TextStyle(color: Colors.redAccent)),
+            )),
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingListScreen())),
