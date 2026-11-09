@@ -23,10 +23,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   static const line = Color(0xFFEAE6DE);
 
   final Razorpay razorpay = Razorpay();
-  final TextEditingController walletAmountController = TextEditingController(text: '0.00');
   Map<String, dynamic>? order;
-  double walletBalance = 0;
-  bool walletLoading = true;
   bool loading = true;
   bool paying = false;
   String? error;
@@ -39,11 +36,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, onPaymentError);
     razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, onExternalWallet);
     loadOrder();
-    loadWalletBalance();
     refreshTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       if (mounted && !paying) {
         loadOrder(showLoader: false);
-        loadWalletBalance();
       }
     });
   }
@@ -51,7 +46,6 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   @override
   void dispose() {
     refreshTimer?.cancel();
-    walletAmountController.dispose();
     razorpay.clear();
     super.dispose();
   }
@@ -68,21 +62,40 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   double amount(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 
-  double get selectedWalletAmount {
-    final value = double.tryParse(walletAmountController.text.trim());
-    return value == null || !value.isFinite ? 0 : value;
-  }
-
-  Future<void> loadWalletBalance() async {
+  Future<void> startPayment() async {
+    final readyAdvance = order?['ready_for_advance'] == true;
+    final readyBalance = order?['ready_for_balance'] == true;
+    if ((!readyAdvance && !readyBalance) || paying) return;
+    setState(() => paying = true);
     try {
-      final result = await BookingApi.request('/api/v1/wallet/balance/');
-      if (!mounted) return;
-      setState(() {
-        walletBalance = amount(result['balance']);
-        walletLoading = false;
+      final payment = await PaymentApi.createOrderForParent(widget.orderId);
+      if (payment['already_paid'] == true) {
+        if (!mounted) return;
+        setState(() => paying = false);
+        await loadOrder();
+        return;
+      }
+      final key = payment['key_id']?.toString() ?? '';
+      final gatewayOrderId = payment['order_id']?.toString() ?? '';
+      if (key.isEmpty || gatewayOrderId.isEmpty) {
+        throw Exception('Payment gateway order could not be initialized.');
+      }
+      razorpay.open({
+        'key': key,
+        'amount': payment['amount'],
+        'currency': payment['currency'] ?? 'INR',
+        'name': 'AIRway',
+        'description': (payment['installment'] == 'advance' ? '50% booking advance' : '50% service balance') + ' for order #' + widget.orderId.toString(),
+        'order_id': gatewayOrderId,
+        'theme': {'color': '#075B43'},
       });
-    } catch (_) {
-      if (mounted) setState(() => walletLoading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() => paying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start payment: ' + e.toString())),
+        );
+      }
     }
   }
 
@@ -181,28 +194,27 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       setState(() => paying = false);
       await loadOrder();
       if (!mounted) return;
-      final refunded = verification['status'] == 'refunded';
+      final installment = verification['installment']?.toString();
+      final title = installment == 'advance' ? '50% advance received' : 'Balance payment successful';
+      final message = installment == 'advance'
+          ? 'Your booking advance is confirmed. AIRway will now arrange your professional.'
+          : 'Your remaining 50% payment is confirmed. Thank you for using AIRway.';
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          icon: Icon(
-            refunded ? Icons.currency_rupee_rounded : Icons.verified_rounded,
-            color: refunded ? sub : violet,
-            size: 48,
-          ),
-          title: Text(refunded ? 'Payment refunded' : 'Payment successful'),
-          content: Text(
-            refunded
-                ? 'The late payment was refunded because the wallet funds were no longer available. You can retry checkout.'
-                : 'Your AIRway order has been paid and confirmed.',
-          ),
+          icon: const Icon(Icons.verified_rounded, color: violet, size: 48),
+          title: Text(title),
+          content: Text(message),
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
         ),
       );
     } catch (e) {
       if (mounted) {
         setState(() => paying = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment verification failed: ' + e.toString())));
+        await loadOrder(showLoader: false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment is awaiting server verification: ' + e.toString())),
+        );
       }
     }
   }
@@ -272,9 +284,22 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Widget orderBody() {
     final rows = (order?['items'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-    final ready = order?['ready_for_payment'] == true;
+    final readyAdvance = order?['ready_for_advance'] == true;
+    final readyBalance = order?['ready_for_balance'] == true;
     final paid = order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
+    final advanceAmount = amount(order?['advance_amount']);
+    final balanceAmount = amount(order?['balance_amount']);
+    final payable = readyAdvance ? advanceAmount : balanceAmount;
+    final paymentLabel = readyAdvance ? '50% booking advance' : 'Remaining 50% balance';
+    final heading = paid ? 'Payment complete' : readyAdvance ? 'Advance payment required' : readyBalance ? 'Service completed' : 'Your order is being arranged';
+    final description = paid
+        ? 'Both payment installments are settled.'
+        : readyAdvance
+            ? 'Pay 50% now. AIRway will start professional assignment after the advance is captured.'
+            : readyBalance
+                ? 'Your services are complete. Pay the remaining 50% to settle the order.'
+                : 'Your advance is received. We are arranging the professional and will update this order automatically.';
     return Column(children: [
       Expanded(child: ListView(
         padding: const EdgeInsets.all(18),
@@ -283,106 +308,38 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : ready ? 'All professionals assigned' : 'Your order is being arranged',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
+              Text(heading, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
-              Text(paid ? 'Your services are confirmed.' : ready
-                  ? 'All services have an assigned professional. You can now complete payment.'
-                  : 'We are assigning professionals for each service. This page refreshes automatically.',
-                  style: const TextStyle(color: sub, height: 1.4)),
+              Text(description, style: const TextStyle(color: sub, height: 1.4)),
               const SizedBox(height: 12),
-              Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
+              Text('Order total  ₹' + total.toStringAsFixed(2), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
+          const SizedBox(height: 14),
+          paymentBreakdown(advanceAmount, balanceAmount, order?['advance_status']?.toString() ?? 'pending', order?['balance_status']?.toString() ?? 'pending'),
           const SizedBox(height: 14),
           orderProgress(rows, paid),
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
           for (final row in rows) serviceRow(row),
-          if (ready && !paid) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: line),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('AIRway wallet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
-                  const SizedBox(height: 5),
-                  Text(
-                    walletLoading
-                        ? 'Loading available balance…'
-                        : 'Available balance: ₹${walletBalance.toStringAsFixed(2)}',
-                    style: const TextStyle(color: sub, fontSize: 13),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: walletAmountController,
-                    enabled: !walletLoading,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Use wallet amount (₹)',
-                      hintText: '0.00',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Order total', style: TextStyle(color: sub)),
-                      Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Wallet applied', style: TextStyle(color: sub)),
-                      Text('− ₹${selectedWalletAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
-                    ],
-                  ),
-                  const Divider(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Pay online', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
-                      Text(
-                        '₹${(total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       )),
       Container(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
         decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: line))),
         child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (ready && !paid)
+          if (readyAdvance || readyBalance)
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: paying ? null : startPayment,
-              child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(
-                  selectedWalletAmount > 0 && selectedWalletAmount >= total
-                      ? 'Pay with AIRway wallet'
-                      : 'Pay ₹' + (total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2),
-                ),
+              child: paying
+                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text('Pay ₹' + payable.toStringAsFixed(2) + ' — ' + paymentLabel),
             )),
-          if (!ready && !paid)
-            const Text('Payment will unlock after every service has a professional assigned.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
+          if (!readyAdvance && !readyBalance && !paid)
+            const Text('Your order status and payment milestones update automatically.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
           if (paid)
-            const Text('Paid successfully', style: TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800)),
+            const Text('Both installments paid successfully', style: TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingListScreen())),
@@ -393,6 +350,30 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     ]);
   }
 
+  Widget paymentBreakdown(double advance, double balance, String advanceStatus, String balanceStatus) {
+    Widget row(String label, double value, String status) {
+      final settled = status == 'paid';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(children: [
+          Expanded(child: Text(label, style: const TextStyle(color: sub, fontWeight: FontWeight.w600))),
+          Text('₹' + value.toStringAsFixed(2), style: const TextStyle(color: ink, fontWeight: FontWeight.w800)),
+          const SizedBox(width: 10),
+          Text(settled ? 'Paid' : 'Due', style: TextStyle(color: settled ? const Color(0xFF2E7D52) : sub, fontWeight: FontWeight.w700)),
+        ]),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Payment breakdown', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+        row('50% booking advance', advance, advanceStatus),
+        const Divider(height: 1),
+        row('50% after service', balance, balanceStatus),
+      ]),
+    );
+  }
 
   Widget orderProgress(List<Map<String, dynamic>> rows, bool paid) {
     final assigned = rows.isNotEmpty && rows.every((row) {
