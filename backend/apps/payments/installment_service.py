@@ -406,6 +406,101 @@ def _persist_refund_submission(*, record_id, provider_refund=None, submission_er
         return record
 
 
+def refund_mismatched_final_capture(
+    *, attempt_id, razorpay_payment_id, provider_order_id,
+    amount_paise, currency, payload,
+):
+    """Refund a captured amount that does not match the final installment tender."""
+    import razorpay
+    from django.conf import settings
+    from .models import RefundRecord
+
+    if not isinstance(amount_paise, int) or amount_paise <= 0:
+        raise InstallmentPaymentError("Mismatched capture has no valid refundable amount.")
+    with transaction.atomic():
+        attempt_ref = PaymentAttempt.objects.select_related(
+            "installment__financial_plan",
+        ).get(pk=attempt_id)
+        if attempt_ref.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        current_status = attempt_ref.status
+
+    if current_status in (PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED):
+        mark_final_balance_attempt_failed(
+            attempt_id=attempt_id,
+            provider_order_id=provider_order_id,
+            payload={"reason": "Captured amount mismatch; wallet tender released.", "event": payload or {}},
+        )
+
+    actual_amount = (Decimal(amount_paise) / Decimal("100")).quantize(CENT)
+    with transaction.atomic():
+        attempt = PaymentAttempt.objects.select_for_update().select_related(
+            "installment__financial_plan__booking",
+        ).get(pk=attempt_id)
+        if attempt.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        if (currency or "").upper() != attempt.currency:
+            raise InstallmentPaymentError(
+                "Captured currency mismatch requires manual provider reconciliation."
+            )
+        booking = attempt.installment.financial_plan.booking
+        record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"mismatched-final-capture:attempt:{attempt.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment_attempt": attempt,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": actual_amount,
+                "platform_fee": ZERO,
+                "refund_amount": actual_amount,
+                "status": RefundRecord.Status.REQUESTED,
+                "requested_at": timezone.now(),
+                "provider_payload": {
+                    "reason": "Captured gateway amount did not match immutable installment attempt.",
+                    "expected_gateway_amount": str(attempt.gateway_amount),
+                    "actual_gateway_amount": str(actual_amount),
+                    "currency": currency,
+                    "capture_payload": payload or {},
+                },
+            },
+        )
+        if not attempt.provider_payment_id and attempt.status != PaymentAttempt.Status.CAPTURED:
+            attempt.provider_payment_id = razorpay_payment_id
+        if created and attempt.status != PaymentAttempt.Status.CAPTURED:
+            attempt.status = PaymentAttempt.Status.REFUND_PENDING
+        attempt.save(update_fields=["provider_payment_id", "status", "updated_at"])
+
+    if not created:
+        return record
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": amount_paise,
+                "notes": {
+                    "airway_refund_record_id": str(record.pk),
+                    "airway_attempt_id": str(attempt.pk),
+                    "reason": "Final installment captured amount mismatch",
+                },
+            },
+        )
+        if not provider_refund.get("id"):
+            raise ValueError("Razorpay did not return a refund ID.")
+        return _persist_refund_submission(
+            record_id=record.pk,
+            provider_refund=provider_refund,
+            attempt_id=attempt.pk if attempt.status != PaymentAttempt.Status.CAPTURED else None,
+        )
+    except Exception as exc:
+        logger.exception("Mismatched final-payment refund failed for attempt %s", attempt.pk)
+        return _persist_refund_submission(
+            record_id=record.pk,
+            submission_error=exc,
+            attempt_id=attempt.pk if attempt.status != PaymentAttempt.Status.CAPTURED else None,
+        )
+
+
 def refund_duplicate_final_capture(*, attempt_id, razorpay_payment_id, provider_order_id, payload):
     """Refund a second distinct capture against an already-settled installment."""
     import razorpay
