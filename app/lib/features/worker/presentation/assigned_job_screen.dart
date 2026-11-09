@@ -104,7 +104,27 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           FilledButton(
             onPressed: () {
               final code = controller.text.trim();
-              if (RegExp(r'^\\d{6}
+              final valid = code.length == 6 &&
+                  code.codeUnits.every((unit) => unit >= 48 && unit <= 57);
+              if (valid) Navigator.pop(dialogContext, code);
+            },
+            child: const Text('Verify OTP'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _startJob() async {
+    if (!mounted || _jobDetail == null) return;
+    final otp = _jobDetail!.requiresServiceOtp
+        ? await _promptServiceOtp('start')
+        : null;
+    if (_jobDetail!.requiresServiceOtp && otp == null) return;
+
+    setState(() {
       _isActionInProgress = true;
     });
 
