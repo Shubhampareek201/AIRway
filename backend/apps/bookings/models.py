@@ -442,8 +442,8 @@ class ServiceOTP(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["booking", "purpose", "verified_at"]),
-            models.Index(fields=["expires_at"]),
+            models.Index(fields=["booking", "purpose", "verified_at"], name="svc_otp_booking_idx"),
+            models.Index(fields=["expires_at"], name="svc_otp_expiry_idx"),
         ]
 
     def __str__(self):
