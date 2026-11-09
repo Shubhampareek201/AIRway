@@ -378,13 +378,24 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
             except Exception as exc:
                 logger.exception("Parent order line refund failed for refund %s", refund_record.pk)
                 provider_error = str(exc)[:400]
-                refund_record.status = RefundRecord.Status.PENDING
-                refund_record.provider_payload = {
-                    **(refund_record.provider_payload or {}),
-                    "submission_error": provider_error,
-                    "provider_outcome": "unknown; reconcile using Razorpay refund webhook/dashboard",
-                }
-                refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
+                # A refund webhook may have confirmed the provider operation
+                # while this request was waiting or handling a timeout. Never
+                # regress that terminal state from this exception path.
+                with transaction.atomic():
+                    locked_refund = RefundRecord.objects.select_for_update().get(
+                        pk=refund_record.pk,
+                    )
+                    if locked_refund.status != RefundRecord.Status.PROCESSED:
+                        locked_refund.status = RefundRecord.Status.PENDING
+                        locked_refund.provider_payload = {
+                            **(locked_refund.provider_payload or {}),
+                            "submission_error": provider_error,
+                            "provider_outcome": "unknown; reconcile using Razorpay refund webhook/dashboard",
+                        }
+                        locked_refund.save(update_fields=[
+                            "status", "provider_payload", "updated_at",
+                        ])
+                    refund_record = locked_refund
 
     return {
         "order_id": order.pk,
