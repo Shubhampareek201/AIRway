@@ -70,46 +70,180 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
-        from apps.bookings.models import WorkerOffer
-
-        booking = self.get_object()
-        serializer = BookingCancelSerializer(data=request.data, context={"booking": booking})
-        serializer.is_valid(raise_exception=True)
-
-        reason = serializer.validated_data.get("reason", "")
-        old_status = booking.status
-
-        booking.status = Booking.Status.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.cancellation_reason = reason
-        booking.cancelled_by = request.user
-        booking.save()
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.CANCELLED,
-            changed_by=request.user,
-            note=f"Cancelled by customer. Reason: {reason}",
+        from apps.payments.lifecycle import (
+            PaymentLifecycleError,
+            create_customer_cancellation_refund_record,
+            customer_cancellation_terms,
         )
+        from apps.payments.models import Payment, RefundRecord
+        from apps.bookings.models import BookingAssignment, OrderItem
 
-        # Cancel all pending worker offers for this booking
-        WorkerOffer.objects.filter(booking=booking, status=WorkerOffer.Status.PENDING).update(
-            status=WorkerOffer.Status.EXPIRED,
-            responded_at=timezone.now(),
-        )
+        visible_booking = self.get_object()
+        refund_record = None
+        refund_created = False
+        terms = None
 
-        Notification.objects.create(
-            user=request.user,
-            type=Notification.Type.BOOKING_CANCELLED,
-            title="Booking Cancelled",
-            body="Your booking has been cancelled.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().get(
+                pk=visible_booking.pk, customer=request.user,
+            )
+            # A parent-order line cannot be cancelled independently until the
+            # order-level partial-cancellation/refund workflow is implemented.
+            if OrderItem.objects.filter(booking=booking).exists():
+                return Response(
+                    {"detail": "This service belongs to a multi-service order. Contact AIRway support to change the order safely."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
-        return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
+            serializer = BookingCancelSerializer(
+                data=request.data, context={"booking": booking},
+            )
+            serializer.is_valid(raise_exception=True)
+            assignment = BookingAssignment.objects.select_for_update().filter(
+                booking=booking,
+            ).first()
+            if (
+                booking.status in (Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED)
+                or (assignment and assignment.started_at)
+            ):
+                return Response(
+                    {"detail": "A service cannot be cancelled after its start OTP has been verified. You can raise a support or dispute request."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
+            reason = serializer.validated_data.get("reason", "")
+            payment = Payment.objects.select_for_update().filter(
+                booking=booking, status=Payment.Status.PAID,
+            ).first()
+            collected_amount = payment.amount if payment else Decimal("0.00")
+            try:
+                terms = customer_cancellation_terms(
+                    booking.scheduled_at,
+                    collected_amount,
+                    worker_accepted=bool(assignment and assignment.accepted_at),
+                    now=timezone.now(),
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            if payment and collected_amount > 0:
+                refund_record, refund_created = create_customer_cancellation_refund_record(
+                    booking=booking, payment=payment, terms=terms,
+                )
+
+            old_status = booking.status
+            now = timezone.now()
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = now
+            booking.cancellation_reason = reason
+            booking.cancelled_by = request.user
+            booking.save(update_fields=[
+                "status", "cancelled_at", "cancellation_reason",
+                "cancelled_by", "updated_at",
+            ])
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                from_status=old_status,
+                to_status=Booking.Status.CANCELLED,
+                changed_by=request.user,
+                note=(
+                    f"Cancelled by customer. Reason: {reason}. "
+                    f"Refund policy: {terms['policy']}; "
+                    f"collected: {collected_amount}; "
+                    f"refund: {terms['refund_amount']}; "
+                    f"platform fee: {terms['platform_fee']}."
+                ),
+            )
+            WorkerOffer.objects.select_for_update().filter(
+                booking=booking, status=WorkerOffer.Status.PENDING,
+            ).update(
+                status=WorkerOffer.Status.EXPIRED, responded_at=now,
+            )
+            Notification.objects.create(
+                user=request.user,
+                type=Notification.Type.BOOKING_CANCELLED,
+                title="Booking Cancelled",
+                body="Your service booking has been cancelled.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id},
+            )
+
+        # Network I/O must happen after the database transaction. The refund
+        # record is durable first, so a provider timeout can be reconciled.
+        provider_error = None
+        if refund_record and refund_record.refund_amount > 0 and refund_created:
+            if not payment.razorpay_payment_id:
+                provider_error = "Captured payment has no Razorpay payment ID; manual reconciliation is required."
+                refund_record.status = RefundRecord.Status.FAILED
+                refund_record.provider_payload = {
+                    **(refund_record.provider_payload or {}),
+                    "submission_error": provider_error,
+                }
+                refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
+            else:
+                try:
+                    import razorpay
+                    from django.conf import settings
+                    gateway = razorpay.Client(
+                        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+                    )
+                    provider_refund = gateway.payment.refund(
+                        payment.razorpay_payment_id,
+                        {
+                            "amount": int(refund_record.refund_amount * 100),
+                            "notes": {
+                                "airway_refund_record_id": str(refund_record.pk),
+                                "airway_booking_id": str(booking.pk),
+                                "airway_policy": terms["policy"],
+                            },
+                        },
+                    )
+                    refund_record.provider_refund_id = provider_refund.get("id")
+                    refund_record.status = (
+                        RefundRecord.Status.PROCESSED
+                        if provider_refund.get("status") == "processed"
+                        else RefundRecord.Status.PENDING
+                    )
+                    if refund_record.status == RefundRecord.Status.PROCESSED:
+                        refund_record.processed_at = timezone.now()
+                    refund_record.provider_payload = provider_refund
+                    refund_record.save(update_fields=[
+                        "provider_refund_id", "status", "processed_at",
+                        "provider_payload", "updated_at",
+                    ])
+                except Exception:
+                    logger.exception(
+                        "Razorpay refund submission failed for booking %s / refund %s",
+                        booking.pk, refund_record.pk,
+                    )
+                    provider_error = (
+                        "Cancellation succeeded, but refund submission needs AIRway support reconciliation."
+                    )
+                    refund_record.status = RefundRecord.Status.FAILED
+                    refund_record.provider_payload = {
+                        **(refund_record.provider_payload or {}),
+                        "submission_error": provider_error,
+                    }
+                    refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
+
+        booking.refresh_from_db()
+        refund_status = refund_record.status if refund_record else "not_applicable"
+        response_data = {
+            "detail": "Booking cancelled successfully.",
+            "status": booking.status,
+            "refund_policy": terms["policy"],
+            "refund_amount": str(terms["refund_amount"]),
+            "platform_fee": str(terms["platform_fee"]),
+            "refund_status": refund_status,
+        }
+        if refund_record:
+            response_data["refund_id"] = refund_record.pk
+        if provider_error:
+            response_data["refund_message"] = provider_error
+        elif refund_record and refund_record.refund_amount > 0:
+            response_data["refund_message"] = "Refund request submitted to Razorpay; final settlement is pending provider confirmation."
+        return Response(response_data)
+ 
     @action(detail=True, methods=["post"], url_path="service-otp")
     def service_otp(self, request, pk=None):
         """Allow only the booking customer to retrieve a short-lived service OTP."""
