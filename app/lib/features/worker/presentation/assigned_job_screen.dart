@@ -366,23 +366,35 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
   Widget _buildPaymentInfo(WorkerAssignmentDetail job) {
     final status = job.status;
+    final isSplitPayment = job.requiresServiceOtp;
 
-    // Check if payment is expected based on status
-    final isPaid = status == BookingStatus.inProgress ||
+    // Split-payment jobs are dispatched only after the 50% advance is captured.
+    // The remaining 50% becomes due after the customer verifies service completion.
+    final isLegacyPaid = status == BookingStatus.inProgress ||
         status == BookingStatus.completed ||
         status == BookingStatus.confirmed;
+
+    final subtitle = isSplitPayment
+        ? '50% booking advance received. Final balance is due after service completion.'
+        : isLegacyPaid
+            ? 'Payment completed'
+            : 'Payment pending';
+    final paymentLabel = isSplitPayment
+        ? 'Advance paid'
+        : isLegacyPaid
+            ? 'Paid'
+            : 'Pending';
 
     return Card(
       child: ListTile(
         leading: const Icon(Icons.payment),
         title: const Text('Payment'),
-        subtitle: isPaid
-            ? const Text('Payment completed')
-            : const Text('Payment pending'),
+        subtitle: Text(subtitle),
         trailing: Chip(
-          label: Text(isPaid ? 'Paid' : 'Pending'),
-          backgroundColor:
-              isPaid ? Colors.green.shade100 : Colors.orange.shade100,
+          label: Text(paymentLabel),
+          backgroundColor: isSplitPayment || isLegacyPaid
+              ? Colors.green.shade100
+              : Colors.orange.shade100,
         ),
       ),
     );
