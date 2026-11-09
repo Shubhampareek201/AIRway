@@ -809,7 +809,7 @@ class PaymentWebhookView(APIView):
         # Installment attempts are separate from legacy Payment rows: one
         # immutable provider order belongs to one booking-line installment.
         if event_type in ("payment.captured", "payment.authorized", "payment.failed", "payment.canceled"):
-            from .models import PaymentAttempt
+            from .models import PaymentAttempt, RefundRecord
             from .installment_service import (
                 InstallmentPaymentError,
                 mark_final_balance_attempt_failed,
@@ -852,7 +852,10 @@ class PaymentWebhookView(APIView):
                 try:
                     if (
                         attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED)
-                        and attempt.provider_payment_id == payment_id
+                        and RefundRecord.objects.filter(
+                            payment_attempt=attempt,
+                            idempotency_key=f"late-final-capture:attempt:{attempt.pk}:{payment_id}",
+                        ).exists()
                     ):
                         return Response({"status": "ok", "reconciled": "already_refunded"})
                     if attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED):
