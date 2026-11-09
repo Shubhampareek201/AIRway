@@ -324,6 +324,96 @@ def settle_final_balance_attempt(
         return attempt
 
 
+def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order_id, payload):
+    """Refund a capture that arrives after its attempt was failed and wallet released."""
+    import razorpay
+    from django.conf import settings
+    from .models import RefundRecord
+
+    with transaction.atomic():
+        attempt = PaymentAttempt.objects.select_for_update().select_related(
+            "installment__financial_plan__booking",
+        ).get(pk=attempt_id)
+        if attempt.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        if attempt.status == PaymentAttempt.Status.CAPTURED:
+            return None
+        if attempt.status == PaymentAttempt.Status.REFUNDED:
+            return RefundRecord.objects.filter(payment_attempt=attempt).first()
+        if attempt.status != PaymentAttempt.Status.FAILED:
+            raise InstallmentPaymentError("Attempt is not in a failed state.")
+        booking = attempt.installment.financial_plan.booking
+        refund_amount = attempt.gateway_amount
+        record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"late-final-capture:attempt:{attempt.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment_attempt": attempt,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": refund_amount,
+                "platform_fee": ZERO,
+                "refund_amount": refund_amount,
+                "status": (
+                    RefundRecord.Status.REQUESTED if refund_amount > ZERO
+                    else RefundRecord.Status.PROCESSED
+                ),
+                "requested_at": timezone.now(),
+                "processed_at": timezone.now() if refund_amount == ZERO else None,
+                "provider_payload": {"reason": "Capture arrived after failed attempt and wallet release."},
+            },
+        )
+        attempt.provider_payment_id = razorpay_payment_id
+        attempt.status = (
+            PaymentAttempt.Status.REFUND_PENDING
+            if refund_amount > ZERO else PaymentAttempt.Status.REFUNDED
+        )
+        attempt.provider_payload = payload or {}
+        attempt.save(update_fields=["provider_payment_id", "status", "provider_payload", "updated_at"])
+
+    if not created or refund_amount <= ZERO:
+        return record
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": int(refund_amount * 100),
+                "notes": {
+                    "airway_refund_record_id": str(record.pk),
+                    "airway_attempt_id": str(attempt.pk),
+                    "reason": "Late capture after failed final-balance attempt",
+                },
+            },
+        )
+        provider_id = provider_refund.get("id")
+        if not provider_id:
+            raise ValueError("Razorpay did not return a refund ID.")
+        record.provider_refund_id = provider_id
+        if provider_refund.get("status") == "processed":
+            record.status = RefundRecord.Status.PROCESSED
+            record.processed_at = timezone.now()
+            attempt.status = PaymentAttempt.Status.REFUNDED
+        elif provider_refund.get("status") == "failed":
+            record.status = RefundRecord.Status.FAILED
+            attempt.status = PaymentAttempt.Status.FAILED
+        else:
+            record.status = RefundRecord.Status.PENDING
+        record.provider_payload = provider_refund
+    except Exception as exc:
+        logger.exception("Late final-payment refund failed for attempt %s", attempt.pk)
+        record.status = RefundRecord.Status.FAILED
+        record.provider_payload = {
+            **(record.provider_payload or {}),
+            "submission_error": str(exc)[:500],
+        }
+        attempt.status = PaymentAttempt.Status.FAILED
+    record.save(update_fields=[
+        "provider_refund_id", "status", "processed_at", "provider_payload", "updated_at",
+    ])
+    attempt.save(update_fields=["status", "updated_at"])
+    return record
+
+
 def mark_final_balance_attempt_failed(*, attempt_id, provider_order_id, payload=None):
     """Record a failed gateway attempt without changing service completion."""
     with transaction.atomic():
