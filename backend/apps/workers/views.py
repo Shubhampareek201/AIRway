@@ -1,4 +1,7 @@
 import logging
+import hashlib
+import hmac
+import secrets
 from datetime import timedelta
 from decimal import Decimal
 
@@ -12,15 +15,98 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.conf import settings
 
 from apps.accounts.models import Address, User
 from apps.catalog.models import Service
 from apps.core.models import Zone
-from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer
+from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, ServiceOTP
 from apps.notifications.models import Notification
 from apps.wallet.models import WalletTransaction
 
 logger = logging.getLogger(__name__)
+
+
+def _otp_digest(booking_id, purpose, code):
+    message = f"{booking_id}:{purpose}:{code}".encode()
+    return hmac.new(settings.SECRET_KEY.encode(), message, hashlib.sha256).hexdigest()
+
+
+def _issue_service_otp(booking, purpose):
+    now = timezone.now()
+    recent = ServiceOTP.objects.filter(
+        booking=booking, purpose=purpose, created_at__gte=now - timedelta(hours=1)
+    ).count()
+    if recent >= 5:
+        raise ValueError("OTP resend limit reached. Please contact AIRway support.")
+    latest = ServiceOTP.objects.filter(
+        booking=booking, purpose=purpose, verified_at__isnull=True
+    ).order_by("-created_at").first()
+    if latest and (now - latest.last_sent_at).total_seconds() < 60:
+        raise ValueError("Please wait 60 seconds before requesting another OTP.")
+    code = f"{secrets.randbelow(1000000):06d}"
+    ServiceOTP.objects.create(
+        booking=booking, purpose=purpose,
+        code_hash=_otp_digest(booking.pk, purpose, code),
+        expires_at=now + timedelta(minutes=10 if purpose == ServiceOTP.Purpose.START else 30),
+        last_sent_at=now,
+    )
+    Notification.objects.create(
+        user=booking.customer,
+        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+        title="Service verification OTP",
+        body=f"Your AIRway {purpose} OTP for booking #{booking.pk} is {code}. Share it only with your assigned professional when asked. It expires shortly.",
+        channel=Notification.Channel.IN_APP,
+        data={"booking_id": booking.pk, "otp_purpose": purpose},
+    )
+    return now
+
+
+def _verify_service_otp(booking, purpose, supplied_code):
+    if not isinstance(supplied_code, str) or len(supplied_code) != 6 or not supplied_code.isdigit():
+        return False, "Enter the 6-digit customer OTP."
+    with transaction.atomic():
+        otp = ServiceOTP.objects.select_for_update().filter(
+            booking=booking, purpose=purpose, verified_at__isnull=True
+        ).order_by("-created_at").first()
+        if otp is None or otp.expires_at <= timezone.now():
+            return False, "OTP is missing or expired. Request a new OTP from the customer."
+        if otp.attempts >= 5:
+            return False, "OTP attempt limit reached. Request a new OTP."
+        otp.attempts += 1
+        expected = _otp_digest(booking.pk, purpose, supplied_code)
+        if not hmac.compare_digest(otp.code_hash, expected):
+            otp.save(update_fields=["attempts", "updated_at"])
+            return False, "Incorrect OTP. Please check with the customer."
+        otp.verified_at = timezone.now()
+        otp.save(update_fields=["attempts", "verified_at", "updated_at"])
+        return True, ""
+
+
+class WorkerServiceOTPRequestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id, purpose):
+        if purpose not in (ServiceOTP.Purpose.START, ServiceOTP.Purpose.COMPLETE):
+            return Response({"detail": "Invalid OTP purpose."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        assign, booking = _get_assignment_and_booking(job_id, profile)
+        if not booking:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if purpose == ServiceOTP.Purpose.START and booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
+            return Response({"detail": "Start OTP is available only for an assigned job."}, status=status.HTTP_409_CONFLICT)
+        if purpose == ServiceOTP.Purpose.COMPLETE and booking.status != Booking.Status.IN_PROGRESS:
+            return Response({"detail": "Completion OTP is available only while service is in progress."}, status=status.HTTP_409_CONFLICT)
+        try:
+            _issue_service_otp(booking, purpose)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        return Response({"detail": "OTP notification sent to the customer in AIRway.", "expires_in_seconds": 600 if purpose == ServiceOTP.Purpose.START else 1800})
+
+
 
 from .models import (
     WorkerProfile,
