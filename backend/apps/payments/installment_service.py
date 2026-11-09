@@ -134,7 +134,11 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
             financial_plan=plan, kind=PaymentInstallment.Kind.FINAL_BALANCE,
         )
         if installment.status == PaymentInstallment.Status.PAID:
-            raise InstallmentPaymentError("The final balance is already paid.")
+            captured_attempt = PaymentAttempt.objects.filter(
+                installment=installment,
+                status=PaymentAttempt.Status.CAPTURED,
+            ).order_by("-captured_at", "-created_at").first()
+            return captured_attempt, True
         if installment.status not in (
             PaymentInstallment.Status.DUE, PaymentInstallment.Status.PARTIALLY_PAID,
             PaymentInstallment.Status.FAILED,
