@@ -416,6 +416,12 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     final outstanding = double.tryParse(summary['final_balance_outstanding']?.toString() ?? '0') ?? 0;
     final advance = double.tryParse(summary['advance_captured']?.toString() ?? '0') ?? 0;
     final finalPaid = summary['final_balance_status'] == 'paid';
+    final finalStatus = summary['final_balance_status']?.toString() ?? 'not_due';
+    final finalLabel = finalPaid
+        ? 'Paid'
+        : finalStatus == 'not_due'
+            ? 'Due after service completion'
+            : '₹${outstanding.toStringAsFixed(2)} outstanding';
     final isSplit = summary['requires_service_otp'] == true;
     if (!isSplit) return const SizedBox.shrink();
     return Container(
@@ -432,7 +438,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
           const Text('Payment summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
           const SizedBox(height: 10),
           _paymentRow('Booking advance received', '₹${advance.toStringAsFixed(2)}'),
-          _paymentRow('Final balance', finalPaid ? 'Paid' : '₹${outstanding.toStringAsFixed(2)} due'),
+          _paymentRow('Final balance', finalLabel),
           if (_status == 'completed' && outstanding > 0) ...[
             Text(
               _walletLoading ? 'Loading wallet balance…' : 'Available AIRway wallet: ₹${_walletBalance.toStringAsFixed(2)}',
