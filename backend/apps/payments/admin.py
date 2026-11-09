@@ -23,6 +23,9 @@ class PaymentAdmin(admin.ModelAdmin):
 
 
 class ReadOnlyLedgerAdmin(admin.ModelAdmin):
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_staff
+
     def has_add_permission(self, request):
         return False
 
@@ -72,10 +75,11 @@ class RefundRecordAdmin(ReadOnlyLedgerAdmin):
     list_display = (
         "id", "booking", "reason", "gross_amount", "platform_fee",
         "refund_amount", "gateway_refund_amount", "wallet_refund_amount",
-        "status", "requested_at", "processed_at",
+        "status", "provider_refund_id", "requested_at", "processed_at",
     )
-    list_filter = ("reason", "status")
-    search_fields = ("provider_refund_id", "idempotency_key", "booking__id")
+    list_filter = ("reason", "status", "requested_at")
+    search_fields = ("provider_refund_id", "provider_idempotency_key", "idempotency_key", "booking__id")
+    readonly_fields = tuple(field.name for field in RefundRecord._meta.fields)
 
 
 @admin.register(ServiceOTPChallenge)
