@@ -645,6 +645,41 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(calls[1].args[1], {"count": 100, "skip": 100})
 
     @patch("apps.payments.installment_service.razorpay.Client")
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_missing_refund_lookup_does_not_regress_concurrent_processed_webhook(self, client_class):
+        payment = Payment.objects.create(
+            booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+            razorpay_payment_id="pay_refund_race",
+        )
+        record = RefundRecord.objects.create(
+            booking=self.booking, payment=payment,
+            idempotency_key="refund-reconcile-webhook-race",
+            reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
+            gateway_refund_amount=Decimal("460.00"),
+            status=RefundRecord.Status.FAILED,
+        )
+
+        def provider_lookup(*args, **kwargs):
+            # Simulate refund.processed webhook committing after the
+            # reconciliation function's initial read and before its row lock.
+            RefundRecord.objects.filter(pk=record.pk).update(
+                status=RefundRecord.Status.PROCESSED,
+                provider_refund_id="rfnd_processed_during_lookup",
+                processed_at=timezone.now(),
+            )
+            return {"items": []}
+
+        client_class.return_value.payment.fetch_multiple_refund.side_effect = provider_lookup
+        reconciled = reconcile_refund_record(record_id=record.pk)
+
+        self.assertEqual(reconciled.status, RefundRecord.Status.PROCESSED)
+        self.assertEqual(
+            reconciled.provider_refund_id,
+            "rfnd_processed_during_lookup",
+        )
+
     def test_missing_provider_refund_stays_pending_without_resubmission(self, client_class):
         payment = Payment.objects.create(
             booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
