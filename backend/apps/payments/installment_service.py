@@ -493,7 +493,18 @@ def _persist_refund_submission(*, record_id, provider_refund=None, submission_er
         ):
             if provider_refund is not None:
                 provider_id = provider_refund.get("id")
-                if provider_id and not record.provider_refund_id:
+                if provider_id:
+                    owner = RefundRecord.objects.select_for_update().filter(
+                        provider_refund_id=provider_id,
+                    ).exclude(pk=record.pk).first()
+                    if owner is not None:
+                        raise InstallmentPaymentError(
+                            "Provider refund ID is already owned by another AIRway refund record."
+                        )
+                    if record.provider_refund_id and record.provider_refund_id != provider_id:
+                        raise InstallmentPaymentError(
+                            "Provider refund ID conflicts with the AIRway ledger."
+                        )
                     record.provider_refund_id = provider_id
                 provider_status = provider_refund.get("status")
                 if provider_status == "processed":
