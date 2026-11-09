@@ -24,9 +24,8 @@ from apps.payments.installment_service import (
     refund_duplicate_final_capture,
     refund_late_final_capture,
     settle_final_balance_attempt,
-    issue_service_otp,
-    verify_service_otp,
 )
+from apps.payments.lifecycle import issue_service_otp, verify_service_otp
 from apps.payments.models import (
     BookingFinancialPlan, PaymentAllocation, PaymentAttempt, PaymentInstallment,
 )
