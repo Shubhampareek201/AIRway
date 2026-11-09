@@ -52,22 +52,53 @@ class BookingViewSet(viewsets.ModelViewSet):
         return BookingDetailSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(
-            data=request.data,
-            context={"request": request, "defer_worker_dispatch": True},
-        )
-        serializer.is_valid(raise_exception=True)
-        booking = serializer.save()
+        """
+        Preserve the established booking API for existing app clients.
 
-        from apps.payments.lifecycle import create_financial_plan
-        financial_plan = create_financial_plan(booking)
-        detail = BookingDetailSerializer(booking, context={"request": request}).data
+        Split-payment checkout is an explicit, versioned entry point so older
+        clients continue to receive the existing dispatch-first behaviour
+        until their checkout UI has been migrated.
+        """
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], url_path="checkout")
+    def checkout(self, request):
+        """Create a booking enrolled in the 50/50 payment-first lifecycle."""
+        from apps.payments.lifecycle import (
+            PaymentLifecycleError,
+            create_financial_plan,
+        )
+
+        try:
+            with transaction.atomic():
+                serializer = BookingCreateSerializer(
+                    data=request.data,
+                    context={
+                        "request": request,
+                        "defer_worker_dispatch": True,
+                    },
+                )
+                serializer.is_valid(raise_exception=True)
+                booking = serializer.save()
+                financial_plan = create_financial_plan(booking)
+        except PaymentLifecycleError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        detail = BookingDetailSerializer(
+            booking, context={"request": request},
+        ).data
         detail.update({
-            "payment_required": True,
+            "payment_required": financial_plan.advance_due > 0,
             "advance_due": str(financial_plan.advance_due),
             "balance_due": str(financial_plan.balance_due),
             "dispatch": [],
-            "next_step": "Pay the booking advance. Worker offers will be created only after capture is verified.",
+            "next_step": (
+                "Pay the booking advance. Worker offers will be created only "
+                "after capture is verified."
+            ),
         })
         return Response(detail, status=status.HTTP_201_CREATED)
 
@@ -324,6 +355,28 @@ class BookingViewSet(viewsets.ModelViewSet):
                 {"detail": f"Booking cannot be confirmed in {booking.get_status_display()} state."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Split-payment bookings are dispatched only by the verified-capture
+        # handler. A manual confirm must never advance state or pretend offers
+        # were created while the advance installment remains unpaid.
+        from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+        financial_plan = BookingFinancialPlan.objects.filter(
+            booking=booking,
+        ).first()
+        if financial_plan:
+            advance = PaymentInstallment.objects.filter(
+                financial_plan=financial_plan,
+                kind=PaymentInstallment.Kind.ADVANCE,
+            ).first()
+            if (
+                advance is None
+                or advance.status != PaymentInstallment.Status.PAID
+                or advance.amount_captured < advance.amount_due
+            ):
+                return Response(
+                    {"detail": "Pay the booking advance before confirming or dispatching this booking."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         old_status = booking.status
         booking.status = Booking.Status.CONFIRMED
