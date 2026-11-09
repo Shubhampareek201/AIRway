@@ -661,6 +661,86 @@ class CustomerCheckoutView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class CustomerOrderCancelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, order_id):
+        reason = str(request.data.get("reason", ""))[:1000]
+        with transaction.atomic():
+            order = get_object_or_404(
+                Order.objects.select_for_update(), pk=order_id, customer=request.user
+            )
+            rows = list(
+                OrderItem.objects.select_related("booking").select_for_update().filter(order=order).order_by("id")
+            )
+            if not rows:
+                return Response({"detail": "Order has no service bookings."}, status=status.HTTP_400_BAD_REQUEST)
+            bookings = [row.booking for row in rows]
+            if order.status == Order.Status.CANCELLED:
+                return Response({"detail": "Order is already cancelled.", "status": order.status})
+            if any(not booking.can_cancel for booking in bookings):
+                return Response(
+                    {"detail": "This order cannot be cancelled after any service has started or completed. Contact AIRway support for assistance."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            now = timezone.now()
+            for booking in bookings:
+                old = booking.status
+                booking.status = Booking.Status.CANCELLED
+                booking.cancelled_at = now
+                booking.cancelled_by = request.user
+                booking.cancellation_reason = reason
+                booking.save(update_fields=[
+                    "status", "cancelled_at", "cancelled_by",
+                    "cancellation_reason", "updated_at",
+                ])
+                BookingStatusHistory.objects.create(
+                    booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
+                    changed_by=request.user, note=f"Customer cancelled complete parent order #{order.pk}. Reason: {reason}",
+                )
+                WorkerOffer.objects.filter(
+                    booking=booking, status=WorkerOffer.Status.PENDING
+                ).update(status=WorkerOffer.Status.EXPIRED, responded_at=now)
+            order.status = Order.Status.CANCELLED
+            order.save(update_fields=["status", "updated_at"])
+            Notification.objects.create(
+                user=request.user, type=Notification.Type.BOOKING_CANCELLED,
+                title="Order Cancelled", body=f"Your AIRway order #{order.pk} has been cancelled.",
+                channel=Notification.Channel.IN_APP, data={"order_id": order.pk},
+            )
+
+        refund_data = {"status": "not_required", "amount": "0.00", "platform_fee": "0.00"}
+        try:
+            from apps.bookings.services import customer_cancellation_cutoff
+            from apps.payments.models import Payment, PaymentAttempt, PaymentInstallment
+            from apps.payments.refunds import request_installment_refund
+            eligible = all(now <= customer_cancellation_cutoff(booking) for booking in bookings)
+            advance = PaymentInstallment.objects.filter(
+                payment__order=order, kind=PaymentInstallment.Kind.ADVANCE,
+                status=PaymentInstallment.Status.PAID,
+            ).first()
+            attempt = advance.attempts.filter(status=PaymentAttempt.Status.PAID).order_by("-paid_at").first() if advance else None
+            if not eligible:
+                refund_data = {
+                    "status": "not_eligible", "amount": "0.00", "platform_fee": "0.00",
+                    "detail": "The 10:00 PM previous-day refund cutoff has passed for at least one service.",
+                }
+            elif attempt:
+                refund = request_installment_refund(
+                    attempt=attempt, idempotency_key=f"customer_cancel_order_{order.pk}",
+                    reason="Customer cancelled the complete order before its refund cutoff.",
+                    deduct_platform_fee=True,
+                )
+                refund_data = {
+                    "status": refund.status, "amount": str(refund.gateway_amount),
+                    "platform_fee": str(refund.platform_fee), "refund_id": refund.pk,
+                }
+        except Exception:
+            logger.exception("Refund reconciliation failed for cancelled order %s", order.pk)
+            refund_data = {"status": "manual_review", "detail": "Your order is cancelled. AIRway support will reconcile the refund."}
+        return Response({"detail": "Order cancelled successfully.", "status": Order.Status.CANCELLED, "refund": refund_data})
+
+
 class CustomerOrderDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
