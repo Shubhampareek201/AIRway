@@ -28,6 +28,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
 
   Timer? _poller;
   final Razorpay _razorpay = Razorpay();
+  final TextEditingController _walletAmountController = TextEditingController(text: '0.00');
+  double _walletBalance = 0;
+  bool _walletLoading = true;
   bool _payingFinalBalance = false;
   Map<String, dynamic> _tracking = {};
   String _status = 'pending';
@@ -46,6 +49,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _onFinalPaymentError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _onExternalWallet);
     _refresh();
+    _loadWalletBalance();
     _poller = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted && !_terminal) _refresh(silent: true);
     });
@@ -55,6 +59,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   void dispose() {
     _poller?.cancel();
     _razorpay.clear();
+    _walletAmountController.dispose();
     super.dispose();
   }
 
@@ -132,13 +137,42 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     }
   }
 
+  double get _selectedWalletAmount =>
+      double.tryParse(_walletAmountController.text.trim()) ?? 0;
+
+  Future<void> _loadWalletBalance() async {
+    try {
+      final result = await BookingApi.request('/api/v1/wallet/balance/');
+      if (!mounted) return;
+      setState(() {
+        _walletBalance = double.tryParse(result['balance']?.toString() ?? '0') ?? 0;
+        _walletLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _walletLoading = false);
+    }
+  }
+
   Future<void> _payFinalBalance() async {
     if (_payingFinalBalance) return;
+    final summary = _tracking['payment_summary'] is Map
+        ? Map<String, dynamic>.from(_tracking['payment_summary'] as Map)
+        : <String, dynamic>{};
+    final outstanding = double.tryParse(summary['final_balance_outstanding']?.toString() ?? '0') ?? 0;
+    final walletAmount = _selectedWalletAmount;
+    if (!walletAmount.isFinite || walletAmount < 0 ||
+        walletAmount > _walletBalance || walletAmount > outstanding ||
+        (walletAmount * 100).roundToDouble() != walletAmount * 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a wallet amount within your available balance and final amount, with at most two decimal places.')),
+      );
+      return;
+    }
     setState(() => _payingFinalBalance = true);
     try {
       final payment = await PaymentApi.createFinalBalanceOrder(
         widget.bookingId,
-        walletAmount: '0.00',
+        walletAmount: walletAmount.toStringAsFixed(2),
       );
       if (payment['already_paid'] == true || payment['payment_status'] == 'captured') {
         await _refresh();
@@ -399,7 +433,24 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
           const SizedBox(height: 10),
           _paymentRow('Booking advance received', '₹${advance.toStringAsFixed(2)}'),
           _paymentRow('Final balance', finalPaid ? 'Paid' : '₹${outstanding.toStringAsFixed(2)} due'),
-          if (_status == 'completed' && outstanding > 0)
+          if (_status == 'completed' && outstanding > 0) ...[
+            Text(
+              _walletLoading ? 'Loading wallet balance…' : 'Available AIRway wallet: ₹${_walletBalance.toStringAsFixed(2)}',
+              style: const TextStyle(color: _muted, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _walletAmountController,
+              enabled: !_walletLoading && !_payingFinalBalance,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Use wallet amount (₹)',
+                hintText: '0.00',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -409,6 +460,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     : Text('Pay final balance ₹${outstanding.toStringAsFixed(2)}'),
               ),
             ),
+          ],
           if (_status == 'completed' && !finalPaid && outstanding > 0)
             const Padding(
               padding: EdgeInsets.only(top: 8),
