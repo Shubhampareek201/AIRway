@@ -722,6 +722,11 @@ class PaymentWebhookView(APIView):
                     attempt.failed_at = timezone.now()
                     attempt.raw_response = payload
                     attempt.save(update_fields=["status", "failed_at", "raw_response", "updated_at"])
+                    try:
+                        from .installments import release_installment_wallet
+                        release_installment_wallet(attempt, "Razorpay payment failed or was cancelled")
+                    except Exception:
+                        logger.exception("Could not release wallet reservation for attempt %s", attempt.pk)
                 return Response({"status": "ok"})
 
         # Only a captured event may settle a booking or parent order.
