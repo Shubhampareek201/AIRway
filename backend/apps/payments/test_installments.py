@@ -14,6 +14,7 @@ from apps.accounts.models import Address, User
 from apps.bookings.models import Booking, BookingAssignment, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
+from apps.notifications.models import Notification
 from apps.workers.models import WorkerProfile
 from apps.payments.installment_service import (
     InstallmentPaymentError,
@@ -373,6 +374,86 @@ class FinalBalanceAttemptTests(TestCase):
         self.final.refresh_from_db()
         self.assertEqual(attempt.status, PaymentAttempt.Status.CAPTURED)
         self.assertEqual(self.final.amount_captured, Decimal("500.00"))
+
+    def test_wallet_overdraft_does_not_create_attempt_or_change_balance(self):
+        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("10.00"))
+        with self.assertRaises(InstallmentPaymentError):
+            create_final_balance_attempt(
+                booking_id=self.booking.pk, customer=self.customer,
+                wallet_amount="20.00",
+            )
+        wallet.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertEqual(wallet.balance, Decimal("10.00"))
+        self.assertEqual(wallet.pending_balance, Decimal("0.00"))
+        self.assertEqual(PaymentAttempt.objects.filter(installment=self.final).count(), 0)
+        self.assertEqual(self.final.status, PaymentInstallment.Status.DUE)
+
+    def test_completion_notification_is_created_when_final_balance_becomes_due(self):
+        worker_user = User.objects.create_user(
+            phone="+919876540003", password="worker-password",
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED,
+        )
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.completed_at = None
+        self.booking.save(update_fields=["status", "completed_at", "updated_at"])
+        BookingAssignment.objects.create(
+            booking=self.booking, worker=worker, accepted_at=timezone.now(),
+        )
+        _, start_code = issue_service_otp(
+            booking_id=self.booking.pk, purpose="start", requested_by=self.customer,
+        )
+        verify_service_otp(
+            booking_id=self.booking.pk, purpose="start",
+            code=start_code, worker_user=worker_user,
+        )
+        _, completion_code = issue_service_otp(
+            booking_id=self.booking.pk, purpose="completion", requested_by=self.customer,
+        )
+        verify_service_otp(
+            booking_id=self.booking.pk, purpose="completion",
+            code=completion_code, worker_user=worker_user,
+        )
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer,
+            type=Notification.Type.FINAL_PAYMENT_DUE,
+            data__booking_id=self.booking.pk,
+        ).exists())
+
+    def test_zero_balance_is_closed_by_completion_without_gateway_attempt(self):
+        booking, plan, final = self._create_completed_booking("0.01")
+        worker_user = User.objects.create_user(
+            phone="+919876540004", password="worker-password",
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED,
+        )
+        booking.status = Booking.Status.ASSIGNED
+        booking.completed_at = None
+        booking.save(update_fields=["status", "completed_at", "updated_at"])
+        BookingAssignment.objects.create(
+            booking=booking, worker=worker, accepted_at=timezone.now(),
+        )
+        _, start_code = issue_service_otp(
+            booking_id=booking.pk, purpose="start", requested_by=self.customer,
+        )
+        verify_service_otp(
+            booking_id=booking.pk, purpose="start",
+            code=start_code, worker_user=worker_user,
+        )
+        _, completion_code = issue_service_otp(
+            booking_id=booking.pk, purpose="completion", requested_by=self.customer,
+        )
+        verify_service_otp(
+            booking_id=booking.pk, purpose="completion",
+            code=completion_code, worker_user=worker_user,
+        )
+        final.refresh_from_db()
+        self.assertEqual(final.amount_due, Decimal("0.00"))
+        self.assertEqual(final.status, PaymentInstallment.Status.PAID)
+        self.assertEqual(PaymentAttempt.objects.filter(installment=final).count(), 0)
 
     def test_parent_order_completes_only_after_every_line_balance_is_paid(self):
         order = Order.objects.create(
