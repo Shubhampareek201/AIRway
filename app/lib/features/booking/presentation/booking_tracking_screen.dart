@@ -159,10 +159,20 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
         ? Map<String, dynamic>.from(_tracking['payment_summary'] as Map)
         : <String, dynamic>{};
     final outstanding = double.tryParse(summary['final_balance_outstanding']?.toString() ?? '0') ?? 0;
+    final rawWalletAmount = _walletAmountController.text.trim();
+    final walletParts = rawWalletAmount.isEmpty ? <String>['0'] : rawWalletAmount.split('.');
+    final walletFormatValid = walletParts.length <= 2 &&
+        walletParts.first.isNotEmpty &&
+        walletParts.first.codeUnits.every((unit) => unit >= 48 && unit <= 57) &&
+        (walletParts.length == 1 ||
+            (walletParts[1].length <= 2 &&
+                walletParts[1].codeUnits.every((unit) => unit >= 48 && unit <= 57)));
     final walletAmount = _selectedWalletAmount;
-    if (!walletAmount.isFinite || walletAmount < 0 ||
-        walletAmount > _walletBalance || walletAmount > outstanding ||
-        (walletAmount * 100).roundToDouble() != walletAmount * 100) {
+    final walletCents = (walletAmount * 100).round();
+    final walletBalanceCents = (_walletBalance * 100).round();
+    final outstandingCents = (outstanding * 100).round();
+    if (!walletFormatValid || !walletAmount.isFinite || walletCents < 0 ||
+        walletCents > walletBalanceCents || walletCents > outstandingCents) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a wallet amount within your available balance and final amount, with at most two decimal places.')),
       );
