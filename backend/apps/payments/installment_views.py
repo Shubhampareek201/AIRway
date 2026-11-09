@@ -13,9 +13,10 @@ from .installment_service import (
     InstallmentPaymentError,
     create_final_balance_attempt,
     refund_duplicate_final_capture,
+    refund_late_final_capture,
     settle_final_balance_attempt,
 )
-from .models import PaymentAttempt
+from .models import PaymentAttempt, RefundRecord
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,35 @@ class VerifyInstallmentPaymentView(APIView):
             return Response({"detail": "Captured amount mismatch."}, status=status.HTTP_400_BAD_REQUEST)
         if (provider_payment.get("currency") or "").upper() != attempt.currency:
             return Response({"detail": "Captured currency mismatch."}, status=status.HTTP_400_BAD_REQUEST)
+        if attempt.status in (
+            PaymentAttempt.Status.FAILED,
+            PaymentAttempt.Status.REFUND_PENDING,
+            PaymentAttempt.Status.REFUNDED,
+        ):
+            already_requested = RefundRecord.objects.filter(
+                payment_attempt=attempt,
+                idempotency_key=f"late-final-capture:attempt:{attempt.pk}:{payment_id}",
+            ).first()
+            if already_requested:
+                return Response({
+                    "detail": "This late capture is already in refund reconciliation.",
+                    "status": "late_capture_refund",
+                    "refund_status": already_requested.status,
+                }, status=status.HTTP_200_OK)
+            try:
+                refund_record = refund_late_final_capture(
+                    attempt_id=attempt.pk,
+                    razorpay_payment_id=payment_id,
+                    provider_order_id=order_id,
+                    payload=provider_payment,
+                )
+            except InstallmentPaymentError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+            return Response({
+                "detail": "This capture arrived after its payment attempt failed and has been sent for refund reconciliation.",
+                "status": "late_capture_refund",
+                "refund_status": refund_record.status if refund_record else "already_reconciled",
+            }, status=status.HTTP_200_OK)
         if (
             attempt.status == PaymentAttempt.Status.CAPTURED
             and attempt.provider_payment_id != payment_id
