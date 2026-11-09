@@ -342,6 +342,48 @@ def settle_final_balance_attempt(
         return attempt
 
 
+def _persist_refund_submission(*, record_id, provider_refund=None, submission_error=None, attempt_id=None):
+    """Persist provider response without regressing a webhook-confirmed terminal state."""
+    from .models import RefundRecord
+
+    with transaction.atomic():
+        record = RefundRecord.objects.select_for_update().get(pk=record_id)
+        if record.status not in (RefundRecord.Status.PROCESSED, RefundRecord.Status.FAILED):
+            if provider_refund is not None:
+                provider_id = provider_refund.get("id")
+                if provider_id and not record.provider_refund_id:
+                    record.provider_refund_id = provider_id
+                provider_status = provider_refund.get("status")
+                if provider_status == "processed":
+                    record.status = RefundRecord.Status.PROCESSED
+                    record.processed_at = timezone.now()
+                elif provider_status == "failed":
+                    record.status = RefundRecord.Status.FAILED
+                else:
+                    record.status = RefundRecord.Status.PENDING
+                record.provider_payload = provider_refund
+            elif submission_error is not None:
+                record.status = RefundRecord.Status.FAILED
+                record.provider_payload = {
+                    **(record.provider_payload or {}),
+                    "submission_error": str(submission_error)[:500],
+                }
+            record.save(update_fields=[
+                "provider_refund_id", "status", "processed_at",
+                "provider_payload", "updated_at",
+            ])
+        if attempt_id is not None:
+            attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
+            if record.status == RefundRecord.Status.PROCESSED:
+                attempt.status = PaymentAttempt.Status.REFUNDED
+            elif record.status == RefundRecord.Status.FAILED:
+                attempt.status = PaymentAttempt.Status.FAILED
+            else:
+                attempt.status = PaymentAttempt.Status.REFUND_PENDING
+            attempt.save(update_fields=["status", "updated_at"])
+        return record
+
+
 def refund_duplicate_final_capture(*, attempt_id, razorpay_payment_id, provider_order_id, payload):
     """Refund a second distinct capture against an already-settled installment."""
     import razorpay
@@ -393,29 +435,16 @@ def refund_duplicate_final_capture(*, attempt_id, razorpay_payment_id, provider_
                 },
             },
         )
-        provider_id = provider_refund.get("id")
-        if not provider_id:
+        if not provider_refund.get("id"):
             raise ValueError("Razorpay did not return a refund ID.")
-        record.provider_refund_id = provider_id
-        if provider_refund.get("status") == "processed":
-            record.status = RefundRecord.Status.PROCESSED
-            record.processed_at = timezone.now()
-        elif provider_refund.get("status") == "failed":
-            record.status = RefundRecord.Status.FAILED
-        else:
-            record.status = RefundRecord.Status.PENDING
-        record.provider_payload = provider_refund
+        return _persist_refund_submission(
+            record_id=record.pk, provider_refund=provider_refund,
+        )
     except Exception as exc:
         logger.exception("Duplicate final-payment refund failed for attempt %s", attempt.pk)
-        record.status = RefundRecord.Status.FAILED
-        record.provider_payload = {
-            **(record.provider_payload or {}),
-            "submission_error": str(exc)[:500],
-        }
-    record.save(update_fields=[
-        "provider_refund_id", "status", "processed_at", "provider_payload", "updated_at",
-    ])
-    return record
+        return _persist_refund_submission(
+            record_id=record.pk, submission_error=exc,
+        )
 
 
 def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order_id, payload):
@@ -479,33 +508,20 @@ def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order
                 },
             },
         )
-        provider_id = provider_refund.get("id")
-        if not provider_id:
+        if not provider_refund.get("id"):
             raise ValueError("Razorpay did not return a refund ID.")
-        record.provider_refund_id = provider_id
-        if provider_refund.get("status") == "processed":
-            record.status = RefundRecord.Status.PROCESSED
-            record.processed_at = timezone.now()
-            attempt.status = PaymentAttempt.Status.REFUNDED
-        elif provider_refund.get("status") == "failed":
-            record.status = RefundRecord.Status.FAILED
-            attempt.status = PaymentAttempt.Status.FAILED
-        else:
-            record.status = RefundRecord.Status.PENDING
-        record.provider_payload = provider_refund
+        return _persist_refund_submission(
+            record_id=record.pk,
+            provider_refund=provider_refund,
+            attempt_id=attempt.pk,
+        )
     except Exception as exc:
         logger.exception("Late final-payment refund failed for attempt %s", attempt.pk)
-        record.status = RefundRecord.Status.FAILED
-        record.provider_payload = {
-            **(record.provider_payload or {}),
-            "submission_error": str(exc)[:500],
-        }
-        attempt.status = PaymentAttempt.Status.FAILED
-    record.save(update_fields=[
-        "provider_refund_id", "status", "processed_at", "provider_payload", "updated_at",
-    ])
-    attempt.save(update_fields=["status", "updated_at"])
-    return record
+        return _persist_refund_submission(
+            record_id=record.pk,
+            submission_error=exc,
+            attempt_id=attempt.pk,
+        )
 
 
 def mark_final_balance_attempt_failed(*, attempt_id, provider_order_id, payload=None):
