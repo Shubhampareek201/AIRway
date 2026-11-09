@@ -139,6 +139,19 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
                 status=PaymentAttempt.Status.CAPTURED,
             ).order_by("-captured_at", "-created_at").first()
             return captured_attempt, True
+        active = PaymentAttempt.objects.select_for_update().filter(
+            installment=installment,
+            status__in=(PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED),
+        ).order_by("-created_at").first()
+        if active:
+            if active.gateway_amount > ZERO and not active.provider_order_id:
+                raise InstallmentPaymentError("The payment order is still being initialized. Refresh and retry shortly.")
+            if active.amount != outstanding or active.wallet_amount != wallet_requested:
+                raise InstallmentPaymentError(
+                    "A payment attempt is already active with different payment details. Complete or wait for it before changing the wallet amount."
+                )
+            return active, True
+
         if installment.status not in (
             PaymentInstallment.Status.DUE, PaymentInstallment.Status.PARTIALLY_PAID,
             PaymentInstallment.Status.FAILED,
@@ -164,19 +177,6 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
             raise InstallmentPaymentError("Wallet amount cannot exceed the outstanding final balance.")
         if wallet_requested > ZERO and plan.currency != "INR":
             raise InstallmentPaymentError("AIRway wallet can only be used for INR payments.")
-
-        active = PaymentAttempt.objects.select_for_update().filter(
-            installment=installment,
-            status__in=(PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED),
-        ).order_by("-created_at").first()
-        if active:
-            if active.gateway_amount > ZERO and not active.provider_order_id:
-                raise InstallmentPaymentError("The payment order is still being initialized. Refresh and retry shortly.")
-            if active.amount != outstanding or active.wallet_amount != wallet_requested:
-                raise InstallmentPaymentError(
-                    "A payment attempt is already active with different payment details. Complete or wait for it before changing the wallet amount."
-                )
-            return active, True
 
         gateway_amount = outstanding - wallet_requested
         attempt = PaymentAttempt.objects.create(
