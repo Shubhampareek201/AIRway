@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,6 +23,9 @@ from .services import check_slot_availability, check_service_available, create_w
 from apps.notifications.models import Notification
 from apps.accounts.models import Address
 from apps.catalog.audience import validate_beauty_audience
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -58,45 +62,75 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
-        from apps.bookings.models import WorkerOffer
+        with transaction.atomic():
+            booking = get_object_or_404(
+                Booking.objects.select_for_update().filter(customer=request.user),
+                pk=pk,
+            )
+            if hasattr(booking, "order_item"):
+                return Response(
+                    {"detail": "This booking belongs to a parent order. Cancel the complete order so its payment and refund can be handled consistently."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            serializer = BookingCancelSerializer(
+                data=request.data, context={"booking": booking}
+            )
+            serializer.is_valid(raise_exception=True)
+            reason = serializer.validated_data.get("reason", "")
+            old_status = booking.status
+            now = timezone.now()
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = now
+            booking.cancellation_reason = reason
+            booking.cancelled_by = request.user
+            booking.save(update_fields=[
+                "status", "cancelled_at", "cancellation_reason", "cancelled_by", "updated_at"
+            ])
+            BookingStatusHistory.objects.create(
+                booking=booking, from_status=old_status,
+                to_status=Booking.Status.CANCELLED, changed_by=request.user,
+                note=f"Customer cancelled before the policy cutoff. Reason: {reason}",
+            )
+            WorkerOffer.objects.filter(
+                booking=booking, status=WorkerOffer.Status.PENDING
+            ).update(status=WorkerOffer.Status.EXPIRED, responded_at=now)
+            Notification.objects.create(
+                user=request.user, type=Notification.Type.BOOKING_CANCELLED,
+                title="Booking Cancelled", body="Your booking has been cancelled.",
+                channel=Notification.Channel.IN_APP, data={"booking_id": booking.id},
+            )
 
-        booking = self.get_object()
-        serializer = BookingCancelSerializer(data=request.data, context={"booking": booking})
-        serializer.is_valid(raise_exception=True)
+        refund_data = {"status": "not_required", "amount": "0.00", "platform_fee": "0.00"}
+        try:
+            from apps.payments.models import PaymentAttempt, PaymentInstallment
+            from apps.payments.refunds import request_installment_refund
+            advance = PaymentInstallment.objects.filter(
+                payment__booking=booking, kind=PaymentInstallment.Kind.ADVANCE,
+                status=PaymentInstallment.Status.PAID,
+            ).first()
+            attempt = advance.attempts.filter(status=PaymentAttempt.Status.PAID).order_by("-paid_at").first() if advance else None
+            if attempt:
+                refund = request_installment_refund(
+                    attempt=attempt,
+                    idempotency_key=f"customer_cancel_booking_{booking.pk}",
+                    reason="Customer cancelled before the AIRway cancellation cutoff.",
+                    deduct_platform_fee=True,
+                )
+                refund_data = {
+                    "status": refund.status,
+                    "amount": str(refund.gateway_amount),
+                    "platform_fee": str(refund.platform_fee),
+                    "refund_id": refund.pk,
+                }
+        except Exception:
+            logger.exception("Refund request could not be completed for cancelled booking %s", booking.pk)
+            refund_data = {"status": "manual_review", "detail": "Your booking is cancelled. AIRway support will reconcile the refund."}
 
-        reason = serializer.validated_data.get("reason", "")
-        old_status = booking.status
-
-        booking.status = Booking.Status.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.cancellation_reason = reason
-        booking.cancelled_by = request.user
-        booking.save()
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.CANCELLED,
-            changed_by=request.user,
-            note=f"Cancelled by customer. Reason: {reason}",
-        )
-
-        # Cancel all pending worker offers for this booking
-        WorkerOffer.objects.filter(booking=booking, status=WorkerOffer.Status.PENDING).update(
-            status=WorkerOffer.Status.EXPIRED,
-            responded_at=timezone.now(),
-        )
-
-        Notification.objects.create(
-            user=request.user,
-            type=Notification.Type.BOOKING_CANCELLED,
-            title="Booking Cancelled",
-            body="Your booking has been cancelled.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
-
-        return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
+        return Response({
+            "detail": "Booking cancelled successfully.",
+            "status": Booking.Status.CANCELLED,
+            "refund": refund_data,
+        })
 
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm_booking(self, request, pk=None):
