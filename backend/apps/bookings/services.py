@@ -4,7 +4,7 @@ Ensures no overlapping bookings and handles hold logic.
 """
 from django.db import transaction
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime, time
 
 from apps.bookings.models import Booking
 from apps.catalog.models import Service
@@ -246,3 +246,18 @@ def create_worker_offers_for_booking(booking: Booking) -> list:
     from apps.bookings.dispatcher import DispatcherService
 
     return DispatcherService.dispatch_offers(booking)
+
+
+def customer_cancellation_cutoff(booking):
+    """10 PM local time on the calendar day before the scheduled service."""
+    service_day = timezone.localtime(booking.scheduled_at).date()
+    cutoff_day = service_day - timedelta(days=1)
+    return timezone.make_aware(
+        datetime.combine(cutoff_day, time(hour=22, minute=0)),
+        timezone.get_current_timezone(),
+    )
+
+
+def customer_cancellation_allowed(booking, now=None):
+    now = now or timezone.now()
+    return booking.can_cancel and now <= customer_cancellation_cutoff(booking)
