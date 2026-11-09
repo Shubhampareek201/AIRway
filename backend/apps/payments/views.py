@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.db import transaction, IntegrityError
 
 from apps.bookings.models import Booking, Order
-from .models import Payment
+from .models import Payment, BookingFinancialPlan
 
 logger = logging.getLogger(__name__)
 
