@@ -234,6 +234,9 @@ class RefundRecord(TimeStampedModel):
     gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
     platform_fee = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     refund_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    gateway_refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    wallet_refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    wallet_refunded_at = models.DateTimeField(null=True, blank=True)
     provider_refund_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.REQUESTED, db_index=True)
     requested_at = models.DateTimeField(null=True, blank=True)
@@ -246,6 +249,12 @@ class RefundRecord(TimeStampedModel):
             models.CheckConstraint(condition=Q(gross_amount__gte=0), name="refund_gross_nonneg"),
             models.CheckConstraint(condition=Q(platform_fee__gte=0), name="refund_fee_nonneg"),
             models.CheckConstraint(condition=Q(refund_amount__gte=0), name="refund_amt_nonneg"),
+            models.CheckConstraint(condition=Q(gateway_refund_amount__gte=0), name="refund_gateway_nonneg"),
+            models.CheckConstraint(condition=Q(wallet_refund_amount__gte=0), name="refund_wallet_nonneg"),
+            models.CheckConstraint(
+                condition=Q(refund_amount=models.F("gateway_refund_amount") + models.F("wallet_refund_amount")),
+                name="refund_sources_sum",
+            ),
             models.CheckConstraint(
                 condition=Q(refund_amount__lte=models.F("gross_amount")),
                 name="refund_amt_lte_gross",
