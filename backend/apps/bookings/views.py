@@ -513,6 +513,45 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Every worker-facing start route must enforce the same customer OTP
+        # gate for split-payment bookings. Do not allow this legacy booking
+        # action to bypass WorkerJobStartView's verification.
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking_id=booking.pk).exists():
+            if not assignment.accepted_at:
+                return Response(
+                    {"detail": "Accept the job before starting work."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer start OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="start",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            assignment.refresh_from_db()
+            return Response({
+                "detail": "Job started after OTP verification.",
+                "status": booking.status,
+                "started_at": assignment.started_at,
+            })
+
+        if not assignment.accepted_at:
+            return Response(
+                {"detail": "Accept the job before starting work."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         old_status = booking.status
         booking.status = Booking.Status.IN_PROGRESS
         booking.save()
@@ -580,6 +619,33 @@ class BookingViewSet(viewsets.ModelViewSet):
                 {"detail": f"Cannot complete job in {booking.get_status_display()} state."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Enforce completion OTP on this alternate route as well; otherwise a
+        # worker could bypass the split-payment completion/final-balance gate.
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking_id=booking.pk).exists():
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer completion OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="completion",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            assignment.refresh_from_db()
+            return Response({
+                "detail": "Job completed after OTP verification.",
+                "status": booking.status,
+                "completed_at": assignment.completed_at,
+            })
 
         old_status = booking.status
         booking.status = Booking.Status.COMPLETED
