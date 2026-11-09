@@ -314,3 +314,84 @@ class CreateOrderView(APIView):
         if already_existed:
             response_data["payment_exists"] = True
         return Response(response_data)
+
+
+
+class CreateInstallmentOrderView(APIView):
+    """Create the advance or completion-balance Razorpay order from server state."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .installments import create_installment_gateway_order
+        from .models import PaymentInstallment
+
+        order_id = request.data.get("order_id")
+        booking_id = request.data.get("booking_id")
+        if bool(order_id) == bool(booking_id):
+            return Response(
+                {"detail": "Provide exactly one of order_id or booking_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            if order_id:
+                target = get_object_or_404(Order, pk=order_id, customer=request.user)
+                payment, advance, balance = None, None, None
+                from .installments import get_or_create_aggregate_payment, ensure_installments
+                payment = get_or_create_aggregate_payment(order=target, customer=request.user)
+                advance, balance = ensure_installments(payment)
+                kind = (
+                    PaymentInstallment.Kind.ADVANCE
+                    if advance.status != PaymentInstallment.Status.PAID
+                    else PaymentInstallment.Kind.BALANCE
+                )
+                payment, installment, attempt, existed = create_installment_gateway_order(
+                    order=target, customer=request.user, kind=kind,
+                )
+                target_id = target.pk
+            else:
+                target = get_object_or_404(Booking, pk=booking_id, customer=request.user)
+                from .installments import get_or_create_aggregate_payment, ensure_installments
+                payment = get_or_create_aggregate_payment(booking=target, customer=request.user)
+                advance, balance = ensure_installments(payment)
+                kind = (
+                    PaymentInstallment.Kind.ADVANCE
+                    if advance.status != PaymentInstallment.Status.PAID
+                    else PaymentInstallment.Kind.BALANCE
+                )
+                payment, installment, attempt, existed = create_installment_gateway_order(
+                    booking=target, customer=request.user, kind=kind,
+                )
+                target_id = target.pk
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Could not create AIRway installment order")
+            return Response(
+                {"detail": "Unable to initialize this payment. Please retry."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if installment.status == PaymentInstallment.Status.PAID:
+            return Response({
+                "already_paid": True,
+                "installment": installment.kind,
+                "installment_status": installment.status,
+                "payment_id": payment.pk,
+                "total_amount": str(payment.amount),
+            })
+        if attempt is None or not attempt.razorpay_order_id:
+            return Response({"detail": "Payment attempt could not be initialized."}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            "order_id": attempt.razorpay_order_id,
+            "amount": int(attempt.amount * 100),
+            "currency": "INR",
+            "key_id": settings.RAZORPAY_KEY_ID,
+            "payment_id": payment.pk,
+            "attempt_id": attempt.pk,
+            "target_id": target_id,
+            "installment": installment.kind,
+            "installment_amount": str(installment.amount),
+            "total_amount": str(payment.amount),
+            "payment_exists": existed,
+        })
