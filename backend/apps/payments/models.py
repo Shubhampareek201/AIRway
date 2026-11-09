@@ -98,9 +98,9 @@ class PaymentInstallment(TimeStampedModel):
     class Meta:
         ordering = ["created_at"]
         constraints = [
-            models.UniqueConstraint(fields=["payment", "kind"], name="uniq_payment_installment_kind"),
-            models.CheckConstraint(condition=models.Q(amount__gt=0), name="payment_installment_amount_positive"),
-            models.CheckConstraint(condition=models.Q(wallet_amount__gte=0), name="payment_installment_wallet_nonnegative"),
+            models.UniqueConstraint(fields=["payment", "kind"], name="uniq_pay_inst_kind"),
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="pay_inst_amt_pos"),
+            models.CheckConstraint(condition=models.Q(wallet_amount__gte=0), name="pay_inst_wallet_nonneg"),
         ]
 
     def __str__(self):
@@ -137,9 +137,9 @@ class PaymentAttempt(TimeStampedModel):
     class Meta:
         ordering = ["attempt_number"]
         constraints = [
-            models.UniqueConstraint(fields=["installment", "attempt_number"], name="uniq_installment_attempt_number"),
-            models.CheckConstraint(condition=models.Q(amount__gte=0), name="payment_attempt_amount_nonnegative"),
-            models.CheckConstraint(condition=models.Q(wallet_amount__gte=0), name="payment_attempt_wallet_nonnegative"),
+            models.UniqueConstraint(fields=["installment", "attempt_number"], name="uniq_inst_attempt_no"),
+            models.CheckConstraint(condition=models.Q(amount__gte=0), name="pay_attempt_amt_nonneg"),
+            models.CheckConstraint(condition=models.Q(wallet_amount__gte=0), name="pay_attempt_wallet_nonneg"),
         ]
 
     def __str__(self):
@@ -168,9 +168,9 @@ class PaymentRefund(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         constraints = [
-            models.CheckConstraint(condition=models.Q(gateway_amount__gte=0), name="payment_refund_gateway_nonnegative"),
-            models.CheckConstraint(condition=models.Q(wallet_amount__gte=0), name="payment_refund_wallet_nonnegative"),
-            models.CheckConstraint(condition=models.Q(platform_fee__gte=0), name="payment_refund_fee_nonnegative"),
+            models.CheckConstraint(condition=models.Q(gateway_amount__gte=0), name="pay_refund_gateway_nonneg"),
+            models.CheckConstraint(condition=models.Q(wallet_amount__gte=0), name="pay_refund_wallet_nonneg"),
+            models.CheckConstraint(condition=models.Q(platform_fee__gte=0), name="pay_refund_fee_nonneg"),
         ]
 
     def __str__(self):
