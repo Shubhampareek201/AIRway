@@ -14,6 +14,7 @@ class Notification(TimeStampedModel):
         BOOKING_CANCELLED = "booking_cancelled", "Booking Cancelled"
         BOOKING_OFFERS_EXPIRED = "booking_offers_expired", "Offers Expired"
         PAYMENT_SUCCESS = "payment_success", "Payment Success"
+        FINAL_PAYMENT_DUE = "final_payment_due", "Final Payment Due"
         PAYMENT_TIMEOUT = "payment_timeout", "Payment Timeout"
         WALLET_CREDIT = "wallet_credit", "Wallet Credited"
         REFERRAL_REWARD = "referral_reward", "Referral Reward"
