@@ -83,6 +83,44 @@ class BookingAPITestMixin:
             )
         return address
 
+    def _mark_advance_paid(self, booking_id):
+        from apps.bookings.models import Booking
+        from apps.payments.models import Payment, PaymentInstallment
+        booking = Booking.objects.get(pk=booking_id)
+        payment, _ = Payment.objects.get_or_create(
+            booking=booking,
+            defaults={
+                "customer": booking.customer,
+                "amount": booking.total_amount,
+                "method": Payment.Method.RAZORPAY,
+                "status": Payment.Status.PARTIALLY_PAID,
+            },
+        )
+        advance_amount = (payment.amount / 2).quantize(Decimal("0.01"))
+        PaymentInstallment.objects.get_or_create(
+            payment=payment,
+            kind=PaymentInstallment.Kind.ADVANCE,
+            defaults={
+                "amount": advance_amount,
+                "status": PaymentInstallment.Status.PAID,
+                "paid_at": timezone.now(),
+            },
+        )
+        return payment
+
+    def _request_worker_otp(self, worker_client, assignment_id, purpose):
+        response = worker_client.post(
+            f"/api/v1/workers/jobs/{assignment_id}/otp/{purpose}/",
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        notification = Notification.objects.filter(
+            user=self.customer,
+            title="Service verification OTP",
+        ).order_by("-created_at").first()
+        self.assertIsNotNone(notification)
+        return notification.body.split(" is ")[-1].split(".")[0]
+
 
 class BookingCreateTest(BookingAPITestMixin, TestCase):
     """Test booking creation endpoint."""
