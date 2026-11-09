@@ -435,6 +435,60 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     status_history = BookingStatusHistorySerializer(many=True, read_only=True)
     assignment = BookingAssignmentSerializer(read_only=True)
     can_cancel = serializers.BooleanField(read_only=True)
+    payment_status = serializers.SerializerMethodField()
+    advance_amount = serializers.SerializerMethodField()
+    balance_amount = serializers.SerializerMethodField()
+    advance_status = serializers.SerializerMethodField()
+    balance_status = serializers.SerializerMethodField()
+    can_pay_advance = serializers.SerializerMethodField()
+    can_pay_balance = serializers.SerializerMethodField()
+
+    def _installments(self, obj):
+        from apps.payments.models import Payment, PaymentInstallment
+        payment = Payment.objects.filter(booking=obj).first()
+        if not payment:
+            return None, None
+        rows = {row.kind: row for row in payment.installments.all()}
+        return rows.get(PaymentInstallment.Kind.ADVANCE), rows.get(PaymentInstallment.Kind.BALANCE)
+
+    def get_payment_status(self, obj):
+        from apps.payments.models import Payment
+        payment = Payment.objects.filter(booking=obj).first()
+        return payment.status if payment else Payment.Status.PENDING
+
+    def get_advance_amount(self, obj):
+        from decimal import Decimal, ROUND_HALF_UP
+        total = Decimal(str(obj.total_amount))
+        return str((total / Decimal("2")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    def get_balance_amount(self, obj):
+        from decimal import Decimal, ROUND_HALF_UP
+        total = Decimal(str(obj.total_amount))
+        advance = (total / Decimal("2")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return str(total - advance)
+
+    def get_advance_status(self, obj):
+        advance, _ = self._installments(obj)
+        return advance.status if advance else "pending"
+
+    def get_balance_status(self, obj):
+        _, balance = self._installments(obj)
+        return balance.status if balance else "pending"
+
+    def get_can_pay_advance(self, obj):
+        advance, _ = self._installments(obj)
+        return (
+            obj.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED, Booking.Status.ASSIGNED)
+            and (advance is None or advance.status != "paid")
+        )
+
+    def get_can_pay_balance(self, obj):
+        advance, balance = self._installments(obj)
+        return (
+            obj.status == Booking.Status.COMPLETED
+            and advance is not None and advance.status == "paid"
+            and (balance is None or balance.status != "paid")
+        )
 
     class Meta:
         model = Booking
@@ -445,6 +499,8 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "address_detail", "pricing_snapshot", "notes", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
             "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
+            "payment_status", "advance_amount", "balance_amount",
+            "advance_status", "balance_status", "can_pay_advance", "can_pay_balance",
             "created_at", "updated_at"
         ]
 
