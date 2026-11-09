@@ -3090,6 +3090,71 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(booking.status, Booking.Status.CONFIRMED)
 
 
+class CustomerOrderReadIntegrityTest(BookingAPITestMixin, TestCase):
+    """Reading an order must never mutate its lifecycle state."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = self._create_user("+919876543277")
+        self.client.force_authenticate(user=self.customer)
+        self.category = Category.objects.create(title="Cleaning", slug="order-read-cleaning")
+        self.service = self._create_service(self.category)
+        self.address = self._create_address(self.customer)
+
+    def _create_order(self, order_status):
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=2),
+            status=Booking.Status.ASSIGNED,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=order_status,
+            total_amount="500.00",
+        )
+        OrderItem.objects.create(
+            order=order,
+            booking=booking,
+            line_total="500.00",
+        )
+        return order
+
+    def test_order_detail_does_not_reopen_terminal_order(self):
+        order = self._create_order(Order.Status.CANCELLED)
+
+        response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], Order.Status.CANCELLED)
+        self.assertFalse(response.data["ready_for_payment"])
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CANCELLED)
+
+    def test_order_detail_does_not_advance_order_status_on_read(self):
+        order = self._create_order(Order.Status.AWAITING_ASSIGNMENT)
+
+        response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], Order.Status.AWAITING_ASSIGNMENT)
+        self.assertFalse(response.data["ready_for_payment"])
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+
+    def test_order_list_does_not_advance_order_status_on_read(self):
+        order = self._create_order(Order.Status.AWAITING_ASSIGNMENT)
+
+        response = self.client.get("/api/v1/bookings/orders/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["status"], Order.Status.AWAITING_ASSIGNMENT)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+
+
 class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
     def setUp(self):
         self.client = APIClient()
