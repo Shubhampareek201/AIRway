@@ -127,7 +127,7 @@ class PaymentAttempt(TimeStampedModel):
     wallet_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     method = models.CharField(max_length=20, choices=Payment.Method.choices, default=Payment.Method.RAZORPAY)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
-    razorpay_order_id = models.CharField(max_length=100, blank=True, unique=True)
+    razorpay_order_id = models.CharField(max_length=100, blank=True, null=True, unique=True)
     razorpay_payment_id = models.CharField(max_length=100, blank=True, unique=True)
     razorpay_signature = models.CharField(max_length=255, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
