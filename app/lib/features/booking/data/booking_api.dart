@@ -239,17 +239,17 @@ class BookingApi {
     return Booking.fromMap(Map<String, dynamic>.from(result));
   }
 
-  static Future<void> cancelBooking(int id, {String? reason}) async {
+  static Future<Map<String, dynamic>> cancelBooking(int id, {String? reason}) async {
     final data = <String, dynamic>{};
     if (reason != null && reason.isNotEmpty) {
       data['reason'] = reason;
     }
-
-    await request(
+    final result = await request(
       '/api/v1/bookings/$id/cancel/',
       method: 'POST',
       data: data,
     );
+    return Map<String, dynamic>.from(result);
   }
 
   static Future<Map<String, dynamic>> createRazorpayOrder(int bookingId) async {
