@@ -641,21 +641,81 @@ class WorkerJobRejectView(APIView):
         assign, booking = _get_assignment_and_booking(job_id, profile)
         if not booking:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-        if booking.status in (Booking.Status.COMPLETED, Booking.Status.CANCELLED):
-            return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
-        if booking.status != Booking.Status.ASSIGNED:
-            return Response({"detail": "Job must be assigned to be rejected."}, status=status.HTTP_400_BAD_REQUEST)
-        old = booking.status
-        booking.status = Booking.Status.CANCELLED
-        booking.cancellation_reason = request.data.get("reason", "")
-        booking.cancelled_by = request.user
-        booking.cancelled_at = timezone.now()
-        booking.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at"])
-        BookingStatusHistory.objects.create(
-            booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
-            changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
-        )
-        return Response({"detail": "Job rejected.", "status": booking.status})
+        reason = str(request.data.get("reason", "Worker unable to fulfil service"))[:1000]
+        with transaction.atomic():
+            if booking.order_item_id:
+                order = Order.objects.select_for_update().get(pk=booking.order_item.order_id)
+                bookings = list(
+                    Booking.objects.select_for_update().filter(order_item__order=order).order_by("pk")
+                )
+                if order.status == Order.Status.CANCELLED or any(
+                    row.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED, Booking.Status.PENDING)
+                    for row in bookings
+                ):
+                    return Response({"detail": "This order can no longer be rejected after service start or completion."}, status=status.HTTP_409_CONFLICT)
+            else:
+                order = None
+                bookings = [Booking.objects.select_for_update().get(pk=booking.pk)]
+            now = timezone.now()
+            for row in bookings:
+                old = row.status
+                row.status = Booking.Status.CANCELLED
+                row.cancellation_reason = reason
+                row.cancelled_by = request.user
+                row.cancelled_at = now
+                row.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at", "updated_at"])
+                BookingStatusHistory.objects.create(
+                    booking=row, from_status=old, to_status=Booking.Status.CANCELLED,
+                    changed_by=request.user, note=f"Worker could not fulfil the service. {reason}",
+                )
+                WorkerOffer.objects.filter(
+                    booking=row, status=WorkerOffer.Status.PENDING
+                ).update(status=WorkerOffer.Status.EXPIRED, responded_at=now)
+            if order:
+                order.status = Order.Status.CANCELLED
+                order.save(update_fields=["status", "updated_at"])
+            Notification.objects.create(
+                user=booking.customer, type=Notification.Type.BOOKING_CANCELLED,
+                title="Professional Unavailable",
+                body="Your professional cannot fulfil this service. AIRway has cancelled it and will arrange a full refund of the advance.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "order_id": order.pk if order else None},
+            )
+
+        try:
+            from apps.payments.models import PaymentAttempt, PaymentInstallment
+            from apps.payments.refunds import request_installment_refund
+            if order:
+                advance = PaymentInstallment.objects.filter(
+                    payment__order=order, kind=PaymentInstallment.Kind.ADVANCE,
+                    status=PaymentInstallment.Status.PAID,
+                ).first()
+                refund_key = f"worker_cancel_order_{order.pk}"
+            else:
+                advance = PaymentInstallment.objects.filter(
+                    payment__booking=booking, kind=PaymentInstallment.Kind.ADVANCE,
+                    status=PaymentInstallment.Status.PAID,
+                ).first()
+                refund_key = f"worker_cancel_booking_{booking.pk}"
+            attempt = advance.attempts.filter(status=PaymentAttempt.Status.PAID).order_by("-paid_at").first() if advance else None
+            if attempt:
+                request_installment_refund(
+                    attempt=attempt, idempotency_key=refund_key,
+                    reason="AIRway professional could not fulfil the confirmed service; full advance refund.",
+                    deduct_platform_fee=False,
+                )
+        except Exception:
+            logger.exception("Full refund reconciliation failed after worker cancellation for booking %s", booking.pk)
+            return Response({
+                "detail": "Service cancelled because the professional is unavailable. AIRway support has been notified to reconcile the full refund.",
+                "status": Booking.Status.CANCELLED,
+                "refund_status": "manual_review",
+            }, status=status.HTTP_202_ACCEPTED)
+        return Response({
+            "detail": "Service cancelled because the professional is unavailable. Full advance refund has been requested.",
+            "status": Booking.Status.CANCELLED,
+            "refund_status": "pending_or_processed",
+        })
 
 
 class WorkerJobStartView(APIView):
