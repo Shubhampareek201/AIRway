@@ -114,7 +114,7 @@ class DispatcherService:
                 return []
             items = list(order.items.select_related(
                 "booking__service__category", "booking__variant", "booking__address__zone__city"
-            ).order_by("created_at"))
+            ).exclude(booking__status=Booking.Status.CANCELLED).order_by("created_at"))
             if not items:
                 return []
             bookings = [item.booking for item in items]
