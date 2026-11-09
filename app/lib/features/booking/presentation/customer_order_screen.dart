@@ -99,83 +99,6 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
-  Future<void> startPayment() async {
-    if (order?['ready_for_payment'] != true || paying) return;
-    final total = amount(order?['total_amount']);
-    final rawWalletAmount = walletAmountController.text.trim();
-    final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
-    if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid wallet amount.')),
-      );
-      return;
-    }
-    final walletAmount = parsedWalletAmount;
-    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > total) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a wallet amount within your available balance and order total.')),
-      );
-      return;
-    }
-    if ((walletAmount * 100).roundToDouble() != walletAmount * 100) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wallet amount can have at most two decimal places.')),
-      );
-      return;
-    }
-
-    setState(() => paying = true);
-    try {
-      final payment = await PaymentApi.createOrderForParent(
-        widget.orderId,
-        walletAmount: walletAmount.toStringAsFixed(2),
-      );
-      await loadWalletBalance();
-      if (payment['fully_paid_by_wallet'] == true || payment['already_paid'] == true) {
-        if (!mounted) return;
-        setState(() => paying = false);
-        await loadOrder();
-        if (!mounted) return;
-        final paidByWallet = payment['fully_paid_by_wallet'] == true;
-        showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            icon: const Icon(Icons.verified_rounded, color: violet, size: 48),
-            title: const Text('Payment successful'),
-            content: Text(
-              paidByWallet
-                  ? 'Your order was paid using your AIRway wallet.'
-                  : 'Your AIRway order has already been paid and confirmed.',
-            ),
-            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
-          ),
-        );
-        return;
-      }
-
-      final key = payment['key_id']?.toString() ?? '';
-      final gatewayOrderId = payment['order_id']?.toString() ?? '';
-      if (key.isEmpty || gatewayOrderId.isEmpty) {
-        throw Exception('Payment gateway order could not be initialized.');
-      }
-      razorpay.open({
-        'key': key,
-        'amount': payment['amount'],
-        'currency': payment['currency'] ?? 'INR',
-        'name': 'AIRway',
-        'description': 'Service order #' + widget.orderId.toString(),
-        'order_id': gatewayOrderId,
-        'theme': {'color': '#075B43'},
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() => paying = false);
-        loadWalletBalance();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start payment: ' + e.toString())));
-      }
-    }
-  }
-
   Future<void> onPaymentSuccess(PaymentSuccessResponse response) async {
     final orderId = response.orderId;
     final paymentId = response.paymentId;
@@ -222,7 +145,6 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   void onPaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
     setState(() => paying = false);
-    loadWalletBalance();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(response.message ?? 'Payment was not completed. You can try again.')),
     );
