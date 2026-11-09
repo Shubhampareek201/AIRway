@@ -256,7 +256,7 @@ class ServiceOTPChallenge(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["booking", "purpose", "consumed_at"]),
+            models.Index(fields=["booking", "purpose", "consumed_at"], name="pay_otp_booking_purpose_idx"),
         ]
 
     def __str__(self):
