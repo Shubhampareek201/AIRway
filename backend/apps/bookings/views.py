@@ -59,7 +59,15 @@ class BookingViewSet(viewsets.ModelViewSet):
         clients continue to receive the existing dispatch-first behaviour
         until their checkout UI has been migrated.
         """
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code != status.HTTP_201_CREATED or not isinstance(response.data, dict):
+            return response
+        booking = self.get_queryset().get(pk=response.data["id"])
+        detail = BookingDetailSerializer(
+            booking, context={"request": request},
+        ).data
+        response.data = detail
+        return response
 
     @action(detail=False, methods=["post"], url_path="checkout")
     def checkout(self, request):
@@ -944,7 +952,8 @@ class CustomerCheckoutView(APIView):
             grand_total += line_total
 
             # Dispatch is deferred until every OrderItem exists.
-            dispatch_results.append({"booking_id": booking.id, "offers_sent": 0})
+            if not split_payment:
+                dispatch_results.append({"booking_id": booking.id, "offers_sent": 0})
 
         order.subtotal = subtotal
         order.tax_amount = tax_total
