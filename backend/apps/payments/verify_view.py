@@ -2,6 +2,7 @@ import hmac
 import hashlib
 import json
 import logging
+from decimal import Decimal
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -427,8 +428,9 @@ def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, c
         attempt.save(update_fields=["status", "razorpay_payment_id", "razorpay_signature",
                                     "paid_at", "raw_response", "updated_at"])
         installment.status = PaymentInstallment.Status.PAID
+        installment.wallet_amount = attempt.wallet_amount
         installment.paid_at = now
-        installment.save(update_fields=["status", "paid_at", "updated_at"])
+        installment.save(update_fields=["status", "wallet_amount", "paid_at", "updated_at"])
 
         if cancelled_target:
             payment.status = Payment.Status.PARTIALLY_PAID
@@ -455,9 +457,13 @@ def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, c
                           balance.status == PaymentInstallment.Status.PAID)
         payment.status = Payment.Status.PAID if fully_paid else Payment.Status.PARTIALLY_PAID
         payment.paid_at = now if fully_paid else None
+        payment.wallet_amount = sum(
+            payment.installments.values_list("wallet_amount", flat=True),
+            Decimal("0.00"),
+        )
         payment.razorpay_payment_id = razorpay_payment_id
         payment.razorpay_signature = "verified"
-        payment.save(update_fields=["status", "paid_at", "razorpay_payment_id",
+        payment.save(update_fields=["status", "paid_at", "wallet_amount", "razorpay_payment_id",
                                     "razorpay_signature", "updated_at"])
 
         if installment.kind == PaymentInstallment.Kind.ADVANCE:
