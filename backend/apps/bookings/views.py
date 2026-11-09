@@ -1100,16 +1100,54 @@ class CustomerOrderDetailView(APIView):
             pk=order_id,
             customer=request.user,
         )
+        from apps.payments.lifecycle import customer_cancellation_terms
+        from apps.payments.models import (
+            BookingFinancialPlan, Payment, PaymentAllocation, PaymentInstallment,
+        )
+        order_payment = Payment.objects.filter(order=order).first()
         items = []
+        active_total = Decimal("0.00")
         for row in order.items.all():
             booking = row.booking
             assignment = getattr(booking, "assignment", None)
+            plan = BookingFinancialPlan.objects.filter(booking=booking).first()
+            allocation = None
+            if plan and order_payment and order_payment.status == Payment.Status.PAID:
+                allocation = PaymentAllocation.objects.filter(
+                    installment__financial_plan=plan,
+                    installment__kind=PaymentInstallment.Kind.ADVANCE,
+                    payment=order_payment,
+                ).first()
+            collected = allocation.amount if allocation else Decimal("0.00")
+            cancellation_available = bool(
+                plan
+                and booking.can_cancel
+                and not (assignment and assignment.started_at)
+                and not (order_payment and order_payment.status == Payment.Status.PENDING)
+            )
+            cancellation_terms = None
+            if cancellation_available:
+                terms = customer_cancellation_terms(
+                    booking.scheduled_at,
+                    collected,
+                    worker_accepted=bool(assignment and assignment.accepted_at),
+                )
+                cancellation_terms = {
+                    **terms,
+                    "collected_amount": str(collected),
+                    "refund_amount": str(terms["refund_amount"]),
+                    "platform_fee": str(terms["platform_fee"]),
+                }
+            if booking.status != Booking.Status.CANCELLED:
+                active_total += row.line_total
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
                 "service": row.service_snapshot,
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
+                "can_cancel": cancellation_available,
+                "cancellation_terms": cancellation_terms,
                 "worker": (
                     {
                         "id": assignment.worker_id,
@@ -1130,6 +1168,8 @@ class CustomerOrderDetailView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "active_total_amount": str(active_total),
+            "partially_cancelled": bool((order.metadata or {}).get("partially_cancelled")),
             "items": items,
             "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
         })
