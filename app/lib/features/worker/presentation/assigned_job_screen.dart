@@ -116,7 +116,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           FilledButton(
             onPressed: () {
               final value = controller.text.trim();
-              if (value.length == 6 && RegExp(r'^\d{6}).hasMatch(value)) {
+              if (value.length == 6 && RegExp(r'^\d{6}$').hasMatch(value)) {
                 Navigator.pop(dialogContext, value);
               }
             },
