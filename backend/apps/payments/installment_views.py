@@ -128,7 +128,7 @@ class VerifyInstallmentPaymentView(APIView):
             and attempt.provider_payment_id != payment_id
         ):
             try:
-                refund_duplicate_final_capture(
+                refund_record = refund_duplicate_final_capture(
                     attempt_id=attempt.pk,
                     razorpay_payment_id=payment_id,
                     provider_order_id=order_id,
@@ -139,6 +139,7 @@ class VerifyInstallmentPaymentView(APIView):
             return Response({
                 "detail": "This installment was already settled. The duplicate capture has been sent for refund reconciliation.",
                 "status": "duplicate_capture_refund",
+                "refund_status": refund_record.status if refund_record else "already_reconciled",
             }, status=status.HTTP_200_OK)
         try:
             settled = settle_final_balance_attempt(
@@ -156,7 +157,7 @@ class VerifyInstallmentPaymentView(APIView):
                 and attempt.provider_payment_id != payment_id
             ):
                 try:
-                    refund_duplicate_final_capture(
+                    refund_record = refund_duplicate_final_capture(
                         attempt_id=attempt.pk,
                         razorpay_payment_id=payment_id,
                         provider_order_id=order_id,
@@ -167,6 +168,7 @@ class VerifyInstallmentPaymentView(APIView):
                 return Response({
                     "detail": "This installment was already settled. The duplicate capture has been sent for refund reconciliation.",
                     "status": "duplicate_capture_refund",
+                    "refund_status": refund_record.status if refund_record else "already_reconciled",
                 }, status=status.HTTP_200_OK)
             return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response({
