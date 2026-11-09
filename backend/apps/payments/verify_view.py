@@ -786,15 +786,28 @@ class PaymentWebhookView(APIView):
                             )
                             refund_record = None
                     if refund_record:
-                        # Lock the refund and linked attempt in one transaction.
-                        # Duplicate/out-of-order events must not regress a processed refund.
+                        # A webhook note must never rebind a provider refund ID
+                        # already owned by a different AIRway refund record.
+                        if (
+                            refund_record.provider_refund_id
+                            and refund_record.provider_refund_id != provider_refund_id
+                        ):
+                            logger.error(
+                                "Refund webhook provider ID conflicts with AIRway ledger: "
+                                "refund_record=%s provider_refund_id=%s",
+                                refund_record.pk, provider_refund_id,
+                            )
+                            refund_record = None
+                    if refund_record:
+                        # Provider terminal states must not regress due to delayed
+                        # created events. A later processed event remains authoritative.
                         if refund_record.status != RefundRecord.Status.PROCESSED:
                             if event_type == "refund.processed":
                                 refund_record.status = RefundRecord.Status.PROCESSED
                                 refund_record.processed_at = timezone.now()
                             elif event_type == "refund.failed":
                                 refund_record.status = RefundRecord.Status.FAILED
-                            else:
+                            elif refund_record.status != RefundRecord.Status.FAILED:
                                 refund_record.status = RefundRecord.Status.PENDING
                         refund_record.provider_payload = payload
                         if provider_refund_id and not refund_record.provider_refund_id:
