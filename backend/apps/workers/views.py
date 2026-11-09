@@ -27,6 +27,16 @@ from apps.wallet.models import WalletTransaction
 logger = logging.getLogger(__name__)
 
 
+def _booking_advance_paid(booking):
+    from apps.payments.models import PaymentInstallment
+    filters = {"payment__order_id": booking.order_item.order_id} if hasattr(booking, "order_item") else {"payment__booking": booking}
+    return PaymentInstallment.objects.filter(
+        **filters,
+        kind=PaymentInstallment.Kind.ADVANCE,
+        status=PaymentInstallment.Status.PAID,
+    ).exists()
+
+
 def _otp_digest(booking_id, purpose, code):
     message = f"{booking_id}:{purpose}:{code}".encode()
     return hmac.new(settings.SECRET_KEY.encode(), message, hashlib.sha256).hexdigest()
@@ -98,6 +108,8 @@ class WorkerServiceOTPRequestView(APIView):
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         if purpose == ServiceOTP.Purpose.START and booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response({"detail": "Start OTP is available only for an assigned job."}, status=status.HTTP_409_CONFLICT)
+        if purpose == ServiceOTP.Purpose.START and not _booking_advance_paid(booking):
+            return Response({"detail": "The 50% booking advance must be captured before service start."}, status=status.HTTP_409_CONFLICT)
         if purpose == ServiceOTP.Purpose.COMPLETE and booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": "Completion OTP is available only while service is in progress."}, status=status.HTTP_409_CONFLICT)
         try:
@@ -738,6 +750,8 @@ class WorkerJobStartView(APIView):
                 return Response({"detail": "Service has already started.", "status": booking.status})
             if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
                 return Response({"detail": "Job must be assigned and confirmed before starting."}, status=status.HTTP_400_BAD_REQUEST)
+            if not _booking_advance_paid(booking):
+                return Response({"detail": "The 50% booking advance must be captured before service start."}, status=status.HTTP_409_CONFLICT)
             if not assign.accepted_at:
                 return Response({"detail": "Accept the job before starting work."}, status=status.HTTP_400_BAD_REQUEST)
             valid, error = _verify_service_otp(booking, ServiceOTP.Purpose.START, request.data.get("otp"))
