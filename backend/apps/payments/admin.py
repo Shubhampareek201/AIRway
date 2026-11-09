@@ -4,6 +4,7 @@ from .models import (
     BookingFinancialPlan,
     Payment,
     PaymentAttempt,
+    PaymentAllocation,
     PaymentInstallment,
     RefundRecord,
     ServiceOTPChallenge,
@@ -49,9 +50,21 @@ class PaymentInstallmentAdmin(ReadOnlyLedgerAdmin):
 
 @admin.register(PaymentAttempt)
 class PaymentAttemptAdmin(ReadOnlyLedgerAdmin):
-    list_display = ("id", "installment", "provider", "amount", "currency", "status", "captured_at", "created_at")
+    list_display = ("id", "installment", "provider", "amount", "gateway_amount", "wallet_amount", "currency", "status", "captured_at", "created_at")
     list_filter = ("provider", "status", "currency")
     search_fields = ("provider_order_id", "provider_payment_id", "idempotency_key")
+
+
+@admin.register(PaymentAllocation)
+class PaymentAllocationAdmin(ReadOnlyLedgerAdmin):
+    list_display = (
+        "id", "payment", "payment_attempt", "installment",
+        "amount", "gateway_amount", "wallet_amount", "created_at",
+    )
+    search_fields = (
+        "payment__id", "payment_attempt__id",
+        "installment__financial_plan__booking__id",
+    )
 
 
 @admin.register(RefundRecord)
