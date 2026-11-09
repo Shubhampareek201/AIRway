@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404
 
 from apps.bookings.models import Booking, BookingStatusHistory, Order
 from apps.notifications.models import Notification
-from .models import Payment, PaymentAttempt, PaymentInstallment
+from .models import Payment, PaymentAttempt, PaymentInstallment, PaymentRefund
 
 logger = logging.getLogger(__name__)
 
@@ -629,6 +629,25 @@ class PaymentWebhookView(APIView):
                 {"detail": "Invalid JSON in webhook payload"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        if event_type in ("refund.created", "refund.processed", "refund.failed"):
+            refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
+            gateway_refund_id = refund_entity.get("id")
+            refund = PaymentRefund.objects.filter(gateway_refund_id=gateway_refund_id).first()
+            if refund is None:
+                logger.warning("Razorpay refund webhook has no matching AIRway refund: %s", gateway_refund_id)
+                return Response({"status": "ok"})
+            refund.raw_response = payload
+            if event_type == "refund.processed":
+                refund.status = PaymentRefund.Status.PROCESSED
+                refund.processed_at = timezone.now()
+            elif event_type == "refund.failed":
+                refund.status = PaymentRefund.Status.FAILED
+            refund.save(update_fields=["raw_response", "status", "processed_at", "updated_at"])
+            if event_type == "refund.processed":
+                from .refunds import _finalize_refunded_attempt
+                _finalize_refunded_attempt(refund)
+            return Response({"status": "ok"})
 
         # Extract event details
         event_type = payload.get('event')
