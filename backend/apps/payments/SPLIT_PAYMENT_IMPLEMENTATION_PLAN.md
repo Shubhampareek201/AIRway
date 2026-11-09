@@ -1,6 +1,6 @@
 # AIRway Split-Payment Implementation Plan
 
-Status: engineering plan; no runtime behavior is changed by this document.
+Status: Phase 1 implementation in progress. The branch now contains additive ledger models/migration, lifecycle domain services, read-only admin views, arithmetic/cutoff tests, and customer/worker OTP endpoint wiring. Checkout, capture settlement, dispatch gating, cancellation/refund gateway integration, and Flutter remain intentionally unenabled.
 
 ## Current baseline
 
