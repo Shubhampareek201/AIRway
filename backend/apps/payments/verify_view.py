@@ -2,6 +2,7 @@ import hmac
 import hashlib
 import json
 import logging
+from decimal import Decimal
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -26,6 +27,10 @@ def _refund_late_capture_for_cancelled_booking(
 
     from .models import RefundRecord
     with transaction.atomic():
+        # Keep the same booking -> payment lock order as customer cancellation.
+        booking = Booking.objects.select_for_update().filter(
+            pk=payment.booking_id,
+        ).first()
         locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
         if locked_payment.status in (Payment.Status.PAID, Payment.Status.REFUNDED):
             return Response({
@@ -33,9 +38,6 @@ def _refund_late_capture_for_cancelled_booking(
                 "status": locked_payment.status,
                 "payment_id": locked_payment.pk,
             })
-        booking = Booking.objects.select_for_update().filter(
-            pk=locked_payment.booking_id,
-        ).first()
         if booking is None or booking.status != Booking.Status.CANCELLED:
             return None
 
@@ -80,7 +82,7 @@ def _refund_late_capture_for_cancelled_booking(
     if not created or refund_record.refund_amount <= 0:
         return Response({
             "detail": "Late payment was reconciled against the cancelled booking.",
-            "status": payment.status,
+            "status": Payment.Status.PAID,
             "payment_id": payment.pk,
             "refund_id": refund_record.pk,
             "refund_status": refund_record.status,
