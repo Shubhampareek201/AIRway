@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404
 
 from apps.bookings.models import Booking, BookingStatusHistory, Order
 from apps.notifications.models import Notification
-from .models import Payment
+from .models import Payment, PaymentAttempt, PaymentInstallment
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +327,108 @@ def _process_verified_payment(
     )
 
 
+
+def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, customer, source):
+    """Settle one captured installment attempt without conflating advance and balance."""
+    with transaction.atomic():
+        attempt = PaymentAttempt.objects.select_for_update().select_related(
+            "installment__payment__booking", "installment__payment__order"
+        ).get(pk=attempt.pk)
+        installment = PaymentInstallment.objects.select_for_update().get(pk=attempt.installment_id)
+        payment = Payment.objects.select_for_update().get(pk=installment.payment_id)
+        if attempt.status == PaymentAttempt.Status.PAID or installment.status == PaymentInstallment.Status.PAID:
+            return Response({"detail": "Installment already settled.", "status": payment.status,
+                             "installment": installment.kind, "payment_id": payment.pk})
+        if attempt.status != PaymentAttempt.Status.PENDING:
+            return Response({"detail": "This payment attempt is no longer active. Please create a new attempt."},
+                            status=status.HTTP_409_CONFLICT)
+
+        now = timezone.now()
+        attempt.status = PaymentAttempt.Status.PAID
+        attempt.razorpay_payment_id = razorpay_payment_id
+        attempt.razorpay_signature = "verified"
+        attempt.paid_at = now
+        attempt.raw_response = {"razorpay_order_id": razorpay_order_id,
+                                "razorpay_payment_id": razorpay_payment_id,
+                                "verified_at": now.isoformat(), "source": source}
+        attempt.save(update_fields=["status", "razorpay_payment_id", "razorpay_signature",
+                                    "paid_at", "raw_response", "updated_at"])
+        installment.status = PaymentInstallment.Status.PAID
+        installment.paid_at = now
+        installment.save(update_fields=["status", "paid_at", "updated_at"])
+
+        advance = payment.installments.filter(kind=PaymentInstallment.Kind.ADVANCE).first()
+        balance = payment.installments.filter(kind=PaymentInstallment.Kind.BALANCE).first()
+        fully_paid = bool(advance and balance and
+                          advance.status == PaymentInstallment.Status.PAID and
+                          balance.status == PaymentInstallment.Status.PAID)
+        payment.status = Payment.Status.PAID if fully_paid else Payment.Status.PARTIALLY_PAID
+        payment.paid_at = now if fully_paid else None
+        payment.razorpay_payment_id = razorpay_payment_id
+        payment.razorpay_signature = "verified"
+        payment.save(update_fields=["status", "paid_at", "razorpay_payment_id",
+                                    "razorpay_signature", "updated_at"])
+
+        if installment.kind == PaymentInstallment.Kind.ADVANCE:
+            if payment.order_id:
+                parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+                parent_order.status = Order.Status.AWAITING_ASSIGNMENT
+                parent_order.save(update_fields=["status", "updated_at"])
+                for row in parent_order.items.select_related("booking").order_by("id"):
+                    booking = row.booking
+                    if booking.status == Booking.Status.PENDING:
+                        old_status = booking.status
+                        booking.status = Booking.Status.CONFIRMED
+                        booking.save(update_fields=["status", "updated_at"])
+                        BookingStatusHistory.objects.create(
+                            booking=booking, from_status=old_status,
+                            to_status=Booking.Status.CONFIRMED, changed_by=customer,
+                            note="50% advance captured; booking released for worker dispatch.")
+                from apps.bookings.dispatcher import DispatcherService
+                DispatcherService.dispatch_order(parent_order)
+                target_data = {"order_id": parent_order.pk, "payment_id": payment.pk}
+            else:
+                booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+                if booking.status == Booking.Status.PENDING:
+                    old_status = booking.status
+                    booking.status = Booking.Status.CONFIRMED
+                    booking.save(update_fields=["status", "updated_at"])
+                    BookingStatusHistory.objects.create(
+                        booking=booking, from_status=old_status,
+                        to_status=Booking.Status.CONFIRMED, changed_by=customer,
+                        note="50% advance captured; booking released for worker dispatch.")
+                    from apps.bookings.services import create_worker_offers_for_booking
+                    create_worker_offers_for_booking(booking)
+                target_data = {"booking_id": booking.pk, "payment_id": payment.pk}
+            Notification.objects.create(
+                user=customer, type=Notification.Type.PAYMENT_SUCCESS,
+                title="50% Booking Advance Received",
+                body="Your booking advance is confirmed. AIRway is arranging your professional.",
+                channel=Notification.Channel.IN_APP, data=target_data)
+            return Response({"detail": "Booking advance verified. Worker dispatch has started.",
+                             "status": payment.status, "installment": installment.kind,
+                             "installment_status": installment.status, "payment_id": payment.pk,
+                             **target_data})
+
+        if payment.order_id:
+            parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            parent_order.status = Order.Status.PAID
+            parent_order.save(update_fields=["status", "updated_at"])
+            target_data = {"order_id": parent_order.pk}
+        else:
+            target_data = {"booking_id": payment.booking_id}
+        Notification.objects.create(
+            user=customer, type=Notification.Type.PAYMENT_SUCCESS,
+            title="Remaining 50% Payment Received",
+            body="Your AIRway service balance has been paid successfully. Thank you.",
+            channel=Notification.Channel.IN_APP,
+            data={**target_data, "payment_id": payment.pk})
+        return Response({"detail": "Completion balance verified successfully.",
+                         "status": payment.status, "installment": installment.kind,
+                         "installment_status": installment.status, "payment_id": payment.pk,
+                         **target_data})
+
+
 class VerifyPaymentView(APIView):
     """
     Verify Razorpay checkout payment signatures and handle webhooks.
@@ -345,11 +447,16 @@ class VerifyPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        payment = get_object_or_404(
-            Payment,
+        attempt = PaymentAttempt.objects.filter(
             razorpay_order_id=razorpay_order_id,
-            customer=request.user,
-        )
+            installment__payment__customer=request.user,
+        ).select_related("installment__payment").first()
+        if attempt is not None:
+            payment = attempt.installment.payment
+        else:
+            payment = get_object_or_404(
+                Payment, razorpay_order_id=razorpay_order_id, customer=request.user,
+            )
 
         # Verify HMAC signature for checkout response
         message = f"{razorpay_order_id}|{razorpay_payment_id}"
@@ -425,7 +532,7 @@ class VerifyPaymentView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        expected_amount_paise = int(payment.amount * 100)
+        expected_amount_paise = int((attempt.amount if attempt else payment.amount) * 100)
         if gateway_payment.get("amount") != expected_amount_paise:
             logger.warning(
                 "Razorpay checkout amount mismatch for payment %s: expected %s, got %s",
@@ -446,12 +553,14 @@ class VerifyPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if attempt is not None:
+            return _process_verified_attempt(
+                attempt=attempt, razorpay_payment_id=razorpay_payment_id,
+                razorpay_order_id=razorpay_order_id, customer=request.user, source="checkout",
+            )
         return _process_verified_payment(
-            payment=payment,
-            razorpay_payment_id=razorpay_payment_id,
-            razorpay_order_id=razorpay_order_id,
-            customer=request.user,
-            source="checkout"
+            payment=payment, razorpay_payment_id=razorpay_payment_id,
+            razorpay_order_id=razorpay_order_id, customer=request.user, source="checkout"
         )
 
 
