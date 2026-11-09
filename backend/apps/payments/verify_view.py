@@ -164,6 +164,65 @@ def _process_verified_payment(
         }
         payment.save()
 
+        # New single-booking advances use the same line-level ledger and
+        # dispatch gate as parent orders. Historical bookings remain unchanged.
+        if payment.booking_id:
+            from .models import (
+                BookingFinancialPlan, PaymentInstallment, PaymentAllocation,
+            )
+            plan = BookingFinancialPlan.objects.select_for_update().filter(
+                booking_id=payment.booking_id
+            ).first()
+            if plan:
+                installment = PaymentInstallment.objects.select_for_update().get(
+                    financial_plan=plan,
+                    kind=PaymentInstallment.Kind.ADVANCE,
+                )
+                if installment.status != PaymentInstallment.Status.PAID:
+                    if payment.amount != installment.amount_due:
+                        raise ValueError("Captured payment does not equal the booking advance.")
+                    PaymentAllocation.objects.create(
+                        payment=payment,
+                        installment=installment,
+                        amount=installment.amount_due,
+                        gateway_amount=installment.amount_due,
+                        wallet_amount=0,
+                    )
+                    installment.amount_captured = installment.amount_due
+                    installment.status = PaymentInstallment.Status.PAID
+                    installment.settled_at = timezone.now()
+                    installment.save(update_fields=[
+                        "amount_captured", "status", "settled_at", "updated_at"
+                    ])
+                    plan.advance_captured = installment.amount_due
+                    plan.save(update_fields=["advance_captured", "updated_at"])
+                booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+                if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+                    raise ValueError("Booking is no longer eligible for dispatch after payment.")
+                def dispatch_paid_booking(booking_id):
+                    from apps.bookings.dispatcher import DispatcherService
+                    paid_booking = Booking.objects.get(pk=booking_id)
+                    DispatcherService.dispatch_offers(paid_booking)
+                transaction.on_commit(
+                    lambda booking_id=booking.pk: dispatch_paid_booking(booking_id)
+                )
+                Notification.objects.create(
+                    user=payment.customer,
+                    type=Notification.Type.PAYMENT_SUCCESS,
+                    title="Booking advance received",
+                    body=f"Your 50% booking advance for booking #{booking.pk} was received. We are finding an eligible professional.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": booking.pk, "payment_id": payment.id},
+                )
+                return Response({
+                    "detail": "Booking advance captured. Worker dispatch has been queued.",
+                    "status": payment.status,
+                    "payment_id": payment.id,
+                    "booking_id": booking.pk,
+                    "advance_amount": str(installment.amount_due),
+                    "razorpay_payment_id": razorpay_payment_id,
+                }, status=status.HTTP_200_OK)
+
         # New split-payment orders settle line-level advance installments
         # before any worker offer is created. Legacy orders keep the path below.
         if payment.order_id:
