@@ -188,6 +188,8 @@ def create_customer_cancellation_refund_record(*, booking, payment, terms):
             "gross_amount": collected,
             "platform_fee": as_money(terms["platform_fee"]),
             "refund_amount": amount,
+            "gateway_refund_amount": amount,
+            "wallet_refund_amount": ZERO,
             "status": (
                 RefundRecord.Status.REQUESTED
                 if amount > ZERO else RefundRecord.Status.PROCESSED
