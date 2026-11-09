@@ -1321,9 +1321,15 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
+        self._mark_advance_paid(booking.id)
+        otp = self._request_worker_otp(self.worker_client, assignment.id, "start")
 
-        start_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
+        start_resp = self.worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/start/",
+            {"otp": otp}, format="json",
+        )
         self.assertEqual(start_resp.status_code, 200)
         self.assertEqual(start_resp.data["status"], "in_progress")
 
@@ -1347,10 +1353,15 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
             started_at=timezone.now(),
         )
+        otp = self._request_worker_otp(self.worker_client, assignment.id, "complete")
 
-        complete_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/complete/", format="json")
+        complete_resp = self.worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/complete/",
+            {"otp": otp}, format="json",
+        )
         self.assertEqual(complete_resp.status_code, 200)
         self.assertEqual(complete_resp.data["status"], "completed")
 
@@ -1391,9 +1402,12 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
 
-        complete_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/complete/", format="json")
+        complete_resp = self.worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/complete/", format="json"
+        )
         self.assertEqual(complete_resp.status_code, 400)
 
 
