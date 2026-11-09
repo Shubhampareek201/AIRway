@@ -92,19 +92,19 @@ class BookingFinancialPlan(TimeStampedModel):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(condition=Q(gross_total__gte=0), name="finplan_total_nonnegative"),
-            models.CheckConstraint(condition=Q(advance_due__gte=0), name="finplan_advance_nonnegative"),
-            models.CheckConstraint(condition=Q(balance_due__gte=0), name="finplan_balance_nonnegative"),
-            models.CheckConstraint(condition=Q(advance_captured__gte=0), name="finplan_advance_captured_nonnegative"),
-            models.CheckConstraint(condition=Q(balance_captured__gte=0), name="finplan_balance_captured_nonnegative"),
-            models.CheckConstraint(condition=Q(refunded_total__gte=0), name="finplan_refund_nonnegative"),
+            models.CheckConstraint(condition=Q(gross_total__gte=0), name="finplan_total_nonneg"),
+            models.CheckConstraint(condition=Q(advance_due__gte=0), name="finplan_adv_nonneg"),
+            models.CheckConstraint(condition=Q(balance_due__gte=0), name="finplan_bal_nonneg"),
+            models.CheckConstraint(condition=Q(advance_captured__gte=0), name="finplan_adv_cap_nonneg"),
+            models.CheckConstraint(condition=Q(balance_captured__gte=0), name="finplan_bal_cap_nonneg"),
+            models.CheckConstraint(condition=Q(refunded_total__gte=0), name="finplan_refund_nonneg"),
             models.CheckConstraint(
                 condition=Q(advance_due__lte=models.F("gross_total")),
-                name="finplan_advance_lte_total",
+                name="finplan_adv_lte_total",
             ),
             models.CheckConstraint(
                 condition=Q(balance_due__lte=models.F("gross_total")),
-                name="finplan_balance_lte_total",
+                name="finplan_bal_lte_total",
             ),
         ]
 
@@ -142,13 +142,13 @@ class PaymentInstallment(TimeStampedModel):
         ordering = ["created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["financial_plan", "kind"], name="uniq_finplan_installment_kind",
+                fields=["financial_plan", "kind"], name="inst_plan_kind_uniq",
             ),
-            models.CheckConstraint(condition=Q(amount_due__gte=0), name="installment_due_nonnegative"),
-            models.CheckConstraint(condition=Q(amount_captured__gte=0), name="installment_captured_nonnegative"),
+            models.CheckConstraint(condition=Q(amount_due__gte=0), name="inst_due_nonneg"),
+            models.CheckConstraint(condition=Q(amount_captured__gte=0), name="inst_cap_nonneg"),
             models.CheckConstraint(
                 condition=Q(amount_captured__lte=models.F("amount_due")),
-                name="installment_captured_lte_due",
+                name="inst_cap_lte_due",
             ),
         ]
 
@@ -186,7 +186,7 @@ class PaymentAttempt(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         constraints = [
-            models.CheckConstraint(condition=Q(amount__gt=0), name="payment_attempt_amount_positive"),
+            models.CheckConstraint(condition=Q(amount__gt=0), name="attempt_amount_positive"),
         ]
 
     def __str__(self):
@@ -225,12 +225,12 @@ class RefundRecord(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         constraints = [
-            models.CheckConstraint(condition=Q(gross_amount__gte=0), name="refund_gross_nonnegative"),
-            models.CheckConstraint(condition=Q(platform_fee__gte=0), name="refund_fee_nonnegative"),
-            models.CheckConstraint(condition=Q(refund_amount__gte=0), name="refund_amount_nonnegative"),
+            models.CheckConstraint(condition=Q(gross_amount__gte=0), name="refund_gross_nonneg"),
+            models.CheckConstraint(condition=Q(platform_fee__gte=0), name="refund_fee_nonneg"),
+            models.CheckConstraint(condition=Q(refund_amount__gte=0), name="refund_amt_nonneg"),
             models.CheckConstraint(
                 condition=Q(refund_amount__lte=models.F("gross_amount")),
-                name="refund_lte_gross",
+                name="refund_amt_lte_gross",
             ),
         ]
 
