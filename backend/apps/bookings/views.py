@@ -157,11 +157,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                     f"platform fee: {terms['platform_fee']}."
                 ),
             )
-            WorkerOffer.objects.select_for_update().filter(
-                booking=booking, status=WorkerOffer.Status.PENDING,
-            ).update(
-                status=WorkerOffer.Status.EXPIRED, responded_at=now,
-            )
             Notification.objects.create(
                 user=request.user,
                 type=Notification.Type.BOOKING_CANCELLED,
@@ -170,6 +165,15 @@ class BookingViewSet(viewsets.ModelViewSet):
                 channel=Notification.Channel.IN_APP,
                 data={"booking_id": booking.id},
             )
+
+        # Expire offers only after releasing the booking lock. Worker acceptance
+        # locks offer then booking; taking those locks in the reverse order here
+        # would create a cancellation/acceptance deadlock.
+        WorkerOffer.objects.filter(
+            booking_id=booking.pk, status=WorkerOffer.Status.PENDING,
+        ).update(
+            status=WorkerOffer.Status.EXPIRED, responded_at=timezone.now(),
+        )
 
         # Network I/O must happen after the database transaction. The refund
         # record is durable first, so a provider timeout can be reconciled.
