@@ -331,6 +331,17 @@ def _process_verified_payment(
 
 def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, customer, source):
     """Settle one captured installment attempt without conflating advance and balance."""
+    attempt.refresh_from_db()
+    if attempt.status == PaymentAttempt.Status.FAILED:
+        if not razorpay_payment_id:
+            return Response({"detail": "This expired wallet-only attempt cannot be settled."}, status=status.HTTP_409_CONFLICT)
+        from .refunds import refund_late_expired_capture
+        refund = refund_late_expired_capture(attempt=attempt, razorpay_payment_id=razorpay_payment_id)
+        return Response({
+            "detail": "Payment arrived after the checkout attempt expired. AIRway is refunding the late capture; please retry checkout.",
+            "status": "late_capture_refund_" + refund.status,
+            "refund_id": refund.pk,
+        }, status=status.HTTP_202_ACCEPTED)
     with transaction.atomic():
         attempt = PaymentAttempt.objects.select_for_update().select_related(
             "installment__payment__booking", "installment__payment__order"
