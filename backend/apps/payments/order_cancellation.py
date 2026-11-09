@@ -87,7 +87,33 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
 
         booking = Booking.objects.select_for_update().get(pk=booking_id)
         if booking.status == Booking.Status.CANCELLED:
-            raise OrderLineCancellationError("This service line is already cancelled.")
+            # A retried client request must observe the original result, never
+            # create a second refund or submit another gateway refund.
+            existing_refund = RefundRecord.objects.filter(
+                booking=booking,
+                reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            ).order_by("-created_at", "-pk").first()
+            return {
+                "order_id": order.pk,
+                "booking_id": booking.pk,
+                "order_status": order.status,
+                "booking_status": booking.status,
+                "refund_id": existing_refund.pk if existing_refund else None,
+                "refund_status": (
+                    existing_refund.status if existing_refund else "not_refundable"
+                ),
+                "refund_policy": "already_cancelled",
+                "refund_amount": (
+                    str(existing_refund.refund_amount)
+                    if existing_refund else "0.00"
+                ),
+                "platform_fee": (
+                    str(existing_refund.platform_fee)
+                    if existing_refund else "0.00"
+                ),
+                "refund_message": "This service was already cancelled. No additional refund was created.",
+                "idempotent_replay": True,
+            }
         if booking.status in (
             Booking.Status.IN_PROGRESS,
             Booking.Status.COMPLETED,
@@ -265,7 +291,11 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
                 status=Booking.Status.CANCELLED,
             ).order_by("pk")
         )
-        order.metadata = {**(order.metadata or {}), "partially_cancelled": True}
+        order.metadata = {
+            **(order.metadata or {}),
+            "partially_cancelled": bool(active_bookings),
+            "fully_cancelled": not bool(active_bookings),
+        }
         if not active_bookings:
             order.status = Order.Status.CANCELLED
         else:
