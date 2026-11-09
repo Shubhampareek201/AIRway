@@ -768,6 +768,17 @@ class PaymentWebhookView(APIView):
                     refund_record.save(update_fields=[
                         "status", "processed_at", "provider_payload", "updated_at"
                     ])
+                    if refund_record.payment_attempt_id:
+                        from .models import PaymentAttempt
+                        attempt = PaymentAttempt.objects.select_for_update().filter(
+                            pk=refund_record.payment_attempt_id,
+                        ).first()
+                        if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
+                            if refund_record.status == RefundRecord.Status.PROCESSED:
+                                attempt.status = PaymentAttempt.Status.REFUNDED
+                            elif refund_record.status == RefundRecord.Status.FAILED:
+                                attempt.status = PaymentAttempt.Status.FAILED
+                            attempt.save(update_fields=["status", "updated_at"])
                 else:
                     logger.warning(
                         "Refund webhook references unknown AIRway refund: %s",
@@ -811,6 +822,8 @@ class PaymentWebhookView(APIView):
                     return Response({"status": "ok"})
                 amount_paise = entity.get("amount")
                 currency = entity.get("currency")
+                if attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED):
+                    return Response({"status": "ok", "reconciled": "already_refunding_or_refunded"})
                 if not payment_id or not isinstance(amount_paise, int) or not currency:
                     return Response({"detail": "Captured event is missing payment ID, amount, or currency."}, status=status.HTTP_400_BAD_REQUEST)
                 if amount_paise != int(attempt.gateway_amount * 100):
