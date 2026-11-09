@@ -1046,6 +1046,48 @@ class CustomerCheckoutView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class CustomerOrderLineCancellationView(APIView):
+    """Cancel one service line from a split-payment parent order."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, order_id, booking_id):
+        from apps.payments.order_cancellation import (
+            OrderLineCancellationError,
+            cancel_parent_order_line,
+        )
+
+        reason = request.data.get("reason", "")
+        if not isinstance(reason, str):
+            return Response(
+                {"reason": ["Provide a valid cancellation reason."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = cancel_parent_order_line(
+                order_id=order_id,
+                booking_id=booking_id,
+                customer=request.user,
+                reason=reason,
+            )
+        except Order.DoesNotExist:
+            return Response(
+                {"detail": "Order not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Booking.DoesNotExist:
+            return Response(
+                {"detail": "Service line not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except OrderLineCancellationError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(result, status=status.HTTP_200_OK)
+
+
 class CustomerOrderDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
