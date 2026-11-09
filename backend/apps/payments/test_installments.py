@@ -698,6 +698,47 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(reconciled.status, RefundRecord.Status.PENDING)
         client_class.return_value.payment.refund.assert_not_called()
 
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_reconciliation_rejects_provider_refund_id_owned_by_another_record(self, client_class):
+        payment = Payment.objects.create(
+            booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+            razorpay_payment_id="pay_refund_owner_conflict",
+        )
+        owner = RefundRecord.objects.create(
+            booking=self.booking, payment=payment,
+            idempotency_key="refund-owner-existing",
+            reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
+            gateway_refund_amount=Decimal("460.00"),
+            provider_refund_id="rfnd_already_owned",
+            status=RefundRecord.Status.PENDING,
+        )
+        target = RefundRecord.objects.create(
+            booking=self.booking, payment=payment,
+            idempotency_key="refund-owner-target",
+            reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
+            gateway_refund_amount=Decimal("460.00"),
+            status=RefundRecord.Status.FAILED,
+        )
+        client_class.return_value.payment.fetch_multiple_refund.return_value = {
+            "items": [{
+                "id": "rfnd_already_owned", "amount": 46000,
+                "status": "processed",
+                "notes": {"airway_refund_record_id": str(target.pk)},
+            }]
+        }
+
+        with self.assertRaises(InstallmentPaymentError):
+            reconcile_refund_record(record_id=target.pk)
+
+        owner.refresh_from_db()
+        target.refresh_from_db()
+        self.assertEqual(owner.provider_refund_id, "rfnd_already_owned")
+        self.assertIsNone(target.provider_refund_id)
+        self.assertEqual(target.status, RefundRecord.Status.FAILED)
+
     def test_wallet_overdraft_does_not_create_attempt_or_change_balance(self):
         wallet = self._wallet_with_balance("10.00")
         with self.assertRaises(InstallmentPaymentError):
