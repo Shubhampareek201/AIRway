@@ -515,6 +515,7 @@ class WorkerJobLifecycleTest(TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
 
         self.client.force_authenticate(user=self.worker_user)
