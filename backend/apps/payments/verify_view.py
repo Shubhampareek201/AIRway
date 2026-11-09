@@ -775,6 +775,70 @@ class PaymentWebhookView(APIView):
                     )
             return Response({"status": "ok"})
 
+        # Installment attempts are separate from legacy Payment rows: one
+        # immutable provider order belongs to one booking-line installment.
+        if event_type in ("payment.captured", "payment.authorized", "payment.failed", "payment.canceled"):
+            from .models import PaymentAttempt
+            from .installment_service import (
+                InstallmentPaymentError,
+                mark_final_balance_attempt_failed,
+                refund_late_final_capture,
+                settle_final_balance_attempt,
+            )
+            attempt = None
+            if order_id:
+                attempt = PaymentAttempt.objects.filter(provider_order_id=order_id).first()
+            if attempt is None and payment_id:
+                attempt = PaymentAttempt.objects.filter(provider_payment_id=payment_id).first()
+            if attempt is not None:
+                entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+                if order_id != attempt.provider_order_id:
+                    return Response({"detail": "Razorpay order ID mismatch."}, status=status.HTTP_400_BAD_REQUEST)
+                if event_type == "payment.authorized":
+                    if attempt.status == PaymentAttempt.Status.CREATED:
+                        attempt.status = PaymentAttempt.Status.AUTHORIZED
+                        attempt.provider_payment_id = payment_id or None
+                        attempt.provider_payload = payload
+                        attempt.save(update_fields=["status", "provider_payment_id", "provider_payload", "updated_at"])
+                    return Response({"status": "ok"})
+                if event_type in ("payment.failed", "payment.canceled"):
+                    try:
+                        mark_final_balance_attempt_failed(
+                            attempt_id=attempt.pk, provider_order_id=order_id, payload=payload,
+                        )
+                    except InstallmentPaymentError as exc:
+                        return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+                    return Response({"status": "ok"})
+                amount_paise = entity.get("amount")
+                currency = entity.get("currency")
+                if not payment_id or not isinstance(amount_paise, int) or not currency:
+                    return Response({"detail": "Captured event is missing payment ID, amount, or currency."}, status=status.HTTP_400_BAD_REQUEST)
+                if amount_paise != int(attempt.gateway_amount * 100):
+                    return Response({"detail": "Amount mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                if currency.upper() != attempt.currency:
+                    return Response({"detail": "Currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    if attempt.status == PaymentAttempt.Status.FAILED:
+                        refund_late_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "late_capture_refund"})
+                    settle_final_balance_attempt(
+                        attempt_id=attempt.pk,
+                        razorpay_payment_id=payment_id,
+                        provider_order_id=order_id,
+                        amount_paise=amount_paise,
+                        currency=currency,
+                        source="webhook",
+                    )
+                except InstallmentPaymentError as exc:
+                    logger.exception("Final-balance webhook reconciliation failed for attempt %s", attempt.pk)
+                    return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+                return Response({"status": "ok"})
+
         # Handle payment.captured event (Razorpay uses 'payment.captured' for successful payments)
         if event_type in ('payment.captured', 'payment.authorized'):
             # Get the payment record by order_id or payment_id
