@@ -413,6 +413,51 @@ class FinalBalanceAttemptTests(TestCase):
                 wallet_amount="0.00",
             )
 
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="webhook_test_secret")
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_refund_webhook_reconciles_before_refund_api_response_is_persisted(self, client_class):
+        attempt = self._attempt(order_id="order_refund_webhook")
+        mark_final_balance_attempt_failed(
+            attempt_id=attempt.pk, provider_order_id="order_refund_webhook",
+            payload={"event": "payment.failed"},
+        )
+        client_class.return_value.payment.refund.return_value = {
+            "id": "rfnd_webhook_race", "status": "pending",
+        }
+        refund = refund_late_final_capture(
+            attempt_id=attempt.pk,
+            razorpay_payment_id="pay_refund_webhook",
+            provider_order_id="order_refund_webhook",
+            payload={"event": "payment.captured"},
+        )
+        # Simulate the webhook winning the race before the API response is stored.
+        refund.provider_refund_id = None
+        refund.save(update_fields=["provider_refund_id", "updated_at"])
+        payload = {
+            "event": "refund.processed",
+            "payload": {
+                "refund": {
+                    "entity": {
+                        "id": "rfnd_webhook_race",
+                        "notes": {"airway_refund_record_id": str(refund.pk)},
+                    }
+                }
+            },
+        }
+        raw = json.dumps(payload).encode()
+        signature = hmac.new(b"webhook_test_secret", raw, hashlib.sha256).hexdigest()
+        response = APIClient().generic(
+            "POST", "/api/v1/payments/webhook/", data=raw,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+        refund.refresh_from_db()
+        attempt.refresh_from_db()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(refund.status, "processed")
+        self.assertEqual(refund.provider_refund_id, "rfnd_webhook_race")
+        self.assertEqual(attempt.status, PaymentAttempt.Status.REFUNDED)
+
     def test_wallet_overdraft_does_not_create_attempt_or_change_balance(self):
         wallet = Wallet.objects.create(user=self.customer, balance=Decimal("10.00"))
         with self.assertRaises(InstallmentPaymentError):
