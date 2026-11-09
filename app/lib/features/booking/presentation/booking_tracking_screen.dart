@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:airway/features/payment/data/payment_api.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 
 class BookingTrackingScreen extends StatefulWidget {
@@ -25,6 +27,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   static const _line = Color(0xFFEAE6DE);
 
   Timer? _poller;
+  final Razorpay _razorpay = Razorpay();
+  bool _payingFinalBalance = false;
   Map<String, dynamic> _tracking = {};
   String _status = 'pending';
   bool _loading = true;
@@ -38,6 +42,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   void initState() {
     super.initState();
     _status = widget.initialStatus;
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _onFinalPaymentSuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _onFinalPaymentError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _onExternalWallet);
     _refresh();
     _poller = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted && !_terminal) _refresh(silent: true);
@@ -47,6 +54,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   @override
   void dispose() {
     _poller?.cancel();
+    _razorpay.clear();
     super.dispose();
   }
 
@@ -76,6 +84,135 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     } finally {
       _refreshing = false;
     }
+  }
+
+  Future<void> _showServiceOtp(String purpose) async {
+    try {
+      final result = await BookingApi.requestServiceOtp(
+        widget.bookingId,
+        purpose: purpose,
+      );
+      if (!mounted) return;
+      final otp = result['otp']?.toString() ?? '';
+      if (otp.length != 6) throw const FormatException('The server did not return a valid OTP.');
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(purpose == 'start' ? 'Service start OTP' : 'Service completion OTP'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Share this one-time code with your assigned professional only at this service milestone.'),
+              const SizedBox(height: 18),
+              SelectableText(
+                otp,
+                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 8),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Expires: ${result['expires_at'] ?? 'in 10 minutes'}',
+                style: const TextStyle(color: _muted, fontSize: 11),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not generate OTP: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _payFinalBalance() async {
+    if (_payingFinalBalance) return;
+    setState(() => _payingFinalBalance = true);
+    try {
+      final payment = await PaymentApi.createFinalBalanceOrder(
+        widget.bookingId,
+        walletAmount: '0.00',
+      );
+      if (payment['already_paid'] == true || payment['payment_status'] == 'captured') {
+        await _refresh();
+        if (mounted) setState(() => _payingFinalBalance = false);
+        return;
+      }
+      final key = payment['key_id']?.toString() ?? '';
+      final orderId = payment['order_id']?.toString() ?? '';
+      final amount = payment['amount'];
+      if (key.isEmpty || orderId.isEmpty || amount is! int || amount <= 0) {
+        throw Exception('The final payment gateway order could not be initialized.');
+      }
+      _razorpay.open({
+        'key': key,
+        'amount': amount,
+        'currency': payment['currency'] ?? 'INR',
+        'name': 'AIRway',
+        'description': 'Final balance for booking #${widget.bookingId}',
+        'order_id': orderId,
+        'theme': {'color': '#075B43'},
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _payingFinalBalance = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start final payment: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _onFinalPaymentSuccess(PaymentSuccessResponse response) async {
+    final orderId = response.orderId;
+    final paymentId = response.paymentId;
+    final signature = response.signature;
+    if (orderId == null || paymentId == null || signature == null) {
+      if (mounted) setState(() => _payingFinalBalance = false);
+      return;
+    }
+    try {
+      await PaymentApi.verifyFinalBalancePayment(
+        razorpayOrderId: orderId,
+        razorpayPaymentId: paymentId,
+        razorpaySignature: signature,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Final payment received successfully.')),
+        );
+        await _refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment is awaiting server confirmation: $e')),
+        );
+        await _refresh();
+      }
+    } finally {
+      if (mounted) setState(() => _payingFinalBalance = false);
+    }
+  }
+
+  void _onFinalPaymentError(PaymentFailureResponse response) {
+    if (!mounted) return;
+    setState(() => _payingFinalBalance = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(response.message ?? 'Payment was not completed. You can retry.')),
+    );
+  }
+
+  void _onExternalWallet(ExternalWalletResponse response) {
+    if (!mounted) return;
+    setState(() => _payingFinalBalance = false);
   }
 
   String get _statusText {
@@ -194,6 +331,30 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           SelectableText(_tracking['worker_phone'].toString(), style: const TextStyle(color: _muted)),
                       ]),
                     ),
+                  if (_tracking['payment_summary'] is Map)
+                    _paymentLifecycleCard(Map<String, dynamic>.from(_tracking['payment_summary'] as Map)),
+                  if (_tracking['payment_summary'] is Map &&
+                      Map<String, dynamic>.from(_tracking['payment_summary'] as Map)['requires_service_otp'] == true &&
+                      assigned && !started)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _showServiceOtp('start'),
+                        icon: const Icon(Icons.lock_open_rounded),
+                        label: const Text('Show service start OTP'),
+                      ),
+                    ),
+                  if (_tracking['payment_summary'] is Map &&
+                      Map<String, dynamic>.from(_tracking['payment_summary'] as Map)['requires_service_otp'] == true &&
+                      _status == 'in_progress')
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _showServiceOtp('completion'),
+                        icon: const Icon(Icons.verified_rounded),
+                        label: const Text('Show service completion OTP'),
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -216,6 +377,58 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
             ),
     );
   }
+
+  Widget _paymentLifecycleCard(Map<String, dynamic> summary) {
+    final outstanding = double.tryParse(summary['final_balance_outstanding']?.toString() ?? '0') ?? 0;
+    final advance = double.tryParse(summary['advance_captured']?.toString() ?? '0') ?? 0;
+    final finalPaid = summary['final_balance_status'] == 'paid';
+    final isSplit = summary['requires_service_otp'] == true;
+    if (!isSplit) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Payment summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
+          const SizedBox(height: 10),
+          _paymentRow('Booking advance received', '₹${advance.toStringAsFixed(2)}'),
+          _paymentRow('Final balance', finalPaid ? 'Paid' : '₹${outstanding.toStringAsFixed(2)} due'),
+          if (_status == 'completed' && outstanding > 0)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _payingFinalBalance ? null : _payFinalBalance,
+                child: _payingFinalBalance
+                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text('Pay final balance ₹${outstanding.toStringAsFixed(2)}'),
+              ),
+            ),
+          if (_status == 'completed' && !finalPaid && outstanding > 0)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Your service remains completed while payment is pending. You can retry payment here.',
+                  style: TextStyle(color: _muted, fontSize: 12)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _paymentRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(color: _muted, fontSize: 13))),
+            Text(value, style: const TextStyle(color: _ink, fontWeight: FontWeight.w800)),
+          ],
+        ),
+      );
 
   Widget _step(String title, bool complete, String detail) => Padding(
         padding: const EdgeInsets.only(bottom: 18),
