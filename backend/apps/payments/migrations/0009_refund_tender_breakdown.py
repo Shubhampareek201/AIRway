@@ -1,6 +1,14 @@
 from django.db import migrations, models
 
 
+def backfill_gateway_refund_amount(apps, schema_editor):
+    RefundRecord = apps.get_model("payments", "RefundRecord")
+    RefundRecord.objects.update(
+        gateway_refund_amount=models.F("refund_amount"),
+        wallet_refund_amount=0,
+    )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("payments", "0008_installment_attempt_tender_allocations"),
@@ -22,6 +30,7 @@ class Migration(migrations.Migration):
             name="wallet_refunded_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
+        migrations.RunPython(backfill_gateway_refund_amount, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name="refundrecord",
             constraint=models.CheckConstraint(
