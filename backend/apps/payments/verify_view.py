@@ -108,33 +108,23 @@ def _refund_late_capture_for_cancelled_booking(
                 },
             },
         )
-        provider_refund_id = provider_refund.get("id")
-        if not provider_refund_id:
+        if not provider_refund.get("id"):
             raise ValueError("Razorpay did not return a refund ID.")
-        refund_record.provider_refund_id = provider_refund_id
-        provider_status = provider_refund.get("status")
-        if provider_status == "processed":
-            refund_record.status = RefundRecord.Status.PROCESSED
-            refund_record.processed_at = timezone.now()
-        elif provider_status == "failed":
-            refund_record.status = RefundRecord.Status.FAILED
-        else:
-            refund_record.status = RefundRecord.Status.PENDING
-        refund_record.provider_payload = provider_refund
+        from .installment_service import _persist_refund_submission
+        refund_record = _persist_refund_submission(
+            record_id=refund_record.pk,
+            provider_refund=provider_refund,
+        )
     except Exception as exc:
         logger.exception(
             "Late-capture refund submission failed for cancelled booking %s",
             booking.pk,
         )
-        refund_record.status = RefundRecord.Status.FAILED
-        refund_record.provider_payload = {
-            **(refund_record.provider_payload or {}),
-            "submission_error": str(exc)[:500],
-        }
-    refund_record.save(update_fields=[
-        "provider_refund_id", "status", "processed_at",
-        "provider_payload", "updated_at",
-    ])
+        from .installment_service import _persist_refund_submission
+        refund_record = _persist_refund_submission(
+            record_id=refund_record.pk,
+            submission_error=exc,
+        )
     return Response({
         "detail": "Payment was captured after the booking was cancelled; AIRway initiated full reconciliation refund.",
         "status": Payment.Status.PAID,
