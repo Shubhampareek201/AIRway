@@ -453,6 +453,8 @@ def refund_mismatched_final_capture(
                 "gross_amount": actual_amount,
                 "platform_fee": ZERO,
                 "refund_amount": actual_amount,
+                "gateway_refund_amount": actual_amount,
+                "wallet_refund_amount": ZERO,
                 "status": RefundRecord.Status.REQUESTED,
                 "requested_at": timezone.now(),
                 "provider_payload": {
@@ -528,6 +530,8 @@ def refund_duplicate_final_capture(*, attempt_id, razorpay_payment_id, provider_
                 "gross_amount": refund_amount,
                 "platform_fee": ZERO,
                 "refund_amount": refund_amount,
+                "gateway_refund_amount": refund_amount,
+                "wallet_refund_amount": ZERO,
                 "status": (
                     RefundRecord.Status.REQUESTED if refund_amount > ZERO
                     else RefundRecord.Status.PROCESSED
