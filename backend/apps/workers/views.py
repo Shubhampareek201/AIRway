@@ -20,7 +20,7 @@ from django.conf import settings
 from apps.accounts.models import Address, User
 from apps.catalog.models import Service
 from apps.core.models import Zone
-from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, ServiceOTP
+from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, ServiceOTP, Order
 from apps.notifications.models import Notification
 from apps.wallet.models import WalletTransaction
 
@@ -665,47 +665,40 @@ class WorkerJobStartView(APIView):
         try:
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
-            return Response(
-                {"detail": "No worker profile found."},
-                status=status.HTTP_404_NOT_FOUND,
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            try:
+                assign = BookingAssignment.objects.select_for_update().select_related("booking").get(
+                    pk=job_id, worker=profile
+                )
+                booking = Booking.objects.select_for_update().get(pk=assign.booking_id)
+            except BookingAssignment.DoesNotExist:
+                return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+            if booking.status == Booking.Status.IN_PROGRESS and assign.started_at:
+                return Response({"detail": "Service has already started.", "status": booking.status})
+            if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
+                return Response({"detail": "Job must be assigned and confirmed before starting."}, status=status.HTTP_400_BAD_REQUEST)
+            if not assign.accepted_at:
+                return Response({"detail": "Accept the job before starting work."}, status=status.HTTP_400_BAD_REQUEST)
+            valid, error = _verify_service_otp(booking, ServiceOTP.Purpose.START, request.data.get("otp"))
+            if not valid:
+                return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+            now = timezone.now()
+            assign.started_at = now
+            assign.save(update_fields=["started_at", "updated_at"])
+            old = booking.status
+            booking.status = Booking.Status.IN_PROGRESS
+            booking.save(update_fields=["status", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=booking, from_status=old, to_status=Booking.Status.IN_PROGRESS,
+                changed_by=request.user, note="Worker verified customer start OTP; service started.",
             )
+            if hasattr(booking, "order_item"):
+                order = booking.order_item.order
+                order.status = Order.Status.IN_PROGRESS
+                order.save(update_fields=["status", "updated_at"])
+        return Response({"detail": "Customer OTP verified. Job started.", "status": booking.status})
 
-        assign, booking = _get_assignment_and_booking(job_id, profile)
-        if not booking:
-            return Response(
-                {"detail": "Job not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
-            return Response(
-                {"detail": "Job must be assigned and confirmed before starting."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not assign.accepted_at:
-            return Response(
-                {"detail": "Accept the job before starting work."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        now = timezone.now()
-        assign.started_at = now
-        assign.save(update_fields=["started_at"])
-
-        old = booking.status
-        booking.status = Booking.Status.IN_PROGRESS
-        booking.save(update_fields=["status"])
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old,
-            to_status=Booking.Status.IN_PROGRESS,
-            changed_by=request.user,
-            note="Worker started the job.",
-        )
-
-        return Response({"detail": "Job started.", "status": booking.status})
 
 class WorkerJobCompleteView(APIView):
     permission_classes = [IsAuthenticated]
@@ -715,23 +708,52 @@ class WorkerJobCompleteView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
-        assign, booking = _get_assignment_and_booking(job_id, profile)
-        if not booking:
-            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-        if booking.status != Booking.Status.IN_PROGRESS:
-            return Response({"detail": "Job must be in progress."}, status=status.HTTP_400_BAD_REQUEST)
-        notes = request.data.get("notes", "")
-        assign.completed_at = timezone.now()
-        assign.save()
-        old = booking.status
-        booking.status = Booking.Status.COMPLETED
-        booking.worker_notes = notes
-        booking.save(update_fields=["status", "worker_notes"])
-        BookingStatusHistory.objects.create(
-            booking=booking, from_status=old, to_status=Booking.Status.COMPLETED,
-            changed_by=request.user, note="Worker marked complete.",
-        )
-        return Response({"detail": "Job completed.", "status": booking.status})
+        with transaction.atomic():
+            try:
+                assign = BookingAssignment.objects.select_for_update().select_related("booking").get(
+                    pk=job_id, worker=profile
+                )
+                booking = Booking.objects.select_for_update().get(pk=assign.booking_id)
+            except BookingAssignment.DoesNotExist:
+                return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+            if booking.status == Booking.Status.COMPLETED and assign.completed_at:
+                return Response({"detail": "Service has already been completed.", "status": booking.status})
+            if booking.status != Booking.Status.IN_PROGRESS:
+                return Response({"detail": "Job must be in progress."}, status=status.HTTP_400_BAD_REQUEST)
+            valid, error = _verify_service_otp(booking, ServiceOTP.Purpose.COMPLETE, request.data.get("otp"))
+            if not valid:
+                return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+            notes = str(request.data.get("notes", ""))[:5000]
+            now = timezone.now()
+            assign.completed_at = now
+            assign.save(update_fields=["completed_at", "updated_at"])
+            old = booking.status
+            booking.status = Booking.Status.COMPLETED
+            booking.completed_at = now
+            booking.worker_notes = notes
+            booking.save(update_fields=["status", "completed_at", "worker_notes", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=booking, from_status=old, to_status=Booking.Status.COMPLETED,
+                changed_by=request.user, note="Worker verified customer completion OTP; service completed.",
+            )
+            if hasattr(booking, "order_item"):
+                order = Order.objects.select_for_update().get(pk=booking.order_item.order_id)
+                all_complete = not order.items.exclude(booking__status=Booking.Status.COMPLETED).exists()
+                order.status = Order.Status.AWAITING_BALANCE if all_complete else Order.Status.IN_PROGRESS
+                order.save(update_fields=["status", "updated_at"])
+            Notification.objects.create(
+                user=booking.customer, type=Notification.Type.BOOKING_COMPLETED,
+                title="Service Completed",
+                body="Your professional verified the completion OTP. The remaining 50% payment is now due.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "order_id": booking.order_item.order_id if hasattr(booking, "order_item") else None},
+            )
+        return Response({
+            "detail": "Customer completion OTP verified. Service completed; remaining balance is due.",
+            "status": booking.status,
+            "completed_at": booking.completed_at,
+            "balance_due": True,
+        })
 
 
 class WorkerEarningsView(APIView):
