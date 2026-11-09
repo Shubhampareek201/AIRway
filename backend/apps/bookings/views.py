@@ -711,7 +711,7 @@ class CustomerOrderListView(APIView):
                 "status": order.status,
                 "total_amount": str(order.total_amount),
                 "created_at": order.created_at,
-                "item_count": len(statuses),
+                "item_count": order.items.count(),
                 "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
             })
         return Response(results)
