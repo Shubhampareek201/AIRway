@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from .installment_service import (
     InstallmentPaymentError,
     create_final_balance_attempt,
+    refund_duplicate_final_capture,
     settle_final_balance_attempt,
 )
 from .models import PaymentAttempt
@@ -111,6 +112,23 @@ class VerifyInstallmentPaymentView(APIView):
             return Response({"detail": "Captured amount mismatch."}, status=status.HTTP_400_BAD_REQUEST)
         if (provider_payment.get("currency") or "").upper() != attempt.currency:
             return Response({"detail": "Captured currency mismatch."}, status=status.HTTP_400_BAD_REQUEST)
+        if (
+            attempt.status == PaymentAttempt.Status.CAPTURED
+            and attempt.provider_payment_id != payment_id
+        ):
+            try:
+                refund_duplicate_final_capture(
+                    attempt_id=attempt.pk,
+                    razorpay_payment_id=payment_id,
+                    provider_order_id=order_id,
+                    payload=provider_payment,
+                )
+            except InstallmentPaymentError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+            return Response({
+                "detail": "This installment was already settled. The duplicate capture has been sent for refund reconciliation.",
+                "status": "duplicate_capture_refund",
+            }, status=status.HTTP_200_OK)
         try:
             settled = settle_final_balance_attempt(
                 attempt_id=attempt.pk,
