@@ -88,7 +88,27 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Future<void> startPayment() async {
     if (order?['ready_for_payment'] != true || paying) return;
-    final total = amount(order?['total_amount']);
+    final rawItems = order?['items'];
+    if (rawItems is! List || rawItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order payment details are unavailable. Refresh and try again.')),
+      );
+      return;
+    }
+    final activeItems = rawItems.whereType<Map>().where(
+      (item) => item['booking_status']?.toString() != 'cancelled',
+    );
+    var advanceDueTotal = 0.0;
+    for (final item in activeItems) {
+      final summary = item['payment_summary'];
+      if (summary is! Map || summary['advance_due'] == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Advance payment details are incomplete. Refresh or contact AIRway support.')),
+        );
+        return;
+      }
+      advanceDueTotal += amount(summary['advance_due']);
+    }
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -98,9 +118,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       return;
     }
     final walletAmount = parsedWalletAmount;
-    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > total) {
+    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > advanceDueTotal) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a wallet amount within your available balance and order total.')),
+        const SnackBar(content: Text('Enter a wallet amount within your available balance and booking advance.')),
       );
       return;
     }
