@@ -294,140 +294,17 @@ class BookingViewSet(viewsets.ModelViewSet):
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
-        """Mark booking as in progress (worker started the job)."""
-        from apps.notifications.models import Notification
-
-        booking = Booking.objects.filter(pk=pk).first()
-        if not booking:
-            return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        assignment = getattr(booking, "assignment", None)
-
-        if not assignment:
-            return Response(
-                {"detail": "This booking has no assignment. Worker must accept offer first."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            user_worker_profile = request.user.worker_profile
-        except ObjectDoesNotExist:
-            return Response(
-                {"detail": "User is not a worker."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if assignment.worker != user_worker_profile:
-            return Response(
-                {"detail": "Only the assigned worker can start this job."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
-            return Response(
-                {"detail": f"Cannot start job in {booking.get_status_display()} state."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        old_status = booking.status
-        booking.status = Booking.Status.IN_PROGRESS
-        booking.save()
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.IN_PROGRESS,
-            changed_by=request.user,
-            note="Worker started the job",
+        return Response(
+            {"detail": "Service transitions require the assigned worker's customer-verified OTP endpoint."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
-
-        if assignment:
-            assignment.started_at = timezone.now()
-            assignment.save()
-
-        Notification.objects.create(
-            user=booking.customer,
-            type=Notification.Type.BOOKING_STARTED,
-            title="Service Started",
-            body="The service has started. You'll receive updates.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
-
-        return Response({
-            "detail": "Job marked as started.",
-            "status": booking.status,
-            "started_at": assignment.started_at,
-        })
 
     @action(detail=True, methods=["post"], url_path="complete")
     def complete_job(self, request, pk=None):
-        """Mark booking as completed (worker finished the job)."""
-        from apps.notifications.models import Notification
-
-        booking = Booking.objects.filter(pk=pk).first()
-        if not booking:
-            return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        assignment = getattr(booking, "assignment", None)
-
-        if not assignment:
-            return Response(
-                {"detail": "This booking has no assignment."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            user_worker_profile = request.user.worker_profile
-        except ObjectDoesNotExist:
-            return Response(
-                {"detail": "User is not a worker."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if assignment.worker != user_worker_profile:
-            return Response(
-                {"detail": "Only the assigned worker can complete this job."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if booking.status != Booking.Status.IN_PROGRESS:
-            return Response(
-                {"detail": f"Cannot complete job in {booking.get_status_display()} state."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        old_status = booking.status
-        booking.status = Booking.Status.COMPLETED
-        booking.completed_at = timezone.now()
-        booking.save()
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.COMPLETED,
-            changed_by=request.user,
-            note="Worker completed the job",
+        return Response(
+            {"detail": "Service transitions require the assigned worker's customer-verified OTP endpoint."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
-
-        if assignment:
-            assignment.completed_at = timezone.now()
-            assignment.save()
-
-        Notification.objects.create(
-            user=booking.customer,
-            type=Notification.Type.BOOKING_COMPLETED,
-            title="Service Completed",
-            body="The service has been completed successfully.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
-
-        return Response({
-            "detail": "Job marked as completed.",
-            "status": booking.status,
-            "completed_at": assignment.completed_at,
-        })
 
 
 class CustomerCheckoutView(APIView):
