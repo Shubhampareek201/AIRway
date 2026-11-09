@@ -895,7 +895,6 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
     def accept(self, request, pk=None):
         """Atomically accept either a standalone booking or every line in an order."""
         offer = self.get_object()
-        payment_order_id = None
         now = timezone.now()
         with transaction.atomic():
             # Lock the parent order before any offer rows. This consistent lock
@@ -1021,18 +1020,8 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 ).exclude(pk=offer.pk).update(
                     status=WorkerOffer.Status.WITHDRAWN, responded_at=now
                 )
-                order.status = Order.Status.AWAITING_PAYMENT
+                order.status = Order.Status.ADVANCE_PAID
                 order.save(update_fields=["status", "updated_at"])
-
-        if not order:
-            try:
-                from apps.payments.views import create_or_get_payment
-                _, payment_order_id, _ = create_or_get_payment(
-                    booking=bookings[0], customer=bookings[0].customer,
-                    trigger_source="worker_accept",
-                )
-            except Exception as exc:
-                logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
 
         response_data = {
             "status": "accepted",
@@ -1042,8 +1031,6 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             "assigned_booking_ids": [booking.pk for booking in bookings],
             "order_id": order.pk if order else None,
         }
-        if payment_order_id:
-            response_data["payment_order_id"] = payment_order_id
         return Response(response_data)
 
     @action(detail=True, methods=["post"], url_path="decline")
