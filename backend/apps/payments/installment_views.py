@@ -42,6 +42,17 @@ class CreateFinalBalancePaymentView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
+        if attempt is None:
+            return Response({
+                "booking_id": booking_id,
+                "already_paid": True,
+                "payment_status": PaymentAttempt.Status.CAPTURED,
+                "amount": 0,
+                "total_tender": "0.00",
+                "wallet_amount": "0.00",
+                "remaining_balance": "0.00",
+                "order_id": "",
+            })
         installment = attempt.installment
         response = {
             "attempt_id": attempt.pk,
