@@ -55,7 +55,11 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
             )
         amount_due = booking.total_amount
 
-    if amount_due <= 0:
+    try:
+        amount_due = Decimal(str(amount_due))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("The booking amount is invalid.")
+    if not amount_due.is_finite() or amount_due <= 0:
         raise ValueError("The amount due must be greater than zero.")
 
     # Try to get existing payment first (fast path)
