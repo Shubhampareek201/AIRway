@@ -12,6 +12,7 @@ from .models import (
     Order,
     OrderItem,
     DispatchConfiguration,
+    ServiceOTP,
 )
 
 
@@ -103,3 +104,11 @@ class DispatchConfigurationAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ServiceOTP)
+class ServiceOTPAdmin(ModelAdmin):
+    list_display = ("booking", "purpose", "expires_at", "verified_at", "attempts", "last_sent_at")
+    list_filter = ("purpose", "verified_at", "expires_at")
+    search_fields = ("booking__id", "booking__customer__phone")
+    readonly_fields = ("booking", "purpose", "code_hash", "expires_at", "verified_at", "attempts", "last_sent_at", "created_at", "updated_at")
