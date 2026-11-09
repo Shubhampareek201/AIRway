@@ -891,6 +891,18 @@ class PaymentWebhookView(APIView):
                         source="webhook",
                     )
                 except InstallmentPaymentError as exc:
+                    attempt.refresh_from_db()
+                    if (
+                        attempt.status == PaymentAttempt.Status.CAPTURED
+                        and attempt.provider_payment_id != payment_id
+                    ):
+                        refund_duplicate_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "concurrent_duplicate_capture_refund"})
                     logger.exception("Final-balance webhook reconciliation failed for attempt %s", attempt.pk)
                     return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
                 return Response({"status": "ok"})
