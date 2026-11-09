@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
                 ("kind", models.CharField(choices=[("advance", "Booking Advance"), ("balance", "Completion Balance")], max_length=16)),
                 ("amount", models.DecimalField(decimal_places=2, max_digits=12)),
                 ("wallet_amount", models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ("status", models.CharField(choices=[("pending", "Pending"), ("paid", "Paid")], default="pending", max_length=16)),
+                ("status", models.CharField(choices=[("pending", "Pending"), ("paid", "Paid"), ("refunded", "Refunded")], default="pending", max_length=16)),
                 ("paid_at", models.DateTimeField(blank=True, null=True)),
                 ("payment", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="installments", to="payments.payment")),
             ],
