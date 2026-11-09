@@ -166,6 +166,49 @@ class FinalBalanceAttemptTests(TestCase):
             status=WalletTransaction.Status.COMPLETED,
         ).exists())
 
+    def test_wallet_only_active_attempt_is_settled_on_retry_after_interruption(self):
+        wallet = self._wallet_with_balance("500.00")
+        with patch(
+            "apps.payments.installment_service.settle_final_balance_attempt",
+            side_effect=InstallmentPaymentError("simulated process interruption"),
+        ):
+            with self.assertRaises(InstallmentPaymentError):
+                create_final_balance_attempt(
+                    booking_id=self.booking.pk,
+                    customer=self.customer,
+                    wallet_amount="500.00",
+                )
+
+        attempt = PaymentAttempt.objects.get(installment=self.final)
+        reservation = WalletReservation.objects.get(payment_attempt=attempt)
+        wallet.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertEqual(attempt.status, PaymentAttempt.Status.CREATED)
+        self.assertEqual(reservation.status, WalletReservation.Status.RESERVED)
+        self.assertEqual(wallet.pending_balance, Decimal("500.00"))
+        self.assertEqual(self.final.status, PaymentInstallment.Status.PROCESSING)
+
+        retried_attempt, existed = create_final_balance_attempt(
+            booking_id=self.booking.pk,
+            customer=self.customer,
+            wallet_amount="500.00",
+        )
+        retried_attempt.refresh_from_db()
+        reservation.refresh_from_db()
+        wallet.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertTrue(existed)
+        self.assertEqual(retried_attempt.pk, attempt.pk)
+        self.assertEqual(retried_attempt.status, PaymentAttempt.Status.CAPTURED)
+        self.assertEqual(reservation.status, WalletReservation.Status.CAPTURED)
+        self.assertEqual(wallet.balance, Decimal("0.00"))
+        self.assertEqual(wallet.pending_balance, Decimal("0.00"))
+        self.assertEqual(self.final.status, PaymentInstallment.Status.PAID)
+        self.assertEqual(
+            PaymentAllocation.objects.filter(payment_attempt=attempt).count(),
+            1,
+        )
+
     @patch("apps.payments.installment_service.razorpay.Client")
     def test_mixed_wallet_and_gateway_tender_reconciles_all_sources(self, client_class):
         wallet = self._wallet_with_balance("100.00")
