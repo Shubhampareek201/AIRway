@@ -205,14 +205,18 @@ class BookingViewSet(viewsets.ModelViewSet):
                             },
                         },
                     )
-                    refund_record.provider_refund_id = provider_refund.get("id")
-                    refund_record.status = (
-                        RefundRecord.Status.PROCESSED
-                        if provider_refund.get("status") == "processed"
-                        else RefundRecord.Status.PENDING
-                    )
-                    if refund_record.status == RefundRecord.Status.PROCESSED:
+                    provider_refund_id = provider_refund.get("id")
+                    provider_status = provider_refund.get("status")
+                    if not provider_refund_id:
+                        raise ValueError("Razorpay did not return a refund ID.")
+                    refund_record.provider_refund_id = provider_refund_id
+                    if provider_status == "processed":
+                        refund_record.status = RefundRecord.Status.PROCESSED
                         refund_record.processed_at = timezone.now()
+                    elif provider_status == "failed":
+                        refund_record.status = RefundRecord.Status.FAILED
+                    else:
+                        refund_record.status = RefundRecord.Status.PENDING
                     refund_record.provider_payload = provider_refund
                     refund_record.save(update_fields=[
                         "provider_refund_id", "status", "processed_at",
