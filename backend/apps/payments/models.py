@@ -324,4 +324,9 @@ class PaymentAllocation(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f"Payment #{self.payment_id} allocation for installment #{self.installment_id}"
+        source = (
+            f"Payment #{self.payment_id}"
+            if self.payment_id
+            else f"Attempt #{self.payment_attempt_id}"
+        )
+        return f"{source} allocation for installment #{self.installment_id}"
