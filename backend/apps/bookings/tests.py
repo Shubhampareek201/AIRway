@@ -121,6 +121,22 @@ class BookingAPITestMixin:
         self.assertIsNotNone(notification)
         return notification.body.split(" is ")[-1].split(".")[0]
 
+    def _start_worker_job(self, worker_client, booking):
+        assignment = booking.assignment
+        otp = self._request_worker_otp(worker_client, assignment.pk, "start")
+        return worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/start/",
+            {"otp": otp}, format="json",
+        )
+
+    def _complete_worker_job(self, worker_client, booking):
+        assignment = booking.assignment
+        otp = self._request_worker_otp(worker_client, assignment.pk, "complete")
+        return worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/complete/",
+            {"otp": otp}, format="json",
+        )
+
 
 class BookingCreateTest(BookingAPITestMixin, TestCase):
     """Test booking creation endpoint."""
@@ -1486,6 +1502,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         booking_id = create_resp.data["id"]
 
         # Confirm booking
+        self._mark_advance_paid(booking_id)
         confirm_resp = self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
         self.assertEqual(confirm_resp.status_code, 200)
         self.assertEqual(confirm_resp.data["status"], "confirmed")
@@ -1513,6 +1530,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
+        self._mark_advance_paid(booking_id)
         self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
 
         # Get the offer for worker1
@@ -1662,7 +1680,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
 
         # Worker starts job
-        start_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
+        start_resp = self._start_worker_job(worker_client, Booking.objects.get(pk=booking_id))
         self.assertEqual(start_resp.status_code, 200)
         self.assertEqual(start_resp.data["status"], "in_progress")
 
@@ -1692,7 +1710,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         self.assertEqual(start_resp.status_code, 200)
 
         # Worker completes job
-        complete_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/complete/", format="json")
+        complete_resp = self._complete_worker_job(worker_client, Booking.objects.get(pk=booking_id))
         self.assertEqual(complete_resp.status_code, 200)
         self.assertEqual(complete_resp.data["status"], "completed")
 
@@ -1718,8 +1736,8 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/complete/", format="json")
+        self._start_worker_job(worker_client, Booking.objects.get(pk=booking_id))
+        self._complete_worker_job(worker_client, Booking.objects.get(pk=booking_id))
 
         # Customer checks status
         detail_resp = self.client.get(f"/api/v1/bookings/{booking_id}/")
@@ -1753,7 +1771,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
 
         # Customer tries to start (should fail)
         start_resp = self.client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        self.assertEqual(start_resp.status_code, 403)
+        self.assertEqual(start_resp.status_code, 405)
 
 
 class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
