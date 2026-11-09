@@ -166,6 +166,8 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
             status__in=(PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED),
         ).order_by("-created_at").first()
         if active:
+            if active.gateway_amount > ZERO and not active.provider_order_id:
+                raise InstallmentPaymentError("The payment order is still being initialized. Refresh and retry shortly.")
             if active.amount != outstanding or active.wallet_amount != wallet_requested:
                 raise InstallmentPaymentError(
                     "A payment attempt is already active with different payment details. Complete or wait for it before changing the wallet amount."
