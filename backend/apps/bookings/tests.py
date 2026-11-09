@@ -2724,7 +2724,15 @@ class PaymentWebhookTest(TestCase):
             zone=self.zone,
         )
 
-    def _make_webhook_payload(self, event_type, order_id, payment_id, amount=50000, currency="INR"):
+    def _make_webhook_payload(
+        self,
+        event_type,
+        order_id,
+        payment_id,
+        amount=50000,
+        currency="INR",
+        payment_status="captured",
+    ):
         """Create a Razorpay webhook payload for testing."""
         return {
             "event": event_type,
@@ -2735,7 +2743,7 @@ class PaymentWebhookTest(TestCase):
                         "order_id": order_id,
                         "amount": amount,
                         "currency": currency,
-                        "status": "captured",
+                        "status": payment_status,
                     }
                 }
             }
@@ -2939,7 +2947,7 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(payment.status, Payment.Status.PAID)
 
     def test_webhook_authorized_then_captured(self):
-        """payment.authorized followed by payment.captured should work."""
+        """Authorization must not settle; a later capture settles exactly once."""
         from apps.payments.models import Payment
 
         booking = Booking.objects.create(
@@ -2958,17 +2966,39 @@ class PaymentWebhookTest(TestCase):
             razorpay_order_id="order_auth_capture",
         )
 
-        # First: authorized
+        # Authorization is not a captured payment.
         payload_auth = self._make_webhook_payload(
-            "payment.authorized", "order_auth_capture", "pay_auth_capture", 50000, "INR"
+            "payment.authorized",
+            "order_auth_capture",
+            "pay_auth_capture",
+            50000,
+            "INR",
+            payment_status="authorized",
         )
         response1 = self._post_webhook(payload_auth)
         self.assertEqual(response1.status_code, 200)
 
         payment.refresh_from_db()
-        self.assertEqual(payment.status, Payment.Status.PAID)
+        booking.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PENDING)
+        self.assertEqual(payment.razorpay_payment_id, "")
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
 
-        # Then: captured (duplicate, should be idempotent)
+        # A captured event with a non-captured entity must also be rejected.
+        inconsistent_capture = self._make_webhook_payload(
+            "payment.captured",
+            "order_auth_capture",
+            "pay_auth_capture",
+            50000,
+            "INR",
+            payment_status="authorized",
+        )
+        rejected = self._post_webhook(inconsistent_capture)
+        self.assertEqual(rejected.status_code, 400)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PENDING)
+
+        # The subsequent captured event performs the settlement.
         payload_capture = self._make_webhook_payload(
             "payment.captured", "order_auth_capture", "pay_auth_capture", 50000, "INR"
         )
@@ -2976,7 +3006,21 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(response2.status_code, 200)
 
         payment.refresh_from_db()
+        booking.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+
+        # A duplicate captured event must not duplicate success notifications.
+        duplicate = self._post_webhook(payload_capture)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(
+            Notification.objects.filter(
+                user=self.customer,
+                type=Notification.Type.PAYMENT_SUCCESS,
+                data__payment_id=payment.id,
+            ).count(),
+            1,
+        )
 
     def test_webhook_late_capture_after_timeout(self):
         """Q12: Late payment.captured after timeout released worker."""
