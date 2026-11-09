@@ -275,6 +275,9 @@ class Order(TimeStampedModel):
         AWAITING_ASSIGNMENT = "awaiting_assignment", "Awaiting Assignment"
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
         PAID = "paid", "Paid"
+        ADVANCE_PAID = "advance_paid", "Advance Paid"
+        IN_PROGRESS = "in_progress", "In Progress"
+        AWAITING_BALANCE = "awaiting_balance", "Awaiting Balance"
         PARTIALLY_CANCELLED = "partially_cancelled", "Partially Cancelled"
         CANCELLED = "cancelled", "Cancelled"
 
