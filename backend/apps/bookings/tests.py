@@ -1562,7 +1562,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         accept_resp = worker2_client.post(f"/api/v1/workers/offers/{offer2.id}/accept/", format="json")
 
         self.assertEqual(accept_resp.status_code, 400)
-        self.assertIn("already assigned", accept_resp.data["detail"].lower())
+        self.assertIn("already been assigned", accept_resp.data["detail"].lower())
 
     def test_5_customer_sees_assigned_worker(self):
         """Customer can see the assigned worker in booking details."""
