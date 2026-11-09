@@ -293,8 +293,8 @@ class CreateOrderView(APIView):
 
             from .models import BookingFinancialPlan
             financial_plans = list(BookingFinancialPlan.objects.filter(
-                booking__order_item__order=parent_order
-            ))
+                booking__order_item__order=parent_order,
+            ).exclude(booking__status=Booking.Status.CANCELLED))
             advance_amount = (
                 sum((plan.advance_due for plan in financial_plans), Decimal("0.00"))
                 if financial_plans and len(financial_plans) == parent_order.items.count()
