@@ -754,10 +754,8 @@ class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["refund_policy"], "same_day_after_worker_acceptance")
         self.assertEqual(Decimal(response.data["refund_amount"]), Decimal("0.00"))
-        refund = RefundRecord.objects.get(booking=booking)
-        self.assertEqual(refund.payment_id, payment.pk)
-        self.assertEqual(refund.refund_amount, Decimal("0.00"))
-        self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
+        self.assertEqual(response.data["refund_status"], "not_refundable")
+        self.assertFalse(RefundRecord.objects.filter(booking=booking).exists())
 
 
 class BookingTrackTest(BookingAPITestMixin, TestCase):
