@@ -2779,6 +2779,102 @@ class PaymentWebhookTest(TestCase):
         from django.conf import settings
         settings.RAZORPAY_WEBHOOK_SECRET = "whsec_test123"
 
+    def _post_checkout_verification(self, payment, razorpay_payment_id="pay_checkout_verify"):
+        import hashlib
+        import hmac
+
+        from django.conf import settings
+
+        client = APIClient()
+        client.force_authenticate(user=self.customer)
+        order_id = payment.razorpay_order_id
+        signature = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(),
+            f"{order_id}|{razorpay_payment_id}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        return client.post(
+            "/api/v1/payments/verify/",
+            {
+                "razorpay_order_id": order_id,
+                "razorpay_payment_id": razorpay_payment_id,
+                "razorpay_signature": signature,
+            },
+            format="json",
+        )
+
+    def test_checkout_verification_does_not_settle_authorized_payment(self):
+        from unittest.mock import patch
+        from apps.payments.models import Payment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            status=Booking.Status.ASSIGNED,
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            customer=self.customer,
+            amount=500,
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+            razorpay_order_id="order_checkout_authorized",
+        )
+
+        with patch("razorpay.Client") as razorpay_client:
+            razorpay_client.return_value.payment.fetch.return_value = {
+                "id": "pay_checkout_verify",
+                "order_id": payment.razorpay_order_id,
+                "amount": 50000,
+                "currency": "INR",
+                "status": "authorized",
+            }
+            response = self._post_checkout_verification(payment)
+
+        self.assertEqual(response.status_code, 409)
+        payment.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PENDING)
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+
+    def test_checkout_verification_settles_captured_payment(self):
+        from unittest.mock import patch
+        from apps.payments.models import Payment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            status=Booking.Status.ASSIGNED,
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            customer=self.customer,
+            amount=500,
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+            razorpay_order_id="order_checkout_captured",
+        )
+
+        with patch("razorpay.Client") as razorpay_client:
+            razorpay_client.return_value.payment.fetch.return_value = {
+                "id": "pay_checkout_verify",
+                "order_id": payment.razorpay_order_id,
+                "amount": 50000,
+                "currency": "INR",
+                "status": "captured",
+            }
+            response = self._post_checkout_verification(payment)
+
+        self.assertEqual(response.status_code, 200)
+        payment.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+
     def test_webhook_payment_captured_success(self):
         """Successful payment.captured webhook marks payment as PAID."""
         from apps.payments.models import Payment
