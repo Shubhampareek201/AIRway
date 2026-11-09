@@ -569,6 +569,42 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(reconciled.provider_refund_id, "rfnd_reconcile_match")
 
     @patch("apps.payments.installment_service.razorpay.Client")
+    def test_refund_reconciliation_searches_subsequent_provider_pages(self, client_class):
+        payment = Payment.objects.create(
+            booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+            razorpay_payment_id="pay_refund_paginated",
+        )
+        record = RefundRecord.objects.create(
+            booking=self.booking, payment=payment,
+            idempotency_key="refund-reconcile-paginated",
+            reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
+            gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
+            gateway_refund_amount=Decimal("460.00"),
+            status=RefundRecord.Status.FAILED,
+        )
+        first_page = {"items": [
+            {"id": f"rfnd_other_{index}", "amount": 100, "notes": {}}
+            for index in range(100)
+        ]}
+        second_page = {"items": [{
+            "id": "rfnd_reconcile_paginated", "amount": 46000,
+            "status": "processed",
+            "notes": {"airway_refund_record_id": str(record.pk)},
+        }]}
+        client_class.return_value.payment.fetch_multiple_refund.side_effect = [
+            first_page, second_page,
+        ]
+
+        reconciled = reconcile_refund_record(record_id=record.pk)
+
+        self.assertEqual(reconciled.status, RefundRecord.Status.PROCESSED)
+        self.assertEqual(reconciled.provider_refund_id, "rfnd_reconcile_paginated")
+        calls = client_class.return_value.payment.fetch_multiple_refund.call_args_list
+        self.assertEqual(calls[0].args[1], {"count": 100, "skip": 0})
+        self.assertEqual(calls[1].args[1], {"count": 100, "skip": 100})
+
+    @patch("apps.payments.installment_service.razorpay.Client")
     def test_missing_provider_refund_stays_pending_without_resubmission(self, client_class):
         payment = Payment.objects.create(
             booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
