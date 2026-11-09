@@ -397,7 +397,10 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                             parent_order.status = Order.Status.IN_PROGRESS
                         else:
                             all_lines_completed = not parent_order.items.exclude(
-                                booking__status=Booking.Status.COMPLETED
+                                booking__status__in=(
+                                    Booking.Status.COMPLETED,
+                                    Booking.Status.CANCELLED,
+                                )
                             ).exists()
                             if all_lines_completed:
                                 all_balances_paid = not PaymentInstallment.objects.filter(
