@@ -186,7 +186,10 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
         except PaymentLifecycleError as exc:
             raise OrderLineCancellationError(str(exc)) from exc
 
-        if allocation and response_terms["refund_amount"] > ZERO:
+        if allocation and (
+            response_terms["refund_amount"] > ZERO
+            or response_terms["platform_fee"] > ZERO
+        ):
             gross = as_money(allocation.amount)
             refund_total = min(as_money(response_terms["refund_amount"]), gross)
             fee = gross - refund_total
