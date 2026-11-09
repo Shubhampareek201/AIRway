@@ -393,25 +393,3 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
     if error:
         raise PaymentLifecycleError(error)
     return completed_booking
-def create_customer_cancellation_refund_record(*, booking, payment_attempt, idempotency_key):
-    """Create an auditable refund request record; gateway submission is a later step."""
-    if booking.status == Booking.Status.IN_PROGRESS or booking.status == Booking.Status.COMPLETED:
-        raise PaymentLifecycleError("A started or completed service cannot be cancelled.")
-    if not customer_cancellation_is_refundable(booking.scheduled_at):
-        raise PaymentLifecycleError("The customer cancellation refund cutoff has passed.")
-
-    collected = as_money(payment_attempt.amount)
-    refund_amount = calculate_customer_refund(collected)
-    return RefundRecord.objects.get_or_create(
-        idempotency_key=idempotency_key,
-        defaults={
-            "booking": booking,
-            "payment_attempt": payment_attempt,
-            "reason": RefundRecord.Reason.CUSTOMER_CANCELLATION,
-            "gross_amount": collected,
-            "platform_fee": min(collected, CANCELLATION_FEE),
-            "refund_amount": refund_amount,
-            "status": RefundRecord.Status.REQUESTED,
-            "requested_at": timezone.now(),
-        },
-    )
