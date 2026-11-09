@@ -366,6 +366,25 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                         else:
                             final_installment.status = PaymentInstallment.Status.DUE
                             final_installment.save(update_fields=["status", "due_at", "updated_at"])
+                            from apps.notifications.models import Notification
+                            Notification.objects.create(
+                                user=booking.customer,
+                                type=Notification.Type.FINAL_PAYMENT_DUE,
+                                title="Final service payment due",
+                                body=(
+                                    f"Your service is complete. Final balance of "
+                                    f"₹{final_installment.amount_due - final_installment.amount_captured} "
+                                    f"is due for booking #{booking.pk}."
+                                ),
+                                channel=Notification.Channel.IN_APP,
+                                data={
+                                    "booking_id": booking.pk,
+                                    "final_balance_due": str(final_installment.amount_due),
+                                    "final_balance_outstanding": str(
+                                        final_installment.amount_due - final_installment.amount_captured
+                                    ),
+                                },
+                            )
                     booking.save(update_fields=update_fields)
                     order_id = OrderItem.objects.filter(
                         booking_id=booking.pk
