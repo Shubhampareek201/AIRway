@@ -62,6 +62,13 @@ class Booking {
   final List<BookingStatusHistory> statusHistory;
   final BookingAssignment? assignment;
   final bool canCancel;
+  final String paymentStatus;
+  final double advanceAmount;
+  final double balanceAmount;
+  final String advanceStatus;
+  final String balanceStatus;
+  final bool canPayAdvance;
+  final bool canPayBalance;
 
   Booking({
     required this.id,
@@ -80,6 +87,13 @@ class Booking {
     required this.statusHistory,
     this.assignment,
     required this.canCancel,
+    this.paymentStatus = 'pending',
+    this.advanceAmount = 0,
+    this.balanceAmount = 0,
+    this.advanceStatus = 'pending',
+    this.balanceStatus = 'pending',
+    this.canPayAdvance = false,
+    this.canPayBalance = false,
   });
 
   double get totalAmount {
@@ -120,6 +134,13 @@ class Booking {
           ? BookingAssignment.fromMap(Map<String, dynamic>.from(map['assignment']))
           : null,
       canCancel: map['can_cancel'] ?? false,
+      paymentStatus: map['payment_status']?.toString() ?? 'pending',
+      advanceAmount: double.tryParse(map['advance_amount']?.toString() ?? '') ?? 0,
+      balanceAmount: double.tryParse(map['balance_amount']?.toString() ?? '') ?? 0,
+      advanceStatus: map['advance_status']?.toString() ?? 'pending',
+      balanceStatus: map['balance_status']?.toString() ?? 'pending',
+      canPayAdvance: map['can_pay_advance'] == true,
+      canPayBalance: map['can_pay_balance'] == true,
     );
   }
 }
