@@ -269,7 +269,15 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
     """Atomically verify OTP and persist failed-attempt counters on rejection."""
     error = None
     completed_booking = None
+    # Parent-order cancellation locks Order -> Booking -> Assignment. Use the
+    # same lock order here to avoid a deadlock when OTP verification races with
+    # a customer cancelling another line in the same parent order.
+    order_id = OrderItem.objects.filter(
+        booking_id=booking_id
+    ).values_list("order_id", flat=True).first()
     with transaction.atomic():
+        if order_id:
+            Order.objects.select_for_update().get(pk=order_id)
         booking = Booking.objects.select_for_update().get(pk=booking_id)
         assignment = BookingAssignment.objects.select_for_update().filter(
             booking=booking,
@@ -388,11 +396,9 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                                 },
                             )
                     booking.save(update_fields=update_fields)
-                    order_id = OrderItem.objects.filter(
-                        booking_id=booking.pk
-                    ).values_list("order_id", flat=True).first()
                     if order_id:
-                        parent_order = Order.objects.select_for_update().get(pk=order_id)
+                        # The parent order was locked before the booking above.
+                        parent_order = Order.objects.get(pk=order_id)
                         if purpose == ServiceOTPChallenge.Purpose.START:
                             parent_order.status = Order.Status.IN_PROGRESS
                         else:
