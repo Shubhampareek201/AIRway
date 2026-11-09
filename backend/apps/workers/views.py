@@ -603,6 +603,26 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking=booking).exists():
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer start OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="start",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Job started after OTP verification.", "status": booking.status})
+
         now = timezone.now()
         assign.started_at = now
         assign.save(update_fields=["started_at"])
@@ -635,6 +655,30 @@ class WorkerJobCompleteView(APIView):
         if booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": "Job must be in progress."}, status=status.HTTP_400_BAD_REQUEST)
         notes = request.data.get("notes", "")
+
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking=booking).exists():
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer completion OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="completion",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            if notes:
+                booking.worker_notes = notes
+                booking.save(update_fields=["worker_notes", "updated_at"])
+            return Response({"detail": "Job completed after OTP verification.", "status": booking.status})
+
         assign.completed_at = timezone.now()
         assign.save()
         old = booking.status
