@@ -82,6 +82,8 @@ def retry_failed_dispatches():
     standalone = Booking.objects.filter(
         status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED],
         order_item__isnull=True,
+        payment__installments__kind="advance",
+        payment__installments__status="paid",
     ).exclude(assignment__isnull=False)
     for booking in standalone:
         if WorkerOffer.objects.filter(
@@ -111,12 +113,49 @@ def timeout_pending_payments():
 
     timeout_minutes = getattr(settings, 'PAYMENT_TIMEOUT_MINUTES', PAYMENT_TIMEOUT_MINUTES)
     timeout_ago = timezone.now() - timedelta(minutes=timeout_minutes)
+    installment_timeout_minutes = getattr(settings, "INSTALLMENT_PAYMENT_TIMEOUT_MINUTES", 15)
+    installment_timeout_ago = timezone.now() - timedelta(minutes=installment_timeout_minutes)
+
+    # Installment attempts own their retry lifecycle; do not mark the aggregate
+    # payment failed or release worker assignments when one checkout attempt expires.
+    from apps.payments.models import PaymentAttempt
+    from apps.payments.installments import release_installment_wallet
+    expired_attempt_ids = list(
+        PaymentAttempt.objects.filter(
+            status=PaymentAttempt.Status.PENDING,
+            created_at__lt=installment_timeout_ago,
+        ).values_list("id", flat=True)
+    )
+    for attempt_id in expired_attempt_ids:
+        with transaction.atomic():
+            attempt = PaymentAttempt.objects.select_for_update().select_related(
+                "installment__payment"
+            ).filter(
+                pk=attempt_id,
+                status=PaymentAttempt.Status.PENDING,
+                created_at__lt=installment_timeout_ago,
+            ).first()
+            if attempt is None:
+                continue
+            release_installment_wallet(attempt, "Installment checkout expired; wallet contribution released.")
+            attempt.status = PaymentAttempt.Status.FAILED
+            attempt.failed_at = timezone.now()
+            attempt.save(update_fields=["status", "failed_at", "updated_at"])
+            Notification.objects.create(
+                user=attempt.installment.payment.customer,
+                type=Notification.Type.PAYMENT_TIMEOUT,
+                title="Installment Payment Timed Out",
+                body="Your payment attempt expired. Any reserved wallet amount has been returned; you can retry.",
+                channel=Notification.Channel.IN_APP,
+                data={"payment_id": attempt.installment.payment_id, "attempt_id": attempt.pk},
+            )
 
     payment_ids = list(
         Payment.objects.filter(
             status=Payment.Status.PENDING,
             created_at__lt=timeout_ago,
             booking__isnull=False,
+            installments__isnull=True,
         ).values_list("id", flat=True)
     )
 
@@ -130,6 +169,7 @@ def timeout_pending_payments():
             status=Payment.Status.PENDING,
             updated_at__lt=timeout_ago,
             order__isnull=False,
+            installments__isnull=True,
         ).values_list("id", flat=True)
     )
     for payment_id in parent_payment_ids:
@@ -139,6 +179,7 @@ def timeout_pending_payments():
                 status=Payment.Status.PENDING,
                 updated_at__lt=timeout_ago,
                 order__isnull=False,
+                installments__isnull=True,
             ).first()
             if payment is None:
                 continue
@@ -168,6 +209,7 @@ def timeout_pending_payments():
                 status=Payment.Status.PENDING,
                 created_at__lt=timeout_ago,
                 booking__isnull=False,
+                installments__isnull=True,
             ).first()
             if payment is None:
                 continue
