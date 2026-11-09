@@ -566,10 +566,12 @@ class CustomerCheckoutView(APIView):
                 )
             occupied_order_intervals.extend(intervals)
 
+        # New checkouts are payment-gated: no worker offers exist until
+        # every booking-line advance is captured and allocated.
         order = Order.objects.create(
             customer=request.user,
             address=cart.address,
-            status=Order.Status.AWAITING_ASSIGNMENT,
+            status=Order.Status.AWAITING_PAYMENT,
         )
         subtotal = Decimal("0")
         tax_total = Decimal("0")
@@ -626,6 +628,9 @@ class CustomerCheckoutView(APIView):
             booking.pricing_snapshot = base_snapshot
             booking.save(update_fields=["pricing_snapshot", "updated_at"])
 
+            from apps.payments.lifecycle import create_financial_plan
+            create_financial_plan(booking)
+
             OrderItem.objects.create(
                 order=order,
                 booking=booking,
@@ -657,11 +662,10 @@ class CustomerCheckoutView(APIView):
         order.total_amount = grand_total
         order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
 
-        from apps.bookings.dispatcher import DispatcherService
-        order_offers = DispatcherService.dispatch_order(order)
-        if dispatch_results:
-            dispatch_results[0]["offers_sent"] = len(order_offers)
-
+        advance_due_total = sum(
+            (item.booking.financial_plan.advance_due for item in order.items.select_related("booking")),
+            Decimal("0.00"),
+        )
         cart.items.all().delete()
         return Response({
             "order_id": order.id,
@@ -671,6 +675,8 @@ class CustomerCheckoutView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "advance_due_total": str(advance_due_total),
+            "payment_required": True,
             "items": [
                 {
                     "order_item_id": row.id,
@@ -681,12 +687,8 @@ class CustomerCheckoutView(APIView):
                 }
                 for row in order.items.all()
             ],
-            "dispatch": dispatch_results,
-            "next_step": (
-                "Worker offers sent. Track assignment in the order; payment unlocks after every service is assigned."
-                if any(row["offers_sent"] for row in dispatch_results)
-                else "No single approved worker is currently eligible and available for every service and selected time in this order. The order is waiting for worker assignment."
-            ),
+            "dispatch": [],
+            "next_step": "Pay the booking advance. Worker offers will be created only after the complete advance is captured and reconciled.",
         }, status=status.HTTP_201_CREATED)
 
 
