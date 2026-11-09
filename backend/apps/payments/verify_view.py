@@ -753,6 +753,11 @@ class PaymentWebhookView(APIView):
                 refund_record = RefundRecord.objects.filter(
                     provider_refund_id=provider_refund_id
                 ).first()
+                if refund_record is None:
+                    refund_notes = refund_entity.get("notes") or {}
+                    record_id = refund_notes.get("airway_refund_record_id")
+                    if record_id:
+                        refund_record = RefundRecord.objects.filter(pk=record_id).first()
                 if refund_record:
                     # Provider events can be duplicated or arrive out of order.
                     # A processed refund is terminal and must never regress.
@@ -765,8 +770,11 @@ class PaymentWebhookView(APIView):
                         else:
                             refund_record.status = RefundRecord.Status.PENDING
                     refund_record.provider_payload = payload
+                    if provider_refund_id and not refund_record.provider_refund_id:
+                        refund_record.provider_refund_id = provider_refund_id
                     refund_record.save(update_fields=[
-                        "status", "processed_at", "provider_payload", "updated_at"
+                        "status", "processed_at", "provider_payload",
+                        "provider_refund_id", "updated_at"
                     ])
                     if refund_record.payment_attempt_id:
                         from .models import PaymentAttempt
