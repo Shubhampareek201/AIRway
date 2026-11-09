@@ -1124,6 +1124,10 @@ class CustomerOrderDetailView(APIView):
                 and booking.can_cancel
                 and not (assignment and assignment.started_at)
                 and not (order_payment and order_payment.status == Payment.Status.PENDING)
+                and not (
+                    order_payment and order_payment.status == Payment.Status.PAID
+                    and allocation is None
+                )
             )
             cancellation_terms = None
             if cancellation_available:
