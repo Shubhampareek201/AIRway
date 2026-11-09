@@ -20,7 +20,7 @@ def reconcile_unresolved_refunds(batch_size=100):
         RefundRecord.objects.filter(
             status__in=(RefundRecord.Status.REQUESTED, RefundRecord.Status.PENDING, RefundRecord.Status.FAILED),
             gateway_refund_amount__gt=0,
-        ).order_by("requested_at", "pk").values_list("pk", flat=True)[:batch_size]
+        ).order_by("updated_at", "requested_at", "pk").values_list("pk", flat=True)[:batch_size]
     )
     summary = {"checked": 0, "matched": 0, "unresolved": 0, "errors": 0}
     for record_id in record_ids:
@@ -34,4 +34,7 @@ def reconcile_unresolved_refunds(batch_size=100):
         except Exception:
             summary["errors"] += 1
             logger.exception("Refund reconciliation failed for record %s", record_id)
+            # Rotate failed lookups to the back of the batch so one broken
+            # provider record cannot starve later refunds indefinitely.
+            RefundRecord.objects.filter(pk=record_id).update(updated_at=timezone.now())
     return summary
