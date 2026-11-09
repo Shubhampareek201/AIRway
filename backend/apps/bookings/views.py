@@ -129,7 +129,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             except PaymentLifecycleError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-            if payment and collected_amount > 0:
+            if payment and collected_amount > 0 and terms["refund_amount"] > 0:
                 refund_record, refund_created = create_customer_cancellation_refund_record(
                     booking=booking, payment=payment, terms=terms,
                 )
@@ -238,7 +238,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                     refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
 
         booking.refresh_from_db()
-        refund_status = refund_record.status if refund_record else "not_applicable"
+        refund_status = (
+            refund_record.status if refund_record
+            else ("not_refundable" if collected_amount > 0 else "not_paid")
+        )
         response_data = {
             "detail": "Booking cancelled successfully.",
             "status": booking.status,
