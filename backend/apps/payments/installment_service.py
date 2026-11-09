@@ -155,6 +155,26 @@ def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
                 raise InstallmentPaymentError(
                     "A payment attempt is already active with different payment details. Complete or wait for it before changing the wallet amount."
                 )
+            if active.gateway_amount == ZERO:
+                # A wallet-only attempt has no provider order/webhook to resume.
+                # If the process stopped after reserving funds but before
+                # settlement, an idempotent customer retry must finish it.
+                if (
+                    active.provider != PaymentAttempt.Provider.WALLET
+                    or active.status != PaymentAttempt.Status.CREATED
+                ):
+                    raise InstallmentPaymentError(
+                        "The wallet-only payment attempt needs support reconciliation."
+                    )
+                settle_final_balance_attempt(
+                    attempt_id=active.pk,
+                    razorpay_payment_id="",
+                    provider_order_id="",
+                    amount_paise=0,
+                    currency=plan.currency,
+                    source="wallet",
+                )
+                active.refresh_from_db()
             return active, True
 
         if installment.status not in (
