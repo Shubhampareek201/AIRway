@@ -234,87 +234,12 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
 
 
 class CreateOrderView(APIView):
+    """Backward-compatible route; all new checkouts use split installments."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        parent_order_id = request.data.get("order_id")
-        booking_id = request.data.get("booking_id")
-
-        if parent_order_id:
-            try:
-                parent_order = Order.objects.get(pk=parent_order_id, customer=request.user)
-            except Order.DoesNotExist:
-                return Response({"detail": "Order not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
-            try:
-                raw_wallet_amount = request.data.get("wallet_amount", "0.00")
-                payment, razorpay_order_id, already_existed = create_or_get_order_payment(
-                    order=parent_order,
-                    customer=request.user,
-                    wallet_amount=raw_wallet_amount,
-                    trigger_source="checkout",
-                )
-            except ValueError as exc:
-                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception:
-                logger.exception("Order payment creation failed for order %s", parent_order.id)
-                return Response({"detail": "Failed to create payment order. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            response_data = {
-                "order_id": razorpay_order_id,
-                "amount": int(payment.amount * 100),
-                "total_amount": str(parent_order.total_amount),
-                "wallet_amount": str(payment.wallet_amount),
-                "currency": parent_order.currency,
-                "payment_exists": already_existed,
-                "fully_paid_by_wallet": payment.status == Payment.Status.PAID and payment.method == Payment.Method.WALLET,
-                "already_paid": payment.status == Payment.Status.PAID,
-                "payment_status": payment.status,
-                "airway_order_id": parent_order.id,
-                "payment_id": payment.id,
-            }
-            if razorpay_order_id:
-                response_data["key_id"] = settings.RAZORPAY_KEY_ID
-            return Response(response_data)
-
-        if not booking_id:
-            return Response(
-                {"detail": "Provide order_id for a multi-service order or booking_id for a single booking."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        with transaction.atomic():
-            try:
-                booking = Booking.objects.select_for_update().get(
-                    pk=booking_id,
-                    customer=request.user
-                )
-            except Booking.DoesNotExist:
-                return Response(
-                    {"detail": "Booking not found or access denied."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-        try:
-            payment, order_id, already_existed = create_or_get_payment(
-                booking=booking,
-                customer=request.user,
-                trigger_source="checkout"
-            )
-        except ValueError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            logger.exception("Single booking payment creation failed")
-            return Response(
-                {"detail": "Failed to create payment order. Please try again."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        amount_paise = int(float(booking.total_amount) * 100)
-        response_data = {"order_id": order_id, "amount": amount_paise, "key_id": settings.RAZORPAY_KEY_ID}
-        if already_existed:
-            response_data["payment_exists"] = True
-        return Response(response_data)
-
+        return CreateInstallmentOrderView().post(request)
 
 
 class CreateInstallmentOrderView(APIView):
