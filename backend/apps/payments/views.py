@@ -185,7 +185,7 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
                 customer=customer,
                 amount=payable_total - requested,
                 wallet_amount=requested,
-                method=Payment.Method.WALLET if requested == locked_order.total_amount else Payment.Method.RAZORPAY,
+                method=Payment.Method.WALLET if requested == payable_total else Payment.Method.RAZORPAY,
                 status=Payment.Status.PENDING,
             )
         elif payment.status in [Payment.Status.FAILED, Payment.Status.REFUNDED]:
@@ -284,17 +284,20 @@ class CreateOrderView(APIView):
                 logger.exception("Order payment creation failed for order %s", parent_order.id)
                 return Response({"detail": "Failed to create payment order. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+            from .models import BookingFinancialPlan
+            financial_plans = list(BookingFinancialPlan.objects.filter(
+                booking__order_item__order=parent_order
+            ))
+            advance_amount = (
+                sum((plan.advance_due for plan in financial_plans), Decimal("0.00"))
+                if financial_plans and len(financial_plans) == parent_order.items.count()
+                else None
+            )
             response_data = {
                 "order_id": razorpay_order_id,
                 "amount": int(payment.amount * 100),
                 "total_amount": str(parent_order.total_amount),
-                "advance_amount": str(sum(
-                    (plan.advance_due for plan in __import__("apps.payments.models", fromlist=["BookingFinancialPlan"]).BookingFinancialPlan.objects.filter(
-                        booking__order_item__order=parent_order
-                    )), Decimal("0.00")
-                )) if __import__("apps.payments.models", fromlist=["BookingFinancialPlan"]).BookingFinancialPlan.objects.filter(
-                    booking__order_item__order=parent_order
-                ).count() == parent_order.items.count() else None,
+                "advance_amount": str(advance_amount) if advance_amount is not None else None,
                 "wallet_amount": str(payment.wallet_amount),
                 "currency": parent_order.currency,
                 "payment_exists": already_existed,
@@ -341,8 +344,16 @@ class CreateOrderView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        amount_paise = int(float(booking.total_amount) * 100)
-        response_data = {"order_id": order_id, "amount": amount_paise, "key_id": settings.RAZORPAY_KEY_ID}
+        amount_paise = int(payment.amount * 100)
+        response_data = {
+            "order_id": order_id,
+            "amount": amount_paise,
+            "total_amount": str(booking.total_amount),
+            "advance_amount": str(payment.amount) if BookingFinancialPlan.objects.filter(booking=booking).exists() else None,
+            "payment_id": payment.id,
+            "payment_status": payment.status,
+            "key_id": settings.RAZORPAY_KEY_ID,
+        }
         if already_existed:
             response_data["payment_exists"] = True
         return Response(response_data)
