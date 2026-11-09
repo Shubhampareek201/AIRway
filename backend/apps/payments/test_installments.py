@@ -159,6 +159,38 @@ class FinalBalanceAttemptTests(TestCase):
             status=WalletTransaction.Status.COMPLETED,
         ).exists())
 
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_mixed_wallet_and_gateway_tender_reconciles_all_sources(self, client_class):
+        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("100.00"))
+        client_class.return_value.order.create.return_value = {"id": "order_mixed_final"}
+        attempt, _ = create_final_balance_attempt(
+            booking_id=self.booking.pk, customer=self.customer,
+            wallet_amount="100.00",
+        )
+        wallet.refresh_from_db()
+        self.assertEqual(attempt.amount, Decimal("500.00"))
+        self.assertEqual(attempt.wallet_amount, Decimal("100.00"))
+        self.assertEqual(attempt.gateway_amount, Decimal("400.00"))
+        self.assertEqual(wallet.balance, Decimal("0.00"))
+        self.assertEqual(wallet.pending_balance, Decimal("100.00"))
+
+        settle_final_balance_attempt(
+            attempt_id=attempt.pk, razorpay_payment_id="pay_mixed_final",
+            provider_order_id="order_mixed_final", amount_paise=40000,
+            currency="INR", source="webhook",
+        )
+        wallet.refresh_from_db()
+        allocation = PaymentAllocation.objects.get(payment_attempt=attempt)
+        self.assertEqual(allocation.amount, Decimal("500.00"))
+        self.assertEqual(allocation.gateway_amount, Decimal("400.00"))
+        self.assertEqual(allocation.wallet_amount, Decimal("100.00"))
+        self.assertEqual(wallet.balance, Decimal("0.00"))
+        self.assertEqual(wallet.pending_balance, Decimal("0.00"))
+        self.assertEqual(
+            WalletReservation.objects.get(payment_attempt=attempt).status,
+            WalletReservation.Status.CAPTURED,
+        )
+
     def test_failed_attempt_releases_wallet_and_keeps_balance_due(self):
         wallet = Wallet.objects.create(user=self.customer, balance=Decimal("100.00"))
         attempt = self._attempt(amount="500.00", gateway="400.00", wallet="100.00")
