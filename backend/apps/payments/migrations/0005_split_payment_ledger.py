@@ -60,15 +60,15 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="paymentinstallment",
-            constraint=models.UniqueConstraint(fields=("payment", "kind"), name="uniq_payment_installment_kind"),
+            constraint=models.UniqueConstraint(fields=("payment", "kind"), name="uniq_pay_inst_kind"),
         ),
         migrations.AddConstraint(
             model_name="paymentinstallment",
-            constraint=models.CheckConstraint(condition=models.Q(("amount__gt", 0)), name="payment_installment_amount_positive"),
+            constraint=models.CheckConstraint(condition=models.Q(("amount__gt", 0)), name="pay_inst_amt_pos"),
         ),
         migrations.AddConstraint(
             model_name="paymentinstallment",
-            constraint=models.CheckConstraint(condition=models.Q(("wallet_amount__gte", 0)), name="payment_installment_wallet_nonnegative"),
+            constraint=models.CheckConstraint(condition=models.Q(("wallet_amount__gte", 0)), name="pay_inst_wallet_nonneg"),
         ),
         migrations.CreateModel(
             name="PaymentAttempt",
@@ -93,15 +93,15 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="paymentattempt",
-            constraint=models.UniqueConstraint(fields=("installment", "attempt_number"), name="uniq_installment_attempt_number"),
+            constraint=models.UniqueConstraint(fields=("installment", "attempt_number"), name="uniq_inst_attempt_no"),
         ),
         migrations.AddConstraint(
             model_name="paymentattempt",
-            constraint=models.CheckConstraint(condition=models.Q(("amount__gte", 0)), name="payment_attempt_amount_nonnegative"),
+            constraint=models.CheckConstraint(condition=models.Q(("amount__gte", 0)), name="pay_attempt_amt_nonneg"),
         ),
         migrations.AddConstraint(
             model_name="paymentattempt",
-            constraint=models.CheckConstraint(condition=models.Q(("wallet_amount__gte", 0)), name="payment_attempt_wallet_nonnegative"),
+            constraint=models.CheckConstraint(condition=models.Q(("wallet_amount__gte", 0)), name="pay_attempt_wallet_nonneg"),
         ),
         migrations.CreateModel(
             name="PaymentRefund",
@@ -124,14 +124,14 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="paymentrefund",
-            constraint=models.CheckConstraint(condition=models.Q(("gateway_amount__gte", 0)), name="payment_refund_gateway_nonnegative"),
+            constraint=models.CheckConstraint(condition=models.Q(("gateway_amount__gte", 0)), name="pay_refund_gateway_nonneg"),
         ),
         migrations.AddConstraint(
             model_name="paymentrefund",
-            constraint=models.CheckConstraint(condition=models.Q(("wallet_amount__gte", 0)), name="payment_refund_wallet_nonnegative"),
+            constraint=models.CheckConstraint(condition=models.Q(("wallet_amount__gte", 0)), name="pay_refund_wallet_nonneg"),
         ),
         migrations.AddConstraint(
             model_name="paymentrefund",
-            constraint=models.CheckConstraint(condition=models.Q(("platform_fee__gte", 0)), name="payment_refund_fee_nonnegative"),
+            constraint=models.CheckConstraint(condition=models.Q(("platform_fee__gte", 0)), name="pay_refund_fee_nonneg"),
         ),
     ]
