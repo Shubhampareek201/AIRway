@@ -374,10 +374,15 @@ def _persist_refund_submission(*, record_id, provider_refund=None, submission_er
             ])
         if attempt_id is not None:
             attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
-            if record.status == RefundRecord.Status.PROCESSED:
-                attempt.status = PaymentAttempt.Status.REFUNDED
-            elif record.status == RefundRecord.Status.FAILED:
+            refund_states = list(
+                RefundRecord.objects.filter(payment_attempt=attempt).values_list("status", flat=True)
+            )
+            if any(state in (RefundRecord.Status.REQUESTED, RefundRecord.Status.PENDING) for state in refund_states):
+                attempt.status = PaymentAttempt.Status.REFUND_PENDING
+            elif any(state == RefundRecord.Status.FAILED for state in refund_states):
                 attempt.status = PaymentAttempt.Status.FAILED
+            elif refund_states and all(state == RefundRecord.Status.PROCESSED for state in refund_states):
+                attempt.status = PaymentAttempt.Status.REFUNDED
             else:
                 attempt.status = PaymentAttempt.Status.REFUND_PENDING
             attempt.save(update_fields=["status", "updated_at"])
@@ -461,10 +466,12 @@ def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order
             raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
         if attempt.status == PaymentAttempt.Status.CAPTURED:
             return None
-        if attempt.status == PaymentAttempt.Status.REFUNDED:
-            return RefundRecord.objects.filter(payment_attempt=attempt).first()
-        if attempt.status != PaymentAttempt.Status.FAILED:
-            raise InstallmentPaymentError("Attempt is not in a failed state.")
+        if attempt.status not in (
+            PaymentAttempt.Status.FAILED,
+            PaymentAttempt.Status.REFUND_PENDING,
+            PaymentAttempt.Status.REFUNDED,
+        ):
+            raise InstallmentPaymentError("Attempt is not in a failed or refund-reconciliation state.")
         booking = attempt.installment.financial_plan.booking
         refund_amount = attempt.gateway_amount
         record, created = RefundRecord.objects.get_or_create(
@@ -485,11 +492,13 @@ def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order
                 "provider_payload": {"reason": "Capture arrived after failed attempt and wallet release."},
             },
         )
-        attempt.provider_payment_id = razorpay_payment_id
-        attempt.status = (
-            PaymentAttempt.Status.REFUND_PENDING
-            if refund_amount > ZERO else PaymentAttempt.Status.REFUNDED
-        )
+        if not attempt.provider_payment_id:
+            attempt.provider_payment_id = razorpay_payment_id
+        if created:
+            attempt.status = (
+                PaymentAttempt.Status.REFUND_PENDING
+                if refund_amount > ZERO else PaymentAttempt.Status.REFUNDED
+            )
         attempt.provider_payload = payload or {}
         attempt.save(update_fields=["provider_payment_id", "status", "provider_payload", "updated_at"])
 
