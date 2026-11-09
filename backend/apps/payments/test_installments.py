@@ -523,6 +523,8 @@ class FinalBalanceAttemptTests(TestCase):
                 "refund": {
                     "entity": {
                         "id": "rfnd_webhook_race",
+                        "payment_id": "pay_refund_webhook",
+                        "amount": 50000,
                         "notes": {"airway_refund_record_id": str(refund.pk)},
                     }
                 }
@@ -541,6 +543,44 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(refund.status, "processed")
         self.assertEqual(refund.provider_refund_id, "rfnd_webhook_race")
         self.assertEqual(attempt.status, PaymentAttempt.Status.REFUNDED)
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="webhook_test_secret")
+    def test_refund_webhook_with_wrong_amount_does_not_change_refund_ledger(self):
+        attempt = self._attempt(order_id="order_refund_webhook_mismatch")
+        mark_final_balance_attempt_failed(
+            attempt_id=attempt.pk, provider_order_id="order_refund_webhook_mismatch",
+            payload={"event": "payment.failed"},
+        )
+        refund = refund_late_final_capture(
+            attempt_id=attempt.pk,
+            razorpay_payment_id="pay_refund_webhook_mismatch",
+            provider_order_id="order_refund_webhook_mismatch",
+            payload={"event": "payment.captured"},
+        )
+        payload = {
+            "event": "refund.processed",
+            "payload": {
+                "refund": {
+                    "entity": {
+                        "id": "rfnd_webhook_mismatch",
+                        "payment_id": "pay_refund_webhook_mismatch",
+                        "amount": 49999,
+                        "notes": {"airway_refund_record_id": str(refund.pk)},
+                    }
+                }
+            },
+        }
+        raw = json.dumps(payload).encode()
+        signature = hmac.new(b"webhook_test_secret", raw, hashlib.sha256).hexdigest()
+        response = APIClient().generic(
+            "POST", "/api/v1/payments/webhook/", data=raw,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+        refund.refresh_from_db()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(refund.status, RefundRecord.Status.PENDING)
+        self.assertIsNone(refund.provider_refund_id)
 
     @patch("apps.payments.installment_service.razorpay.Client")
     def test_refund_reconciliation_matches_provider_note_and_amount(self, client_class):
