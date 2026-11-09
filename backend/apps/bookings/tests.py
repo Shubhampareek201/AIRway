@@ -1831,8 +1831,8 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
                 is_active=True,
             )
 
-    def test_offers_created_on_booking_creation(self):
-        """Offers should be created automatically when booking is created."""
+    def test_offers_are_not_created_before_advance_payment(self):
+        """Worker dispatch must wait until the 50% advance is captured."""
         from apps.bookings.models import WorkerOffer
 
         future_time = self._get_booking_time()
@@ -1849,9 +1849,9 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 201)
         booking_id = response.data["id"]
 
-        # Check offers were created automatically
+        # No worker should receive an offer before the advance payment.
         offers = WorkerOffer.objects.filter(booking_id=booking_id, status=WorkerOffer.Status.PENDING)
-        self.assertEqual(offers.count(), 1)
+        self.assertEqual(offers.count(), 0)
 
     def test_booking_is_pending_after_creation(self):
         """Booking status should be PENDING after creation."""
@@ -1877,7 +1877,7 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
 
         future_time = self._get_booking_time()
 
-        # Create booking (offers created automatically)
+        # Create booking; dispatch remains locked until the advance is paid.
         create_resp = self.client.post("/api/v1/bookings/", {
             "service": self.service.id,
             "variant": self.variant.id,
@@ -1888,15 +1888,14 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
 
         booking_id = create_resp.data["id"]
 
-        # Check initial offers
-        initial_offers = WorkerOffer.objects.filter(booking_id=booking_id)
-        self.assertEqual(initial_offers.count(), 1)
+        # No offers exist before advance capture.
+        self.assertEqual(WorkerOffer.objects.filter(booking_id=booking_id).count(), 0)
 
-        # Confirm booking
+        self._mark_advance_paid(booking_id)
         confirm_resp = self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
         self.assertEqual(confirm_resp.status_code, 200)
 
-        # Check no duplicate offers
+        # Confirmation after capture dispatches exactly one offer.
         final_offers = WorkerOffer.objects.filter(booking_id=booking_id)
         self.assertEqual(final_offers.count(), 1)
 
@@ -1916,7 +1915,7 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
         WorkerService.objects.create(worker=offline_worker_profile, service=self.service)
         WorkerZone.objects.create(worker=offline_worker_profile, zone=self.address.zone)
 
-        # Create booking
+        # Create booking, then release dispatch only after the advance is settled.
         response = self.client.post("/api/v1/bookings/", {
             "service": self.service.id,
             "variant": self.variant.id,
@@ -1924,10 +1923,12 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
             "scheduled_at": future_time.isoformat(),
             "address_id": self.address.id,
         }, format="json")
-
         booking_id = response.data["id"]
+        self._mark_advance_paid(booking_id)
+        confirm = self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self.assertEqual(confirm.status_code, 200)
 
-        # Check only eligible worker received offer
+        # Check only eligible worker received offer.
         offers = WorkerOffer.objects.filter(booking_id=booking_id)
         self.assertEqual(offers.count(), 1)
         self.assertEqual(offers.first().worker, self.worker_profile)
