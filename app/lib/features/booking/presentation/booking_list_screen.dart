@@ -70,6 +70,41 @@ class _BookingListScreenState extends State<BookingListScreen> {
     }
   }
 
+  Future<void> cancelBooking(Booking booking) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel this service?'),
+        content: const Text('You can cancel before service starts. If you cancel by 10:00 PM on the previous calendar day, the advance refund is the amount paid minus ₹40. After that cutoff, no refund is due. Cancellation is locked once the professional verifies the start OTP.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep booking')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cancel booking')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final result = await BookingApi.cancelBooking(
+        booking.id, reason: 'Customer requested cancellation from My Bookings.',
+      );
+      if (!mounted) return;
+      final refund = result['refund'];
+      final refundStatus = refund is Map ? refund['status']?.toString() : null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          refundStatus == 'not_eligible'
+              ? 'Booking cancelled. The refund cutoff has passed.'
+              : refundStatus == 'manual_review'
+                  ? 'Booking cancelled. AIRway support will reconcile the refund.'
+                  : 'Booking cancelled. Eligible refund has been requested.',
+        )),
+      );
+      await loadBookings();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not cancel booking: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: bg,
@@ -175,6 +210,11 @@ class _BookingListScreenState extends State<BookingListScreen> {
               : const Icon(Icons.location_searching_rounded, size: 17),
           label: const Text('Track Service'),
         )),
+        if (booking.canCancel)
+          SizedBox(width: double.infinity, child: TextButton(
+            onPressed: () => cancelBooking(booking),
+            child: const Text('Cancel service', style: TextStyle(color: Colors.redAccent)),
+          )),
       ]),
     );
   }
