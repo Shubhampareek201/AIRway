@@ -730,7 +730,13 @@ class PaymentWebhookView(APIView):
                         razorpay_currency = payment_entity.get("currency", "").upper()
                         expected_amount_paise = int(wallet_top_up.amount * 100)
 
-                        if razorpay_amount != expected_amount_paise:
+                        if (
+                            payment_entity.get("status") != "captured"
+                            or payment_entity.get("id") != payment_id
+                            or payment_entity.get("order_id") != order_id
+                            or razorpay_amount is None
+                            or razorpay_amount != expected_amount_paise
+                        ):
                             logger.warning(
                                 "Wallet top-up webhook amount mismatch for transaction %s",
                                 wallet_top_up.id,
@@ -789,8 +795,14 @@ class PaymentWebhookView(APIView):
             razorpay_currency = payment_entity.get('currency', '').upper()
 
             # Validate amount matches (convert to paise for comparison)
-            expected_amount_paise = int(float(payment.amount) * 100)
-            if razorpay_amount is not None and razorpay_amount != expected_amount_paise:
+            expected_amount_paise = int(payment.amount * 100)
+            if (
+                not payment_id
+                or payment_entity.get("id") != payment_id
+                or payment_entity.get("order_id") != payment.razorpay_order_id
+                or razorpay_amount is None
+                or razorpay_amount != expected_amount_paise
+            ):
                 logger.warning(
                     f"Webhook amount mismatch for payment {payment.id}: "
                     f"expected {expected_amount_paise} paise, got {razorpay_amount} paise"
@@ -801,7 +813,7 @@ class PaymentWebhookView(APIView):
                 )
 
             # Validate currency
-            if razorpay_currency and razorpay_currency != 'INR':
+            if not razorpay_currency or razorpay_currency != 'INR':
                 logger.warning(
                     f"Webhook currency mismatch for payment {payment.id}: "
                     f"expected INR, got {razorpay_currency}"
