@@ -381,6 +381,71 @@ class VerifyPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # A valid checkout signature proves the callback belongs to this
+        # Razorpay order/payment pair; it does not prove the payment is captured.
+        # Fetch the authoritative payment state before settling AIRway records.
+        try:
+            import razorpay
+
+            gateway = razorpay.Client(
+                auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+            )
+            gateway_payment = gateway.payment.fetch(razorpay_payment_id)
+        except Exception:
+            logger.exception(
+                "Could not verify Razorpay capture state for payment %s",
+                payment.id,
+            )
+            return Response(
+                {"detail": "Unable to confirm payment capture with Razorpay. Please retry."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if gateway_payment.get("order_id") != razorpay_order_id:
+            logger.warning(
+                "Razorpay payment %s belongs to a different order than checkout callback",
+                razorpay_payment_id,
+            )
+            return Response(
+                {"detail": "Razorpay payment does not match this order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if gateway_payment.get("status") != "captured":
+            logger.info(
+                "Checkout verification for payment %s is not captured yet (status=%s)",
+                payment.id, gateway_payment.get("status"),
+            )
+            return Response(
+                {
+                    "detail": "Payment is not captured yet. AIRway will confirm the booking after capture.",
+                    "status": gateway_payment.get("status"),
+                    "payment_id": payment.id,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        expected_amount_paise = int(payment.amount * 100)
+        if gateway_payment.get("amount") != expected_amount_paise:
+            logger.warning(
+                "Razorpay checkout amount mismatch for payment %s: expected %s, got %s",
+                payment.id, expected_amount_paise, gateway_payment.get("amount"),
+            )
+            return Response(
+                {"detail": "Razorpay payment amount does not match this order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if str(gateway_payment.get("currency", "")).upper() != "INR":
+            logger.warning(
+                "Razorpay checkout currency mismatch for payment %s: %s",
+                payment.id, gateway_payment.get("currency"),
+            )
+            return Response(
+                {"detail": "Razorpay payment currency does not match AIRway order currency."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         return _process_verified_payment(
             payment=payment,
             razorpay_payment_id=razorpay_payment_id,
