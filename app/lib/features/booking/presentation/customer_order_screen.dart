@@ -88,10 +88,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Future<void> startPayment() async {
     if (order?['ready_for_payment'] != true || paying) return;
-    final total = amount(order?['active_total_amount'] ?? order?['total_amount']);
-    final partiallyCancelled = order?['partially_cancelled'] == true;
-    final allCancelled = rows.isNotEmpty &&
-        rows.every((row) => row['booking_status'] == 'cancelled');
+    final total = amount(order?['total_amount']);
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -352,7 +349,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final orderStatus = order?['status']?.toString() ?? '';
     final paid = orderStatus == 'paid' || orderStatus == 'completed';
     final awaitingFinal = orderStatus == 'awaiting_final_payment';
-    final total = amount(order?['total_amount']);
+    final total = amount(order?['active_total_amount'] ?? order?['total_amount']);
+    final partiallyCancelled = order?['partially_cancelled'] == true;
+    final allCancelled = rows.isNotEmpty &&
+        rows.every((row) => row['booking_status'] == 'cancelled');
     return Column(children: [
       Expanded(child: ListView(
         padding: const EdgeInsets.all(18),
