@@ -273,7 +273,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Widget orderBody() {
     final rows = (order?['items'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     final ready = order?['ready_for_payment'] == true;
-    final paid = order?['status'] == 'paid';
+    final orderStatus = order?['status']?.toString() ?? '';
+    final paid = orderStatus == 'paid' || orderStatus == 'completed';
+    final awaitingFinal = orderStatus == 'awaiting_final_payment';
     final total = amount(order?['total_amount']);
     return Column(children: [
       Expanded(child: ListView(
@@ -283,12 +285,18 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : ready ? 'All professionals assigned' : 'Your order is being arranged',
+              Text(
+                  paid ? 'Payment and services complete'
+                      : awaitingFinal ? 'Services completed — final payment due'
+                      : ready ? 'All professionals assigned'
+                      : 'Your order is being arranged',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
-              Text(paid ? 'Your services are confirmed.' : ready
-                  ? 'All services have an assigned professional. You can now complete payment.'
-                  : 'We are assigning professionals for each service. This page refreshes automatically.',
+              Text(
+                  paid ? 'All services and final balances are complete.'
+                      : awaitingFinal ? 'Open each completed service to review and pay its remaining balance.'
+                      : ready ? 'All services have an assigned professional.'
+                      : 'We are assigning professionals for each service. This page refreshes automatically.',
                   style: const TextStyle(color: sub, height: 1.4)),
               const SizedBox(height: 12),
               Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
@@ -401,11 +409,21 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     });
     final completed = rows.isNotEmpty &&
         rows.every((row) => row['booking_status']?.toString() == 'completed');
+    final hasSplitLedger = rows.any((row) => row['payment_summary'] is Map);
+    final advancesPaid = hasSplitLedger && rows.every((row) {
+      final summary = row['payment_summary'];
+      return summary is! Map || summary['advance_status'] == 'paid';
+    });
+    final finalBalancesPaid = hasSplitLedger && rows.every((row) {
+      final summary = row['payment_summary'];
+      return summary is! Map || summary['final_balance_status'] == 'paid';
+    });
     final steps = <(String, String, bool)>[
       ('Order placed', 'Your service request is received.', true),
+      ('Booking advances', advancesPaid ? 'Required booking advances have been received.' : assigned ? 'Payment is being prepared.' : 'Advance is collected before worker dispatch.', advancesPaid || (!hasSplitLedger && paid)),
       ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
-      ('Payment', paid ? 'Payment verified successfully.' : assigned ? 'Payment is now available.' : 'Payment unlocks after assignment.', paid),
       ('Service completed', completed ? 'All services are completed.' : 'Updates appear as work progresses.', completed),
+      ('Final balances', finalBalancesPaid ? 'All final balances are settled.' : completed ? 'Open each service to pay its remaining balance.' : 'Due after each service completion.', finalBalancesPaid || (!hasSplitLedger && paid)),
     ];
     return Container(
       padding: const EdgeInsets.all(15),
