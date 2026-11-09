@@ -27,10 +27,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="serviceotp",
-            index=models.Index(fields=["booking", "purpose", "verified_at"], name="bookings_ser_booking_2f3d21_idx"),
+            index=models.Index(fields=["booking", "purpose", "verified_at"], name="svc_otp_booking_idx"),
         ),
         migrations.AddIndex(
             model_name="serviceotp",
-            index=models.Index(fields=["expires_at"], name="bookings_ser_expires_4db8d9_idx"),
+            index=models.Index(fields=["expires_at"], name="svc_otp_expiry_idx"),
         ),
     ]
