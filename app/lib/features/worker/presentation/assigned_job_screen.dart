@@ -501,3 +501,4 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       ),
     );
   }
+}
