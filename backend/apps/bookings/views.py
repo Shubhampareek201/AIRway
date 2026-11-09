@@ -27,6 +27,33 @@ from apps.catalog.audience import validate_beauty_audience
 logger = logging.getLogger(__name__)
 
 
+def _booking_payment_summary(booking):
+    from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+
+    plan = BookingFinancialPlan.objects.filter(booking_id=booking.pk).first()
+    if plan is None:
+        return None
+    installments = {
+        row.kind: row for row in PaymentInstallment.objects.filter(financial_plan=plan)
+    }
+    advance = installments.get(PaymentInstallment.Kind.ADVANCE)
+    final = installments.get(PaymentInstallment.Kind.FINAL_BALANCE)
+    final_due = final.amount_due if final else plan.balance_due
+    final_captured = final.amount_captured if final else plan.balance_captured
+    return {
+        "currency": plan.currency,
+        "gross_total": str(plan.gross_total),
+        "advance_due": str(plan.advance_due),
+        "advance_captured": str(plan.advance_captured),
+        "advance_status": advance.status if advance else "not_created",
+        "final_balance_due": str(final_due),
+        "final_balance_captured": str(final_captured),
+        "final_balance_outstanding": str(max(final_due - final_captured, Decimal("0.00"))),
+        "final_balance_status": final.status if final else "not_created",
+        "requires_service_otp": True,
+    }
+
+
 class BookingViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -512,9 +539,15 @@ class BookingViewSet(viewsets.ModelViewSet):
     def track(self, request, pk=None):
         booking = self.get_object()
 
+        payment_summary = _booking_payment_summary(booking)
         if not hasattr(booking, "assignment") or not booking.assignment:
             return Response(
-                {"detail": "No worker assigned to this booking yet.", "is_assigned": False},
+                {
+                    "detail": "No worker assigned to this booking yet.",
+                    "is_assigned": False,
+                    "status": booking.status,
+                    "payment_summary": payment_summary,
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -529,6 +562,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "worker_phone": worker.user.phone,
             "worker_rating": float(worker.rating_avg) if worker.rating_avg else None,
             "status": booking.status,
+            "payment_summary": payment_summary,
             "assigned_at": assignment.assigned_at,
             "started_at": assignment.started_at,
             # Live worker GPS is not stored by the current WorkerProfile model.
@@ -1040,6 +1074,7 @@ class CustomerOrderDetailView(APIView):
                 ),
                 "quantity": row.quantity,
                 "line_total": str(row.line_total),
+                "payment_summary": _booking_payment_summary(booking),
             })
         # GET endpoints must not advance order lifecycle state. Worker offer
         # acceptance performs the AWAITING_PAYMENT transition atomically.
