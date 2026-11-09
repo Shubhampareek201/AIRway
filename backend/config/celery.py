@@ -25,4 +25,9 @@ app.conf.beat_schedule = {
         'task': 'apps.bookings.tasks.timeout_pending_payments',
         'schedule': 60.0,
     },
+    'reconcile-unresolved-refunds-every-five-minutes': {
+        'task': 'apps.payments.tasks.reconcile_unresolved_refunds',
+        'schedule': 300.0,
+        'kwargs': {'batch_size': 100},
+    },
 }
