@@ -142,6 +142,18 @@ def issue_service_otp(*, booking_id, purpose, requested_by):
     if purpose == ServiceOTPChallenge.Purpose.START:
         if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             raise PaymentLifecycleError("A start OTP is available only for an assigned booking.")
+        if not BookingAssignment.objects.filter(booking=booking).exists():
+            raise PaymentLifecycleError("A worker must be assigned before requesting a start OTP.")
+        advance = PaymentInstallment.objects.filter(
+            financial_plan__booking=booking,
+            kind=PaymentInstallment.Kind.ADVANCE,
+        ).first()
+        if (
+            advance is None
+            or advance.status != PaymentInstallment.Status.PAID
+            or advance.amount_captured < advance.amount_due
+        ):
+            raise PaymentLifecycleError("The booking advance must be fully captured before service can start.")
     elif purpose == ServiceOTPChallenge.Purpose.COMPLETION:
         if booking.status != Booking.Status.IN_PROGRESS:
             raise PaymentLifecycleError("A completion OTP is available only after service starts.")
@@ -204,7 +216,23 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                 error = "Invalid service OTP purpose."
             elif booking.status not in expected_states:
                 error = "This booking is not in the required state for this OTP."
+            elif purpose == ServiceOTPChallenge.Purpose.START:
+                advance = PaymentInstallment.objects.select_for_update().filter(
+                    financial_plan__booking=booking,
+                    kind=PaymentInstallment.Kind.ADVANCE,
+                ).first()
+                if (
+                    advance is None
+                    or advance.status != PaymentInstallment.Status.PAID
+                    or advance.amount_captured < advance.amount_due
+                ):
+                    error = "The booking advance must be fully captured before service can start."
+                else:
+                    challenge = None
             else:
+                challenge = None
+
+            if error is None:
                 challenge = ServiceOTPChallenge.objects.select_for_update().filter(
                     booking=booking,
                     purpose=purpose,
