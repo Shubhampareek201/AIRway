@@ -750,7 +750,9 @@ class PaymentWebhookView(APIView):
                 # Resolve without a row lock first so we can acquire the
                 # linked attempt before locking the refund ledger row.
                 lookup = RefundRecord.objects.select_related("payment").filter(pk=record_id).first() if record_id else None
-                if lookup is None:
+                # If signed notes explicitly name a record, an unknown ID must
+                # not fall back to another record merely by provider refund ID.
+                if not record_id:
                     lookup = RefundRecord.objects.select_related("payment").filter(
                         provider_refund_id=provider_refund_id,
                     ).first()
