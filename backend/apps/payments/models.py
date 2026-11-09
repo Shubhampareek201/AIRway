@@ -261,3 +261,37 @@ class ServiceOTPChallenge(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_purpose_display()} OTP challenge for booking #{self.booking_id}"
+
+class PaymentAllocation(TimeStampedModel):
+    """Allocate one aggregate checkout tender to an individual booking installment.
+
+    The allocation is the accounting bridge between a parent-order Payment and
+    each booking line. It preserves gateway and wallet provenance for refunds.
+    """
+    payment = models.ForeignKey(
+        Payment, on_delete=models.PROTECT, related_name="installment_allocations",
+    )
+    installment = models.ForeignKey(
+        PaymentInstallment, on_delete=models.PROTECT, related_name="payment_allocations",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    gateway_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    wallet_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["payment", "installment"], name="pay_alloc_payment_inst_uniq",
+            ),
+            models.CheckConstraint(condition=Q(amount__gte=0), name="pay_alloc_amount_nonneg"),
+            models.CheckConstraint(condition=Q(gateway_amount__gte=0), name="pay_alloc_gateway_nonneg"),
+            models.CheckConstraint(condition=Q(wallet_amount__gte=0), name="pay_alloc_wallet_nonneg"),
+            models.CheckConstraint(
+                condition=Q(amount=models.F("gateway_amount") + models.F("wallet_amount")),
+                name="pay_alloc_sources_sum",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Payment #{self.payment_id} allocation for installment #{self.installment_id}"
