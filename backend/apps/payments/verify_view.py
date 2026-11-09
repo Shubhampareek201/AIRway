@@ -381,6 +381,71 @@ class VerifyPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # A valid checkout signature proves the callback belongs to this
+        # Razorpay order/payment pair; it does not prove the payment is captured.
+        # Fetch the authoritative payment state before settling AIRway records.
+        try:
+            import razorpay
+
+            gateway = razorpay.Client(
+                auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+            )
+            gateway_payment = gateway.payment.fetch(razorpay_payment_id)
+        except Exception:
+            logger.exception(
+                "Could not verify Razorpay capture state for payment %s",
+                payment.id,
+            )
+            return Response(
+                {"detail": "Unable to confirm payment capture with Razorpay. Please retry."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if gateway_payment.get("order_id") != razorpay_order_id:
+            logger.warning(
+                "Razorpay payment %s belongs to a different order than checkout callback",
+                razorpay_payment_id,
+            )
+            return Response(
+                {"detail": "Razorpay payment does not match this order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if gateway_payment.get("status") != "captured":
+            logger.info(
+                "Checkout verification for payment %s is not captured yet (status=%s)",
+                payment.id, gateway_payment.get("status"),
+            )
+            return Response(
+                {
+                    "detail": "Payment is not captured yet. AIRway will confirm the booking after capture.",
+                    "status": gateway_payment.get("status"),
+                    "payment_id": payment.id,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        expected_amount_paise = int(payment.amount * 100)
+        if gateway_payment.get("amount") != expected_amount_paise:
+            logger.warning(
+                "Razorpay checkout amount mismatch for payment %s: expected %s, got %s",
+                payment.id, expected_amount_paise, gateway_payment.get("amount"),
+            )
+            return Response(
+                {"detail": "Razorpay payment amount does not match this order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if str(gateway_payment.get("currency", "")).upper() != "INR":
+            logger.warning(
+                "Razorpay checkout currency mismatch for payment %s: %s",
+                payment.id, gateway_payment.get("currency"),
+            )
+            return Response(
+                {"detail": "Razorpay payment currency does not match AIRway order currency."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         return _process_verified_payment(
             payment=payment,
             razorpay_payment_id=razorpay_payment_id,
@@ -463,9 +528,22 @@ class PaymentWebhookView(APIView):
 
         logger.info(f"Webhook received: event={event_type}, payment_id={payment_id}, order_id={order_id}")
 
-        # Handle payment.captured event (Razorpay uses 'payment.captured' for successful payments)
-        if event_type in ('payment.captured', 'payment.authorized'):
-            # Get the payment record by order_id or payment_id
+        # Authorization is not settlement. Acknowledge this event but leave
+        # the AIRway payment, wallet reservation, order, and booking unchanged.
+        # Razorpay can later emit payment.captured for the same payment.
+        if event_type == "payment.authorized":
+            logger.info(
+                "Payment %s authorized for order %s; awaiting capture",
+                payment_id, order_id,
+            )
+            return Response(
+                {"status": "ok", "detail": "Payment authorized; awaiting capture."},
+                status=status.HTTP_200_OK,
+            )
+
+        # Only a captured event may settle a booking or parent order.
+        if event_type == "payment.captured":
+            # Get the payment record by order_id or payment_id.
             payment = None
             try:
                 if order_id:
@@ -530,8 +608,21 @@ class PaymentWebhookView(APIView):
                 logger.info(f"Webhook: payment {payment.id} already processed (PAID)")
                 return Response({"status": "ok"})
 
-            # Extract payment entity for amount/currency validation
+            # A signed event name alone is not enough: the payment entity
+            # must also report captured before AIRway changes payment state.
             payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
+            gateway_payment_status = payment_entity.get("status")
+            if gateway_payment_status != "captured":
+                logger.warning(
+                    "Ignoring payment.captured webhook for payment %s with gateway status %s",
+                    payment.id, gateway_payment_status,
+                )
+                return Response(
+                    {"detail": "Gateway payment is not captured."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Extract payment entity for amount/currency validation
             razorpay_amount = payment_entity.get('amount')  # in paise
             razorpay_currency = payment_entity.get('currency', '').upper()
 
