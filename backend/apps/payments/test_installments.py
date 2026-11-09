@@ -29,6 +29,7 @@ class FinalBalanceAttemptTests(TestCase):
         self.zone = Zone.objects.create(name="Final Payment Zone", city=self.city, is_active=True)
         self.address = Address.objects.create(
             user=self.customer, label="Home", house_details="House 1",
+            landmark="Near test landmark",
             full_address="Final Payment Test Address", zone=self.zone,
         )
         self.category = Category.objects.create(
