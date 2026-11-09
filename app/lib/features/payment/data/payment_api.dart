@@ -71,11 +71,13 @@ class PaymentApi {
     return Map<String, dynamic>.from(result.body as Map);
   }
 
-  static Future<Map<String, dynamic>> createOrderForParent(int orderId) async {
+  static Future<Map<String, dynamic>> createOrderForParent(
+    int orderId, {String walletAmount = '0.00'}
+  ) async {
     return _request(
       '/api/v1/payments/installments/create-order/',
       method: 'POST',
-      data: {'order_id': orderId},
+      data: {'order_id': orderId, 'wallet_amount': walletAmount},
     );
   }
 
