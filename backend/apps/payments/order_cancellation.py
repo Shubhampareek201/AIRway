@@ -140,6 +140,10 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
             raise OrderLineCancellationError(
                 "The captured advance cannot be reconciled to this service line. AIRway support must review the payment before cancellation."
             )
+        if allocation and (payment is None or payment.status != Payment.Status.PAID):
+            raise OrderLineCancellationError(
+                "The service advance is linked to a payment that is not in a settled state. AIRway support must reconcile it first."
+            )
         if allocation and allocation.payment_id != payment.pk:
             raise OrderLineCancellationError(
                 "The service advance is linked to an unexpected checkout payment."
@@ -287,6 +291,10 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
             order=order, status=WorkerOffer.Status.PENDING,
         ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
 
+    if should_dispatch:
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_order(order)
+
     provider_error = None
     if refund_record and refund_record.gateway_refund_amount > ZERO:
         payment_id = refund_record.payment.razorpay_payment_id
@@ -312,35 +320,38 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
                 )
                 if not result.get("id"):
                     raise ValueError("Razorpay did not return a refund ID.")
-                refund_record.provider_refund_id = result["id"]
-                provider_status = result.get("status")
-                refund_record.status = (
-                    RefundRecord.Status.PROCESSED
-                    if provider_status == "processed"
-                    else RefundRecord.Status.FAILED
-                    if provider_status == "failed"
-                    else RefundRecord.Status.PENDING
-                )
-                if refund_record.status == RefundRecord.Status.PROCESSED:
-                    refund_record.processed_at = timezone.now()
-                refund_record.provider_payload = result
-                refund_record.save(update_fields=[
-                    "provider_refund_id", "status", "processed_at",
-                    "provider_payload", "updated_at",
-                ])
+                with transaction.atomic():
+                    locked_refund = RefundRecord.objects.select_for_update().get(
+                        pk=refund_record.pk,
+                    )
+                    if locked_refund.status != RefundRecord.Status.PROCESSED:
+                        locked_refund.provider_refund_id = result["id"]
+                        provider_status = result.get("status")
+                        locked_refund.status = (
+                            RefundRecord.Status.PROCESSED
+                            if provider_status == "processed"
+                            else RefundRecord.Status.FAILED
+                            if provider_status == "failed"
+                            else RefundRecord.Status.PENDING
+                        )
+                        if locked_refund.status == RefundRecord.Status.PROCESSED:
+                            locked_refund.processed_at = timezone.now()
+                        locked_refund.provider_payload = result
+                        locked_refund.save(update_fields=[
+                            "provider_refund_id", "status", "processed_at",
+                            "provider_payload", "updated_at",
+                        ])
+                    refund_record = locked_refund
             except Exception as exc:
                 logger.exception("Parent order line refund failed for refund %s", refund_record.pk)
                 provider_error = str(exc)[:400]
-                refund_record.status = RefundRecord.Status.FAILED
+                refund_record.status = RefundRecord.Status.PENDING
                 refund_record.provider_payload = {
                     **(refund_record.provider_payload or {}),
                     "submission_error": provider_error,
+                    "provider_outcome": "unknown; reconcile using Razorpay refund webhook/dashboard",
                 }
                 refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
-
-    if should_dispatch:
-        from apps.bookings.dispatcher import DispatcherService
-        DispatcherService.dispatch_order(order)
 
     return {
         "order_id": order.pk,
