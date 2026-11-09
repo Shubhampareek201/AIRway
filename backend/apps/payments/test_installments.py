@@ -1,6 +1,7 @@
 from decimal import Decimal
 import hashlib
 import hmac
+import json
 from unittest.mock import patch
 
 from rest_framework.test import APIClient
@@ -338,6 +339,40 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertIsNotNone(assignment.completed_at)
         self.assertEqual(self.final.status, PaymentInstallment.Status.DUE)
         self.assertEqual(self.final.due_at, assignment.completed_at)
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="webhook_test_secret")
+    def test_capture_webhook_settles_final_installment_with_verified_signature(self):
+        attempt = self._attempt(order_id="order_webhook_final")
+        payload = {
+            "event": "payment.captured",
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": "pay_webhook_final",
+                        "order_id": "order_webhook_final",
+                        "amount": 50000,
+                        "currency": "INR",
+                        "status": "captured",
+                        "captured": True,
+                    }
+                }
+            },
+        }
+        raw = json.dumps(payload).encode()
+        signature = hmac.new(
+            b"webhook_test_secret", raw, hashlib.sha256,
+        ).hexdigest()
+        api = APIClient()
+        response = api.generic(
+            "POST", "/api/v1/payments/webhook/", data=raw,
+            content_type="application/json",
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        attempt.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertEqual(attempt.status, PaymentAttempt.Status.CAPTURED)
+        self.assertEqual(self.final.amount_captured, Decimal("500.00"))
 
     def test_parent_order_completes_only_after_every_line_balance_is_paid(self):
         order = Order.objects.create(
