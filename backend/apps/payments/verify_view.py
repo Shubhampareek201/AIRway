@@ -630,6 +630,7 @@ class PaymentWebhookView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        event_type = payload.get("event")
         if event_type in ("refund.created", "refund.processed", "refund.failed"):
             refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
             gateway_refund_id = refund_entity.get("id")
