@@ -432,6 +432,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   Widget _paymentLifecycleCard(Map<String, dynamic> summary) {
     final outstanding = double.tryParse(summary['final_balance_outstanding']?.toString() ?? '0') ?? 0;
     final advance = double.tryParse(summary['advance_captured']?.toString() ?? '0') ?? 0;
+    final walletForLabel = _selectedWalletAmount.isFinite ? _selectedWalletAmount : 0.0;
     final finalPaid = summary['final_balance_status'] == 'paid';
     final finalStatus = summary['final_balance_status']?.toString() ?? 'not_due';
     final finalLabel = finalPaid
@@ -481,9 +482,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                 child: _payingFinalBalance
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : Text(
-                        _selectedWalletAmount >= outstanding && outstanding > 0
+                        walletForLabel >= outstanding && outstanding > 0
                             ? 'Pay with AIRway wallet'
-                            : 'Pay ₹${(outstanding - _selectedWalletAmount).clamp(0, outstanding).toStringAsFixed(2)} online',
+                            : 'Pay ₹${(outstanding - walletForLabel).clamp(0, outstanding).toStringAsFixed(2)} online',
                       ),
               ),
             ),
