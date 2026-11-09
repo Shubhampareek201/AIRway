@@ -747,27 +747,41 @@ class PaymentWebhookView(APIView):
                 from .models import PaymentAttempt, RefundRecord
                 refund_notes = refund_entity.get("notes") or {}
                 record_id = refund_notes.get("airway_refund_record_id")
+                # Resolve without a row lock first so we can acquire the
+                # linked attempt before locking the refund ledger row.
+                lookup = RefundRecord.objects.select_related("payment").filter(pk=record_id).first() if record_id else None
+                if lookup is None:
+                    lookup = RefundRecord.objects.select_related("payment").filter(
+                        provider_refund_id=provider_refund_id,
+                    ).first()
                 with transaction.atomic():
-                    refund_query = RefundRecord.objects.select_for_update()
-                    # Prefer the AIRway record ID carried in signed provider
-                    # notes. A provider ID already attached to a different row
-                    # must never redirect this webhook onto that other record.
-                    refund_record = (
-                        refund_query.filter(pk=record_id).first()
-                        if record_id else None
-                    )
-                    if refund_record is None:
-                        refund_record = refund_query.filter(
-                            provider_refund_id=provider_refund_id
+                    attempt = None
+                    if lookup and lookup.payment_attempt_id:
+                        attempt = PaymentAttempt.objects.select_for_update().filter(
+                            pk=lookup.payment_attempt_id,
                         ).first()
+                    refund_record = (
+                        RefundRecord.objects.select_for_update().select_related(
+                            "payment", "payment_attempt",
+                        ).filter(pk=lookup.pk).first()
+                        if lookup else None
+                    )
+                    # Revalidate the link after both locks; the attempt/refund
+                    # relationship must not change between lookup and locking.
+                    if refund_record and refund_record.payment_attempt_id != (
+                        attempt.pk if attempt else None
+                    ):
+                        logger.error(
+                            "Refund webhook payment-attempt link changed during lock acquisition: %s",
+                            refund_record.pk,
+                        )
+                        refund_record = None
                     if refund_record:
-                        # The signed webhook must still reconcile to the exact
-                        # tender and original payment recorded by AIRway.
                         expected_payment_id = (
                             refund_record.payment.razorpay_payment_id
                             if refund_record.payment_id
-                            else refund_record.payment_attempt.provider_payment_id
-                            if refund_record.payment_attempt_id
+                            else attempt.provider_payment_id
+                            if attempt
                             else None
                         )
                         received_payment_id = refund_entity.get("payment_id")
@@ -792,13 +806,11 @@ class PaymentWebhookView(APIView):
                             )
                             refund_record = None
                     if refund_record:
-                        # A webhook note must never rebind a provider refund ID
-                        # already owned by a different AIRway refund record.
-                        provider_id_owner = refund_query.filter(
+                        provider_id_owner = RefundRecord.objects.filter(
                             provider_refund_id=provider_refund_id,
-                        ).exclude(pk=refund_record.pk).first()
+                        ).exclude(pk=refund_record.pk).exists()
                         if (
-                            provider_id_owner is not None
+                            provider_id_owner
                             or (
                                 refund_record.provider_refund_id
                                 and refund_record.provider_refund_id != provider_refund_id
@@ -811,8 +823,6 @@ class PaymentWebhookView(APIView):
                             )
                             refund_record = None
                     if refund_record:
-                        # Provider terminal states must not regress due to delayed
-                        # created events. A later processed event remains authoritative.
                         if refund_record.status != RefundRecord.Status.PROCESSED:
                             if event_type == "refund.processed":
                                 refund_record.status = RefundRecord.Status.PROCESSED
@@ -828,31 +838,27 @@ class PaymentWebhookView(APIView):
                             "status", "processed_at", "provider_payload",
                             "provider_refund_id", "updated_at"
                         ])
-                        if refund_record.payment_attempt_id:
-                            attempt = PaymentAttempt.objects.select_for_update().filter(
-                                pk=refund_record.payment_attempt_id,
-                            ).first()
-                            if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
-                                refund_states = list(
-                                    RefundRecord.objects.filter(
-                                        payment_attempt=attempt,
-                                    ).values_list("status", flat=True)
-                                )
-                                if any(state in (
-                                    RefundRecord.Status.REQUESTED,
-                                    RefundRecord.Status.PENDING,
-                                ) for state in refund_states):
-                                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
-                                elif any(state == RefundRecord.Status.FAILED for state in refund_states):
-                                    attempt.status = PaymentAttempt.Status.FAILED
-                                elif refund_states and all(
-                                    state == RefundRecord.Status.PROCESSED for state in refund_states
-                                ):
-                                    attempt.status = PaymentAttempt.Status.REFUNDED
-                                attempt.save(update_fields=["status", "updated_at"])
+                        if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
+                            refund_states = list(
+                                RefundRecord.objects.filter(
+                                    payment_attempt=attempt,
+                                ).values_list("status", flat=True)
+                            )
+                            if any(state in (
+                                RefundRecord.Status.REQUESTED,
+                                RefundRecord.Status.PENDING,
+                            ) for state in refund_states):
+                                attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                            elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                                attempt.status = PaymentAttempt.Status.FAILED
+                            elif refund_states and all(
+                                state == RefundRecord.Status.PROCESSED for state in refund_states
+                            ):
+                                attempt.status = PaymentAttempt.Status.REFUNDED
+                            attempt.save(update_fields=["status", "updated_at"])
                     else:
                         logger.warning(
-                            "Refund webhook references unknown AIRway refund: %s",
+                            "Refund webhook references unknown or mismatched AIRway refund: %s",
                             provider_refund_id,
                         )
             return Response({"status": "ok"})
