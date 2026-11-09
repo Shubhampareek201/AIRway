@@ -668,6 +668,98 @@ class BookingCancelTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class SplitPaymentCancellationPolicyAPITests(BookingAPITestMixin, TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = self._create_user()
+        self.client.force_authenticate(user=self.user)
+        self.category = Category.objects.create(title="Cleaning", slug="cleaning")
+        self.service = self._create_service(self.category)
+        self.variant = self._create_variant(self.service)
+        self.address = self._create_address(self.user)
+
+    def _create_paid_booking(self, scheduled_at, *, accepted=False):
+        response = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": scheduled_at.isoformat(),
+            "address_id": self.address.id,
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+
+        from apps.payments.models import Payment, BookingFinancialPlan
+        booking = Booking.objects.get(pk=response.data["id"])
+        plan = BookingFinancialPlan.objects.get(booking=booking)
+        payment = Payment.objects.create(
+            booking=booking,
+            customer=self.user,
+            amount=plan.advance_due,
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_same_day_test",
+        )
+        if accepted:
+            worker_user = self._create_user("+919876543299")
+            worker = WorkerProfile.objects.create(
+                user=worker_user,
+                status=WorkerProfile.Status.APPROVED,
+                is_online=True,
+            )
+            BookingAssignment.objects.create(
+                booking=booking, worker=worker, accepted_at=timezone.now(),
+            )
+            booking.status = Booking.Status.ASSIGNED
+            booking.save(update_fields=["status", "updated_at"])
+        return booking, plan, payment
+
+    def test_same_day_cancel_before_worker_acceptance_refunds_full_advance(self):
+        from unittest.mock import patch
+        from apps.payments.models import RefundRecord
+
+        scheduled_at = timezone.now() + timedelta(hours=2)
+        booking, plan, payment = self._create_paid_booking(scheduled_at)
+        with patch("razorpay.Client") as client_class:
+            client_class.return_value.payment.refund.return_value = {
+                "id": "rfnd_same_day_full",
+                "status": "pending",
+            }
+            response = self.client.post(
+                f"/api/v1/bookings/{booking.pk}/cancel/",
+                {"reason": "Changed my plan"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["refund_policy"], "same_day_before_worker_acceptance")
+        self.assertEqual(Decimal(response.data["refund_amount"]), plan.advance_due)
+        refund = RefundRecord.objects.get(booking=booking)
+        self.assertEqual(refund.payment_id, payment.pk)
+        self.assertEqual(refund.refund_amount, plan.advance_due)
+        self.assertEqual(refund.status, RefundRecord.Status.PENDING)
+
+    def test_same_day_cancel_after_worker_acceptance_is_non_refundable(self):
+        from apps.payments.models import RefundRecord
+
+        scheduled_at = timezone.now() + timedelta(hours=2)
+        booking, plan, payment = self._create_paid_booking(
+            scheduled_at, accepted=True,
+        )
+        response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/cancel/",
+            {"reason": "Changed my plan"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["refund_policy"], "same_day_after_worker_acceptance")
+        self.assertEqual(Decimal(response.data["refund_amount"]), Decimal("0.00"))
+        refund = RefundRecord.objects.get(booking=booking)
+        self.assertEqual(refund.payment_id, payment.pk)
+        self.assertEqual(refund.refund_amount, Decimal("0.00"))
+        self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
+
+
 class BookingTrackTest(BookingAPITestMixin, TestCase):
     """Test booking tracking endpoint."""
 
