@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q, Sum
+from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
@@ -416,3 +417,31 @@ class DispatchConfiguration(TimeStampedModel):
 
     def __str__(self):
         return "Worker dispatch configuration"
+
+
+class ServiceOTP(TimeStampedModel):
+    """Hashed, purpose-specific customer OTPs for service start and completion."""
+
+    class Purpose(models.TextChoices):
+        START = "start", "Service Start"
+        COMPLETE = "complete", "Service Completion"
+
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="service_otps"
+    )
+    purpose = models.CharField(max_length=12, choices=Purpose.choices)
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    verified_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["booking", "purpose", "verified_at"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"Booking #{self.booking_id} {self.purpose} OTP"
