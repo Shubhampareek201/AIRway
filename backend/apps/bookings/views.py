@@ -849,12 +849,17 @@ class CustomerCheckoutView(APIView):
                 )
             occupied_order_intervals.extend(intervals)
 
-        # New checkouts are payment-gated: no worker offers exist until
-        # every booking-line advance is captured and allocated.
+        # Keep the existing multi-service checkout contract intact for
+        # deployed clients. The new split-payment lifecycle is opt-in until
+        # the Flutter checkout and payment screens are migrated together.
+        split_payment = request.data.get("payment_flow") == "split_v1"
         order = Order.objects.create(
             customer=request.user,
             address=cart.address,
-            status=Order.Status.AWAITING_PAYMENT,
+            status=(
+                Order.Status.AWAITING_PAYMENT
+                if split_payment else Order.Status.AWAITING_ASSIGNMENT
+            ),
         )
         subtotal = Decimal("0")
         tax_total = Decimal("0")
@@ -911,8 +916,9 @@ class CustomerCheckoutView(APIView):
             booking.pricing_snapshot = base_snapshot
             booking.save(update_fields=["pricing_snapshot", "updated_at"])
 
-            from apps.payments.lifecycle import create_financial_plan
-            create_financial_plan(booking)
+            if split_payment:
+                from apps.payments.lifecycle import create_financial_plan
+                create_financial_plan(booking)
 
             OrderItem.objects.create(
                 order=order,
@@ -945,10 +951,26 @@ class CustomerCheckoutView(APIView):
         order.total_amount = grand_total
         order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
 
-        advance_due_total = sum(
-            (item.booking.financial_plan.advance_due for item in order.items.select_related("booking")),
-            Decimal("0.00"),
-        )
+        advance_due_total = Decimal("0.00")
+        if split_payment:
+            advance_due_total = sum(
+                (
+                    item.booking.financial_plan.advance_due
+                    for item in order.items.select_related("booking")
+                ),
+                Decimal("0.00"),
+            )
+        else:
+            # Dispatch only after every order line has been persisted. The
+            # dispatcher retains its all-lines eligibility and one-worker
+            # atomic assignment rules.
+            from apps.bookings.dispatcher import DispatcherService
+            offers = DispatcherService.dispatch_order(order)
+            dispatch_results = [
+                {"booking_id": item.booking_id, "offers_sent": len(offers)}
+                for item in order.items.all()
+            ]
+
         cart.items.all().delete()
         return Response({
             "order_id": order.id,
@@ -958,8 +980,9 @@ class CustomerCheckoutView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
-            "advance_due_total": str(advance_due_total),
-            "payment_required": True,
+            "advance_due_total": str(advance_due_total) if split_payment else None,
+            "payment_required": split_payment,
+            "payment_flow": "split_v1" if split_payment else "legacy",
             "items": [
                 {
                     "order_item_id": row.id,
@@ -970,8 +993,13 @@ class CustomerCheckoutView(APIView):
                 }
                 for row in order.items.all()
             ],
-            "dispatch": [],
-            "next_step": "Pay the booking advance. Worker offers will be created only after the complete advance is captured and reconciled.",
+            "dispatch": dispatch_results,
+            "next_step": (
+                "Pay the booking advance. Worker offers will be created only after "
+                "the complete advance is captured and reconciled."
+                if split_payment
+                else "Worker offers have been dispatched. Payment follows the existing worker-acceptance flow."
+            ),
         }, status=status.HTTP_201_CREATED)
 
 
