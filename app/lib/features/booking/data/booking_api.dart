@@ -234,6 +234,18 @@ class BookingApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> requestServiceOtp(
+    int bookingId, {
+    required String purpose,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/$bookingId/service-otp/',
+      method: 'POST',
+      data: {'purpose': purpose},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Booking> getBooking(int id) async {
     final result = await request('/api/v1/bookings/$id/');
     return Booking.fromMap(Map<String, dynamic>.from(result));
