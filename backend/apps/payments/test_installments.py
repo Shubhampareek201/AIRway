@@ -1,5 +1,10 @@
 from decimal import Decimal
+import hashlib
+import hmac
 from unittest.mock import patch
+
+from rest_framework.test import APIClient
+from django.test import override_settings
 
 from django.test import TestCase
 from django.utils import timezone
@@ -12,6 +17,8 @@ from apps.payments.installment_service import (
     InstallmentPaymentError,
     create_final_balance_attempt,
     mark_final_balance_attempt_failed,
+    refund_duplicate_final_capture,
+    refund_late_final_capture,
     settle_final_balance_attempt,
 )
 from apps.payments.models import (
@@ -166,6 +173,121 @@ class FinalBalanceAttemptTests(TestCase):
         )
         self.assertEqual(self.final.status, PaymentInstallment.Status.DUE)
         self.assertEqual(self.final.amount_captured, Decimal("0.00"))
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_key", RAZORPAY_KEY_SECRET="test_secret")
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_final_balance_checkout_is_idempotent_for_active_attempt(self, client_class):
+        gateway = client_class.return_value
+        gateway.order.create.return_value = {"id": "order_final_api"}
+        api = APIClient()
+        api.force_authenticate(user=self.customer)
+
+        first = api.post(
+            "/api/v1/payments/final-balance/create-order/",
+            {"booking_id": self.booking.pk, "wallet_amount": "0.00"},
+            format="json",
+        )
+        second = api.post(
+            "/api/v1/payments/final-balance/create-order/",
+            {"booking_id": self.booking.pk, "wallet_amount": "0.00"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(first.data["order_id"], "order_final_api")
+        self.assertEqual(second.data["order_id"], "order_final_api")
+        self.assertTrue(second.data["payment_exists"])
+        gateway.order.create.assert_called_once()
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_key", RAZORPAY_KEY_SECRET="test_secret")
+    @patch("apps.payments.installment_views.razorpay.Client")
+    def test_checkout_verification_requires_provider_capture(self, client_class):
+        attempt = self._attempt(order_id="order_verify_final")
+        gateway = client_class.return_value
+        gateway.payment.fetch.return_value = {
+            "id": "pay_verify_final",
+            "order_id": "order_verify_final",
+            "status": "captured",
+            "captured": True,
+            "amount": 50000,
+            "currency": "INR",
+        }
+        signature = hmac.new(
+            b"test_secret",
+            b"order_verify_final|pay_verify_final",
+            hashlib.sha256,
+        ).hexdigest()
+        api = APIClient()
+        api.force_authenticate(user=self.customer)
+        response = api.post(
+            "/api/v1/payments/final-balance/verify/",
+            {
+                "razorpay_order_id": "order_verify_final",
+                "razorpay_payment_id": "pay_verify_final",
+                "razorpay_signature": signature,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        attempt.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertEqual(attempt.status, PaymentAttempt.Status.CAPTURED)
+        self.assertEqual(self.final.status, PaymentInstallment.Status.PAID)
+
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_late_capture_after_failed_attempt_is_refunded(self, client_class):
+        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("100.00"))
+        attempt = self._attempt(
+            amount="500.00", gateway="400.00", wallet="100.00",
+            order_id="order_late_final",
+        )
+        from apps.payments.installment_service import _reserve_wallet
+        _reserve_wallet(attempt, Decimal("100.00"))
+        mark_final_balance_attempt_failed(
+            attempt_id=attempt.pk, provider_order_id="order_late_final",
+            payload={"event": "payment.failed"},
+        )
+        client_class.return_value.payment.refund.return_value = {
+            "id": "rfnd_late_final", "status": "processed",
+        }
+        refund = refund_late_final_capture(
+            attempt_id=attempt.pk,
+            razorpay_payment_id="pay_late_final",
+            provider_order_id="order_late_final",
+            payload={"event": "payment.captured"},
+        )
+        attempt.refresh_from_db()
+        wallet.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertEqual(refund.status, "processed")
+        self.assertEqual(attempt.status, PaymentAttempt.Status.REFUNDED)
+        self.assertEqual(wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.final.status, PaymentInstallment.Status.DUE)
+        client_class.return_value.payment.refund.assert_called_once()
+
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_second_distinct_capture_is_refunded_without_second_allocation(self, client_class):
+        attempt = self._attempt(order_id="order_duplicate_final")
+        settle_final_balance_attempt(
+            attempt_id=attempt.pk, razorpay_payment_id="pay_first_final",
+            provider_order_id="order_duplicate_final", amount_paise=50000,
+            currency="INR", source="webhook",
+        )
+        client_class.return_value.payment.refund.return_value = {
+            "id": "rfnd_duplicate_final", "status": "processed",
+        }
+        refund = refund_duplicate_final_capture(
+            attempt_id=attempt.pk,
+            razorpay_payment_id="pay_second_final",
+            provider_order_id="order_duplicate_final",
+            payload={"event": "payment.captured"},
+        )
+        attempt.refresh_from_db()
+        self.final.refresh_from_db()
+        self.assertEqual(refund.status, "processed")
+        self.assertEqual(attempt.status, PaymentAttempt.Status.CAPTURED)
+        self.assertEqual(self.final.amount_captured, Decimal("500.00"))
+        self.assertEqual(PaymentAllocation.objects.filter(installment=self.final).count(), 1)
 
     def test_parent_order_completes_only_after_every_line_balance_is_paid(self):
         order = Order.objects.create(
