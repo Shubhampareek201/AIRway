@@ -17,6 +17,129 @@ from .models import Payment
 logger = logging.getLogger(__name__)
 
 
+def _refund_late_capture_for_cancelled_booking(
+    payment, razorpay_payment_id, razorpay_order_id, source,
+):
+    """Refund a captured advance if its booking was cancelled before capture arrived."""
+    if not payment.booking_id:
+        return None
+
+    from .models import RefundRecord
+    with transaction.atomic():
+        locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
+        if locked_payment.status in (Payment.Status.PAID, Payment.Status.REFUNDED):
+            return Response({
+                "detail": "Payment already settled.",
+                "status": locked_payment.status,
+                "payment_id": locked_payment.pk,
+            })
+        booking = Booking.objects.select_for_update().filter(
+            pk=locked_payment.booking_id,
+        ).first()
+        if booking is None or booking.status != Booking.Status.CANCELLED:
+            return None
+
+        now = timezone.now()
+        locked_payment.status = Payment.Status.PAID
+        locked_payment.razorpay_payment_id = razorpay_payment_id
+        locked_payment.razorpay_signature = "verified"
+        locked_payment.paid_at = now
+        locked_payment.raw_response = {
+            "razorpay_order_id": razorpay_order_id,
+            "razorpay_payment_id": razorpay_payment_id,
+            "captured_after_booking_cancellation": True,
+            "source": source,
+            "captured_at": now.isoformat(),
+        }
+        locked_payment.save(update_fields=[
+            "status", "razorpay_payment_id", "razorpay_signature",
+            "paid_at", "raw_response", "updated_at",
+        ])
+        refund_record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"late-capture-cancelled-booking:{locked_payment.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment": locked_payment,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": locked_payment.amount,
+                "platform_fee": Decimal("0.00"),
+                "refund_amount": locked_payment.amount,
+                "status": (
+                    RefundRecord.Status.REQUESTED
+                    if locked_payment.amount > 0
+                    else RefundRecord.Status.PROCESSED
+                ),
+                "requested_at": now,
+                "processed_at": now if locked_payment.amount <= 0 else None,
+                "provider_payload": {
+                    "reason": "Razorpay capture arrived after customer cancellation.",
+                },
+            },
+        )
+
+    if not created or refund_record.refund_amount <= 0:
+        return Response({
+            "detail": "Late payment was reconciled against the cancelled booking.",
+            "status": payment.status,
+            "payment_id": payment.pk,
+            "refund_id": refund_record.pk,
+            "refund_status": refund_record.status,
+        }, status=status.HTTP_200_OK)
+
+    try:
+        if not razorpay_payment_id:
+            raise ValueError("Captured payment has no Razorpay payment ID.")
+        import razorpay
+        gateway = razorpay.Client(
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+        )
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": int(refund_record.refund_amount * 100),
+                "notes": {
+                    "airway_refund_record_id": str(refund_record.pk),
+                    "airway_booking_id": str(booking.pk),
+                    "reason": "Late capture after booking cancellation",
+                },
+            },
+        )
+        provider_refund_id = provider_refund.get("id")
+        if not provider_refund_id:
+            raise ValueError("Razorpay did not return a refund ID.")
+        refund_record.provider_refund_id = provider_refund_id
+        provider_status = provider_refund.get("status")
+        if provider_status == "processed":
+            refund_record.status = RefundRecord.Status.PROCESSED
+            refund_record.processed_at = timezone.now()
+        elif provider_status == "failed":
+            refund_record.status = RefundRecord.Status.FAILED
+        else:
+            refund_record.status = RefundRecord.Status.PENDING
+        refund_record.provider_payload = provider_refund
+    except Exception as exc:
+        logger.exception(
+            "Late-capture refund submission failed for cancelled booking %s",
+            booking.pk,
+        )
+        refund_record.status = RefundRecord.Status.FAILED
+        refund_record.provider_payload = {
+            **(refund_record.provider_payload or {}),
+            "submission_error": str(exc)[:500],
+        }
+    refund_record.save(update_fields=[
+        "provider_refund_id", "status", "processed_at",
+        "provider_payload", "updated_at",
+    ])
+    return Response({
+        "detail": "Payment was captured after the booking was cancelled; AIRway initiated full reconciliation refund.",
+        "status": Payment.Status.PAID,
+        "payment_id": payment.pk,
+        "refund_id": refund_record.pk,
+        "refund_status": refund_record.status,
+    }, status=status.HTTP_200_OK)
+
+
 def _process_verified_payment(
     payment, razorpay_payment_id, razorpay_order_id, customer, source
 ):
@@ -24,6 +147,12 @@ def _process_verified_payment(
     Process a verified payment. Called by both checkout verification
     and webhook handlers.
     """
+    late_capture_response = _refund_late_capture_for_cancelled_booking(
+        payment, razorpay_payment_id, razorpay_order_id, source,
+    )
+    if late_capture_response is not None:
+        return late_capture_response
+
     # Idempotency check: skip if already processed
     if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
         logger.info(
