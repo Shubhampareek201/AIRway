@@ -366,7 +366,8 @@ def _process_verified_payment(
 
             parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
             order_items = list(
-                parent_order.items.select_related("booking").order_by("id")
+                parent_order.items.exclude(booking__status=Booking.Status.CANCELLED)
+                .select_related("booking").order_by("id")
             )
             plans = [
                 BookingFinancialPlan.objects.select_for_update().filter(
@@ -374,6 +375,8 @@ def _process_verified_payment(
                 ).first()
                 for item in order_items
             ]
+            if not order_items:
+                raise ValueError("This order has no active service lines to settle.")
             if order_items and all(plans):
                 if parent_order.status != Order.Status.AWAITING_PAYMENT:
                     raise ValueError("Split-payment order is not awaiting its advance.")
