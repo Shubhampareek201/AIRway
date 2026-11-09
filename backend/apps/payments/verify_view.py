@@ -794,9 +794,15 @@ class PaymentWebhookView(APIView):
                     if refund_record:
                         # A webhook note must never rebind a provider refund ID
                         # already owned by a different AIRway refund record.
+                        provider_id_owner = refund_query.filter(
+                            provider_refund_id=provider_refund_id,
+                        ).exclude(pk=refund_record.pk).first()
                         if (
-                            refund_record.provider_refund_id
-                            and refund_record.provider_refund_id != provider_refund_id
+                            provider_id_owner is not None
+                            or (
+                                refund_record.provider_refund_id
+                                and refund_record.provider_refund_id != provider_refund_id
+                            )
                         ):
                             logger.error(
                                 "Refund webhook provider ID conflicts with AIRway ledger: "
