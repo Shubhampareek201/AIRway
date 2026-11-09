@@ -234,3 +234,21 @@ def create_installment_gateway_order(*, booking=None, order=None, customer, kind
     attempt.razorpay_order_id = gateway_order["id"]
     attempt.save(update_fields=["razorpay_order_id", "updated_at"])
     return payment, installment, attempt, False
+
+
+
+def expire_pending_installment_attempts(payment, reason="Booking cancelled before payment completed"):
+    """Release wallet holds and invalidate open attempts when their target is cancelled."""
+    with transaction.atomic():
+        attempts = list(
+            PaymentAttempt.objects.select_for_update().filter(
+                installment__payment=payment,
+                status=PaymentAttempt.Status.PENDING,
+            ).order_by("pk")
+        )
+        for attempt in attempts:
+            release_installment_wallet(attempt, reason)
+            attempt.status = PaymentAttempt.Status.FAILED
+            attempt.failed_at = timezone.now()
+            attempt.save(update_fields=["status", "failed_at", "updated_at"])
+    return len(attempts)
