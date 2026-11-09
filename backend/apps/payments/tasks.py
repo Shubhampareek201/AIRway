@@ -1,4 +1,4 @@
-""""Celery tasks for payment processing and provider reconciliation."""
+"""Celery tasks for payment processing and provider reconciliation."""
 import logging
 
 from celery import shared_task
