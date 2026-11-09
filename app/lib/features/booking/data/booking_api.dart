@@ -254,7 +254,7 @@ class BookingApi {
 
   static Future<Map<String, dynamic>> createRazorpayOrder(int bookingId) async {
     final result = await request(
-      '/api/v1/payments/create-order/',
+      '/api/v1/payments/installments/create-order/',
       method: 'POST',
       data: {'booking_id': bookingId},
     );
