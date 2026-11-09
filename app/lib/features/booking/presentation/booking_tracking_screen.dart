@@ -229,13 +229,21 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
         razorpaySignature: signature,
       );
       if (mounted) {
-        final message = verification['status'] == 'duplicate_capture_refund'
-            ? verification['refund_status'] == 'processed'
+        final verificationStatus = verification['status']?.toString();
+        final refundStatus = verification['refund_status']?.toString();
+        final message = verificationStatus == 'duplicate_capture_refund'
+            ? refundStatus == 'processed'
                 ? 'Duplicate payment was refunded.'
-                : verification['refund_status'] == 'failed'
+                : refundStatus == 'failed'
                     ? 'Duplicate payment needs AIRway refund support.'
                     : 'Duplicate payment is being reconciled for refund.'
-            : 'Final payment received successfully.';
+            : verificationStatus == 'late_capture_refund'
+                ? refundStatus == 'processed'
+                    ? 'The late payment was refunded. You can retry the final balance.'
+                    : refundStatus == 'failed'
+                        ? 'The late payment refund needs AIRway support.'
+                        : 'The late payment is being refunded. Refresh shortly.'
+                : 'Final payment received successfully.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
