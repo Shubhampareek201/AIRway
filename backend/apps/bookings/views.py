@@ -675,6 +675,7 @@ class CustomerOrderDetailView(APIView):
             "ready_for_balance": all_completed and bool(advance and advance.status == PaymentInstallment.Status.PAID) and (not balance or balance.status != PaymentInstallment.Status.PAID),
             "all_assigned": all_assigned,
             "all_completed": all_completed,
+            "can_cancel": order.status != Order.Status.CANCELLED and all(booking.can_cancel for booking in [row.booking for row in rows]),
         })
 
 
@@ -695,6 +696,7 @@ class CustomerOrderListView(APIView):
                 "item_count": len(bookings),
                 "ready_for_advance": order.status == Order.Status.AWAITING_PAYMENT,
                 "ready_for_balance": bool(bookings) and all(b.status == Booking.Status.COMPLETED for b in bookings),
+                "can_cancel": order.status != Order.Status.CANCELLED and bool(bookings) and all(b.can_cancel for b in bookings),
             })
         return Response(results)
 
