@@ -153,8 +153,9 @@ def _process_verified_payment(
                 )
 
         payment.status = Payment.Status.PAID
-        payment.razorpay_payment_id = razorpay_payment_id
-        payment.razorpay_signature = "verified"
+        if razorpay_payment_id:
+            payment.razorpay_payment_id = razorpay_payment_id
+            payment.razorpay_signature = "verified"
         payment.paid_at = timezone.now()
         payment.raw_response = {
             "razorpay_order_id": razorpay_order_id,
@@ -343,10 +344,29 @@ def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, c
             return Response({"detail": "This payment attempt is no longer active. Please create a new attempt."},
                             status=status.HTTP_409_CONFLICT)
 
+        if attempt.wallet_amount > 0:
+            try:
+                from .installments import capture_installment_wallet
+                capture_installment_wallet(attempt, razorpay_payment_id=razorpay_payment_id or "")
+            except ValueError:
+                logger.exception("Could not capture reserved wallet amount for installment attempt %s", attempt.pk)
+                Notification.objects.create(
+                    user=customer, type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                    title="Payment reconciliation in progress",
+                    body="Your payment is being reconciled securely. Please do not pay again; AIRway support will update this order.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"payment_id": payment.pk, "attempt_id": attempt.pk, "reconciliation_required": True},
+                )
+                return Response(
+                    {"detail": "Wallet contribution could not be reconciled. AIRway support will review the captured payment.",
+                     "status": "reconciliation_required", "payment_id": payment.pk},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         now = timezone.now()
         attempt.status = PaymentAttempt.Status.PAID
-        attempt.razorpay_payment_id = razorpay_payment_id
-        attempt.razorpay_signature = "verified"
+        attempt.razorpay_payment_id = razorpay_payment_id or None
+        attempt.razorpay_signature = "verified" if razorpay_payment_id else "wallet"
         attempt.paid_at = now
         attempt.raw_response = {"razorpay_order_id": razorpay_order_id,
                                 "razorpay_payment_id": razorpay_payment_id,
