@@ -89,7 +89,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             BookingStatusHistory.objects.create(
                 booking=booking, from_status=old_status,
                 to_status=Booking.Status.CANCELLED, changed_by=request.user,
-                note=f"Customer cancelled before the policy cutoff. Reason: {reason}",
+                note=f"Customer cancelled before service start. Refund eligibility is evaluated against the cancellation cutoff. Reason: {reason}",
             )
             WorkerOffer.objects.filter(
                 booking=booking, status=WorkerOffer.Status.PENDING
@@ -670,7 +670,7 @@ class CustomerOrderDetailView(APIView):
             "advance_status": advance.status if advance else "pending",
             "balance_amount": str(balance.amount) if balance else str(order.total_amount - (order.total_amount / Decimal("2")).quantize(Decimal("0.01"))),
             "balance_status": balance.status if balance else "pending",
-            "ready_for_advance": not advance or advance.status != PaymentInstallment.Status.PAID,
+            "ready_for_advance": order.status == Order.Status.AWAITING_PAYMENT and (not advance or advance.status != PaymentInstallment.Status.PAID),
             "ready_for_payment": all_completed and bool(advance and advance.status == PaymentInstallment.Status.PAID) and (not balance or balance.status != PaymentInstallment.Status.PAID),
             "ready_for_balance": all_completed and bool(advance and advance.status == PaymentInstallment.Status.PAID) and (not balance or balance.status != PaymentInstallment.Status.PAID),
             "all_assigned": all_assigned,
