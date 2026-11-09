@@ -41,10 +41,22 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
         ValueError: If booking status is not PENDING or ASSIGNED
         Exception: If Razorpay order creation fails
     """
-    if booking.status not in [Booking.Status.PENDING, Booking.Status.ASSIGNED]:
-        raise ValueError(
-            f"Booking cannot have payment created in {booking.get_status_display()} state."
-        )
+    from .models import BookingFinancialPlan, PaymentInstallment
+    financial_plan = BookingFinancialPlan.objects.filter(booking=booking).first()
+    is_split_booking = financial_plan is not None
+    if is_split_booking:
+        if booking.status not in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
+            raise ValueError("Booking advance can be paid only before worker assignment.")
+        amount_due = financial_plan.advance_due
+    else:
+        if booking.status not in [Booking.Status.PENDING, Booking.Status.ASSIGNED]:
+            raise ValueError(
+                f"Booking cannot have payment created in {booking.get_status_display()} state."
+            )
+        amount_due = booking.total_amount
+
+    if amount_due <= 0:
+        raise ValueError("The amount due must be greater than zero.")
 
     # Try to get existing payment first (fast path)
     try:
@@ -60,7 +72,7 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
         existing_payment = None
 
     # Create Razorpay order OUTSIDE of any transaction
-    amount_paise = int(float(booking.total_amount) * 100)
+    amount_paise = int(amount_due * 100)
 
     try:
         order_data = {
@@ -82,7 +94,7 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
             payment = Payment.objects.create(
                 booking=booking,
                 customer=customer,
-                amount=booking.total_amount,
+                amount=amount_due,
                 method=Payment.Method.RAZORPAY,
                 razorpay_order_id=razorpay_order_id,
                 status=Payment.Status.PENDING,
