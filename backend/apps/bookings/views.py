@@ -102,25 +102,36 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         refund_data = {"status": "not_required", "amount": "0.00", "platform_fee": "0.00"}
         try:
+            from apps.bookings.services import customer_cancellation_cutoff
             from apps.payments.models import PaymentAttempt, PaymentInstallment
             from apps.payments.refunds import request_installment_refund
-            advance = PaymentInstallment.objects.filter(
-                payment__booking=booking, kind=PaymentInstallment.Kind.ADVANCE,
-                status=PaymentInstallment.Status.PAID,
-            ).first()
-            attempt = advance.attempts.filter(status=PaymentAttempt.Status.PAID).order_by("-paid_at").first() if advance else None
-            if attempt:
-                refund = request_installment_refund(
-                    attempt=attempt,
-                    idempotency_key=f"customer_cancel_booking_{booking.pk}",
-                    reason="Customer cancelled before the AIRway cancellation cutoff.",
-                    deduct_platform_fee=True,
-                )
+            if timezone.now() <= customer_cancellation_cutoff(booking):
+                advance = PaymentInstallment.objects.filter(
+                    payment__booking=booking, kind=PaymentInstallment.Kind.ADVANCE,
+                    status=PaymentInstallment.Status.PAID,
+                ).first()
+                attempt = advance.attempts.filter(status=PaymentAttempt.Status.PAID).order_by("-paid_at").first() if advance else None
+                if attempt:
+                    refund = request_installment_refund(
+                        attempt=attempt,
+                        idempotency_key=f"customer_cancel_booking_{booking.pk}",
+                        reason="Customer cancelled before the AIRway cancellation cutoff.",
+                        deduct_platform_fee=True,
+                    )
+                    refund_data = {
+                        "status": refund.status,
+                        "amount": str(refund.gateway_amount),
+                        "platform_fee": str(refund.platform_fee),
+                        "refund_id": refund.pk,
+                    }
+                else:
+                    refund_data = {"status": "not_required", "amount": "0.00", "platform_fee": "0.00"}
+            else:
                 refund_data = {
-                    "status": refund.status,
-                    "amount": str(refund.gateway_amount),
-                    "platform_fee": str(refund.platform_fee),
-                    "refund_id": refund.pk,
+                    "status": "not_eligible",
+                    "amount": "0.00",
+                    "platform_fee": "0.00",
+                    "detail": "Cancellation is allowed, but the 10:00 PM previous-day refund cutoff has passed.",
                 }
         except Exception:
             logger.exception("Refund request could not be completed for cancelled booking %s", booking.pk)
