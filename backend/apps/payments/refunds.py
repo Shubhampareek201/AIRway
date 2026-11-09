@@ -101,7 +101,7 @@ def _finalize_refunded_attempt(refund):
         ).get(pk=refund.pk)
         if refund.status != PaymentRefund.Status.PROCESSED:
             return
-        attempt = PaymentAttempt.objects.select_for_update().get(pk=refund.attempt_id)
+        attempt = PaymentAttempt.objects.select_for_update().select_related("installment").get(pk=refund.attempt_id)
         payment = Payment.objects.select_for_update().get(pk=attempt.installment.payment_id)
         if attempt.status != PaymentAttempt.Status.REFUNDED and refund.wallet_amount > 0:
             wallet, _ = Wallet.objects.get_or_create(user=payment.customer)
@@ -120,7 +120,13 @@ def _finalize_refunded_attempt(refund):
             )
         attempt.status = PaymentAttempt.Status.REFUNDED
         attempt.save(update_fields=["status", "updated_at"])
-        payment.status = Payment.Status.REFUNDED
+        if not refund.idempotency_key.startswith("late_capture_"):
+            attempt.installment.status = PaymentInstallment.Status.REFUNDED
+            attempt.installment.save(update_fields=["status", "updated_at"])
+        other_paid_installments = payment.installments.filter(
+            status=PaymentInstallment.Status.PAID
+        ).exclude(pk=attempt.installment_id).exists()
+        payment.status = Payment.Status.PARTIALLY_PAID if other_paid_installments else Payment.Status.REFUNDED
         payment.save(update_fields=["status", "updated_at"])
 
 
