@@ -126,6 +126,52 @@ def calculate_platform_refund(collected_amount):
     return as_money(collected_amount)
 
 
+def customer_cancellation_terms(scheduled_at, collected_amount, *, worker_accepted, now=None):
+    """Return the authoritative refund decision for a customer cancellation.
+
+    Same-day service: full refund until a worker accepts; no refund after acceptance.
+    Future service: refund collected advance less the single ₹40 fee through 10 PM
+    IST on the previous calendar day. The exact cutoff instant remains eligible.
+    """
+    current = now or timezone.now()
+    if timezone.is_naive(current) or timezone.is_naive(scheduled_at):
+        raise PaymentLifecycleError("Cancellation dates must be timezone-aware.")
+    local_now = current.astimezone(BUSINESS_TIMEZONE)
+    local_service = scheduled_at.astimezone(BUSINESS_TIMEZONE)
+    collected = as_money(collected_amount)
+
+    if local_now.date() == local_service.date():
+        if worker_accepted:
+            return {
+                "policy": "same_day_after_worker_acceptance",
+                "refund_amount": ZERO,
+                "platform_fee": ZERO,
+                "refundable": False,
+            }
+        return {
+            "policy": "same_day_before_worker_acceptance",
+            "refund_amount": collected,
+            "platform_fee": ZERO,
+            "refundable": collected > ZERO,
+        }
+
+    if customer_cancellation_is_refundable(scheduled_at, now=current):
+        refund = calculate_customer_refund(collected)
+        return {
+            "policy": "future_before_cutoff",
+            "refund_amount": refund,
+            "platform_fee": min(collected, CANCELLATION_FEE),
+            "refundable": refund > ZERO,
+        }
+
+    return {
+        "policy": "future_after_cutoff",
+        "refund_amount": ZERO,
+        "platform_fee": ZERO,
+        "refundable": False,
+    }
+
+
 def _new_otp():
     return f"{secrets.randbelow(1_000_000):06d}"
 
