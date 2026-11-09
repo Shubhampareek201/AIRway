@@ -329,6 +329,40 @@ def _process_verified_payment(
 
 
 
+def _refund_late_capture_for_cancelled_target(attempt_id):
+    try:
+        from apps.bookings.services import customer_cancellation_cutoff
+        from .refunds import request_installment_refund
+        attempt = PaymentAttempt.objects.select_related("installment__payment").get(pk=attempt_id)
+        payment = attempt.installment.payment
+        if payment.booking_id:
+            bookings = [Booking.objects.get(pk=payment.booking_id)]
+        elif payment.order_id:
+            bookings = [row.booking for row in payment.order.items.select_related("booking").all()]
+        else:
+            bookings = []
+        customer_cancelled = bool(bookings) and all(
+            row.cancelled_by_id == row.customer_id for row in bookings
+        )
+        eligible = customer_cancelled and all(
+            row.cancelled_at and row.cancelled_at <= customer_cancellation_cutoff(row)
+            for row in bookings
+        )
+        worker_or_platform_cancelled = any(
+            row.cancelled_by_id != row.customer_id for row in bookings
+        )
+        if not eligible and not worker_or_platform_cancelled:
+            return
+        request_installment_refund(
+            attempt=attempt,
+            idempotency_key=f"late_capture_cancelled_attempt_{attempt.pk}",
+            reason="Late payment capture for a booking that had already been cancelled.",
+            deduct_platform_fee=eligible,
+        )
+    except Exception:
+        logger.exception("Late capture refund reconciliation failed for cancelled attempt %s", attempt_id)
+
+
 def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, customer, source):
     """Settle one captured installment attempt without conflating advance and balance."""
     attempt.refresh_from_db()
@@ -354,6 +388,14 @@ def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, c
         if attempt.status != PaymentAttempt.Status.PENDING:
             return Response({"detail": "This payment attempt is no longer active. Please create a new attempt."},
                             status=status.HTTP_409_CONFLICT)
+
+        cancelled_target = False
+        if payment.booking_id:
+            locked_booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+            cancelled_target = locked_booking.status == Booking.Status.CANCELLED
+        elif payment.order_id:
+            locked_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            cancelled_target = locked_order.status == Order.Status.CANCELLED
 
         if attempt.wallet_amount > 0:
             try:
@@ -387,6 +429,24 @@ def _process_verified_attempt(attempt, razorpay_payment_id, razorpay_order_id, c
         installment.status = PaymentInstallment.Status.PAID
         installment.paid_at = now
         installment.save(update_fields=["status", "paid_at", "updated_at"])
+
+        if cancelled_target:
+            payment.status = Payment.Status.PARTIALLY_PAID
+            payment.razorpay_payment_id = razorpay_payment_id or payment.razorpay_payment_id
+            payment.save(update_fields=["status", "razorpay_payment_id", "updated_at"])
+            Notification.objects.create(
+                user=customer, type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Late payment for cancelled booking",
+                body="A payment arrived after this booking was cancelled. AIRway is applying the cancellation refund policy.",
+                channel=Notification.Channel.IN_APP,
+                data={"payment_id": payment.pk, "attempt_id": attempt.pk},
+            )
+            transaction.on_commit(lambda attempt_id=attempt.pk: _refund_late_capture_for_cancelled_target(attempt_id))
+            return Response({
+                "detail": "This booking was already cancelled. AIRway is reconciling the late payment under the cancellation policy.",
+                "status": "late_capture_reconciliation",
+                "payment_id": payment.pk,
+            }, status=status.HTTP_202_ACCEPTED)
 
         advance = payment.installments.filter(kind=PaymentInstallment.Kind.ADVANCE).first()
         balance = payment.installments.filter(kind=PaymentInstallment.Kind.BALANCE).first()
