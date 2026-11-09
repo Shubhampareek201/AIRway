@@ -297,13 +297,21 @@ class CreateOrderView(APIView):
             ).exclude(booking__status=Booking.Status.CANCELLED))
             advance_amount = (
                 sum((plan.advance_due for plan in financial_plans), Decimal("0.00"))
-                if financial_plans and len(financial_plans) == parent_order.items.count()
+                if financial_plans and len(financial_plans) == parent_order.items.exclude(
+                    booking__status=Booking.Status.CANCELLED,
+                ).count()
                 else None
             )
             response_data = {
                 "order_id": razorpay_order_id,
                 "amount": int(payment.amount * 100),
                 "total_amount": str(parent_order.total_amount),
+                "active_total_amount": str(sum(
+                    (item.line_total for item in parent_order.items.exclude(
+                        booking__status=Booking.Status.CANCELLED,
+                    )),
+                    Decimal("0.00"),
+                )),
                 "advance_amount": str(advance_amount) if advance_amount is not None else None,
                 "wallet_amount": str(payment.wallet_amount),
                 "currency": parent_order.currency,
