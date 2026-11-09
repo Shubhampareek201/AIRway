@@ -555,7 +555,7 @@ class FinalBalanceAttemptTests(TestCase):
             reason=RefundRecord.Reason.CUSTOMER_CANCELLATION,
             gross_amount=Decimal("500.00"), refund_amount=Decimal("460.00"),
             gateway_refund_amount=Decimal("460.00"),
-            status=RefundRecord.Status.PENDING,
+            status=RefundRecord.Status.FAILED,
         )
         client_class.return_value.payment.fetch_multiple_refund.return_value = {
             "items": [{
