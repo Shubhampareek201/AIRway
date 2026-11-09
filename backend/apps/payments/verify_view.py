@@ -613,6 +613,35 @@ class PaymentWebhookView(APIView):
 
         logger.info(f"Webhook received: event={event_type}, payment_id={payment_id}, order_id={order_id}")
 
+        # Reconcile refund lifecycle events independently of payment events.
+        if event_type in ("refund.created", "refund.processed", "refund.failed"):
+            refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
+            provider_refund_id = refund_entity.get("id")
+            if provider_refund_id:
+                from .models import RefundRecord
+                refund_record = RefundRecord.objects.filter(
+                    provider_refund_id=provider_refund_id
+                ).first()
+                if refund_record:
+                    if event_type == "refund.processed":
+                        refund_record.status = RefundRecord.Status.PROCESSED
+                        refund_record.processed_at = timezone.now()
+                    elif event_type == "refund.failed":
+                        refund_record.status = RefundRecord.Status.FAILED
+                    else:
+                        if refund_record.status != RefundRecord.Status.PROCESSED:
+                            refund_record.status = RefundRecord.Status.PENDING
+                    refund_record.provider_payload = payload
+                    refund_record.save(update_fields=[
+                        "status", "processed_at", "provider_payload", "updated_at"
+                    ])
+                else:
+                    logger.warning(
+                        "Refund webhook references unknown AIRway refund: %s",
+                        provider_refund_id,
+                    )
+            return Response({"status": "ok"})
+
         # Handle payment.captured event (Razorpay uses 'payment.captured' for successful payments)
         if event_type in ('payment.captured', 'payment.authorized'):
             # Get the payment record by order_id or payment_id
