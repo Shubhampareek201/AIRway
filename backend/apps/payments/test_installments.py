@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
 import hashlib
 import hmac
@@ -54,6 +54,13 @@ class FinalBalanceAttemptTests(TestCase):
         )
         self.booking, self.plan, self.final = self._create_completed_booking("1000.00")
 
+    def _wallet_with_balance(self, balance):
+        wallet = Wallet.objects.get(user=self.customer)
+        wallet.balance = Decimal(balance)
+        wallet.pending_balance = Decimal("0.00")
+        wallet.save(update_fields=["balance", "pending_balance", "updated_at"])
+        return wallet
+
     def _create_completed_booking(self, total, *, order=None):
         booking = Booking.objects.create(
             customer=self.customer,
@@ -65,7 +72,7 @@ class FinalBalanceAttemptTests(TestCase):
             completed_at=timezone.now(),
         )
         gross = Decimal(total)
-        advance = (gross / Decimal("2")).quantize(Decimal("0.01"))
+        advance = (gross / Decimal("2")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         balance = gross - advance
         plan = BookingFinancialPlan.objects.create(
             booking=booking, gross_total=gross, advance_due=advance,
@@ -140,7 +147,7 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(self.final.amount_captured, Decimal("0.00"))
 
     def test_wallet_only_final_payment_is_reserved_and_captured(self):
-        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("500.00"))
+        wallet = self._wallet_with_balance("500.00")
         attempt, existed = create_final_balance_attempt(
             booking_id=self.booking.pk, customer=self.customer, wallet_amount="500.00",
         )
@@ -161,7 +168,7 @@ class FinalBalanceAttemptTests(TestCase):
 
     @patch("apps.payments.installment_service.razorpay.Client")
     def test_mixed_wallet_and_gateway_tender_reconciles_all_sources(self, client_class):
-        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("100.00"))
+        wallet = self._wallet_with_balance("100.00")
         client_class.return_value.order.create.return_value = {"id": "order_mixed_final"}
         attempt, _ = create_final_balance_attempt(
             booking_id=self.booking.pk, customer=self.customer,
@@ -192,7 +199,7 @@ class FinalBalanceAttemptTests(TestCase):
         )
 
     def test_failed_attempt_releases_wallet_and_keeps_balance_due(self):
-        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("100.00"))
+        wallet = self._wallet_with_balance("100.00")
         attempt = self._attempt(amount="500.00", gateway="400.00", wallet="100.00")
         from apps.payments.installment_service import _reserve_wallet
         _reserve_wallet(attempt, Decimal("100.00"))
@@ -273,7 +280,7 @@ class FinalBalanceAttemptTests(TestCase):
 
     @patch("apps.payments.installment_service.razorpay.Client")
     def test_late_capture_after_failed_attempt_is_refunded(self, client_class):
-        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("100.00"))
+        wallet = self._wallet_with_balance("100.00")
         attempt = self._attempt(
             amount="500.00", gateway="400.00", wallet="100.00",
             order_id="order_late_final",
@@ -491,7 +498,7 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(attempt.status, PaymentAttempt.Status.REFUNDED)
 
     def test_wallet_overdraft_does_not_create_attempt_or_change_balance(self):
-        wallet = Wallet.objects.create(user=self.customer, balance=Decimal("10.00"))
+        wallet = self._wallet_with_balance("10.00")
         with self.assertRaises(InstallmentPaymentError):
             create_final_balance_attempt(
                 booking_id=self.booking.pk, customer=self.customer,
