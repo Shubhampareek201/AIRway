@@ -98,6 +98,44 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
 
+    @action(detail=True, methods=["post"], url_path="service-otp")
+    def service_otp(self, request, pk=None):
+        """Allow only the booking customer to retrieve a short-lived service OTP."""
+        from apps.payments.lifecycle import PaymentLifecycleError, issue_service_otp
+        from apps.payments.models import BookingFinancialPlan, ServiceOTPChallenge
+
+        booking = self.get_object()
+        if not BookingFinancialPlan.objects.filter(booking=booking).exists():
+            return Response(
+                {"detail": "This booking is not enrolled in the split-payment service lifecycle."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        purpose = request.data.get("purpose")
+        if purpose not in (ServiceOTPChallenge.Purpose.START, ServiceOTPChallenge.Purpose.COMPLETION):
+            return Response(
+                {"purpose": ["Choose 'start' or 'completion'."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            challenge, otp = issue_service_otp(
+                booking_id=booking.pk,
+                purpose=purpose,
+                requested_by=request.user,
+            )
+        except PaymentLifecycleError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # This response is customer-authenticated and is the one-time handoff
+        # for the customer to share with the assigned professional in person.
+        return Response({
+            "booking_id": booking.pk,
+            "purpose": purpose,
+            "otp": otp,
+            "expires_at": challenge.expires_at.isoformat(),
+            "message": "Share this OTP with your assigned professional only at the relevant service milestone.",
+        })
+
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm_booking(self, request, pk=None):
         """Confirm a booking and trigger worker offer creation."""
