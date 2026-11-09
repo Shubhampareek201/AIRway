@@ -66,6 +66,8 @@ def _refund_late_capture_for_cancelled_booking(
                 "gross_amount": locked_payment.amount,
                 "platform_fee": Decimal("0.00"),
                 "refund_amount": locked_payment.amount,
+                "gateway_refund_amount": locked_payment.amount,
+                "wallet_refund_amount": Decimal("0.00"),
                 "status": (
                     RefundRecord.Status.REQUESTED
                     if locked_payment.amount > 0
