@@ -135,7 +135,16 @@ class BookingViewSet(viewsets.ModelViewSet):
             note="Customer confirmed booking",
         )
 
-        # Create worker offers for this booking
+        from apps.payments.models import PaymentInstallment
+        if not PaymentInstallment.objects.filter(
+            payment__booking=booking,
+            kind=PaymentInstallment.Kind.ADVANCE,
+            status=PaymentInstallment.Status.PAID,
+        ).exists():
+            return Response(
+                {"detail": "Capture the 50% booking advance before worker dispatch."},
+                status=status.HTTP_409_CONFLICT,
+            )
         offers = create_worker_offers_for_booking(booking)
 
         # Notify customer about confirm
@@ -531,7 +540,7 @@ class CustomerCheckoutView(APIView):
         order = Order.objects.create(
             customer=request.user,
             address=cart.address,
-            status=Order.Status.AWAITING_ASSIGNMENT,
+            status=Order.Status.AWAITING_PAYMENT,
         )
         subtotal = Decimal("0")
         tax_total = Decimal("0")
@@ -619,11 +628,6 @@ class CustomerCheckoutView(APIView):
         order.total_amount = grand_total
         order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
 
-        from apps.bookings.dispatcher import DispatcherService
-        order_offers = DispatcherService.dispatch_order(order)
-        if dispatch_results:
-            dispatch_results[0]["offers_sent"] = len(order_offers)
-
         cart.items.all().delete()
         return Response({
             "order_id": order.id,
@@ -644,11 +648,7 @@ class CustomerCheckoutView(APIView):
                 for row in order.items.all()
             ],
             "dispatch": dispatch_results,
-            "next_step": (
-                "Worker offers sent. Track assignment in the order; payment unlocks after every service is assigned."
-                if any(row["offers_sent"] for row in dispatch_results)
-                else "No single approved worker is currently eligible and available for every service and selected time in this order. The order is waiting for worker assignment."
-            ),
+            "next_step": "Pay the 50% booking advance to confirm the order and start professional assignment.",
         }, status=status.HTTP_201_CREATED)
 
 
