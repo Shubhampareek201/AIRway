@@ -754,61 +754,61 @@ class PaymentWebhookView(APIView):
             refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
             provider_refund_id = refund_entity.get("id")
             if provider_refund_id:
-                from .models import RefundRecord
-                refund_record = RefundRecord.objects.filter(
-                    provider_refund_id=provider_refund_id
-                ).first()
-                if refund_record is None:
-                    refund_notes = refund_entity.get("notes") or {}
-                    record_id = refund_notes.get("airway_refund_record_id")
-                    if record_id:
-                        refund_record = RefundRecord.objects.filter(pk=record_id).first()
-                if refund_record:
-                    # Provider events can be duplicated or arrive out of order.
-                    # A processed refund is terminal and must never regress.
-                    if refund_record.status != RefundRecord.Status.PROCESSED:
-                        if event_type == "refund.processed":
-                            refund_record.status = RefundRecord.Status.PROCESSED
-                            refund_record.processed_at = timezone.now()
-                        elif event_type == "refund.failed":
-                            refund_record.status = RefundRecord.Status.FAILED
-                        else:
-                            refund_record.status = RefundRecord.Status.PENDING
-                    refund_record.provider_payload = payload
-                    if provider_refund_id and not refund_record.provider_refund_id:
-                        refund_record.provider_refund_id = provider_refund_id
-                    refund_record.save(update_fields=[
-                        "status", "processed_at", "provider_payload",
-                        "provider_refund_id", "updated_at"
-                    ])
-                    if refund_record.payment_attempt_id:
-                        from .models import PaymentAttempt
-                        attempt = PaymentAttempt.objects.select_for_update().filter(
-                            pk=refund_record.payment_attempt_id,
-                        ).first()
-                        if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
-                            refund_states = list(
-                                RefundRecord.objects.filter(
-                                    payment_attempt=attempt,
-                                ).values_list("status", flat=True)
-                            )
-                            if any(state in (
-                                RefundRecord.Status.REQUESTED,
-                                RefundRecord.Status.PENDING,
-                            ) for state in refund_states):
-                                attempt.status = PaymentAttempt.Status.REFUND_PENDING
-                            elif any(state == RefundRecord.Status.FAILED for state in refund_states):
-                                attempt.status = PaymentAttempt.Status.FAILED
-                            elif refund_states and all(
-                                state == RefundRecord.Status.PROCESSED for state in refund_states
-                            ):
-                                attempt.status = PaymentAttempt.Status.REFUNDED
-                            attempt.save(update_fields=["status", "updated_at"])
-                else:
-                    logger.warning(
-                        "Refund webhook references unknown AIRway refund: %s",
-                        provider_refund_id,
-                    )
+                from .models import PaymentAttempt, RefundRecord
+                refund_notes = refund_entity.get("notes") or {}
+                record_id = refund_notes.get("airway_refund_record_id")
+                with transaction.atomic():
+                    refund_query = RefundRecord.objects.select_for_update()
+                    refund_record = refund_query.filter(
+                        provider_refund_id=provider_refund_id
+                    ).first()
+                    if refund_record is None and record_id:
+                        refund_record = refund_query.filter(pk=record_id).first()
+                    if refund_record:
+                        # Lock the refund and linked attempt in one transaction.
+                        # Duplicate/out-of-order events must not regress a processed refund.
+                        if refund_record.status != RefundRecord.Status.PROCESSED:
+                            if event_type == "refund.processed":
+                                refund_record.status = RefundRecord.Status.PROCESSED
+                                refund_record.processed_at = timezone.now()
+                            elif event_type == "refund.failed":
+                                refund_record.status = RefundRecord.Status.FAILED
+                            else:
+                                refund_record.status = RefundRecord.Status.PENDING
+                        refund_record.provider_payload = payload
+                        if provider_refund_id and not refund_record.provider_refund_id:
+                            refund_record.provider_refund_id = provider_refund_id
+                        refund_record.save(update_fields=[
+                            "status", "processed_at", "provider_payload",
+                            "provider_refund_id", "updated_at"
+                        ])
+                        if refund_record.payment_attempt_id:
+                            attempt = PaymentAttempt.objects.select_for_update().filter(
+                                pk=refund_record.payment_attempt_id,
+                            ).first()
+                            if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
+                                refund_states = list(
+                                    RefundRecord.objects.filter(
+                                        payment_attempt=attempt,
+                                    ).values_list("status", flat=True)
+                                )
+                                if any(state in (
+                                    RefundRecord.Status.REQUESTED,
+                                    RefundRecord.Status.PENDING,
+                                ) for state in refund_states):
+                                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                                elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                                    attempt.status = PaymentAttempt.Status.FAILED
+                                elif refund_states and all(
+                                    state == RefundRecord.Status.PROCESSED for state in refund_states
+                                ):
+                                    attempt.status = PaymentAttempt.Status.REFUNDED
+                                attempt.save(update_fields=["status", "updated_at"])
+                    else:
+                        logger.warning(
+                            "Refund webhook references unknown AIRway refund: %s",
+                            provider_refund_id,
+                        )
             return Response({"status": "ok"})
 
         # Installment attempts are separate from legacy Payment rows: one
