@@ -23,8 +23,10 @@ def request_installment_refund(*, attempt, idempotency_key, reason, deduct_platf
         existing = PaymentRefund.objects.filter(idempotency_key=idempotency_key).first()
         if existing:
             return existing
-        if locked.status != PaymentAttempt.Status.PAID or not locked.razorpay_payment_id:
-            raise ValueError("Only a captured Razorpay installment can be refunded.")
+        if locked.status != PaymentAttempt.Status.PAID:
+            raise ValueError("Only a settled installment can be refunded.")
+        if locked.amount > 0 and not locked.razorpay_payment_id:
+            raise ValueError("The captured Razorpay payment reference is missing.")
         paid_total = (Decimal(locked.amount) + Decimal(locked.wallet_amount)).quantize(CENT)
         fee = min(CANCELLATION_FEE, paid_total) if deduct_platform_fee else Decimal("0.00")
         total_refund = max(paid_total - fee, Decimal("0.00")).quantize(CENT)
@@ -42,6 +44,13 @@ def request_installment_refund(*, attempt, idempotency_key, reason, deduct_platf
         payment = Payment.objects.select_for_update().get(pk=locked.installment.payment_id)
         payment.status = Payment.Status.REFUND_PENDING
         payment.save(update_fields=["status", "updated_at"])
+
+    if refund.gateway_amount == 0:
+        refund.status = PaymentRefund.Status.PROCESSED
+        refund.processed_at = timezone.now()
+        refund.save(update_fields=["status", "processed_at", "updated_at"])
+        _finalize_refunded_attempt(refund)
+        return refund
 
     if refund.gateway_amount == 0:
         refund.status = PaymentRefund.Status.PROCESSED
