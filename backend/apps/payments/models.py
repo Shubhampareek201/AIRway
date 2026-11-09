@@ -174,7 +174,10 @@ class PaymentAttempt(TimeStampedModel):
     )
     provider = models.CharField(max_length=16, choices=Provider.choices, default=Provider.RAZORPAY)
     idempotency_key = models.CharField(max_length=100, unique=True)
+    # Full installment tender; source amounts are frozen per attempt.
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    gateway_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    wallet_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     currency = models.CharField(max_length=3, default="INR")
     provider_order_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
     provider_payment_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
@@ -187,6 +190,12 @@ class PaymentAttempt(TimeStampedModel):
         ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(condition=Q(amount__gt=0), name="attempt_amount_positive"),
+            models.CheckConstraint(
+                condition=Q(amount=models.F("gateway_amount") + models.F("wallet_amount")),
+                name="attempt_sources_sum",
+            ),
+            models.CheckConstraint(condition=Q(gateway_amount__gte=0), name="attempt_gateway_nonneg"),
+            models.CheckConstraint(condition=Q(wallet_amount__gte=0), name="attempt_wallet_nonneg"),
         ]
 
     def __str__(self):
