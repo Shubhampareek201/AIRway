@@ -4,6 +4,7 @@ All monetary values are Decimal INR amounts. Provider network calls are made
 outside database transactions; captured funds are applied under row locks.
 """
 import uuid
+import logging
 from decimal import Decimal, InvalidOperation
 
 import razorpay
@@ -19,6 +20,8 @@ from .models import (
     PaymentInstallment,
 )
 
+
+logger = logging.getLogger(__name__)
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
