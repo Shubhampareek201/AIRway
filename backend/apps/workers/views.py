@@ -552,23 +552,43 @@ class WorkerJobRejectView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
         assign, booking = _get_assignment_and_booking(job_id, profile)
         if not booking:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-        if booking.status in (Booking.Status.COMPLETED, Booking.Status.CANCELLED):
-            return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
-        if booking.status != Booking.Status.ASSIGNED:
-            return Response({"detail": "Job must be assigned to be rejected."}, status=status.HTTP_400_BAD_REQUEST)
-        old = booking.status
-        booking.status = Booking.Status.CANCELLED
-        booking.cancellation_reason = request.data.get("reason", "")
-        booking.cancelled_by = request.user
-        booking.cancelled_at = timezone.now()
-        booking.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at"])
-        BookingStatusHistory.objects.create(
-            booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
-            changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
-        )
+
+        from apps.bookings.models import OrderItem
+        if OrderItem.objects.filter(booking_id=booking.pk).exists():
+            return Response(
+                {
+                    "detail": "This job belongs to a parent order. A single service line cannot be rejected independently."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().get(pk=booking.pk)
+            if OrderItem.objects.filter(booking_id=booking.pk).exists():
+                return Response(
+                    {"detail": "This job belongs to a parent order and cannot be rejected independently."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if booking.status in (Booking.Status.COMPLETED, Booking.Status.CANCELLED):
+                return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+            if booking.status != Booking.Status.ASSIGNED:
+                return Response({"detail": "Job must be assigned to be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+            old = booking.status
+            reason = request.data.get("reason", "")
+            booking.status = Booking.Status.CANCELLED
+            booking.cancellation_reason = reason
+            booking.cancelled_by = request.user
+            booking.cancelled_at = timezone.now()
+            booking.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
+                changed_by=request.user, note=f"Worker rejected. Reason: {reason}",
+            )
         return Response({"detail": "Job rejected.", "status": booking.status})
 
 

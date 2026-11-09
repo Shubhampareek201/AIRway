@@ -668,6 +668,38 @@ class BookingCancelTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+    def test_parent_order_booking_line_cannot_be_cancelled_independently(self):
+        from apps.bookings.models import Order, OrderItem, Booking
+
+        booking = Booking.objects.create(
+            customer=self.user,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self.future_time,
+            status=Booking.Status.PENDING,
+        )
+        order = Order.objects.create(
+            customer=self.user,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            total_amount="500.00",
+        )
+        OrderItem.objects.create(order=order, booking=booking, line_total="500.00")
+
+        response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/cancel/",
+            {"reason": "Customer request"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("parent order", response.data["detail"].lower())
+        booking.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.PENDING)
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+
+
 class BookingTrackTest(BookingAPITestMixin, TestCase):
     """Test booking tracking endpoint."""
 
@@ -1530,7 +1562,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         accept_resp = worker2_client.post(f"/api/v1/workers/offers/{offer2.id}/accept/", format="json")
 
         self.assertEqual(accept_resp.status_code, 400)
-        self.assertIn("already assigned", accept_resp.data["detail"].lower())
+        self.assertIn("already been assigned", accept_resp.data["detail"].lower())
 
     def test_5_customer_sees_assigned_worker(self):
         """Customer can see the assigned worker in booking details."""

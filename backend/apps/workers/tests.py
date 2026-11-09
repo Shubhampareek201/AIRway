@@ -502,6 +502,43 @@ class WorkerJobLifecycleTest(TestCase):
 
         self.client.force_authenticate(user=self.customer_user)
 
+    def test_worker_cannot_reject_one_line_of_parent_order(self):
+        from apps.bookings.models import Order, OrderItem
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+        )
+        order = Order.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            status=Order.Status.AWAITING_PAYMENT,
+            total_amount="500.00",
+        )
+        OrderItem.objects.create(order=order, booking=booking, line_total="500.00")
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/reject/",
+            {"reason": "Cannot attend"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("parent order", response.data["detail"].lower())
+        booking.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+        self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
+
     def test_worker_can_start_assigned_job(self):
         """Worker can mark a job as in progress after accepting offer."""
         booking = Booking.objects.create(
