@@ -281,13 +281,15 @@ class ServiceOTPChallenge(TimeStampedModel):
         return f"{self.get_purpose_display()} OTP challenge for booking #{self.booking_id}"
 
 class PaymentAllocation(TimeStampedModel):
-    """Allocate one aggregate checkout tender to an individual booking installment.
+    """Allocate captured tender from a legacy Payment or an installment attempt."""
 
-    The allocation is the accounting bridge between a parent-order Payment and
-    each booking line. It preserves gateway and wallet provenance for refunds.
-    """
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="installment_allocations",
+        null=True, blank=True,
+    )
+    payment_attempt = models.ForeignKey(
+        PaymentAttempt, on_delete=models.PROTECT, related_name="allocations",
+        null=True, blank=True,
     )
     installment = models.ForeignKey(
         PaymentInstallment, on_delete=models.PROTECT, related_name="payment_allocations",
@@ -301,6 +303,16 @@ class PaymentAllocation(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["payment", "installment"], name="pay_alloc_payment_inst_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["payment_attempt", "installment"], name="pay_alloc_attempt_inst_uniq",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (Q(payment__isnull=False) & Q(payment_attempt__isnull=True))
+                    | (Q(payment__isnull=True) & Q(payment_attempt__isnull=False))
+                ),
+                name="pay_alloc_exactly_one_source",
             ),
             models.CheckConstraint(condition=Q(amount__gte=0), name="pay_alloc_amount_nonneg"),
             models.CheckConstraint(condition=Q(gateway_amount__gte=0), name="pay_alloc_gateway_nonneg"),
