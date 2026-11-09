@@ -5,10 +5,6 @@ import 'package:airway/features/booking/data/booking_models.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/payment/presentation/payment_result_screen.dart';
 
-class _Payment {
-  static const keyId = 'rzp_test_airway';
-}
-
 class _Ui {
   static const violet = Color(0xFF6F4EF6);
   static const ink = Color(0xFF201A33);
@@ -101,17 +97,26 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
   }
 
   Future<void> _payNow() async {
-    final order = await BookingApi.createRazorpayOrder(widget.bookingId);
-    if (!mounted) return;
-    final options = {
-      'key': _Payment.keyId,
-      'amount': (double.parse(_booking!.totalAmount.toString()) * 100).toInt(),
-      'name': 'AIRway Booking',
-      'order_id': order['order_id'],
-      'prefill': {'contact': '9876543210'}, // Should be customer phone
-    };
     try {
-      _razorpay.open(options);
+      final order = await BookingApi.createRazorpayOrder(widget.bookingId);
+      if (!mounted) return;
+      if (order['already_paid'] == true) {
+        await _loadBooking();
+        return;
+      }
+      final key = order['key_id']?.toString() ?? '';
+      final gatewayOrderId = order['order_id']?.toString() ?? '';
+      if (key.isEmpty || gatewayOrderId.isEmpty) {
+        throw Exception('Payment gateway order could not be initialized.');
+      }
+      _razorpay.open({
+        'key': key,
+        'amount': order['amount'],
+        'currency': order['currency'] ?? 'INR',
+        'name': 'AIRway Booking',
+        'description': order['installment'] == 'advance' ? '50% booking advance' : '50% service balance',
+        'order_id': gatewayOrderId,
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error initiating payment: $e')));
@@ -427,13 +432,9 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
       );
 
   Widget _actionButtons() {
-    final isAssigned = _booking!.status == BookingStatus.assigned;
-    final isPaid = _booking!.status == BookingStatus.inProgress || _booking!.status == BookingStatus.completed;
-
-    // Show payment button only for ASSIGNED bookings (worker accepted)
-    // Payment is not needed for PENDING/CONFIRMED (pre-assignment) or after completion
-    final canPay = isAssigned && !isPaid;
-
+    final canPay = _booking!.canPayAdvance || _booking!.canPayBalance;
+    final amountDue = _booking!.canPayAdvance ? _booking!.advanceAmount : _booking!.balanceAmount;
+    final paymentLabel = _booking!.canPayAdvance ? 'Pay 50% booking advance' : 'Pay remaining 50% balance';
     return Column(
       children: [
         if (canPay)
@@ -444,7 +445,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
               child: FilledButton.icon(
                 onPressed: _payNow,
                 icon: const Icon(Icons.credit_card_rounded),
-                label: const Text('Pay Now with Razorpay'),
+                label: Text('$paymentLabel • ₹${amountDue.toStringAsFixed(2)}'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -452,35 +453,21 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
               ),
             ),
           ),
-        // Show payment status for assigned bookings
-        if (isAssigned && !canPay)
+        if (_booking!.advanceStatus == 'paid' && _booking!.balanceStatus != 'paid')
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _Ui.green.withAlpha(20),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _Ui.green),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_rounded, color: _Ui.green, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Payment completed',
-                      style: TextStyle(
-                        color: _Ui.green,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            child: Text(
+              _booking!.status == BookingStatus.completed
+                  ? 'Service completed. Remaining 50% payment is due.'
+                  : '50% advance received. Remaining balance is due after service completion.',
+              style: const TextStyle(fontWeight: FontWeight.w600, color: _Ui.sub),
+              textAlign: TextAlign.center,
             ),
+          ),
+        if (_booking!.paymentStatus == 'paid')
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('Both payment installments are settled.', style: TextStyle(fontWeight: FontWeight.w700, color: _Ui.green)),
           ),
         SizedBox(
           width: double.infinity,
@@ -504,16 +491,14 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.home_rounded),
             label: const Text('Back to Home'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               foregroundColor: _Ui.violet,
-              side: BorderSide(color: _Ui.violet),
+              side: const BorderSide(color: _Ui.violet),
             ),
           ),
         ),
