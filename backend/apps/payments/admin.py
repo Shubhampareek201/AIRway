@@ -78,7 +78,7 @@ class RefundRecordAdmin(ReadOnlyLedgerAdmin):
         "status", "provider_refund_id", "requested_at", "processed_at",
     )
     list_filter = ("reason", "status", "requested_at")
-    search_fields = ("provider_refund_id", "provider_idempotency_key", "idempotency_key", "booking__id")
+    search_fields = ("provider_refund_id", "idempotency_key", "booking__id")
     readonly_fields = tuple(field.name for field in RefundRecord._meta.fields)
 
 
