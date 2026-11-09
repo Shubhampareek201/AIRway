@@ -412,12 +412,22 @@ def reconcile_refund_record(*, record_id):
         raise InstallmentPaymentError("Refund has no gateway payment to reconcile.")
 
     gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-    result = gateway.payment.fetch_multiple_refund(payment_id, {"count": 100})
-    refunds = result.get("items", []) if isinstance(result, dict) else []
-    match = next((
-        item for item in refunds
-        if str((item.get("notes") or {}).get("airway_refund_record_id", "")) == str(record.pk)
-    ), None)
+    match = None
+    skip = 0
+    page_size = 100
+    while True:
+        result = gateway.payment.fetch_multiple_refund(
+            payment_id,
+            {"count": page_size, "skip": skip},
+        )
+        refunds = result.get("items", []) if isinstance(result, dict) else []
+        match = next((
+            item for item in refunds
+            if str((item.get("notes") or {}).get("airway_refund_record_id", "")) == str(record.pk)
+        ), None)
+        if match is not None or len(refunds) < page_size:
+            break
+        skip += len(refunds)
     if match is None:
         with transaction.atomic():
             locked = RefundRecord.objects.select_for_update().get(pk=record.pk)
