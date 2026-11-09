@@ -515,16 +515,8 @@ class BookingCancelSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         booking = self.context["booking"]
-        from apps.bookings.services import customer_cancellation_allowed, customer_cancellation_cutoff
         if not booking.can_cancel:
             raise serializers.ValidationError("This booking cannot be cancelled after service has started or completed.")
-        if not customer_cancellation_allowed(booking):
-            cutoff = customer_cancellation_cutoff(booking)
-            raise serializers.ValidationError({
-                "detail": "The free-cancellation window has closed. Customer cancellation is not available after 10:00 PM on the previous calendar day.",
-                "cancellation_cutoff": cutoff.isoformat(),
-                "refund_policy": "No refund after the cancellation cutoff.",
-            })
         return attrs
 
 
