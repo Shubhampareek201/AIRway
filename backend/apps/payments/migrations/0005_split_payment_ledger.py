@@ -31,14 +31,14 @@ class Migration(migrations.Migration):
                 ("booking", models.OneToOneField(on_delete=django.db.models.deletion.PROTECT, related_name="financial_plan", to="bookings.booking")),
             ],
             options={"constraints": [
-                models.CheckConstraint(condition=models.Q(("gross_total__gte", 0)), name="finplan_total_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("advance_due__gte", 0)), name="finplan_advance_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("balance_due__gte", 0)), name="finplan_balance_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("advance_captured__gte", 0)), name="finplan_advance_captured_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("balance_captured__gte", 0)), name="finplan_balance_captured_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("refunded_total__gte", 0)), name="finplan_refund_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("advance_due__lte", models.F("gross_total"))), name="finplan_advance_lte_total"),
-                models.CheckConstraint(condition=models.Q(("balance_due__lte", models.F("gross_total"))), name="finplan_balance_lte_total"),
+                models.CheckConstraint(condition=models.Q(("gross_total__gte", 0)), name="finplan_total_nonneg"),
+                models.CheckConstraint(condition=models.Q(("advance_due__gte", 0)), name="finplan_adv_nonneg"),
+                models.CheckConstraint(condition=models.Q(("balance_due__gte", 0)), name="finplan_bal_nonneg"),
+                models.CheckConstraint(condition=models.Q(("advance_captured__gte", 0)), name="finplan_adv_cap_nonneg"),
+                models.CheckConstraint(condition=models.Q(("balance_captured__gte", 0)), name="finplan_bal_cap_nonneg"),
+                models.CheckConstraint(condition=models.Q(("refunded_total__gte", 0)), name="finplan_refund_nonneg"),
+                models.CheckConstraint(condition=models.Q(("advance_due__lte", models.F("gross_total"))), name="finplan_adv_lte_total"),
+                models.CheckConstraint(condition=models.Q(("balance_due__lte", models.F("gross_total"))), name="finplan_bal_lte_total"),
             ]},
         ),
         migrations.CreateModel(
@@ -56,10 +56,10 @@ class Migration(migrations.Migration):
                 ("financial_plan", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="installments", to="payments.bookingfinancialplan")),
             ],
             options={"ordering": ["created_at"], "constraints": [
-                models.UniqueConstraint(fields=("financial_plan", "kind"), name="uniq_finplan_installment_kind"),
-                models.CheckConstraint(condition=models.Q(("amount_due__gte", 0)), name="installment_due_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("amount_captured__gte", 0)), name="installment_captured_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("amount_captured__lte", models.F("amount_due"))), name="installment_captured_lte_due"),
+                models.UniqueConstraint(fields=("financial_plan", "kind"), name="inst_plan_kind_uniq"),
+                models.CheckConstraint(condition=models.Q(("amount_due__gte", 0)), name="inst_due_nonneg"),
+                models.CheckConstraint(condition=models.Q(("amount_captured__gte", 0)), name="inst_cap_nonneg"),
+                models.CheckConstraint(condition=models.Q(("amount_captured__lte", models.F("amount_due"))), name="inst_cap_lte_due"),
             ]},
         ),
         migrations.CreateModel(
@@ -81,7 +81,7 @@ class Migration(migrations.Migration):
                 ("installment", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="attempts", to="payments.paymentinstallment")),
             ],
             options={"ordering": ["-created_at"], "constraints": [
-                models.CheckConstraint(condition=models.Q(("amount__gt", 0)), name="payment_attempt_amount_positive"),
+                models.CheckConstraint(condition=models.Q(("amount__gt", 0)), name="attempt_amount_positive"),
             ]},
         ),
         migrations.CreateModel(
@@ -104,10 +104,10 @@ class Migration(migrations.Migration):
                 ("payment_attempt", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="refunds", to="payments.paymentattempt")),
             ],
             options={"ordering": ["-created_at"], "constraints": [
-                models.CheckConstraint(condition=models.Q(("gross_amount__gte", 0)), name="refund_gross_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("platform_fee__gte", 0)), name="refund_fee_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("refund_amount__gte", 0)), name="refund_amount_nonnegative"),
-                models.CheckConstraint(condition=models.Q(("refund_amount__lte", models.F("gross_amount"))), name="refund_lte_gross"),
+                models.CheckConstraint(condition=models.Q(("gross_amount__gte", 0)), name="refund_gross_nonneg"),
+                models.CheckConstraint(condition=models.Q(("platform_fee__gte", 0)), name="refund_fee_nonneg"),
+                models.CheckConstraint(condition=models.Q(("refund_amount__gte", 0)), name="refund_amt_nonneg"),
+                models.CheckConstraint(condition=models.Q(("refund_amount__lte", models.F("gross_amount"))), name="refund_amt_lte_gross"),
             ]},
         ),
         migrations.CreateModel(
@@ -127,7 +127,7 @@ class Migration(migrations.Migration):
                 ("booking", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="service_otp_challenges", to="bookings.booking")),
             ],
             options={"ordering": ["-created_at"], "indexes": [
-                models.Index(fields=["booking", "purpose", "consumed_at"], name="payments_ser_booking_5e94a2_idx"),
+                models.Index(fields=["booking", "purpose", "consumed_at"], name="pay_otp_booking_purpose_idx"),
             ]},
         ),
     ]
