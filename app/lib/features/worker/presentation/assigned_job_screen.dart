@@ -79,63 +79,101 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     }
   }
 
+  Future<String?> _requestOtpAndPrompt(String purpose) async {
+    if (_jobDetail == null) return null;
+    await WorkerApi.requestServiceOtp(_jobDetail!.assignmentId, purpose);
+    if (!mounted) return null;
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(purpose == 'start' ? 'Verify service start' : 'Verify service completion'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Ask the customer for the OTP shown in their AIRway app.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'Customer OTP',
+                border: OutlineInputBorder(),
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.length == 6 && RegExp(r'^\\d{6}$').hasMatch(value)) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Verify OTP'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return code;
+  }
+
   Future<void> _startJob() async {
     if (!mounted || _jobDetail == null) return;
-
-    setState(() {
-      _isActionInProgress = true;
-    });
-
+    setState(() => _isActionInProgress = true);
     try {
-      await WorkerApi.startJob(_jobDetail!.assignmentId);
+      final otp = await _requestOtpAndPrompt('start');
+      if (otp == null) return;
+      await WorkerApi.startJob(_jobDetail!.assignmentId, otp);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job started')),
+          const SnackBar(content: Text('Customer OTP verified. Service started.')),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start job: $e')),
+          SnackBar(content: Text('Could not verify start OTP: $e')),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isActionInProgress = false;
-        });
-      }
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
 
   Future<void> _completeJob() async {
     if (!mounted || _jobDetail == null) return;
-
-    setState(() {
-      _isActionInProgress = true;
-    });
-
+    setState(() => _isActionInProgress = true);
     try {
-      await WorkerApi.completeJob(_jobDetail!.assignmentId);
+      final otp = await _requestOtpAndPrompt('complete');
+      if (otp == null) return;
+      await WorkerApi.completeJob(_jobDetail!.assignmentId, otp);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job completed')),
+          const SnackBar(content: Text('Completion OTP verified. Balance is now due.')),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to complete job: $e')),
+          SnackBar(content: Text('Could not verify completion OTP: $e')),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isActionInProgress = false;
-        });
-      }
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
 
