@@ -184,6 +184,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
         widget.bookingId,
         walletAmount: walletAmount.toStringAsFixed(2),
       );
+      if (!mounted) return;
       if (payment['already_paid'] == true || payment['payment_status'] == 'captured') {
         await _refresh();
         await _loadWalletBalance();
