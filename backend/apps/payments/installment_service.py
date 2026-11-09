@@ -438,6 +438,27 @@ def reconcile_refund_record(*, record_id):
                 "reconciled_at": timezone.now().isoformat(),
             }
             locked.save(update_fields=["status", "provider_payload", "updated_at"])
+            if locked.payment_attempt_id:
+                attempt = PaymentAttempt.objects.select_for_update().get(
+                    pk=locked.payment_attempt_id,
+                )
+                refund_states = list(
+                    RefundRecord.objects.filter(
+                        payment_attempt=attempt,
+                    ).values_list("status", flat=True)
+                )
+                if any(state in (
+                    RefundRecord.Status.REQUESTED,
+                    RefundRecord.Status.PENDING,
+                ) for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.FAILED
+                elif refund_states and all(
+                    state == RefundRecord.Status.PROCESSED for state in refund_states
+                ):
+                    attempt.status = PaymentAttempt.Status.REFUNDED
+                attempt.save(update_fields=["status", "updated_at"])
         return locked
 
     provider_refund_id = match.get("id")
