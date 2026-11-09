@@ -1128,6 +1128,10 @@ class CustomerOrderDetailView(APIView):
                     order_payment and order_payment.status == Payment.Status.PAID
                     and allocation is None
                 )
+                and not (
+                    order_payment and order_payment.status == Payment.Status.REFUNDED
+                    and allocation is not None
+                )
             )
             cancellation_terms = None
             if cancellation_available:
