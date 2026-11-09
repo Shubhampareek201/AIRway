@@ -607,6 +607,8 @@ def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order
                 "gross_amount": refund_amount,
                 "platform_fee": ZERO,
                 "refund_amount": refund_amount,
+                "gateway_refund_amount": refund_amount,
+                "wallet_refund_amount": ZERO,
                 "status": (
                     RefundRecord.Status.REQUESTED if refund_amount > ZERO
                     else RefundRecord.Status.PROCESSED
