@@ -140,7 +140,7 @@ def issue_service_otp(*, booking_id, purpose, requested_by):
         raise PaymentLifecycleError("You cannot request an OTP for this booking.")
 
     if purpose == ServiceOTPChallenge.Purpose.START:
-        if booking.status != Booking.Status.ASSIGNED:
+        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             raise PaymentLifecycleError("A start OTP is available only for an assigned booking.")
     elif purpose == ServiceOTPChallenge.Purpose.COMPLETION:
         if booking.status != Booking.Status.IN_PROGRESS:
@@ -187,10 +187,10 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
         if assignment is None or assignment.worker.user_id != worker_user.pk:
             error = "Only the currently assigned worker can verify this OTP."
         else:
-            expected_state = (
-                Booking.Status.ASSIGNED
+            expected_states = (
+                (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
                 if purpose == ServiceOTPChallenge.Purpose.START
-                else Booking.Status.IN_PROGRESS
+                else (Booking.Status.IN_PROGRESS,)
             )
             target_state = (
                 Booking.Status.IN_PROGRESS
@@ -202,7 +202,7 @@ def verify_service_otp(*, booking_id, purpose, code, worker_user):
                 ServiceOTPChallenge.Purpose.COMPLETION,
             ):
                 error = "Invalid service OTP purpose."
-            elif booking.status != expected_state:
+            elif booking.status not in expected_states:
                 error = "This booking is not in the required state for this OTP."
             else:
                 challenge = ServiceOTPChallenge.objects.select_for_update().filter(
