@@ -645,7 +645,6 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(calls[1].args[1], {"count": 100, "skip": 100})
 
     @patch("apps.payments.installment_service.razorpay.Client")
-    @patch("apps.payments.installment_service.razorpay.Client")
     def test_missing_refund_lookup_does_not_regress_concurrent_processed_webhook(self, client_class):
         payment = Payment.objects.create(
             booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
