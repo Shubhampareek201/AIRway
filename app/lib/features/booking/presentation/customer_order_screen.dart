@@ -88,7 +88,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Future<void> startPayment() async {
     if (order?['ready_for_payment'] != true || paying) return;
-    final total = amount(order?['total_amount']);
+    final total = amount(order?['active_total_amount'] ?? order?['total_amount']);
+    final partiallyCancelled = order?['partially_cancelled'] == true;
+    final allCancelled = rows.isNotEmpty &&
+        rows.every((row) => row['booking_status'] == 'cancelled');
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -243,6 +246,79 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (mounted) await loadOrder(showLoader: false);
   }
 
+  Future<void> cancelServiceLine(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null || row['can_cancel'] != true) return;
+    final terms = row['cancellation_terms'] is Map
+        ? Map<String, dynamic>.from(row['cancellation_terms'])
+        : <String, dynamic>{};
+    final refund = amount(terms['refund_amount']);
+    final fee = amount(terms['platform_fee']);
+    final sameDayAccepted =
+        terms['policy'] == 'same_day_after_worker_acceptance';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this service?'),
+        content: Text(
+          sameDayAccepted
+              ? 'A professional has accepted this same-day service. Cancellation is non-refundable.'
+              : refund > 0
+                  ? 'Estimated refund: ₹${refund.toStringAsFixed(2)}'
+                      '${fee > 0 ? '\nPlatform fee: ₹${fee.toStringAsFixed(2)}' : ''}'
+                      '\nOnly this service will be cancelled. Other services in the order will continue.'
+                  : 'This service is not eligible for a refund. Only this service will be cancelled; the remaining services will continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep service'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            child: const Text('Cancel service'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final result = await BookingApi.request(
+        '/api/v1/bookings/orders/${widget.orderId}/items/$bookingId/cancel/',
+        method: 'POST',
+        data: {'reason': 'Cancelled by customer from order details.'},
+      );
+      await loadOrder(showLoader: false);
+      await loadWalletBalance();
+      if (!mounted) return;
+      final message = result is Map
+          ? result['refund_message']?.toString()
+          : null;
+      final refundStatus = result is Map
+          ? result['refund_status']?.toString() ?? 'unknown'
+          : 'unknown';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message != null && message.isNotEmpty
+                ? 'Service cancelled. $message'
+                : 'Service cancelled. Refund status: $refundStatus.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel this service: $e')),
+      );
+    }
+  }
+
   String statusLabel(String value) {
     switch (value) {
       case 'pending': return 'Finding professional';
@@ -286,15 +362,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
-                  paid ? 'Payment and services complete'
+                  allCancelled ? 'All services cancelled'
+                      : paid ? 'Payment and services complete'
                       : awaitingFinal ? 'Services completed — final payment due'
+                      : partiallyCancelled ? 'Some services cancelled'
                       : ready ? 'All professionals assigned'
                       : 'Your order is being arranged',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
               Text(
-                  paid ? 'All services and final balances are complete.'
+                  allCancelled ? 'There are no active services remaining in this order.'
+                      : paid ? 'All active services and final balances are complete.'
                       : awaitingFinal ? 'Open each completed service to review and pay its remaining balance.'
+                      : partiallyCancelled ? 'Cancelled services are excluded. Your remaining services continue under this order.'
                       : ready ? 'All services have an assigned professional.'
                       : 'We are assigning professionals for each service. This page refreshes automatically.',
                   style: const TextStyle(color: sub, height: 1.4)),
@@ -469,11 +549,23 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         if (scheduled.isNotEmpty) Text(scheduled, style: const TextStyle(color: sub, fontSize: 12)),
         if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 8),
-        SizedBox(width: double.infinity, child: OutlinedButton.icon(
-          onPressed: () => trackService(row),
-          icon: const Icon(Icons.location_searching_rounded, size: 17),
-          label: const Text('Track this service'),
-        )),
+        if (status != 'cancelled')
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => trackService(row),
+            icon: const Icon(Icons.location_searching_rounded, size: 17),
+            label: const Text('Track this service'),
+          )),
+        if (row['can_cancel'] == true) ...[
+          const SizedBox(height: 6),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => cancelServiceLine(row),
+            icon: const Icon(Icons.cancel_outlined, size: 17),
+            label: const Text('Cancel this service'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+          )),
+        ],
       ]),
     );
   }
