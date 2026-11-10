@@ -185,6 +185,95 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     }
   }
 
+  Future<void> _reportUnableToFulfil() async {
+    if (!mounted || _jobDetail == null) return;
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Unable to fulfil this job?'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 4,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Reason',
+            hintText: 'Explain why you cannot attend this service.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Keep job'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.length >= 10 && value.length <= 500) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || reason == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm reassignment'),
+        content: const Text(
+          'Your assignment will be released and AIRway will look for another eligible professional. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Go back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    setState(() => _isActionInProgress = true);
+    try {
+      final result = await WorkerApi.reportUnableToFulfil(
+        _jobDetail!.assignmentId,
+        reason: reason,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['dispatch_pending'] == true
+                  ? 'Assignment released. AIRway will retry finding another professional.'
+                  : 'Assignment released. AIRway is finding another professional.',
+            ),
+          ),
+        );
+        await _loadAssignedJob();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not release assignment: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -404,19 +493,35 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     final status = job.status;
 
     if (status == BookingStatus.assigned || status == BookingStatus.confirmed) {
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: _isActionInProgress ? null : _startJob,
-          icon: _isActionInProgress
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            onPressed: _isActionInProgress ? null : _startJob,
+            icon: _isActionInProgress
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow_rounded),
+            label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
+          ),
+          if (job.requiresServiceOtp) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : _reportUnableToFulfil,
+              icon: const Icon(Icons.event_busy_outlined),
+              label: const Text('Unable to fulfil this job'),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Available only before the customer verifies the start OTP. AIRway will attempt reassignment.',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
       );
     }
 
