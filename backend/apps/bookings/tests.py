@@ -2745,7 +2745,17 @@ class DispatcherServiceTest(TestCase):
             service=self.service,
             scheduled_at=self._get_booking_time(),
             status=Booking.Status.PENDING,
+            pricing_snapshot={"total": "1000.00"},
         )
+        from apps.payments.lifecycle import create_financial_plan
+        from apps.payments.models import PaymentInstallment
+        plan = create_financial_plan(booking)
+        advance = plan.installments.get(kind=PaymentInstallment.Kind.ADVANCE)
+        advance.status = PaymentInstallment.Status.PAID
+        advance.amount_captured = advance.amount_due
+        advance.save(update_fields=["status", "amount_captured", "updated_at"])
+        plan.advance_captured = advance.amount_due
+        plan.save(update_fields=["advance_captured", "updated_at"])
 
         first_result = DispatcherService.dispatch_offers(booking)
         self.assertEqual(first_result, [])
