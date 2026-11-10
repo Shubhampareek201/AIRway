@@ -7,6 +7,7 @@ from .views import (
     CustomerCartItemView,
     CustomerCheckoutView,
     CustomerOrderDetailView,
+    CustomerOrderLineCancellationView,
     CustomerOrderListView,
 )
 
@@ -18,6 +19,11 @@ urlpatterns = [
     path("cart/checkout/", CustomerCheckoutView.as_view(), name="customer-cart-checkout"),
     path("orders/", CustomerOrderListView.as_view(), name="customer-order-list"),
     path("orders/<int:order_id>/", CustomerOrderDetailView.as_view(), name="customer-order-detail"),
+    path(
+        "orders/<int:order_id>/items/<int:booking_id>/cancel/",
+        CustomerOrderLineCancellationView.as_view(),
+        name="customer-order-line-cancel",
+    ),
     path("cart/items/<int:item_id>/", CustomerCartItemView.as_view(), name="customer-cart-item"),
     path("", include(router.urls)),
 ]

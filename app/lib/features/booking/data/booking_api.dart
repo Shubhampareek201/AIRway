@@ -155,7 +155,12 @@ class BookingApi {
     final result = await request(
       '/api/v1/bookings/cart/checkout/',
       method: 'POST',
-      data: {'items': items},
+      data: {
+        'items': items,
+        // Opt the migrated Flutter cart into the server-gated 50/50 lifecycle.
+        // Older clients that omit this version flag retain legacy checkout.
+        'payment_flow': 'split_v1',
+      },
     );
     return Map<String, dynamic>.from(result);
   }
@@ -231,6 +236,18 @@ class BookingApi {
 
   static Future<Map<String, dynamic>> trackBooking(int bookingId) async {
     final result = await request('/api/v1/bookings/$bookingId/track/');
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> requestServiceOtp(
+    int bookingId, {
+    required String purpose,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/$bookingId/service-otp/',
+      method: 'POST',
+      data: {'purpose': purpose},
+    );
     return Map<String, dynamic>.from(result);
   }
 

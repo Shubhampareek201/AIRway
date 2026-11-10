@@ -39,6 +39,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       if (jobs.isEmpty) {
         if (mounted) {
           setState(() {
+            _jobDetail = null;
             _loading = false;
           });
         }
@@ -53,6 +54,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       if (matchingJobs.isEmpty) {
         if (mounted) {
           setState(() {
+            _jobDetail = null;
             _error = 'This job is no longer assigned to your account.';
             _loading = false;
           });
@@ -79,15 +81,57 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     }
   }
 
+  Future<String?> _promptServiceOtp(String milestone) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Customer $milestone OTP'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(
+            labelText: '6-digit OTP',
+            helperText: 'Ask the customer to share the OTP for this service milestone.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final code = controller.text.trim();
+              final valid = code.length == 6 &&
+                  code.codeUnits.every((unit) => unit >= 48 && unit <= 57);
+              if (valid) Navigator.pop(dialogContext, code);
+            },
+            child: const Text('Verify OTP'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   Future<void> _startJob() async {
     if (!mounted || _jobDetail == null) return;
+    final otp = _jobDetail!.requiresServiceOtp
+        ? await _promptServiceOtp('start')
+        : null;
+    if (!mounted || (_jobDetail!.requiresServiceOtp && otp == null)) return;
 
     setState(() {
       _isActionInProgress = true;
     });
 
     try {
-      await WorkerApi.startJob(_jobDetail!.assignmentId);
+      await WorkerApi.startJob(_jobDetail!.assignmentId, otp: otp);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Job started')),
@@ -111,13 +155,17 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
   Future<void> _completeJob() async {
     if (!mounted || _jobDetail == null) return;
+    final otp = _jobDetail!.requiresServiceOtp
+        ? await _promptServiceOtp('completion')
+        : null;
+    if (!mounted || (_jobDetail!.requiresServiceOtp && otp == null)) return;
 
     setState(() {
       _isActionInProgress = true;
     });
 
     try {
-      await WorkerApi.completeJob(_jobDetail!.assignmentId);
+      await WorkerApi.completeJob(_jobDetail!.assignmentId, otp: otp);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Job completed')),
@@ -136,6 +184,96 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           _isActionInProgress = false;
         });
       }
+    }
+  }
+
+  Future<void> _reportUnableToFulfil() async {
+    if (!mounted || _jobDetail == null) return;
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Unable to fulfil this job?'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 4,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Reason',
+            hintText: 'Explain why you cannot attend this service.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Keep job'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.length >= 10 && value.length <= 500) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || reason == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm reassignment'),
+        content: const Text(
+          'Your assignment will be released and AIRway will look for another eligible professional. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Go back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    setState(() => _isActionInProgress = true);
+    try {
+      final result = await WorkerApi.reportUnableToFulfil(
+        _jobDetail!.assignmentId,
+        reason: reason,
+      );
+      if (mounted) {
+        final message = result['status'] == 'cancelled'
+            ? (result['refund_status'] == 'processed'
+                ? 'No professional was available. The job was cancelled and the full refund was processed.'
+                : 'The job was cancelled. The full refund is recorded and awaiting payment reconciliation.')
+            : result['dispatch_pending'] == true
+                ? 'Assignment released. AIRway will retry finding another professional.'
+                : 'Assignment released. AIRway is finding another professional.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+        await _loadAssignedJob();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not release assignment: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
 
@@ -320,23 +458,35 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
   Widget _buildPaymentInfo(WorkerAssignmentDetail job) {
     final status = job.status;
+    final isSplitPayment = job.requiresServiceOtp;
 
-    // Check if payment is expected based on status
-    final isPaid = status == BookingStatus.inProgress ||
+    // Split-payment jobs are dispatched only after the 50% advance is captured.
+    // The remaining 50% becomes due after the customer verifies service completion.
+    final isLegacyPaid = status == BookingStatus.inProgress ||
         status == BookingStatus.completed ||
         status == BookingStatus.confirmed;
+
+    final subtitle = isSplitPayment
+        ? '50% booking advance received. Final balance is due after service completion.'
+        : isLegacyPaid
+            ? 'Payment completed'
+            : 'Payment pending';
+    final paymentLabel = isSplitPayment
+        ? 'Advance paid'
+        : isLegacyPaid
+            ? 'Paid'
+            : 'Pending';
 
     return Card(
       child: ListTile(
         leading: const Icon(Icons.payment),
         title: const Text('Payment'),
-        subtitle: isPaid
-            ? const Text('Payment completed')
-            : const Text('Payment pending'),
+        subtitle: Text(subtitle),
         trailing: Chip(
-          label: Text(isPaid ? 'Paid' : 'Pending'),
-          backgroundColor:
-              isPaid ? Colors.green.shade100 : Colors.orange.shade100,
+          label: Text(paymentLabel),
+          backgroundColor: isSplitPayment || isLegacyPaid
+              ? Colors.green.shade100
+              : Colors.orange.shade100,
         ),
       ),
     );
@@ -346,19 +496,35 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     final status = job.status;
 
     if (status == BookingStatus.assigned || status == BookingStatus.confirmed) {
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: _isActionInProgress ? null : _startJob,
-          icon: _isActionInProgress
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            onPressed: _isActionInProgress ? null : _startJob,
+            icon: _isActionInProgress
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow_rounded),
+            label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
+          ),
+          if (job.requiresServiceOtp && job.assignment.acceptedAt != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : _reportUnableToFulfil,
+              icon: const Icon(Icons.event_busy_outlined),
+              label: const Text('Unable to fulfil this job'),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Available only before the customer verifies the start OTP. AIRway will attempt reassignment.',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
       );
     }
 

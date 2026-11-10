@@ -119,18 +119,38 @@ class WorkerApi {
     );
   }
 
-  static Future<Map<String, dynamic>> startJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> reportUnableToFulfil(
+    int assignmentId, {
+    required String reason,
+  }) async {
     final result = await _request(
-      '/api/v1/workers/jobs/$assignmentId/start/',
+      '/api/v1/workers/jobs/$assignmentId/unavailable/',
       method: 'POST',
+      data: {'reason': reason},
     );
     return Map<String, dynamic>.from(result as Map);
   }
 
-  static Future<Map<String, dynamic>> completeJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> startJob(
+    int assignmentId, {
+    String? otp,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/start/',
+      method: 'POST',
+      data: otp == null ? null : {'otp': otp},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  static Future<Map<String, dynamic>> completeJob(
+    int assignmentId, {
+    String? otp,
+  }) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/complete/',
       method: 'POST',
+      data: otp == null ? null : {'otp': otp},
     );
     return Map<String, dynamic>.from(result as Map);
   }

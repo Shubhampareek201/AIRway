@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.db import transaction, IntegrityError
 
 from apps.bookings.models import Booking, Order
-from .models import Payment
+from .models import Payment, BookingFinancialPlan
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +41,26 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
         ValueError: If booking status is not PENDING or ASSIGNED
         Exception: If Razorpay order creation fails
     """
-    if booking.status not in [Booking.Status.PENDING, Booking.Status.ASSIGNED]:
-        raise ValueError(
-            f"Booking cannot have payment created in {booking.get_status_display()} state."
-        )
+    from .models import BookingFinancialPlan, PaymentInstallment
+    financial_plan = BookingFinancialPlan.objects.filter(booking=booking).first()
+    is_split_booking = financial_plan is not None
+    if is_split_booking:
+        if booking.status not in [Booking.Status.PENDING, Booking.Status.CONFIRMED]:
+            raise ValueError("Booking advance can be paid only before worker assignment.")
+        amount_due = financial_plan.advance_due
+    else:
+        if booking.status not in [Booking.Status.PENDING, Booking.Status.ASSIGNED]:
+            raise ValueError(
+                f"Booking cannot have payment created in {booking.get_status_display()} state."
+            )
+        amount_due = booking.total_amount
+
+    try:
+        amount_due = Decimal(str(amount_due))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("The booking amount is invalid.")
+    if not amount_due.is_finite() or amount_due <= 0:
+        raise ValueError("The amount due must be greater than zero.")
 
     # Try to get existing payment first (fast path)
     try:
@@ -60,7 +76,7 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
         existing_payment = None
 
     # Create Razorpay order OUTSIDE of any transaction
-    amount_paise = int(float(booking.total_amount) * 100)
+    amount_paise = int(amount_due * 100)
 
     try:
         order_data = {
@@ -82,7 +98,7 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
             payment = Payment.objects.create(
                 booking=booking,
                 customer=customer,
-                amount=booking.total_amount,
+                amount=amount_due,
                 method=Payment.Method.RAZORPAY,
                 razorpay_order_id=razorpay_order_id,
                 status=Payment.Status.PENDING,
@@ -130,21 +146,37 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
     if already_paid_payment:
         return already_paid_payment, already_paid_payment.razorpay_order_id, True
 
-    booking_statuses = list(
-        order.items.select_related("booking").values_list("booking__status", flat=True)
+    from .models import BookingFinancialPlan
+    order_items = list(
+        order.items.exclude(booking__status=Booking.Status.CANCELLED)
+        .select_related("booking").order_by("id")
     )
+    booking_statuses = [item.booking.status for item in order_items]
     if not booking_statuses:
-        raise ValueError("This order has no service bookings.")
-    if any(value != Booking.Status.ASSIGNED for value in booking_statuses):
-        raise ValueError("Payment is available only after every service has an assigned worker.")
+        raise ValueError("This order has no active service bookings remaining.")
+    split_plans = [
+        BookingFinancialPlan.objects.filter(booking_id=item.booking_id).first()
+        for item in order_items
+    ]
+    is_split_order = all(split_plans)
+    if is_split_order:
+        if any(value not in (Booking.Status.PENDING, Booking.Status.CONFIRMED) for value in booking_statuses):
+            raise ValueError("Split-payment checkout is available only before worker assignment.")
+        if order.status != Order.Status.AWAITING_PAYMENT:
+            raise ValueError("This order is not awaiting its booking advance.")
+        payable_total = sum((plan.advance_due for plan in split_plans), Decimal("0.00"))
+    else:
+        if any(value != Booking.Status.ASSIGNED for value in booking_statuses):
+            raise ValueError("Legacy payment is available only after every service has an assigned worker.")
+        payable_total = order.total_amount
     if order.status not in [Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT]:
         raise ValueError("This order is not awaiting payment.")
-    if order.total_amount <= 0:
-        raise ValueError("Order total must be greater than zero.")
+    if payable_total <= 0:
+        raise ValueError("The amount due must be greater than zero.")
     if requested > 0 and order.currency != "INR":
         raise ValueError("AIRway wallet can only be used for INR orders.")
-    if requested > order.total_amount:
-        raise ValueError("Wallet amount cannot exceed the order total.")
+    if requested > payable_total:
+        raise ValueError("Wallet amount cannot exceed the amount currently due.")
 
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=order.pk, customer=customer)
@@ -158,9 +190,9 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
             payment = Payment.objects.create(
                 order=locked_order,
                 customer=customer,
-                amount=locked_order.total_amount - requested,
+                amount=payable_total - requested,
                 wallet_amount=requested,
-                method=Payment.Method.WALLET if requested == locked_order.total_amount else Payment.Method.RAZORPAY,
+                method=Payment.Method.WALLET if requested == payable_total else Payment.Method.RAZORPAY,
                 status=Payment.Status.PENDING,
             )
         elif payment.status in [Payment.Status.FAILED, Payment.Status.REFUNDED]:
@@ -170,7 +202,7 @@ def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), 
             was_refunded = payment.status == Payment.Status.REFUNDED
             payment.status = Payment.Status.PENDING
             payment.failed_at = None
-            payment.amount = locked_order.total_amount - requested
+            payment.amount = payable_total - requested
             update_fields = ["status", "failed_at", "amount", "updated_at"]
             if was_refunded:
                 payment.razorpay_order_id = ""
@@ -259,10 +291,28 @@ class CreateOrderView(APIView):
                 logger.exception("Order payment creation failed for order %s", parent_order.id)
                 return Response({"detail": "Failed to create payment order. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+            from .models import BookingFinancialPlan
+            financial_plans = list(BookingFinancialPlan.objects.filter(
+                booking__order_item__order=parent_order,
+            ).exclude(booking__status=Booking.Status.CANCELLED))
+            advance_amount = (
+                sum((plan.advance_due for plan in financial_plans), Decimal("0.00"))
+                if financial_plans and len(financial_plans) == parent_order.items.exclude(
+                    booking__status=Booking.Status.CANCELLED,
+                ).count()
+                else None
+            )
             response_data = {
                 "order_id": razorpay_order_id,
                 "amount": int(payment.amount * 100),
                 "total_amount": str(parent_order.total_amount),
+                "active_total_amount": str(sum(
+                    (item.line_total for item in parent_order.items.exclude(
+                        booking__status=Booking.Status.CANCELLED,
+                    )),
+                    Decimal("0.00"),
+                )),
+                "advance_amount": str(advance_amount) if advance_amount is not None else None,
                 "wallet_amount": str(payment.wallet_amount),
                 "currency": parent_order.currency,
                 "payment_exists": already_existed,
@@ -309,8 +359,16 @@ class CreateOrderView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        amount_paise = int(float(booking.total_amount) * 100)
-        response_data = {"order_id": order_id, "amount": amount_paise, "key_id": settings.RAZORPAY_KEY_ID}
+        amount_paise = int(payment.amount * 100)
+        response_data = {
+            "order_id": order_id,
+            "amount": amount_paise,
+            "total_amount": str(booking.total_amount),
+            "advance_amount": str(payment.amount) if BookingFinancialPlan.objects.filter(booking=booking).exists() else None,
+            "payment_id": payment.id,
+            "payment_status": payment.status,
+            "key_id": settings.RAZORPAY_KEY_ID,
+        }
         if already_existed:
             response_data["payment_exists"] = True
         return Response(response_data)

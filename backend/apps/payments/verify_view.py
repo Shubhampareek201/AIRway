@@ -2,8 +2,9 @@ import hmac
 import hashlib
 import json
 import logging
+from decimal import Decimal
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import status, permissions
 from rest_framework.views import APIView
@@ -17,6 +18,122 @@ from .models import Payment
 logger = logging.getLogger(__name__)
 
 
+def _refund_late_capture_for_cancelled_booking(
+    payment, razorpay_payment_id, razorpay_order_id, source,
+):
+    """Refund a captured advance if its booking was cancelled before capture arrived."""
+    if not payment.booking_id:
+        return None
+
+    from .models import RefundRecord
+    with transaction.atomic():
+        # Keep the same booking -> payment lock order as customer cancellation.
+        booking = Booking.objects.select_for_update().filter(
+            pk=payment.booking_id,
+        ).first()
+        locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
+        if locked_payment.status in (Payment.Status.PAID, Payment.Status.REFUNDED):
+            return Response({
+                "detail": "Payment already settled.",
+                "status": locked_payment.status,
+                "payment_id": locked_payment.pk,
+            })
+        if booking is None or booking.status != Booking.Status.CANCELLED:
+            return None
+
+        now = timezone.now()
+        locked_payment.status = Payment.Status.PAID
+        locked_payment.razorpay_payment_id = razorpay_payment_id
+        locked_payment.razorpay_signature = "verified"
+        locked_payment.paid_at = now
+        locked_payment.raw_response = {
+            "razorpay_order_id": razorpay_order_id,
+            "razorpay_payment_id": razorpay_payment_id,
+            "captured_after_booking_cancellation": True,
+            "source": source,
+            "captured_at": now.isoformat(),
+        }
+        locked_payment.save(update_fields=[
+            "status", "razorpay_payment_id", "razorpay_signature",
+            "paid_at", "raw_response", "updated_at",
+        ])
+        refund_record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"late-capture-cancelled-booking:{locked_payment.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment": locked_payment,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": locked_payment.amount,
+                "platform_fee": Decimal("0.00"),
+                "refund_amount": locked_payment.amount,
+                "gateway_refund_amount": locked_payment.amount,
+                "wallet_refund_amount": Decimal("0.00"),
+                "status": (
+                    RefundRecord.Status.REQUESTED
+                    if locked_payment.amount > 0
+                    else RefundRecord.Status.PROCESSED
+                ),
+                "requested_at": now,
+                "processed_at": now if locked_payment.amount <= 0 else None,
+                "provider_payload": {
+                    "reason": "Razorpay capture arrived after customer cancellation.",
+                },
+            },
+        )
+
+    if not created or refund_record.refund_amount <= 0:
+        return Response({
+            "detail": "Late payment was reconciled against the cancelled booking.",
+            "status": Payment.Status.PAID,
+            "payment_id": payment.pk,
+            "refund_id": refund_record.pk,
+            "refund_status": refund_record.status,
+        }, status=status.HTTP_200_OK)
+
+    try:
+        if not razorpay_payment_id:
+            raise ValueError("Captured payment has no Razorpay payment ID.")
+        import razorpay
+        gateway = razorpay.Client(
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+        )
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": int(refund_record.refund_amount * 100),
+                "notes": {
+                    "airway_refund_record_id": str(refund_record.pk),
+                    "airway_booking_id": str(booking.pk),
+                    "reason": "Late capture after booking cancellation",
+                },
+            },
+        )
+        if not provider_refund.get("id"):
+            raise ValueError("Razorpay did not return a refund ID.")
+        from .installment_service import _persist_refund_submission
+        refund_record = _persist_refund_submission(
+            record_id=refund_record.pk,
+            provider_refund=provider_refund,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Late-capture refund submission failed for cancelled booking %s",
+            booking.pk,
+        )
+        from .installment_service import _persist_refund_submission
+        refund_record = _persist_refund_submission(
+            record_id=refund_record.pk,
+            submission_error=exc,
+        )
+    return Response({
+        "detail": "Payment was captured after the booking was cancelled; AIRway initiated full reconciliation refund.",
+        "status": Payment.Status.PAID,
+        "payment_id": payment.pk,
+        "refund_id": refund_record.pk,
+        "refund_status": refund_record.status,
+    }, status=status.HTTP_200_OK)
+
+
 def _process_verified_payment(
     payment, razorpay_payment_id, razorpay_order_id, customer, source
 ):
@@ -24,6 +141,12 @@ def _process_verified_payment(
     Process a verified payment. Called by both checkout verification
     and webhook handlers.
     """
+    late_capture_response = _refund_late_capture_for_cancelled_booking(
+        payment, razorpay_payment_id, razorpay_order_id, source,
+    )
+    if late_capture_response is not None:
+        return late_capture_response
+
     # Idempotency check: skip if already processed
     if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
         logger.info(
@@ -37,7 +160,27 @@ def _process_verified_payment(
         })
 
     with transaction.atomic():
+        # Keep aggregate lock order consistent with cancellation and service
+        # lifecycle operations: parent Order (or standalone Booking) first,
+        # then Payment. Reversing this order can deadlock a concurrent
+        # parent-order line cancellation against payment verification.
+        locked_parent_order = None
+        locked_booking = None
+        if payment.order_id:
+            locked_parent_order = Order.objects.select_for_update().get(
+                pk=payment.order_id,
+            )
+        elif payment.booking_id:
+            locked_booking = Booking.objects.select_for_update().get(
+                pk=payment.booking_id,
+            )
+
         payment = Payment.objects.select_for_update().get(pk=payment.pk)
+        if (
+            payment.order_id != (locked_parent_order.pk if locked_parent_order else None)
+            or payment.booking_id != (locked_booking.pk if locked_booking else None)
+        ):
+            raise ValueError("Payment ownership changed during verification.")
         if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
             return Response({
                 "detail": "Payment already settled.",
@@ -164,10 +307,169 @@ def _process_verified_payment(
         }
         payment.save()
 
-        # Parent-order payment: settle each service booking atomically while
-        # retaining the legacy single-booking verification path below.
+        # New single-booking advances use the same line-level ledger and
+        # dispatch gate as parent orders. Historical bookings remain unchanged.
+        if payment.booking_id:
+            from .models import (
+                BookingFinancialPlan, PaymentInstallment, PaymentAllocation,
+            )
+            plan = BookingFinancialPlan.objects.select_for_update().filter(
+                booking_id=payment.booking_id
+            ).first()
+            if plan:
+                installment = PaymentInstallment.objects.select_for_update().get(
+                    financial_plan=plan,
+                    kind=PaymentInstallment.Kind.ADVANCE,
+                )
+                if installment.status != PaymentInstallment.Status.PAID:
+                    if payment.amount != installment.amount_due:
+                        raise ValueError("Captured payment does not equal the booking advance.")
+                    PaymentAllocation.objects.create(
+                        payment=payment,
+                        installment=installment,
+                        amount=installment.amount_due,
+                        gateway_amount=installment.amount_due,
+                        wallet_amount=0,
+                    )
+                    installment.amount_captured = installment.amount_due
+                    installment.status = PaymentInstallment.Status.PAID
+                    installment.settled_at = timezone.now()
+                    installment.save(update_fields=[
+                        "amount_captured", "status", "settled_at", "updated_at"
+                    ])
+                    plan.advance_captured = installment.amount_due
+                    plan.save(update_fields=["advance_captured", "updated_at"])
+                booking = locked_booking
+                if booking is None:
+                    raise ValueError("Split booking payment has no locked booking.")
+                if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+                    raise ValueError("Booking is no longer eligible for dispatch after payment.")
+                def dispatch_paid_booking(booking_id):
+                    from apps.bookings.dispatcher import DispatcherService
+                    paid_booking = Booking.objects.get(pk=booking_id)
+                    DispatcherService.dispatch_offers(paid_booking)
+                transaction.on_commit(
+                    lambda booking_id=booking.pk: dispatch_paid_booking(booking_id)
+                )
+                Notification.objects.create(
+                    user=payment.customer,
+                    type=Notification.Type.PAYMENT_SUCCESS,
+                    title="Booking advance received",
+                    body=f"Your 50% booking advance for booking #{booking.pk} was received. We are finding an eligible professional.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": booking.pk, "payment_id": payment.id},
+                )
+                return Response({
+                    "detail": "Booking advance captured. Worker dispatch has been queued.",
+                    "status": payment.status,
+                    "payment_id": payment.id,
+                    "booking_id": booking.pk,
+                    "advance_amount": str(installment.amount_due),
+                    "razorpay_payment_id": razorpay_payment_id,
+                }, status=status.HTTP_200_OK)
+
+        # New split-payment orders settle line-level advance installments
+        # before any worker offer is created. Legacy orders keep the path below.
         if payment.order_id:
-            parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            from .models import (
+                BookingFinancialPlan, PaymentInstallment, PaymentAllocation,
+            )
+            from decimal import Decimal
+
+            parent_order = locked_parent_order
+            if parent_order is None:
+                raise ValueError("Parent-order payment has no locked order.")
+            order_items = list(
+                parent_order.items.exclude(booking__status=Booking.Status.CANCELLED)
+                .select_related("booking").order_by("id")
+            )
+            plans = [
+                BookingFinancialPlan.objects.select_for_update().filter(
+                    booking_id=item.booking_id
+                ).first()
+                for item in order_items
+            ]
+            if not order_items:
+                raise ValueError("This order has no active service lines to settle.")
+            if order_items and all(plans):
+                if parent_order.status != Order.Status.AWAITING_PAYMENT:
+                    raise ValueError("Split-payment order is not awaiting its advance.")
+                installments = []
+                for plan in plans:
+                    installment = PaymentInstallment.objects.select_for_update().get(
+                        financial_plan=plan,
+                        kind=PaymentInstallment.Kind.ADVANCE,
+                    )
+                    if installment.status == PaymentInstallment.Status.PAID:
+                        raise ValueError("An advance installment was already settled by another payment.")
+                    if installment.amount_due <= 0:
+                        raise ValueError("Zero-value advances cannot be settled through this payment.")
+                    installments.append((plan, installment))
+
+                total_advance = sum(
+                    (row.amount_due for _, row in installments), Decimal("0.00")
+                )
+                wallet_remaining = payment.wallet_amount
+                gateway_remaining = payment.amount
+                if total_advance != wallet_remaining + gateway_remaining:
+                    raise ValueError("Captured tender does not equal the order's aggregate advance.")
+                for plan, installment in installments:
+                    wallet_part = min(installment.amount_due, wallet_remaining)
+                    wallet_remaining -= wallet_part
+                    gateway_part = installment.amount_due - wallet_part
+                    if gateway_part > gateway_remaining:
+                        raise ValueError("Payment allocation exceeds the captured gateway amount.")
+                    gateway_remaining -= gateway_part
+                    PaymentAllocation.objects.create(
+                        payment=payment,
+                        installment=installment,
+                        amount=installment.amount_due,
+                        gateway_amount=gateway_part,
+                        wallet_amount=wallet_part,
+                    )
+                    installment.amount_captured = installment.amount_due
+                    installment.status = PaymentInstallment.Status.PAID
+                    installment.settled_at = timezone.now()
+                    installment.save(update_fields=[
+                        "amount_captured", "status", "settled_at", "updated_at"
+                    ])
+                    plan.advance_captured = installment.amount_due
+                    plan.save(update_fields=["advance_captured", "updated_at"])
+
+                if wallet_remaining != 0 or gateway_remaining != 0:
+                    raise ValueError("Aggregate advance allocation did not reconcile exactly.")
+
+                parent_order.status = Order.Status.AWAITING_ASSIGNMENT
+                parent_order.save(update_fields=["status", "updated_at"])
+                booking_ids = [item.booking_id for item in order_items]
+                Notification.objects.create(
+                    user=payment.customer,
+                    type=Notification.Type.PAYMENT_SUCCESS,
+                    title="Booking advance received",
+                    body=f"Your 50% booking advance for AIRway order #{parent_order.id} was received. We are finding an eligible professional.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"order_id": parent_order.id, "payment_id": payment.id, "booking_ids": booking_ids},
+                )
+                def dispatch_paid_order(order_id):
+                    from apps.bookings.dispatcher import DispatcherService
+                    paid_order = Order.objects.get(pk=order_id)
+                    DispatcherService.dispatch_order(paid_order)
+                transaction.on_commit(lambda order_id=parent_order.id: dispatch_paid_order(order_id))
+                return Response({
+                    "detail": "Booking advance captured and allocated. Worker dispatch has been queued.",
+                    "status": payment.status,
+                    "payment_id": payment.id,
+                    "airway_order_id": parent_order.id,
+                    "booking_ids": booking_ids,
+                    "advance_total": str(total_advance),
+                    "razorpay_payment_id": razorpay_payment_id,
+                }, status=status.HTTP_200_OK)
+
+        # Parent-order payment: legacy full-payment settlement.
+        if payment.order_id:
+            parent_order = locked_parent_order
+            if parent_order is None:
+                raise ValueError("Parent-order payment has no locked order.")
             order_bookings = list(
                 parent_order.items.select_related("booking").order_by("id")
             )
@@ -462,6 +764,268 @@ class PaymentWebhookView(APIView):
         order_id = payload.get('payload', {}).get('payment', {}).get('entity', {}).get('order_id')
 
         logger.info(f"Webhook received: event={event_type}, payment_id={payment_id}, order_id={order_id}")
+
+        # Reconcile refund lifecycle events independently of payment events.
+        if event_type in ("refund.created", "refund.processed", "refund.failed"):
+            refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
+            provider_refund_id = refund_entity.get("id")
+            if provider_refund_id:
+                from .models import PaymentAttempt, RefundRecord
+                refund_notes = refund_entity.get("notes") or {}
+                record_id = refund_notes.get("airway_refund_record_id")
+                try:
+                    record_id = int(record_id) if record_id not in (None, "") else None
+                except (TypeError, ValueError):
+                    logger.warning("Refund webhook contains an invalid AIRway refund record ID.")
+                    record_id = -1
+                # Resolve without a row lock first so we can acquire the
+                # linked attempt before locking the refund ledger row.
+                lookup = RefundRecord.objects.select_related("payment").filter(pk=record_id).first() if record_id is not None else None
+                # If signed notes explicitly name a record, an unknown ID must
+                # not fall back to another record merely by provider refund ID.
+                if not record_id:
+                    lookup = RefundRecord.objects.select_related("payment").filter(
+                        provider_refund_id=provider_refund_id,
+                    ).first()
+                with transaction.atomic():
+                    attempt = None
+                    if lookup and lookup.payment_attempt_id:
+                        attempt = PaymentAttempt.objects.select_for_update().filter(
+                            pk=lookup.payment_attempt_id,
+                        ).first()
+                    refund_record = (
+                        RefundRecord.objects.select_for_update(of=("self",)).select_related(
+                            "payment", "payment_attempt",
+                        ).filter(pk=lookup.pk).first()
+                        if lookup else None
+                    )
+                    # Revalidate the link after both locks; the attempt/refund
+                    # relationship must not change between lookup and locking.
+                    if refund_record and refund_record.payment_attempt_id != (
+                        attempt.pk if attempt else None
+                    ):
+                        logger.error(
+                            "Refund webhook payment-attempt link changed during lock acquisition: %s",
+                            refund_record.pk,
+                        )
+                        refund_record = None
+                    if refund_record:
+                        expected_payment_id = (
+                            refund_record.payment.razorpay_payment_id
+                            if refund_record.payment_id
+                            else attempt.provider_payment_id
+                            if attempt
+                            else None
+                        )
+                        received_payment_id = refund_entity.get("payment_id")
+                        received_amount = refund_entity.get("amount")
+                        try:
+                            amount_matches = (
+                                received_amount is not None
+                                and int(received_amount)
+                                == int(refund_record.gateway_refund_amount * 100)
+                            )
+                        except (TypeError, ValueError):
+                            amount_matches = False
+                        if (
+                            not expected_payment_id
+                            or str(received_payment_id or "") != str(expected_payment_id)
+                            or not amount_matches
+                        ):
+                            logger.error(
+                                "Refund webhook does not match AIRway ledger: "
+                                "refund_record=%s provider_refund_id=%s",
+                                refund_record.pk, provider_refund_id,
+                            )
+                            refund_record = None
+                    if refund_record:
+                        provider_id_owner = RefundRecord.objects.filter(
+                            provider_refund_id=provider_refund_id,
+                        ).exclude(pk=refund_record.pk).exists()
+                        if (
+                            provider_id_owner
+                            or (
+                                refund_record.provider_refund_id
+                                and refund_record.provider_refund_id != provider_refund_id
+                            )
+                        ):
+                            logger.error(
+                                "Refund webhook provider ID conflicts with AIRway ledger: "
+                                "refund_record=%s provider_refund_id=%s",
+                                refund_record.pk, provider_refund_id,
+                            )
+                            refund_record = None
+                    if refund_record:
+                        if refund_record.status != RefundRecord.Status.PROCESSED:
+                            if event_type == "refund.processed":
+                                refund_record.status = RefundRecord.Status.PROCESSED
+                                refund_record.processed_at = timezone.now()
+                            elif event_type == "refund.failed":
+                                refund_record.status = RefundRecord.Status.FAILED
+                            elif refund_record.status != RefundRecord.Status.FAILED:
+                                refund_record.status = RefundRecord.Status.PENDING
+                        refund_record.provider_payload = payload
+                        if provider_refund_id and not refund_record.provider_refund_id:
+                            refund_record.provider_refund_id = provider_refund_id
+                        try:
+                            # A concurrent webhook/reconciliation may claim the
+                            # globally unique provider ID after the ownership read.
+                            with transaction.atomic():
+                                refund_record.save(update_fields=[
+                                    "status", "processed_at", "provider_payload",
+                                    "provider_refund_id", "updated_at"
+                                ])
+                        except IntegrityError:
+                            logger.exception(
+                                "Concurrent refund provider-ID ownership conflict: %s",
+                                provider_refund_id,
+                            )
+                            refund_record = None
+                        if refund_record and attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
+                            refund_states = list(
+                                RefundRecord.objects.filter(
+                                    payment_attempt=attempt,
+                                ).values_list("status", flat=True)
+                            )
+                            if any(state in (
+                                RefundRecord.Status.REQUESTED,
+                                RefundRecord.Status.PENDING,
+                            ) for state in refund_states):
+                                attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                            elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                                attempt.status = PaymentAttempt.Status.FAILED
+                            elif refund_states and all(
+                                state == RefundRecord.Status.PROCESSED for state in refund_states
+                            ):
+                                attempt.status = PaymentAttempt.Status.REFUNDED
+                            attempt.save(update_fields=["status", "updated_at"])
+                    else:
+                        logger.warning(
+                            "Refund webhook references unknown or mismatched AIRway refund: %s",
+                            provider_refund_id,
+                        )
+            return Response({"status": "ok"})
+
+        # Installment attempts are separate from legacy Payment rows: one
+        # immutable provider order belongs to one booking-line installment.
+        if event_type in ("payment.captured", "payment.authorized", "payment.failed", "payment.canceled"):
+            from .models import PaymentAttempt, RefundRecord
+            from .installment_service import (
+                InstallmentPaymentError,
+                mark_final_balance_attempt_failed,
+                refund_late_final_capture,
+                refund_duplicate_final_capture,
+                refund_mismatched_final_capture,
+                settle_final_balance_attempt,
+            )
+            attempt = None
+            if order_id:
+                attempt = PaymentAttempt.objects.filter(provider_order_id=order_id).first()
+            if attempt is None and payment_id:
+                attempt = PaymentAttempt.objects.filter(provider_payment_id=payment_id).first()
+            if attempt is not None:
+                entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+                if order_id != attempt.provider_order_id:
+                    return Response({"detail": "Razorpay order ID mismatch."}, status=status.HTTP_400_BAD_REQUEST)
+                if event_type == "payment.authorized":
+                    if attempt.status == PaymentAttempt.Status.CREATED:
+                        attempt.status = PaymentAttempt.Status.AUTHORIZED
+                        attempt.provider_payment_id = payment_id or None
+                        attempt.provider_payload = payload
+                        attempt.save(update_fields=["status", "provider_payment_id", "provider_payload", "updated_at"])
+                    return Response({"status": "ok"})
+                if event_type in ("payment.failed", "payment.canceled"):
+                    try:
+                        mark_final_balance_attempt_failed(
+                            attempt_id=attempt.pk, provider_order_id=order_id, payload=payload,
+                        )
+                    except InstallmentPaymentError as exc:
+                        return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+                    return Response({"status": "ok"})
+                amount_paise = entity.get("amount")
+                currency = entity.get("currency")
+                if not payment_id or not isinstance(amount_paise, int) or not currency:
+                    return Response({"detail": "Captured event is missing payment ID, amount, or currency."}, status=status.HTTP_400_BAD_REQUEST)
+                if currency.upper() != attempt.currency:
+                    return Response({"detail": "Currency mismatch requires manual provider reconciliation."}, status=status.HTTP_400_BAD_REQUEST)
+                if amount_paise != int(attempt.gateway_amount * 100):
+                    try:
+                        refund_record = refund_mismatched_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            amount_paise=amount_paise,
+                            currency=currency,
+                            payload=payload,
+                        )
+                    except InstallmentPaymentError as exc:
+                        logger.exception("Mismatched final-payment capture needs reconciliation for attempt %s", attempt.pk)
+                        return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+                    return Response({
+                        "status": "ok",
+                        "reconciled": "mismatched_capture_refund",
+                        "refund_status": refund_record.status,
+                    })
+                try:
+                    if (
+                        attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED)
+                        and RefundRecord.objects.filter(
+                            payment_attempt=attempt,
+                            idempotency_key=f"late-final-capture:attempt:{attempt.pk}:{payment_id}",
+                        ).exists()
+                    ):
+                        return Response({"status": "ok", "reconciled": "already_refunded"})
+                    if attempt.status in (PaymentAttempt.Status.REFUND_PENDING, PaymentAttempt.Status.REFUNDED):
+                        refund_late_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "additional_late_capture_refund"})
+                    if (
+                        attempt.status == PaymentAttempt.Status.CAPTURED
+                        and attempt.provider_payment_id != payment_id
+                    ):
+                        refund_duplicate_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "duplicate_capture_refund"})
+                    if attempt.status == PaymentAttempt.Status.FAILED:
+                        refund_late_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "late_capture_refund"})
+                    settle_final_balance_attempt(
+                        attempt_id=attempt.pk,
+                        razorpay_payment_id=payment_id,
+                        provider_order_id=order_id,
+                        amount_paise=amount_paise,
+                        currency=currency,
+                        source="webhook",
+                    )
+                except InstallmentPaymentError as exc:
+                    attempt.refresh_from_db()
+                    if (
+                        attempt.status == PaymentAttempt.Status.CAPTURED
+                        and attempt.provider_payment_id != payment_id
+                    ):
+                        refund_duplicate_final_capture(
+                            attempt_id=attempt.pk,
+                            razorpay_payment_id=payment_id,
+                            provider_order_id=order_id,
+                            payload=payload,
+                        )
+                        return Response({"status": "ok", "reconciled": "concurrent_duplicate_capture_refund"})
+                    logger.exception("Final-balance webhook reconciliation failed for attempt %s", attempt.pk)
+                    return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+                return Response({"status": "ok"})
 
         # Handle payment.captured event (Razorpay uses 'payment.captured' for successful payments)
         if event_type in ('payment.captured', 'payment.authorized'):

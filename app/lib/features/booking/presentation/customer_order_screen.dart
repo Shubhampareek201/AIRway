@@ -88,7 +88,27 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Future<void> startPayment() async {
     if (order?['ready_for_payment'] != true || paying) return;
-    final total = amount(order?['total_amount']);
+    final rawItems = order?['items'];
+    if (rawItems is! List || rawItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order payment details are unavailable. Refresh and try again.')),
+      );
+      return;
+    }
+    final activeItems = rawItems.whereType<Map>().where(
+      (item) => item['booking_status']?.toString() != 'cancelled',
+    );
+    var advanceDueTotal = 0.0;
+    for (final item in activeItems) {
+      final summary = item['payment_summary'];
+      if (summary is! Map || summary['advance_due'] == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Advance payment details are incomplete. Refresh or contact AIRway support.')),
+        );
+        return;
+      }
+      advanceDueTotal += amount(summary['advance_due']);
+    }
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -98,9 +118,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       return;
     }
     final walletAmount = parsedWalletAmount;
-    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > total) {
+    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > advanceDueTotal) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a wallet amount within your available balance and order total.')),
+        const SnackBar(content: Text('Enter a wallet amount within your available balance and booking advance.')),
       );
       return;
     }
@@ -243,6 +263,79 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (mounted) await loadOrder(showLoader: false);
   }
 
+  Future<void> cancelServiceLine(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null || row['can_cancel'] != true) return;
+    final terms = row['cancellation_terms'] is Map
+        ? Map<String, dynamic>.from(row['cancellation_terms'])
+        : <String, dynamic>{};
+    final refund = amount(terms['refund_amount']);
+    final fee = amount(terms['platform_fee']);
+    final sameDayAccepted =
+        terms['policy'] == 'same_day_after_worker_acceptance';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this service?'),
+        content: Text(
+          sameDayAccepted
+              ? 'A professional has accepted this same-day service. Cancellation is non-refundable.'
+              : refund > 0
+                  ? 'Estimated refund: ₹${refund.toStringAsFixed(2)}'
+                      '${fee > 0 ? '\nPlatform fee: ₹${fee.toStringAsFixed(2)}' : ''}'
+                      '\nOnly this service will be cancelled. Other services in the order will continue.'
+                  : 'This service is not eligible for a refund. Only this service will be cancelled; the remaining services will continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep service'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            child: const Text('Cancel service'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final result = await BookingApi.request(
+        '/api/v1/bookings/orders/${widget.orderId}/items/$bookingId/cancel/',
+        method: 'POST',
+        data: {'reason': 'Cancelled by customer from order details.'},
+      );
+      await loadOrder(showLoader: false);
+      await loadWalletBalance();
+      if (!mounted) return;
+      final message = result is Map
+          ? result['refund_message']?.toString()
+          : null;
+      final refundStatus = result is Map
+          ? result['refund_status']?.toString() ?? 'unknown'
+          : 'unknown';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message != null && message.isNotEmpty
+                ? 'Service cancelled. $message'
+                : 'Service cancelled. Refund status: $refundStatus.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel this service: $e')),
+      );
+    }
+  }
+
   String statusLabel(String value) {
     switch (value) {
       case 'pending': return 'Finding professional';
@@ -273,8 +366,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Widget orderBody() {
     final rows = (order?['items'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     final ready = order?['ready_for_payment'] == true;
-    final paid = order?['status'] == 'paid';
-    final total = amount(order?['total_amount']);
+    final orderStatus = order?['status']?.toString() ?? '';
+    final paid = orderStatus == 'paid' || orderStatus == 'completed';
+    final awaitingFinal = orderStatus == 'awaiting_final_payment';
+    final total = amount(order?['active_total_amount'] ?? order?['total_amount']);
+    final partiallyCancelled = order?['partially_cancelled'] == true;
+    final allCancelled = rows.isNotEmpty &&
+        rows.every((row) => row['booking_status'] == 'cancelled');
     return Column(children: [
       Expanded(child: ListView(
         padding: const EdgeInsets.all(18),
@@ -283,12 +381,22 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : ready ? 'All professionals assigned' : 'Your order is being arranged',
+              Text(
+                  allCancelled ? 'All services cancelled'
+                      : paid ? 'Payment and services complete'
+                      : awaitingFinal ? 'Services completed — final payment due'
+                      : partiallyCancelled ? 'Some services cancelled'
+                      : ready ? 'All professionals assigned'
+                      : 'Your order is being arranged',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
-              Text(paid ? 'Your services are confirmed.' : ready
-                  ? 'All services have an assigned professional. You can now complete payment.'
-                  : 'We are assigning professionals for each service. This page refreshes automatically.',
+              Text(
+                  allCancelled ? 'There are no active services remaining in this order.'
+                      : paid ? 'All active services and final balances are complete.'
+                      : awaitingFinal ? 'Open each completed service to review and pay its remaining balance.'
+                      : partiallyCancelled ? 'Cancelled services are excluded. Your remaining services continue under this order.'
+                      : ready ? 'All services have an assigned professional.'
+                      : 'We are assigning professionals for each service. This page refreshes automatically.',
                   style: const TextStyle(color: sub, height: 1.4)),
               const SizedBox(height: 12),
               Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
@@ -401,11 +509,21 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     });
     final completed = rows.isNotEmpty &&
         rows.every((row) => row['booking_status']?.toString() == 'completed');
+    final hasSplitLedger = rows.any((row) => row['payment_summary'] is Map);
+    final advancesPaid = hasSplitLedger && rows.every((row) {
+      final summary = row['payment_summary'];
+      return summary is! Map || summary['advance_status'] == 'paid';
+    });
+    final finalBalancesPaid = hasSplitLedger && rows.every((row) {
+      final summary = row['payment_summary'];
+      return summary is! Map || summary['final_balance_status'] == 'paid';
+    });
     final steps = <(String, String, bool)>[
       ('Order placed', 'Your service request is received.', true),
+      ('Booking advances', advancesPaid ? 'Required booking advances have been received.' : assigned ? 'Payment is being prepared.' : 'Advance is collected before worker dispatch.', advancesPaid || (!hasSplitLedger && paid)),
       ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
-      ('Payment', paid ? 'Payment verified successfully.' : assigned ? 'Payment is now available.' : 'Payment unlocks after assignment.', paid),
       ('Service completed', completed ? 'All services are completed.' : 'Updates appear as work progresses.', completed),
+      ('Final balances', finalBalancesPaid ? 'All final balances are settled.' : completed ? 'Open each service to pay its remaining balance.' : 'Due after each service completion.', finalBalancesPaid || (!hasSplitLedger && paid)),
     ];
     return Container(
       padding: const EdgeInsets.all(15),
@@ -451,11 +569,23 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         if (scheduled.isNotEmpty) Text(scheduled, style: const TextStyle(color: sub, fontSize: 12)),
         if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 8),
-        SizedBox(width: double.infinity, child: OutlinedButton.icon(
-          onPressed: () => trackService(row),
-          icon: const Icon(Icons.location_searching_rounded, size: 17),
-          label: const Text('Track this service'),
-        )),
+        if (status != 'cancelled')
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => trackService(row),
+            icon: const Icon(Icons.location_searching_rounded, size: 17),
+            label: const Text('Track this service'),
+          )),
+        if (row['can_cancel'] == true) ...[
+          const SizedBox(height: 6),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => cancelServiceLine(row),
+            icon: const Icon(Icons.cancel_outlined, size: 17),
+            label: const Text('Cancel this service'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+          )),
+        ],
       ]),
     );
   }

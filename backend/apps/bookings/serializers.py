@@ -434,7 +434,8 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     form_responses = BookingFormResponseSerializer(many=True, read_only=True)
     status_history = BookingStatusHistorySerializer(many=True, read_only=True)
     assignment = BookingAssignmentSerializer(read_only=True)
-    can_cancel = serializers.BooleanField(read_only=True)
+    can_cancel = serializers.SerializerMethodField()
+    cancellation_terms = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -444,9 +445,78 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "scheduled_at", "drop_scheduled_at", "status", "status_display",
             "address_detail", "pricing_snapshot", "notes", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
-            "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
-            "created_at", "updated_at"
+            "addons", "form_responses", "customer_answers", "status_history", "assignment",
+            "can_cancel", "cancellation_terms", "created_at", "updated_at"
         ]
+
+    def get_can_cancel(self, obj):
+        from .models import OrderItem
+        assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
+        return bool(
+            obj.can_cancel
+            and not (assignment and assignment.started_at)
+            and not OrderItem.objects.filter(booking_id=obj.pk).exists()
+        )
+
+    def get_cancellation_terms(self, obj):
+        from .models import OrderItem
+        from apps.payments.models import BookingFinancialPlan, Payment
+        from apps.payments.lifecycle import customer_cancellation_terms
+
+        if OrderItem.objects.filter(booking_id=obj.pk).exists():
+            from apps.payments.models import BookingFinancialPlan
+            has_split_plan = BookingFinancialPlan.objects.filter(booking_id=obj.pk).exists()
+            return {
+                "available": False,
+                "policy": "parent_order_line_api",
+                "message": (
+                    "Manage this service line from its parent order."
+                    if has_split_plan
+                    else "This legacy multi-service order requires AIRway support for cancellation."
+                ),
+                "endpoint": "POST /api/v1/bookings/orders/{order_id}/items/{booking_id}/cancel/"
+                if has_split_plan else None,
+            }
+        assignment = BookingAssignment.objects.filter(booking_id=obj.pk).first()
+        if not obj.can_cancel or (assignment and assignment.started_at):
+            return {
+                "available": False,
+                "policy": "service_started_or_closed",
+                "message": "This booking can no longer be cancelled. Contact AIRway support if you need help.",
+            }
+        if not BookingFinancialPlan.objects.filter(booking_id=obj.pk).exists():
+            return {
+                "available": True,
+                "policy": "legacy",
+                "message": "Cancellation terms for this older booking follow its original payment flow.",
+            }
+
+        worker_accepted = bool(assignment and assignment.accepted_at)
+        payment = Payment.objects.filter(
+            booking_id=obj.pk, status=Payment.Status.PAID,
+        ).first()
+        collected = payment.amount if payment else Decimal("0.00")
+        terms = customer_cancellation_terms(
+            obj.scheduled_at,
+            collected,
+            worker_accepted=worker_accepted,
+        )
+        messages = {
+            "same_day_before_worker_acceptance": "Same-day booking: cancel before a worker accepts to receive a full refund of the captured advance.",
+            "same_day_after_worker_acceptance": "A worker has accepted this same-day service. Cancelling now is non-refundable.",
+            "future_before_cutoff": "Cancel by 10:00 PM IST on the day before service to receive the captured advance minus the ₹40 platform fee.",
+            "future_after_cutoff": "The 10:00 PM IST cancellation cutoff has passed. Cancelling now is non-refundable.",
+        }
+        return {
+            "available": True,
+            "policy": terms["policy"],
+            "worker_accepted": worker_accepted,
+            "refundable": terms["refundable"],
+            "collected_amount": str(collected),
+            "refund_amount": str(terms["refund_amount"]),
+            "platform_fee": str(terms["platform_fee"]),
+            "message": messages[terms["policy"]],
+        }
 
     def get_service_image(self, obj):
         if obj.service.image:
@@ -570,7 +640,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "variant_title": item.booking.variant.title if item.booking.variant_id else None,
             "scheduled_at": item.booking.scheduled_at,
             "quantity": item.quantity,
-        } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
+        } for item in obj.order.items.exclude(
+            booking__status="cancelled",
+        ).select_related("booking__service", "booking__variant").all()]
 
     def get_customer_answers(self, obj):
         answers = dict(obj.booking.customer_answers or {})

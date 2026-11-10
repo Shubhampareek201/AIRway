@@ -89,6 +89,15 @@ class WalletReservation(TimeStampedModel):
         "payments.Payment",
         on_delete=models.PROTECT,
         related_name="wallet_reservations",
+        null=True,
+        blank=True,
+    )
+    payment_attempt = models.ForeignKey(
+        "payments.PaymentAttempt",
+        on_delete=models.PROTECT,
+        related_name="wallet_reservations",
+        null=True,
+        blank=True,
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(
@@ -112,7 +121,20 @@ class WalletReservation(TimeStampedModel):
                 condition=models.Q(status="reserved"),
                 name="one_active_wallet_reservation_per_payment",
             ),
+            models.UniqueConstraint(
+                fields=["payment_attempt"],
+                condition=models.Q(status="reserved"),
+                name="one_active_wallet_reservation_per_attempt",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(payment__isnull=False) & models.Q(payment_attempt__isnull=True))
+                    | (models.Q(payment__isnull=True) & models.Q(payment_attempt__isnull=False))
+                ),
+                name="wallet_reservation_exactly_one_source",
+            ),
         ]
 
     def __str__(self):
-        return f"Wallet reservation #{self.pk}: ₹{self.amount} ({self.status})"
+        target = f"payment #{self.payment_id}" if self.payment_id else f"attempt #{self.payment_attempt_id}"
+        return f"Wallet reservation #{self.pk}: ₹{self.amount} ({target}, {self.status})"

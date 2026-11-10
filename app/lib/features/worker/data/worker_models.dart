@@ -185,6 +185,7 @@ class WorkerAssignmentDetail {
   final int quantity;
   final List<Map<String, dynamic>> addons;
   final WorkerAssignmentInfo assignment;
+  final bool requiresServiceOtp;
 
   WorkerAssignmentDetail({
     required this.assignmentId,
@@ -206,6 +207,7 @@ class WorkerAssignmentDetail {
     this.quantity = 1,
     this.addons = const [],
     required this.assignment,
+    this.requiresServiceOtp = false,
   });
 
   factory WorkerAssignmentDetail.fromMap(Map<String, dynamic> map) {
@@ -229,6 +231,7 @@ class WorkerAssignmentDetail {
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
+      requiresServiceOtp: map['requires_service_otp'] as bool? ?? false,
     );
   }
 }

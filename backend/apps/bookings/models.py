@@ -267,12 +267,71 @@ class WorkerOffer(TimeStampedModel):
     def __str__(self):
         return f"Offer #{self.pk}: {self.worker.user.phone} -> Booking #{self.booking_id}"
 
+
+class DispatchAttempt(TimeStampedModel):
+    """Durable record of each configured worker-dispatch batch, including empty batches."""
+
+    class Status(models.TextChoices):
+        OFFERS_CREATED = "offers_created", "Offers Created"
+        NO_ELIGIBLE_WORKERS = "no_eligible_workers", "No Eligible Workers"
+
+    order = models.ForeignKey(
+        "Order",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="dispatch_attempts",
+    )
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="dispatch_attempts",
+    )
+    batch_number = models.PositiveSmallIntegerField()
+    candidate_count = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(max_length=24, choices=Status.choices)
+    retry_after = models.DateTimeField(null=True, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (Q(order__isnull=False) & Q(booking__isnull=True))
+                    | (Q(order__isnull=True) & Q(booking__isnull=False))
+                ),
+                name="dispatch_attempt_exactly_one_target",
+            ),
+            models.UniqueConstraint(
+                fields=["order", "batch_number"],
+                condition=Q(order__isnull=False),
+                name="dispatch_attempt_order_batch_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["booking", "batch_number"],
+                condition=Q(booking__isnull=False),
+                name="dispatch_attempt_booking_batch_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        target = f"Order #{self.order_id}" if self.order_id else f"Booking #{self.booking_id}"
+        return f"{target} dispatch batch {self.batch_number} ({self.status})"
+
+
 class Order(TimeStampedModel):
     """Parent checkout record that groups multiple independent service bookings."""
 
     class Status(models.TextChoices):
         AWAITING_ASSIGNMENT = "awaiting_assignment", "Awaiting Assignment"
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
+        AWAITING_SERVICE = "awaiting_service", "Awaiting Service"
+        IN_PROGRESS = "in_progress", "In Progress"
+        AWAITING_FINAL_PAYMENT = "awaiting_final_payment", "Awaiting Final Payment"
+        COMPLETED = "completed", "Completed"
         PAID = "paid", "Paid"
         PARTIALLY_CANCELLED = "partially_cancelled", "Partially Cancelled"
         CANCELLED = "cancelled", "Cancelled"

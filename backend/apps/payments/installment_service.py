@@ -1,0 +1,857 @@
+"""Final-installment collection and settlement services.
+
+All monetary values are Decimal INR amounts. Provider network calls are made
+outside database transactions; captured funds are applied under row locks.
+"""
+import uuid
+import logging
+from decimal import Decimal, InvalidOperation
+
+import razorpay
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+
+from apps.bookings.models import Booking, Order, OrderItem
+from apps.notifications.models import Notification
+from apps.wallet.models import Wallet, WalletReservation, WalletTransaction
+from .models import (
+    BookingFinancialPlan, PaymentAllocation, PaymentAttempt,
+    PaymentInstallment,
+)
+
+
+logger = logging.getLogger(__name__)
+
+CENT = Decimal("0.01")
+ZERO = Decimal("0.00")
+
+
+class InstallmentPaymentError(Exception):
+    pass
+
+
+def _money(value):
+    try:
+        amount = Decimal(str(value))
+        if not amount.is_finite() or amount < ZERO or amount.quantize(CENT) != amount:
+            raise InvalidOperation
+        return amount.quantize(CENT)
+    except (InvalidOperation, TypeError, ValueError):
+        raise InstallmentPaymentError("Enter a valid amount with at most two decimal places.")
+
+
+def _reserve_wallet(attempt, amount):
+    if amount <= ZERO:
+        return None
+    wallet, _ = Wallet.objects.get_or_create(user=attempt.installment.financial_plan.booking.customer)
+    wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+    if wallet.balance < amount:
+        raise InstallmentPaymentError("Insufficient AIRway wallet balance.")
+    wallet.balance -= amount
+    wallet.pending_balance += amount
+    wallet.save(update_fields=["balance", "pending_balance", "updated_at"])
+    WalletTransaction.objects.create(
+        wallet=wallet,
+        type=WalletTransaction.Type.DEBIT,
+        amount=amount,
+        description=f"Wallet reserved for final balance of booking #{attempt.installment.financial_plan.booking_id}",
+        status=WalletTransaction.Status.PENDING,
+        reference_id=f"payment_attempt:{attempt.pk}",
+    )
+    return WalletReservation.objects.create(
+        wallet=wallet, payment_attempt=attempt, amount=amount,
+        status=WalletReservation.Status.RESERVED,
+    )
+
+
+@transaction.atomic
+def _capture_wallet(attempt, razorpay_payment_id=""):
+    reservation = WalletReservation.objects.select_for_update().filter(
+        payment_attempt=attempt, status=WalletReservation.Status.RESERVED,
+    ).first()
+    if attempt.wallet_amount == ZERO:
+        if reservation:
+            raise InstallmentPaymentError("Unexpected wallet reservation for this attempt.")
+        return
+    if reservation is None:
+        latest = WalletReservation.objects.select_for_update().filter(
+            payment_attempt=attempt,
+        ).order_by("-created_at").first()
+        if latest and latest.status == WalletReservation.Status.CAPTURED:
+            return
+        raise InstallmentPaymentError("The wallet reservation is missing; payment needs reconciliation.")
+    wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
+    if wallet.pending_balance < reservation.amount:
+        raise InstallmentPaymentError("Wallet pending balance does not match its reservation.")
+    wallet.pending_balance -= reservation.amount
+    wallet.save(update_fields=["pending_balance", "updated_at"])
+    WalletTransaction.objects.filter(
+        wallet=wallet, reference_id=f"payment_attempt:{attempt.pk}",
+        type=WalletTransaction.Type.DEBIT, status=WalletTransaction.Status.PENDING,
+    ).update(status=WalletTransaction.Status.COMPLETED, razorpay_payment_id=razorpay_payment_id)
+    reservation.status = WalletReservation.Status.CAPTURED
+    reservation.captured_at = timezone.now()
+    reservation.save(update_fields=["status", "captured_at", "updated_at"])
+
+
+@transaction.atomic
+def _release_wallet(attempt, reason):
+    reservation = WalletReservation.objects.select_for_update().filter(
+        payment_attempt=attempt, status=WalletReservation.Status.RESERVED,
+    ).first()
+    if reservation is None:
+        return
+    wallet = Wallet.objects.select_for_update().get(pk=reservation.wallet_id)
+    if wallet.pending_balance < reservation.amount:
+        raise InstallmentPaymentError("Wallet pending balance does not match its reservation.")
+    wallet.balance += reservation.amount
+    wallet.pending_balance -= reservation.amount
+    wallet.save(update_fields=["balance", "pending_balance", "updated_at"])
+    WalletTransaction.objects.filter(
+        wallet=wallet, reference_id=f"payment_attempt:{attempt.pk}",
+        type=WalletTransaction.Type.DEBIT, status=WalletTransaction.Status.PENDING,
+    ).update(status=WalletTransaction.Status.FAILED, description=reason[:255])
+    reservation.status = WalletReservation.Status.RELEASED
+    reservation.released_at = timezone.now()
+    reservation.save(update_fields=["status", "released_at", "updated_at"])
+
+
+def create_final_balance_attempt(*, booking_id, customer, wallet_amount="0.00"):
+    """Create one immutable Razorpay attempt for a completed booking line."""
+    wallet_requested = _money(wallet_amount)
+    with transaction.atomic():
+        try:
+            booking = Booking.objects.select_for_update().get(pk=booking_id, customer=customer)
+        except Booking.DoesNotExist:
+            raise InstallmentPaymentError("Booking not found or access denied.")
+        if booking.status != Booking.Status.COMPLETED:
+            raise InstallmentPaymentError("Final payment is available only after service completion.")
+        plan = BookingFinancialPlan.objects.select_for_update().filter(booking=booking).first()
+        if plan is None:
+            raise InstallmentPaymentError("This booking uses the legacy payment flow.")
+        installment = PaymentInstallment.objects.select_for_update().get(
+            financial_plan=plan, kind=PaymentInstallment.Kind.FINAL_BALANCE,
+        )
+        if installment.status == PaymentInstallment.Status.PAID:
+            captured_attempt = PaymentAttempt.objects.filter(
+                installment=installment,
+                status=PaymentAttempt.Status.CAPTURED,
+            ).order_by("-captured_at", "-created_at").first()
+            return captured_attempt, True
+
+        # Compute the immutable outstanding amount before checking an active
+        # attempt. PROCESSING installments must still return their existing
+        # checkout idempotently instead of failing the due-state guard below.
+        outstanding = installment.amount_due - installment.amount_captured
+        active = PaymentAttempt.objects.select_for_update().filter(
+            installment=installment,
+            status__in=(PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED),
+        ).order_by("-created_at").first()
+        if active:
+            if active.gateway_amount > ZERO and not active.provider_order_id:
+                raise InstallmentPaymentError("The payment order is still being initialized. Refresh and retry shortly.")
+            if active.amount != outstanding or active.wallet_amount != wallet_requested:
+                raise InstallmentPaymentError(
+                    "A payment attempt is already active with different payment details. Complete or wait for it before changing the wallet amount."
+                )
+            if active.gateway_amount == ZERO:
+                # A wallet-only attempt has no provider order/webhook to resume.
+                # If the process stopped after reserving funds but before
+                # settlement, an idempotent customer retry must finish it.
+                if (
+                    active.provider != PaymentAttempt.Provider.WALLET
+                    or active.status != PaymentAttempt.Status.CREATED
+                ):
+                    raise InstallmentPaymentError(
+                        "The wallet-only payment attempt needs support reconciliation."
+                    )
+                settle_final_balance_attempt(
+                    attempt_id=active.pk,
+                    razorpay_payment_id="",
+                    provider_order_id="",
+                    amount_paise=0,
+                    currency=plan.currency,
+                    source="wallet",
+                )
+                active.refresh_from_db()
+            return active, True
+
+        if installment.status not in (
+            PaymentInstallment.Status.DUE, PaymentInstallment.Status.PARTIALLY_PAID,
+            PaymentInstallment.Status.FAILED,
+        ):
+            raise InstallmentPaymentError("The final balance is not due yet.")
+        from .models import RefundRecord
+        unresolved_refund = RefundRecord.objects.filter(
+            payment_attempt__installment=installment,
+            status__in=(
+                RefundRecord.Status.REQUESTED,
+                RefundRecord.Status.PENDING,
+                RefundRecord.Status.FAILED,
+            ),
+        ).exists()
+        if unresolved_refund:
+            raise InstallmentPaymentError(
+                "A previous captured payment is awaiting refund reconciliation. Please contact AIRway support before retrying."
+            )
+        if outstanding <= ZERO:
+            raise InstallmentPaymentError("No final balance remains outstanding.")
+        if wallet_requested > outstanding:
+            raise InstallmentPaymentError("Wallet amount cannot exceed the outstanding final balance.")
+        if wallet_requested > ZERO and plan.currency != "INR":
+            raise InstallmentPaymentError("AIRway wallet can only be used for INR payments.")
+
+        gateway_amount = outstanding - wallet_requested
+        attempt = PaymentAttempt.objects.create(
+            installment=installment,
+            provider=PaymentAttempt.Provider.RAZORPAY if gateway_amount > ZERO else PaymentAttempt.Provider.WALLET,
+            idempotency_key=f"final:{installment.pk}:{uuid.uuid4().hex}",
+            amount=outstanding,
+            gateway_amount=gateway_amount,
+            wallet_amount=wallet_requested,
+            currency=plan.currency,
+            status=PaymentAttempt.Status.CREATED,
+        )
+        _reserve_wallet(attempt, wallet_requested)
+        installment.status = PaymentInstallment.Status.PROCESSING
+        installment.save(update_fields=["status", "updated_at"])
+
+    if gateway_amount == ZERO:
+        settle_final_balance_attempt(
+            attempt_id=attempt.pk, razorpay_payment_id="",
+            provider_order_id="", amount_paise=0, currency=plan.currency,
+            source="wallet",
+        )
+        attempt.refresh_from_db()
+        return attempt, False
+
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        order_data = gateway.order.create(data={
+            "amount": int(gateway_amount * 100),
+            "currency": plan.currency,
+            "receipt": f"airway_final_{attempt.pk}",
+            "notes": {
+                "airway_attempt_id": str(attempt.pk),
+                "airway_booking_id": str(booking.pk),
+                "airway_installment": "final_balance",
+            },
+        })
+        provider_order_id = order_data.get("id")
+        if not provider_order_id:
+            raise ValueError("Razorpay did not return an order ID.")
+    except Exception:
+        _release_wallet(attempt, "Razorpay final-balance order creation failed")
+        with transaction.atomic():
+            locked = PaymentAttempt.objects.select_for_update().get(pk=attempt.pk)
+            locked.status = PaymentAttempt.Status.FAILED
+            locked.failed_at = timezone.now()
+            locked.provider_payload = {"error": "Razorpay order creation failed"}
+            locked.save(update_fields=["status", "failed_at", "provider_payload", "updated_at"])
+            installment = PaymentInstallment.objects.select_for_update().get(pk=installment.pk)
+            installment.status = (
+                PaymentInstallment.Status.PARTIALLY_PAID
+                if installment.amount_captured > ZERO else PaymentInstallment.Status.DUE
+            )
+            installment.save(update_fields=["status", "updated_at"])
+        raise
+    with transaction.atomic():
+        locked = PaymentAttempt.objects.select_for_update().get(pk=attempt.pk)
+        locked.provider_order_id = provider_order_id
+        locked.save(update_fields=["provider_order_id", "updated_at"])
+    attempt.refresh_from_db()
+    return attempt, False
+
+
+def settle_final_balance_attempt(
+    *, attempt_id, razorpay_payment_id, provider_order_id,
+    amount_paise, currency, source,
+):
+    """Apply an authenticated/captured final tender exactly once."""
+    with transaction.atomic():
+        # Lock in the same parent -> plan -> installment -> attempt order used
+        # by checkout creation and OTP completion to avoid cross-flow deadlocks.
+        attempt_ref = PaymentAttempt.objects.select_related(
+            "installment__financial_plan",
+        ).get(pk=attempt_id)
+        booking_id = attempt_ref.installment.financial_plan.booking_id
+        # Match the global parent-order -> booking -> plan -> installment ->
+        # attempt lock order used by OTP verification and line cancellation.
+        # Reading the relation first is intentionally unlocked; the parent row
+        # is the serialization point for all mutations within a multi-line order.
+        order_id = OrderItem.objects.filter(
+            booking_id=booking_id,
+        ).values_list("order_id", flat=True).first()
+        parent_order = (
+            Order.objects.select_for_update().get(pk=order_id)
+            if order_id else None
+        )
+        booking = Booking.objects.select_for_update().get(pk=booking_id)
+        plan = BookingFinancialPlan.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan_id,
+        )
+        installment = PaymentInstallment.objects.select_for_update().get(
+            pk=attempt_ref.installment_id,
+        )
+        attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
+
+        if attempt.status == PaymentAttempt.Status.CAPTURED:
+            if attempt.provider_payment_id and attempt.provider_payment_id != razorpay_payment_id:
+                raise InstallmentPaymentError("This attempt was already captured by a different payment.")
+            return attempt
+
+        if attempt.provider == PaymentAttempt.Provider.RAZORPAY:
+            expected_paise = int(attempt.gateway_amount * 100)
+            if not provider_order_id or provider_order_id != attempt.provider_order_id:
+                raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+            if not razorpay_payment_id:
+                raise InstallmentPaymentError("Razorpay payment ID is required.")
+            if amount_paise != expected_paise:
+                raise InstallmentPaymentError("Captured amount does not match the final-payment attempt.")
+            if (currency or "").upper() != attempt.currency:
+                raise InstallmentPaymentError("Captured currency does not match the installment.")
+        elif (
+            source != "wallet"
+            or amount_paise != 0
+            or (currency or "").upper() != attempt.currency
+        ):
+            raise InstallmentPaymentError("Invalid wallet-only settlement.")
+
+        if booking.status != Booking.Status.COMPLETED:
+            raise InstallmentPaymentError("Final balance cannot settle before completion OTP.")
+        if installment.status == PaymentInstallment.Status.PAID:
+            raise InstallmentPaymentError("The installment was already settled by another attempt.")
+        if attempt.amount != attempt.gateway_amount + attempt.wallet_amount:
+            raise InstallmentPaymentError("Attempt tender does not reconcile.")
+
+        _capture_wallet(attempt, razorpay_payment_id)
+        PaymentAllocation.objects.create(
+            payment_attempt=attempt,
+            installment=installment,
+            amount=attempt.amount,
+            gateway_amount=attempt.gateway_amount,
+            wallet_amount=attempt.wallet_amount,
+        )
+        installment.amount_captured += attempt.amount
+        if installment.amount_captured > installment.amount_due:
+            raise InstallmentPaymentError("Captured final balance exceeds the amount due.")
+        installment.status = (
+            PaymentInstallment.Status.PAID
+            if installment.amount_captured == installment.amount_due
+            else PaymentInstallment.Status.PARTIALLY_PAID
+        )
+        if installment.status == PaymentInstallment.Status.PAID:
+            installment.settled_at = timezone.now()
+        installment.save(update_fields=["amount_captured", "status", "settled_at", "updated_at"])
+
+        plan.balance_captured = installment.amount_captured
+        plan.save(update_fields=["balance_captured", "updated_at"])
+        attempt.status = PaymentAttempt.Status.CAPTURED
+        attempt.provider_payment_id = razorpay_payment_id or None
+        attempt.captured_at = timezone.now()
+        attempt.provider_payload = {
+            **(attempt.provider_payload or {}),
+            "source": source,
+            "captured_at": attempt.captured_at.isoformat(),
+        }
+        attempt.save(update_fields=[
+            "status", "provider_payment_id", "captured_at", "provider_payload", "updated_at",
+        ])
+
+        if parent_order:
+            all_completed = not parent_order.items.exclude(
+                booking__status__in=(
+                    Booking.Status.COMPLETED,
+                    Booking.Status.CANCELLED,
+                ),
+            ).exists()
+            all_balances_paid = not PaymentInstallment.objects.filter(
+                financial_plan__booking__order_item__order=parent_order,
+                kind=PaymentInstallment.Kind.FINAL_BALANCE,
+            ).exclude(
+                status__in=(
+                    PaymentInstallment.Status.PAID,
+                    PaymentInstallment.Status.CANCELLED,
+                )
+            ).exists()
+            if all_completed and all_balances_paid:
+                parent_order.status = Order.Status.COMPLETED
+            elif all_completed:
+                parent_order.status = Order.Status.AWAITING_FINAL_PAYMENT
+            parent_order.save(update_fields=["status", "updated_at"])
+
+        Notification.objects.create(
+            user=booking.customer,
+            type=Notification.Type.PAYMENT_SUCCESS,
+            title="Final payment received",
+            body=f"Your final payment for booking #{booking.pk} was received.",
+            channel=Notification.Channel.IN_APP,
+            data={
+                "booking_id": booking.pk,
+                "payment_attempt_id": attempt.pk,
+                "installment_status": installment.status,
+                "remaining_balance": str(installment.amount_due - installment.amount_captured),
+            },
+        )
+        return attempt
+
+
+def reconcile_refund_record(*, record_id):
+    """Look up an uncertain refund at Razorpay; never submit a second refund.
+
+    A refund is matched only by the AIRway record ID stored in provider notes,
+    and its amount must match the immutable gateway refund amount.
+    """
+    from django.conf import settings
+    from .models import RefundRecord
+
+    record = RefundRecord.objects.select_related("payment").get(pk=record_id)
+    if record.status == RefundRecord.Status.PROCESSED:
+        return record
+    payment_id = (
+        record.payment.razorpay_payment_id if record.payment_id
+        else record.payment_attempt.provider_payment_id if record.payment_attempt_id
+        else ""
+    )
+    if not payment_id or record.gateway_refund_amount <= ZERO:
+        raise InstallmentPaymentError("Refund has no gateway payment to reconcile.")
+
+    gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    match = None
+    skip = 0
+    page_size = 100
+    while True:
+        result = gateway.payment.fetch_multiple_refund(
+            payment_id,
+            {"count": page_size, "skip": skip},
+        )
+        refunds = result.get("items", []) if isinstance(result, dict) else []
+        match = next((
+            item for item in refunds
+            if str((item.get("notes") or {}).get("airway_refund_record_id", "")) == str(record.pk)
+        ), None)
+        if match is not None or len(refunds) < page_size:
+            break
+        skip += len(refunds)
+    if match is None:
+        with transaction.atomic():
+            # Global refund lock order: PaymentAttempt, then RefundRecord.
+            attempt = None
+            if record.payment_attempt_id:
+                attempt = PaymentAttempt.objects.select_for_update().get(
+                    pk=record.payment_attempt_id,
+                )
+            locked = RefundRecord.objects.select_for_update().get(pk=record.pk)
+            if locked.payment_attempt_id != record.payment_attempt_id:
+                raise InstallmentPaymentError(
+                    "Refund record payment-attempt link changed during reconciliation."
+                )
+            # A refund.processed webhook may win the race after the initial
+            # read but before this row lock. Never let a stale "not found"
+            # provider lookup regress a webhook-confirmed terminal state.
+            if locked.status != RefundRecord.Status.PROCESSED:
+                locked.status = RefundRecord.Status.PENDING
+                locked.provider_payload = {
+                    **(locked.provider_payload or {}),
+                    "reconciliation": "No matching provider refund found; no new refund was submitted. Verify Razorpay dashboard before manual action.",
+                    "reconciled_at": timezone.now().isoformat(),
+                }
+                locked.save(update_fields=["status", "provider_payload", "updated_at"])
+            if attempt is not None:
+                refund_states = list(
+                    RefundRecord.objects.filter(
+                        payment_attempt=attempt,
+                    ).values_list("status", flat=True)
+                )
+                if any(state in (
+                    RefundRecord.Status.REQUESTED,
+                    RefundRecord.Status.PENDING,
+                ) for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.FAILED
+                elif refund_states and all(
+                    state == RefundRecord.Status.PROCESSED for state in refund_states
+                ):
+                    attempt.status = PaymentAttempt.Status.REFUNDED
+                attempt.save(update_fields=["status", "updated_at"])
+        return locked
+
+    provider_refund_id = match.get("id")
+    if record.provider_refund_id and provider_refund_id != record.provider_refund_id:
+        raise InstallmentPaymentError(
+            "Provider refund ID conflicts with the AIRway ledger; manual reconciliation required."
+        )
+    if int(match.get("amount", -1)) != int(record.gateway_refund_amount * 100):
+        raise InstallmentPaymentError(
+            "Provider refund amount does not match AIRway ledger; manual reconciliation required."
+        )
+    return _persist_refund_submission(
+        record_id=record.pk,
+        provider_refund=match,
+        attempt_id=record.payment_attempt_id,
+        reconciliation=True,
+    )
+
+
+def _persist_refund_submission(*, record_id, provider_refund=None, submission_error=None, attempt_id=None, reconciliation=False):
+    """Persist provider response using the shared attempt -> refund lock order."""
+    from django.db import IntegrityError
+    from .models import RefundRecord
+
+    snapshot = RefundRecord.objects.only("payment_attempt_id").get(pk=record_id)
+    linked_attempt_id = snapshot.payment_attempt_id
+    if attempt_id is not None and linked_attempt_id not in (None, attempt_id):
+        raise InstallmentPaymentError("Refund record is linked to a different payment attempt.")
+    lock_attempt_id = attempt_id or linked_attempt_id
+    update_attempt_status = attempt_id is not None
+    try:
+        with transaction.atomic():
+            attempt = None
+            if lock_attempt_id is not None:
+                attempt = PaymentAttempt.objects.select_for_update().get(pk=lock_attempt_id)
+            record = RefundRecord.objects.select_for_update().get(pk=record_id)
+            if record.payment_attempt_id != lock_attempt_id:
+                raise InstallmentPaymentError("Refund record payment-attempt link changed during reconciliation.")
+
+            if record.status != RefundRecord.Status.PROCESSED and (
+                reconciliation or record.status != RefundRecord.Status.FAILED
+            ):
+                if provider_refund is not None:
+                    provider_id = provider_refund.get("id")
+                    if provider_id:
+                        # The unique DB constraint is the final arbiter for
+                        # concurrent claims; this read avoids needless conflicts.
+                        owner_exists = RefundRecord.objects.filter(
+                            provider_refund_id=provider_id,
+                        ).exclude(pk=record.pk).exists()
+                        if owner_exists:
+                            raise InstallmentPaymentError(
+                                "Provider refund ID is already owned by another AIRway refund record."
+                            )
+                        if record.provider_refund_id and record.provider_refund_id != provider_id:
+                            raise InstallmentPaymentError(
+                                "Provider refund ID conflicts with the AIRway ledger."
+                            )
+                        record.provider_refund_id = provider_id
+                    provider_status = provider_refund.get("status")
+                    if provider_status == "processed":
+                        record.status = RefundRecord.Status.PROCESSED
+                        record.processed_at = timezone.now()
+                    elif provider_status == "failed":
+                        record.status = RefundRecord.Status.FAILED
+                    else:
+                        record.status = RefundRecord.Status.PENDING
+                    record.provider_payload = provider_refund
+                elif submission_error is not None:
+                    record.status = RefundRecord.Status.FAILED
+                    record.provider_payload = {
+                        **(record.provider_payload or {}),
+                        "submission_error": str(submission_error)[:500],
+                    }
+                record.save(update_fields=[
+                    "provider_refund_id", "status", "processed_at",
+                    "provider_payload", "updated_at",
+                ])
+            if attempt is not None and update_attempt_status:
+                refund_states = list(
+                    RefundRecord.objects.filter(payment_attempt=attempt).values_list("status", flat=True)
+                )
+                if any(state in (RefundRecord.Status.REQUESTED, RefundRecord.Status.PENDING) for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                elif any(state == RefundRecord.Status.FAILED for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.FAILED
+                elif refund_states and all(state == RefundRecord.Status.PROCESSED for state in refund_states):
+                    attempt.status = PaymentAttempt.Status.REFUNDED
+                else:
+                    attempt.status = PaymentAttempt.Status.REFUND_PENDING
+                attempt.save(update_fields=["status", "updated_at"])
+            return record
+    except IntegrityError as exc:
+        raise InstallmentPaymentError(
+            "Provider refund ID is already linked to another AIRway refund record; reconciliation required."
+        ) from exc
+
+
+def refund_mismatched_final_capture(
+    *, attempt_id, razorpay_payment_id, provider_order_id,
+    amount_paise, currency, payload,
+):
+    """Refund a captured amount that does not match the final installment tender."""
+    import razorpay
+    from django.conf import settings
+    from .models import RefundRecord
+
+    if not isinstance(amount_paise, int) or amount_paise <= 0:
+        raise InstallmentPaymentError("Mismatched capture has no valid refundable amount.")
+    with transaction.atomic():
+        attempt_ref = PaymentAttempt.objects.select_related(
+            "installment__financial_plan",
+        ).get(pk=attempt_id)
+        if attempt_ref.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        current_status = attempt_ref.status
+
+    if current_status in (PaymentAttempt.Status.CREATED, PaymentAttempt.Status.AUTHORIZED):
+        mark_final_balance_attempt_failed(
+            attempt_id=attempt_id,
+            provider_order_id=provider_order_id,
+            payload={"reason": "Captured amount mismatch; wallet tender released.", "event": payload or {}},
+        )
+
+    actual_amount = (Decimal(amount_paise) / Decimal("100")).quantize(CENT)
+    with transaction.atomic():
+        attempt = PaymentAttempt.objects.select_for_update().select_related(
+            "installment__financial_plan__booking",
+        ).get(pk=attempt_id)
+        if attempt.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        if (currency or "").upper() != attempt.currency:
+            raise InstallmentPaymentError(
+                "Captured currency mismatch requires manual provider reconciliation."
+            )
+        booking = attempt.installment.financial_plan.booking
+        record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"mismatched-final-capture:attempt:{attempt.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment_attempt": attempt,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": actual_amount,
+                "platform_fee": ZERO,
+                "refund_amount": actual_amount,
+                "gateway_refund_amount": actual_amount,
+                "wallet_refund_amount": ZERO,
+                "status": RefundRecord.Status.REQUESTED,
+                "requested_at": timezone.now(),
+                "provider_payload": {
+                    "reason": "Captured gateway amount did not match immutable installment attempt.",
+                    "expected_gateway_amount": str(attempt.gateway_amount),
+                    "actual_gateway_amount": str(actual_amount),
+                    "currency": currency,
+                    "capture_payload": payload or {},
+                },
+            },
+        )
+        if not attempt.provider_payment_id and attempt.status != PaymentAttempt.Status.CAPTURED:
+            attempt.provider_payment_id = razorpay_payment_id
+        if created and attempt.status != PaymentAttempt.Status.CAPTURED:
+            attempt.status = PaymentAttempt.Status.REFUND_PENDING
+        attempt.save(update_fields=["provider_payment_id", "status", "updated_at"])
+
+    if not created:
+        return record
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": amount_paise,
+                "notes": {
+                    "airway_refund_record_id": str(record.pk),
+                    "airway_attempt_id": str(attempt.pk),
+                    "reason": "Final installment captured amount mismatch",
+                },
+            },
+        )
+        if not provider_refund.get("id"):
+            raise ValueError("Razorpay did not return a refund ID.")
+        return _persist_refund_submission(
+            record_id=record.pk,
+            provider_refund=provider_refund,
+            attempt_id=attempt.pk if attempt.status != PaymentAttempt.Status.CAPTURED else None,
+        )
+    except Exception as exc:
+        logger.exception("Mismatched final-payment refund failed for attempt %s", attempt.pk)
+        return _persist_refund_submission(
+            record_id=record.pk,
+            submission_error=exc,
+            attempt_id=attempt.pk if attempt.status != PaymentAttempt.Status.CAPTURED else None,
+        )
+
+
+def refund_duplicate_final_capture(*, attempt_id, razorpay_payment_id, provider_order_id, payload):
+    """Refund a second distinct capture against an already-settled installment."""
+    import razorpay
+    from django.conf import settings
+    from .models import RefundRecord
+
+    with transaction.atomic():
+        attempt = PaymentAttempt.objects.select_for_update().select_related(
+            "installment__financial_plan__booking",
+        ).get(pk=attempt_id)
+        if attempt.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        if attempt.status != PaymentAttempt.Status.CAPTURED:
+            raise InstallmentPaymentError("The original installment capture is not settled.")
+        if attempt.provider_payment_id == razorpay_payment_id:
+            return None
+        booking = attempt.installment.financial_plan.booking
+        refund_amount = attempt.gateway_amount
+        record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"duplicate-final-capture:attempt:{attempt.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment_attempt": attempt,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": refund_amount,
+                "platform_fee": ZERO,
+                "refund_amount": refund_amount,
+                "gateway_refund_amount": refund_amount,
+                "wallet_refund_amount": ZERO,
+                "status": (
+                    RefundRecord.Status.REQUESTED if refund_amount > ZERO
+                    else RefundRecord.Status.PROCESSED
+                ),
+                "requested_at": timezone.now(),
+                "processed_at": timezone.now() if refund_amount == ZERO else None,
+                "provider_payload": {"reason": "Duplicate captured payment against an already settled installment."},
+            },
+        )
+    if not created or refund_amount <= ZERO:
+        return record
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": int(refund_amount * 100),
+                "notes": {
+                    "airway_refund_record_id": str(record.pk),
+                    "airway_attempt_id": str(attempt.pk),
+                    "reason": "Duplicate final-balance capture",
+                },
+            },
+        )
+        if not provider_refund.get("id"):
+            raise ValueError("Razorpay did not return a refund ID.")
+        return _persist_refund_submission(
+            record_id=record.pk, provider_refund=provider_refund,
+        )
+    except Exception as exc:
+        logger.exception("Duplicate final-payment refund failed for attempt %s", attempt.pk)
+        return _persist_refund_submission(
+            record_id=record.pk, submission_error=exc,
+        )
+
+
+def refund_late_final_capture(*, attempt_id, razorpay_payment_id, provider_order_id, payload):
+    """Refund a capture that arrives after its attempt was failed and wallet released."""
+    import razorpay
+    from django.conf import settings
+    from .models import RefundRecord
+
+    with transaction.atomic():
+        attempt = PaymentAttempt.objects.select_for_update().select_related(
+            "installment__financial_plan__booking",
+        ).get(pk=attempt_id)
+        if attempt.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        if attempt.status == PaymentAttempt.Status.CAPTURED:
+            return None
+        if attempt.status not in (
+            PaymentAttempt.Status.FAILED,
+            PaymentAttempt.Status.REFUND_PENDING,
+            PaymentAttempt.Status.REFUNDED,
+        ):
+            raise InstallmentPaymentError("Attempt is not in a failed or refund-reconciliation state.")
+        booking = attempt.installment.financial_plan.booking
+        refund_amount = attempt.gateway_amount
+        record, created = RefundRecord.objects.get_or_create(
+            idempotency_key=f"late-final-capture:attempt:{attempt.pk}:{razorpay_payment_id}",
+            defaults={
+                "booking": booking,
+                "payment_attempt": attempt,
+                "reason": RefundRecord.Reason.PAYMENT_RECONCILIATION,
+                "gross_amount": refund_amount,
+                "platform_fee": ZERO,
+                "refund_amount": refund_amount,
+                "gateway_refund_amount": refund_amount,
+                "wallet_refund_amount": ZERO,
+                "status": (
+                    RefundRecord.Status.REQUESTED if refund_amount > ZERO
+                    else RefundRecord.Status.PROCESSED
+                ),
+                "requested_at": timezone.now(),
+                "processed_at": timezone.now() if refund_amount == ZERO else None,
+                "provider_payload": {"reason": "Capture arrived after failed attempt and wallet release."},
+            },
+        )
+        if not attempt.provider_payment_id:
+            attempt.provider_payment_id = razorpay_payment_id
+        if created:
+            attempt.status = (
+                PaymentAttempt.Status.REFUND_PENDING
+                if refund_amount > ZERO else PaymentAttempt.Status.REFUNDED
+            )
+        attempt.provider_payload = payload or {}
+        attempt.save(update_fields=["provider_payment_id", "status", "provider_payload", "updated_at"])
+
+    if not created or refund_amount <= ZERO:
+        return record
+    try:
+        gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        provider_refund = gateway.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": int(refund_amount * 100),
+                "notes": {
+                    "airway_refund_record_id": str(record.pk),
+                    "airway_attempt_id": str(attempt.pk),
+                    "reason": "Late capture after failed final-balance attempt",
+                },
+            },
+        )
+        if not provider_refund.get("id"):
+            raise ValueError("Razorpay did not return a refund ID.")
+        return _persist_refund_submission(
+            record_id=record.pk,
+            provider_refund=provider_refund,
+            attempt_id=attempt.pk,
+        )
+    except Exception as exc:
+        logger.exception("Late final-payment refund failed for attempt %s", attempt.pk)
+        return _persist_refund_submission(
+            record_id=record.pk,
+            submission_error=exc,
+            attempt_id=attempt.pk,
+        )
+
+
+def mark_final_balance_attempt_failed(*, attempt_id, provider_order_id, payload=None):
+    """Record a failed gateway attempt without changing service completion."""
+    with transaction.atomic():
+        attempt_ref = PaymentAttempt.objects.select_related(
+            "installment__financial_plan",
+        ).get(pk=attempt_id)
+        Booking.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan.booking_id,
+        )
+        BookingFinancialPlan.objects.select_for_update().get(
+            pk=attempt_ref.installment.financial_plan_id,
+        )
+        installment = PaymentInstallment.objects.select_for_update().get(
+            pk=attempt_ref.installment_id,
+        )
+        attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt_id)
+        if attempt.provider_order_id != provider_order_id:
+            raise InstallmentPaymentError("Razorpay order ID does not match this attempt.")
+        if attempt.status in (
+            PaymentAttempt.Status.CAPTURED,
+            PaymentAttempt.Status.REFUND_PENDING,
+            PaymentAttempt.Status.REFUNDED,
+            PaymentAttempt.Status.FAILED,
+        ):
+            return attempt
+        attempt.status = PaymentAttempt.Status.FAILED
+        attempt.failed_at = timezone.now()
+        attempt.provider_payload = payload or {}
+        attempt.save(update_fields=["status", "failed_at", "provider_payload", "updated_at"])
+        installment.status = (
+            PaymentInstallment.Status.PARTIALLY_PAID
+            if installment.amount_captured > ZERO else PaymentInstallment.Status.DUE
+        )
+        installment.save(update_fields=["status", "updated_at"])
+    _release_wallet(attempt, "Final payment attempt failed")
+    return attempt

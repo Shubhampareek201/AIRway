@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -23,6 +24,34 @@ from apps.notifications.models import Notification
 from apps.accounts.models import Address
 from apps.catalog.audience import validate_beauty_audience
 
+logger = logging.getLogger(__name__)
+
+
+def _booking_payment_summary(booking):
+    from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+
+    try:
+        plan = booking.financial_plan
+    except BookingFinancialPlan.DoesNotExist:
+        return None
+    installments = {row.kind: row for row in plan.installments.all()}
+    advance = installments.get(PaymentInstallment.Kind.ADVANCE)
+    final = installments.get(PaymentInstallment.Kind.FINAL_BALANCE)
+    final_due = final.amount_due if final else plan.balance_due
+    final_captured = final.amount_captured if final else plan.balance_captured
+    return {
+        "currency": plan.currency,
+        "gross_total": str(plan.gross_total),
+        "advance_due": str(plan.advance_due),
+        "advance_captured": str(plan.advance_captured),
+        "advance_status": advance.status if advance else "not_created",
+        "final_balance_due": str(final_due),
+        "final_balance_captured": str(final_captured),
+        "final_balance_outstanding": str(max(final_due - final_captured, Decimal("0.00"))),
+        "final_balance_status": final.status if final else "not_created",
+        "requires_service_otp": True,
+    }
+
 
 class BookingViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -30,9 +59,10 @@ class BookingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         queryset = Booking.objects.filter(customer=user).select_related(
-            "service", "variant", "address", "assignment__worker__user"
+            "service", "variant", "address", "assignment__worker__user", "financial_plan"
         ).prefetch_related(
-            "booking_addons__addon", "form_responses__form_field", "status_history"
+            "booking_addons__addon", "form_responses__form_field", "status_history",
+            "financial_plan__installments",
         )
 
         status_param = self.request.query_params.get("status")
@@ -49,54 +79,292 @@ class BookingViewSet(viewsets.ModelViewSet):
         return BookingDetailSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        booking = serializer.save()
+        """
+        Preserve the established booking API for existing app clients.
 
-        detail_serializer = BookingDetailSerializer(booking, context={"request": request})
-        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+        Split-payment checkout is an explicit, versioned entry point so older
+        clients continue to receive the existing dispatch-first behaviour
+        until their checkout UI has been migrated.
+        """
+        response = super().create(request, *args, **kwargs)
+        if response.status_code != status.HTTP_201_CREATED or not isinstance(response.data, dict):
+            return response
+        booking = self.get_queryset().get(pk=response.data["id"])
+        detail = BookingDetailSerializer(
+            booking, context={"request": request},
+        ).data
+        response.data = detail
+        return response
+
+    @action(detail=False, methods=["post"], url_path="checkout")
+    def checkout(self, request):
+        """Create a booking enrolled in the 50/50 payment-first lifecycle."""
+        from apps.payments.lifecycle import (
+            PaymentLifecycleError,
+            create_financial_plan,
+        )
+
+        try:
+            with transaction.atomic():
+                serializer = BookingCreateSerializer(
+                    data=request.data,
+                    context={
+                        "request": request,
+                        "defer_worker_dispatch": True,
+                    },
+                )
+                serializer.is_valid(raise_exception=True)
+                booking = serializer.save()
+                financial_plan = create_financial_plan(booking)
+        except PaymentLifecycleError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        detail = BookingDetailSerializer(
+            booking, context={"request": request},
+        ).data
+        detail.update({
+            "payment_required": financial_plan.advance_due > 0,
+            "advance_due": str(financial_plan.advance_due),
+            "balance_due": str(financial_plan.balance_due),
+            "dispatch": [],
+            "next_step": (
+                "Pay the booking advance. Worker offers will be created only "
+                "after capture is verified."
+            ),
+        })
+        return Response(detail, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
-        from apps.bookings.models import WorkerOffer
+        from apps.payments.lifecycle import (
+            PaymentLifecycleError,
+            create_customer_cancellation_refund_record,
+            customer_cancellation_terms,
+        )
+        from apps.payments.models import Payment, RefundRecord
+        from apps.bookings.models import BookingAssignment, OrderItem
+
+        visible_booking = self.get_object()
+        refund_record = None
+        refund_created = False
+        terms = None
+
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().get(
+                pk=visible_booking.pk, customer=request.user,
+            )
+            # A parent-order line cannot be cancelled independently until the
+            # order-level partial-cancellation/refund workflow is implemented.
+            if OrderItem.objects.filter(booking=booking).exists():
+                return Response(
+                    {"detail": "This service belongs to a multi-service order. Contact AIRway support to change the order safely."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            serializer = BookingCancelSerializer(
+                data=request.data, context={"booking": booking},
+            )
+            serializer.is_valid(raise_exception=True)
+            assignment = BookingAssignment.objects.select_for_update().filter(
+                booking=booking,
+            ).first()
+            if (
+                booking.status in (Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED)
+                or (assignment and assignment.started_at)
+            ):
+                return Response(
+                    {"detail": "A service cannot be cancelled after its start OTP has been verified. You can raise a support or dispute request."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            reason = serializer.validated_data.get("reason", "")
+            payment = Payment.objects.select_for_update().filter(
+                booking=booking, status=Payment.Status.PAID,
+            ).first()
+            collected_amount = payment.amount if payment else Decimal("0.00")
+            try:
+                terms = customer_cancellation_terms(
+                    booking.scheduled_at,
+                    collected_amount,
+                    worker_accepted=bool(assignment and assignment.accepted_at),
+                    now=timezone.now(),
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            if payment and collected_amount > 0 and terms["refund_amount"] > 0:
+                refund_record, refund_created = create_customer_cancellation_refund_record(
+                    booking=booking, payment=payment, terms=terms,
+                )
+
+            old_status = booking.status
+            now = timezone.now()
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = now
+            booking.cancellation_reason = reason
+            booking.cancelled_by = request.user
+            booking.save(update_fields=[
+                "status", "cancelled_at", "cancellation_reason",
+                "cancelled_by", "updated_at",
+            ])
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                from_status=old_status,
+                to_status=Booking.Status.CANCELLED,
+                changed_by=request.user,
+                note=(
+                    f"Cancelled by customer. Reason: {reason}. "
+                    f"Refund policy: {terms['policy']}; "
+                    f"collected: {collected_amount}; "
+                    f"refund: {terms['refund_amount']}; "
+                    f"platform fee: {terms['platform_fee']}."
+                ),
+            )
+            Notification.objects.create(
+                user=request.user,
+                type=Notification.Type.BOOKING_CANCELLED,
+                title="Booking Cancelled",
+                body="Your service booking has been cancelled.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id},
+            )
+
+        # Expire offers only after releasing the booking lock. Worker acceptance
+        # locks offer then booking; taking those locks in the reverse order here
+        # would create a cancellation/acceptance deadlock.
+        WorkerOffer.objects.filter(
+            booking_id=booking.pk, status=WorkerOffer.Status.PENDING,
+        ).update(
+            status=WorkerOffer.Status.EXPIRED, responded_at=timezone.now(),
+        )
+
+        # Network I/O must happen after the database transaction. The refund
+        # record is durable first, so a provider timeout can be reconciled.
+        provider_error = None
+        if refund_record and refund_record.refund_amount > 0 and refund_created:
+            if not payment.razorpay_payment_id:
+                provider_error = "Captured payment has no Razorpay payment ID; manual reconciliation is required."
+                refund_record.status = RefundRecord.Status.FAILED
+                refund_record.provider_payload = {
+                    **(refund_record.provider_payload or {}),
+                    "submission_error": provider_error,
+                }
+                refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
+            else:
+                try:
+                    import razorpay
+                    from django.conf import settings
+                    gateway = razorpay.Client(
+                        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+                    )
+                    provider_refund = gateway.payment.refund(
+                        payment.razorpay_payment_id,
+                        {
+                            "amount": int(refund_record.refund_amount * 100),
+                            "notes": {
+                                "airway_refund_record_id": str(refund_record.pk),
+                                "airway_booking_id": str(booking.pk),
+                                "airway_policy": terms["policy"],
+                            },
+                        },
+                    )
+                    provider_refund_id = provider_refund.get("id")
+                    provider_status = provider_refund.get("status")
+                    if not provider_refund_id:
+                        raise ValueError("Razorpay did not return a refund ID.")
+                    refund_record.provider_refund_id = provider_refund_id
+                    if provider_status == "processed":
+                        refund_record.status = RefundRecord.Status.PROCESSED
+                        refund_record.processed_at = timezone.now()
+                    elif provider_status == "failed":
+                        refund_record.status = RefundRecord.Status.FAILED
+                    else:
+                        refund_record.status = RefundRecord.Status.PENDING
+                    refund_record.provider_payload = provider_refund
+                    refund_record.save(update_fields=[
+                        "provider_refund_id", "status", "processed_at",
+                        "provider_payload", "updated_at",
+                    ])
+                except Exception:
+                    logger.exception(
+                        "Razorpay refund submission failed for booking %s / refund %s",
+                        booking.pk, refund_record.pk,
+                    )
+                    provider_error = (
+                        "Cancellation succeeded, but refund submission needs AIRway support reconciliation."
+                    )
+                    refund_record.status = RefundRecord.Status.FAILED
+                    refund_record.provider_payload = {
+                        **(refund_record.provider_payload or {}),
+                        "submission_error": provider_error,
+                    }
+                    refund_record.save(update_fields=["status", "provider_payload", "updated_at"])
+
+        booking.refresh_from_db()
+        refund_status = (
+            refund_record.status if refund_record
+            else ("not_refundable" if collected_amount > 0 else "not_paid")
+        )
+        response_data = {
+            "detail": "Booking cancelled successfully.",
+            "status": booking.status,
+            "refund_policy": terms["policy"],
+            "refund_amount": str(terms["refund_amount"]),
+            "platform_fee": str(terms["platform_fee"]),
+            "refund_status": refund_status,
+        }
+        if refund_record:
+            response_data["refund_id"] = refund_record.pk
+        if provider_error:
+            response_data["refund_message"] = provider_error
+        elif refund_record and refund_record.status == RefundRecord.Status.PROCESSED:
+            response_data["refund_message"] = "Razorpay has confirmed the refund as processed."
+        elif refund_record and refund_record.status == RefundRecord.Status.FAILED:
+            response_data["refund_message"] = "Razorpay refund failed. AIRway support must reconcile this refund."
+        elif refund_record and refund_record.refund_amount > 0:
+            response_data["refund_message"] = "Refund request submitted to Razorpay; final settlement is pending provider confirmation."
+        return Response(response_data)
+ 
+    @action(detail=True, methods=["post"], url_path="service-otp")
+    def service_otp(self, request, pk=None):
+        """Allow only the booking customer to retrieve a short-lived service OTP."""
+        from apps.payments.lifecycle import PaymentLifecycleError, issue_service_otp
+        from apps.payments.models import BookingFinancialPlan, ServiceOTPChallenge
 
         booking = self.get_object()
-        serializer = BookingCancelSerializer(data=request.data, context={"booking": booking})
-        serializer.is_valid(raise_exception=True)
+        if not BookingFinancialPlan.objects.filter(booking=booking).exists():
+            return Response(
+                {"detail": "This booking is not enrolled in the split-payment service lifecycle."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
-        reason = serializer.validated_data.get("reason", "")
-        old_status = booking.status
+        purpose = request.data.get("purpose")
+        if purpose not in (ServiceOTPChallenge.Purpose.START, ServiceOTPChallenge.Purpose.COMPLETION):
+            return Response(
+                {"purpose": ["Choose 'start' or 'completion'."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            challenge, otp = issue_service_otp(
+                booking_id=booking.pk,
+                purpose=purpose,
+                requested_by=request.user,
+            )
+        except PaymentLifecycleError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        booking.status = Booking.Status.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.cancellation_reason = reason
-        booking.cancelled_by = request.user
-        booking.save()
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.CANCELLED,
-            changed_by=request.user,
-            note=f"Cancelled by customer. Reason: {reason}",
-        )
-
-        # Cancel all pending worker offers for this booking
-        WorkerOffer.objects.filter(booking=booking, status=WorkerOffer.Status.PENDING).update(
-            status=WorkerOffer.Status.EXPIRED,
-            responded_at=timezone.now(),
-        )
-
-        Notification.objects.create(
-            user=request.user,
-            type=Notification.Type.BOOKING_CANCELLED,
-            title="Booking Cancelled",
-            body="Your booking has been cancelled.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
-
-        return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
+        # This response is customer-authenticated and is the one-time handoff
+        # for the customer to share with the assigned professional in person.
+        return Response({
+            "booking_id": booking.pk,
+            "purpose": purpose,
+            "otp": otp,
+            "expires_at": challenge.expires_at.isoformat(),
+            "message": "Share this OTP with your assigned professional only at the relevant service milestone.",
+        })
 
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm_booking(self, request, pk=None):
@@ -122,6 +390,28 @@ class BookingViewSet(viewsets.ModelViewSet):
                 {"detail": f"Booking cannot be confirmed in {booking.get_status_display()} state."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Split-payment bookings are dispatched only by the verified-capture
+        # handler. A manual confirm must never advance state or pretend offers
+        # were created while the advance installment remains unpaid.
+        from apps.payments.models import BookingFinancialPlan, PaymentInstallment
+        financial_plan = BookingFinancialPlan.objects.filter(
+            booking=booking,
+        ).first()
+        if financial_plan:
+            advance = PaymentInstallment.objects.filter(
+                financial_plan=financial_plan,
+                kind=PaymentInstallment.Kind.ADVANCE,
+            ).first()
+            if (
+                advance is None
+                or advance.status != PaymentInstallment.Status.PAID
+                or advance.amount_captured < advance.amount_due
+            ):
+                return Response(
+                    {"detail": "Pay the booking advance before confirming or dispatching this booking."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         old_status = booking.status
         booking.status = Booking.Status.CONFIRMED
@@ -249,9 +539,15 @@ class BookingViewSet(viewsets.ModelViewSet):
     def track(self, request, pk=None):
         booking = self.get_object()
 
+        payment_summary = _booking_payment_summary(booking)
         if not hasattr(booking, "assignment") or not booking.assignment:
             return Response(
-                {"detail": "No worker assigned to this booking yet.", "is_assigned": False},
+                {
+                    "detail": "No worker assigned to this booking yet.",
+                    "is_assigned": False,
+                    "status": booking.status,
+                    "payment_summary": payment_summary,
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -266,6 +562,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "worker_phone": worker.user.phone,
             "worker_rating": float(worker.rating_avg) if worker.rating_avg else None,
             "status": booking.status,
+            "payment_summary": payment_summary,
             "assigned_at": assignment.assigned_at,
             "started_at": assignment.started_at,
             # Live worker GPS is not stored by the current WorkerProfile model.
@@ -309,6 +606,45 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": f"Cannot start job in {booking.get_status_display()} state."},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Every worker-facing start route must enforce the same customer OTP
+        # gate for split-payment bookings. Do not allow this legacy booking
+        # action to bypass WorkerJobStartView's verification.
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking_id=booking.pk).exists():
+            if not assignment.accepted_at:
+                return Response(
+                    {"detail": "Accept the job before starting work."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer start OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="start",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            assignment.refresh_from_db()
+            return Response({
+                "detail": "Job started after OTP verification.",
+                "status": booking.status,
+                "started_at": assignment.started_at,
+            })
+
+        if not assignment.accepted_at:
+            return Response(
+                {"detail": "Accept the job before starting work."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         old_status = booking.status
@@ -378,6 +714,33 @@ class BookingViewSet(viewsets.ModelViewSet):
                 {"detail": f"Cannot complete job in {booking.get_status_display()} state."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Enforce completion OTP on this alternate route as well; otherwise a
+        # worker could bypass the split-payment completion/final-balance gate.
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking_id=booking.pk).exists():
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer completion OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="completion",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            assignment.refresh_from_db()
+            return Response({
+                "detail": "Job completed after OTP verification.",
+                "status": booking.status,
+                "completed_at": assignment.completed_at,
+            })
 
         old_status = booking.status
         booking.status = Booking.Status.COMPLETED
@@ -528,10 +891,17 @@ class CustomerCheckoutView(APIView):
                 )
             occupied_order_intervals.extend(intervals)
 
+        # Keep the existing multi-service checkout contract intact for
+        # deployed clients. The new split-payment lifecycle is opt-in until
+        # the Flutter checkout and payment screens are migrated together.
+        split_payment = request.data.get("payment_flow") == "split_v1"
         order = Order.objects.create(
             customer=request.user,
             address=cart.address,
-            status=Order.Status.AWAITING_ASSIGNMENT,
+            status=(
+                Order.Status.AWAITING_PAYMENT
+                if split_payment else Order.Status.AWAITING_ASSIGNMENT
+            ),
         )
         subtotal = Decimal("0")
         tax_total = Decimal("0")
@@ -588,6 +958,10 @@ class CustomerCheckoutView(APIView):
             booking.pricing_snapshot = base_snapshot
             booking.save(update_fields=["pricing_snapshot", "updated_at"])
 
+            if split_payment:
+                from apps.payments.lifecycle import create_financial_plan
+                create_financial_plan(booking)
+
             OrderItem.objects.create(
                 order=order,
                 booking=booking,
@@ -612,17 +986,33 @@ class CustomerCheckoutView(APIView):
             grand_total += line_total
 
             # Dispatch is deferred until every OrderItem exists.
-            dispatch_results.append({"booking_id": booking.id, "offers_sent": 0})
+            if not split_payment:
+                dispatch_results.append({"booking_id": booking.id, "offers_sent": 0})
 
         order.subtotal = subtotal
         order.tax_amount = tax_total
         order.total_amount = grand_total
         order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
 
-        from apps.bookings.dispatcher import DispatcherService
-        order_offers = DispatcherService.dispatch_order(order)
-        if dispatch_results:
-            dispatch_results[0]["offers_sent"] = len(order_offers)
+        advance_due_total = Decimal("0.00")
+        if split_payment:
+            advance_due_total = sum(
+                (
+                    item.booking.financial_plan.advance_due
+                    for item in order.items.select_related("booking")
+                ),
+                Decimal("0.00"),
+            )
+        else:
+            # Dispatch only after every order line has been persisted. The
+            # dispatcher retains its all-lines eligibility and one-worker
+            # atomic assignment rules.
+            from apps.bookings.dispatcher import DispatcherService
+            offers = DispatcherService.dispatch_order(order)
+            dispatch_results = [
+                {"booking_id": item.booking_id, "offers_sent": len(offers)}
+                for item in order.items.all()
+            ]
 
         cart.items.all().delete()
         return Response({
@@ -633,6 +1023,9 @@ class CustomerCheckoutView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "advance_due_total": str(advance_due_total) if split_payment else None,
+            "payment_required": split_payment,
+            "payment_flow": "split_v1" if split_payment else "legacy",
             "items": [
                 {
                     "order_item_id": row.id,
@@ -645,11 +1038,54 @@ class CustomerCheckoutView(APIView):
             ],
             "dispatch": dispatch_results,
             "next_step": (
-                "Worker offers sent. Track assignment in the order; payment unlocks after every service is assigned."
-                if any(row["offers_sent"] for row in dispatch_results)
-                else "No single approved worker is currently eligible and available for every service and selected time in this order. The order is waiting for worker assignment."
+                "Pay the booking advance. Worker offers will be created only after "
+                "the complete advance is captured and reconciled."
+                if split_payment
+                else "Worker offers have been dispatched. Payment follows the existing worker-acceptance flow."
             ),
         }, status=status.HTTP_201_CREATED)
+
+
+class CustomerOrderLineCancellationView(APIView):
+    """Cancel one service line from a split-payment parent order."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, order_id, booking_id):
+        from apps.payments.order_cancellation import (
+            OrderLineCancellationError,
+            cancel_parent_order_line,
+        )
+
+        reason = request.data.get("reason", "")
+        if not isinstance(reason, str):
+            return Response(
+                {"reason": ["Provide a valid cancellation reason."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = cancel_parent_order_line(
+                order_id=order_id,
+                booking_id=booking_id,
+                customer=request.user,
+                reason=reason,
+            )
+        except Order.DoesNotExist:
+            return Response(
+                {"detail": "Order not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Booking.DoesNotExist:
+            return Response(
+                {"detail": "Service line not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except OrderLineCancellationError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class CustomerOrderDetailView(APIView):
@@ -657,20 +1093,69 @@ class CustomerOrderDetailView(APIView):
 
     def get(self, request, order_id):
         order = get_object_or_404(
-            Order.objects.prefetch_related("items__booking__assignment__worker__user"),
+            Order.objects.prefetch_related(
+                "items__booking__assignment__worker__user",
+                "items__booking__financial_plan__installments",
+            ),
             pk=order_id,
             customer=request.user,
         )
+        from apps.payments.lifecycle import customer_cancellation_terms
+        from apps.payments.models import (
+            BookingFinancialPlan, Payment, PaymentAllocation, PaymentInstallment,
+        )
+        order_payment = Payment.objects.filter(order=order).first()
         items = []
+        active_total = Decimal("0.00")
         for row in order.items.all():
             booking = row.booking
             assignment = getattr(booking, "assignment", None)
+            plan = BookingFinancialPlan.objects.filter(booking=booking).first()
+            allocation = None
+            if plan and order_payment and order_payment.status == Payment.Status.PAID:
+                allocation = PaymentAllocation.objects.filter(
+                    installment__financial_plan=plan,
+                    installment__kind=PaymentInstallment.Kind.ADVANCE,
+                    payment=order_payment,
+                ).first()
+            collected = allocation.amount if allocation else Decimal("0.00")
+            cancellation_available = bool(
+                plan
+                and booking.can_cancel
+                and not (assignment and assignment.started_at)
+                and not (order_payment and order_payment.status == Payment.Status.PENDING)
+                and not (
+                    order_payment and order_payment.status == Payment.Status.PAID
+                    and allocation is None
+                )
+                and not (
+                    order_payment and order_payment.status == Payment.Status.REFUNDED
+                    and allocation is not None
+                )
+            )
+            cancellation_terms = None
+            if cancellation_available:
+                terms = customer_cancellation_terms(
+                    booking.scheduled_at,
+                    collected,
+                    worker_accepted=bool(assignment and assignment.accepted_at),
+                )
+                cancellation_terms = {
+                    **terms,
+                    "collected_amount": str(collected),
+                    "refund_amount": str(terms["refund_amount"]),
+                    "platform_fee": str(terms["platform_fee"]),
+                }
+            if booking.status != Booking.Status.CANCELLED:
+                active_total += row.line_total
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
                 "service": row.service_snapshot,
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
+                "can_cancel": cancellation_available,
+                "cancellation_terms": cancellation_terms,
                 "worker": (
                     {
                         "id": assignment.worker_id,
@@ -680,6 +1165,7 @@ class CustomerOrderDetailView(APIView):
                 ),
                 "quantity": row.quantity,
                 "line_total": str(row.line_total),
+                "payment_summary": _booking_payment_summary(booking),
             })
         # GET endpoints must not advance order lifecycle state. Worker offer
         # acceptance performs the AWAITING_PAYMENT transition atomically.
@@ -690,6 +1176,8 @@ class CustomerOrderDetailView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "active_total_amount": str(active_total),
+            "partially_cancelled": bool((order.metadata or {}).get("partially_cancelled")),
             "items": items,
             "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
         })

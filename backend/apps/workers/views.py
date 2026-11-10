@@ -464,9 +464,12 @@ class WorkerJobDetailView(APIView):
         customer_answers = dict(booking.customer_answers or {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
+        from apps.payments.models import BookingFinancialPlan
+        requires_service_otp = BookingFinancialPlan.objects.filter(booking_id=booking.pk).exists()
         return Response({
             "id": assign.id,
 "booking_id": booking.id,
+            "requires_service_otp": requires_service_otp,
             "status": booking.status,
             "service_title": booking.service.title,
             "customer_name": booking.customer.name or booking.customer.phone,
@@ -559,6 +562,27 @@ class WorkerJobRejectView(APIView):
             return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.ASSIGNED:
             return Response({"detail": "Job must be assigned to be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # This legacy endpoint directly cancels a booking and has no refund or
+        # parent-order reassignment orchestration. Do not let it bypass the
+        # split-payment refund policy or cancel only one line of a shared order.
+        from apps.bookings.models import OrderItem
+        from apps.payments.models import BookingFinancialPlan
+        if (
+            BookingFinancialPlan.objects.filter(booking=booking).exists()
+            or OrderItem.objects.filter(booking=booking).exists()
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "This booking uses the split-payment or parent-order lifecycle. "
+                        "Use the supported offer-decline flow before acceptance, or contact "
+                        "AIRway support for reassignment and refund handling."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         old = booking.status
         booking.status = Booking.Status.CANCELLED
         booking.cancellation_reason = request.data.get("reason", "")
@@ -570,6 +594,44 @@ class WorkerJobRejectView(APIView):
             changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
         )
         return Response({"detail": "Job rejected.", "status": booking.status})
+
+
+class WorkerJobUnavailableView(APIView):
+    """Release an accepted split-payment assignment before service start."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        reason = request.data.get("reason")
+        if not isinstance(reason, str) or len(reason.strip()) < 10:
+            return Response(
+                {"reason": ["Please provide at least 10 characters explaining why you cannot fulfil this job."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(reason) > 500:
+            return Response(
+                {"reason": ["Reason must be 500 characters or fewer."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not BookingAssignment.objects.filter(
+            pk=job_id, worker__user=request.user,
+        ).exists():
+            return Response({"detail": "Job assignment not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            from .unavailability import (
+                WorkerUnavailabilityError,
+                release_split_payment_assignment,
+            )
+            result = release_split_payment_assignment(
+                assignment_id=job_id,
+                worker_user=request.user,
+                reason=reason.strip(),
+            )
+        except BookingAssignment.DoesNotExist:
+            return Response({"detail": "Job assignment not found."}, status=status.HTTP_404_NOT_FOUND)
+        except WorkerUnavailabilityError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class WorkerJobStartView(APIView):
@@ -603,6 +665,26 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking=booking).exists():
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer start OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="start",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Job started after OTP verification.", "status": booking.status})
+
         now = timezone.now()
         assign.started_at = now
         assign.save(update_fields=["started_at"])
@@ -635,6 +717,30 @@ class WorkerJobCompleteView(APIView):
         if booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": "Job must be in progress."}, status=status.HTTP_400_BAD_REQUEST)
         notes = request.data.get("notes", "")
+
+        from apps.payments.models import BookingFinancialPlan
+        if BookingFinancialPlan.objects.filter(booking=booking).exists():
+            from apps.payments.lifecycle import PaymentLifecycleError, verify_service_otp
+            otp = request.data.get("otp")
+            if not isinstance(otp, str) or not otp:
+                return Response(
+                    {"otp": ["A valid customer completion OTP is required."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                booking = verify_service_otp(
+                    booking_id=booking.pk,
+                    purpose="completion",
+                    code=otp,
+                    worker_user=request.user,
+                )
+            except PaymentLifecycleError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            if notes:
+                booking.worker_notes = notes
+                booking.save(update_fields=["worker_notes", "updated_at"])
+            return Response({"detail": "Job completed after OTP verification.", "status": booking.status})
+
         assign.completed_at = timezone.now()
         assign.save()
         old = booking.status
@@ -924,6 +1030,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
                     Booking.objects.select_for_update(of=("self",)).filter(order_item__order=order)
+                    .exclude(status=Booking.Status.CANCELLED)
                     .select_related("service__category", "variant", "address__zone__city")
                     .order_by("pk")
                 )
@@ -1021,18 +1128,32 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 ).exclude(pk=offer.pk).update(
                     status=WorkerOffer.Status.WITHDRAWN, responded_at=now
                 )
-                order.status = Order.Status.AWAITING_PAYMENT
+                from apps.payments.models import BookingFinancialPlan
+                is_split_order = all(
+                    BookingFinancialPlan.objects.filter(booking_id=row.pk).exists()
+                    for row in bookings
+                )
+                order.status = (
+                    Order.Status.AWAITING_SERVICE
+                    if is_split_order
+                    else Order.Status.AWAITING_PAYMENT
+                )
                 order.save(update_fields=["status", "updated_at"])
 
         if not order:
-            try:
-                from apps.payments.views import create_or_get_payment
-                _, payment_order_id, _ = create_or_get_payment(
-                    booking=bookings[0], customer=bookings[0].customer,
-                    trigger_source="worker_accept",
-                )
-            except Exception as exc:
-                logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
+            from apps.payments.models import BookingFinancialPlan
+            has_financial_plan = BookingFinancialPlan.objects.filter(
+                booking_id=bookings[0].pk
+            ).exists()
+            if not has_financial_plan:
+                try:
+                    from apps.payments.views import create_or_get_payment
+                    _, payment_order_id, _ = create_or_get_payment(
+                        booking=bookings[0], customer=bookings[0].customer,
+                        trigger_source="worker_accept",
+                    )
+                except Exception as exc:
+                    logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
 
         response_data = {
             "status": "accepted",
@@ -1064,10 +1185,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
         if order_id and not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
             from apps.bookings.models import Order
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            if not offers:
+                finalize_exhausted_dispatch(order_id=order_id)
         elif not order_id and not WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING).exists():
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            if not offers:
+                finalize_exhausted_dispatch(booking_id=booking_id)
         return Response({"detail": "Offer declined."})
 
     @action(detail=True, methods=["post"], url_path="withdraw")
@@ -1090,10 +1217,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
         if order_id and not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
             from apps.bookings.models import Order
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            if not offers:
+                finalize_exhausted_dispatch(order_id=order_id)
         elif not order_id and not WorkerOffer.objects.filter(
             booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING
         ).exists():
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            if not offers:
+                finalize_exhausted_dispatch(booking_id=booking_id)
         return Response({"detail": "Offer withdrawn."})
