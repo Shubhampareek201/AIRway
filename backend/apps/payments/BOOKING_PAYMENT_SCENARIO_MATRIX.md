@@ -329,3 +329,19 @@ The following are not specified by the currently confirmed policy and must not b
 8. Whether the customer may change address/fulfilment mode after advance payment.
 
 Until approved, safe defaults are: no hidden urgent fee; no invented SLA; no automatic no-show penalty; no late fee/auto-debit; no unapproved reschedule charge; route ambiguous cases to support and preserve the ledger.
+
+
+## 12. Accepted-worker unavailability and dispatch exhaustion
+
+The split-payment worker lifecycle now treats a worker who becomes unavailable after acceptance but before start-OTP verification as a reassignment event, not a direct cancellation:
+
+- Worker must own the accepted assignment, provide a reason, and the service must not have started.
+- Parent orders release every active line together and withdraw the order-level offer; completed/cancelled lines remain untouched.
+- Captured advances and immutable financial plans remain in place while AIRway retries the existing Admin-configured priority batches.
+- Every dispatch batch is persisted, including a batch with zero eligible workers. Empty batches are paced using the configured offer-expiry interval so the periodic task cannot consume all batches every minute.
+- After the configured maximum batches are exhausted and no offer remains pending/accepted, split-payment bookings are platform-cancelled and every captured advance allocation is refunded in full, with no ₹40 customer-cancellation fee.
+- Refunds reconcile separately by gateway and wallet tender. Missing/mismatched allocations leave the booking open for support reconciliation and generate an operations notification; they are never silently treated as refunded.
+- A transient dispatch exception remains retryable. The periodic recovery task continues dispatch and applies the same terminal rule after the tracked batches are exhausted.
+- After start OTP, automatic worker release/cancellation is blocked; support/dispute handling remains the approved path.
+
+The dispatch-attempt ledger is read-only in Admin so operations can inspect batch number, candidate count, outcome, and retry timing.
