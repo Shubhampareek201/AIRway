@@ -39,6 +39,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       if (jobs.isEmpty) {
         if (mounted) {
           setState(() {
+            _jobDetail = null;
             _loading = false;
           });
         }
@@ -53,6 +54,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       if (matchingJobs.isEmpty) {
         if (mounted) {
           setState(() {
+            _jobDetail = null;
             _error = 'This job is no longer assigned to your account.';
             _loading = false;
           });
