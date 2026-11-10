@@ -160,7 +160,27 @@ def _process_verified_payment(
         })
 
     with transaction.atomic():
+        # Keep aggregate lock order consistent with cancellation and service
+        # lifecycle operations: parent Order (or standalone Booking) first,
+        # then Payment. Reversing this order can deadlock a concurrent
+        # parent-order line cancellation against payment verification.
+        locked_parent_order = None
+        locked_booking = None
+        if payment.order_id:
+            locked_parent_order = Order.objects.select_for_update().get(
+                pk=payment.order_id,
+            )
+        elif payment.booking_id:
+            locked_booking = Booking.objects.select_for_update().get(
+                pk=payment.booking_id,
+            )
+
         payment = Payment.objects.select_for_update().get(pk=payment.pk)
+        if (
+            payment.order_id != (locked_parent_order.pk if locked_parent_order else None)
+            or payment.booking_id != (locked_booking.pk if locked_booking else None)
+        ):
+            raise ValueError("Payment ownership changed during verification.")
         if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
             return Response({
                 "detail": "Payment already settled.",
@@ -319,7 +339,9 @@ def _process_verified_payment(
                     ])
                     plan.advance_captured = installment.amount_due
                     plan.save(update_fields=["advance_captured", "updated_at"])
-                booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+                booking = locked_booking
+                if booking is None:
+                    raise ValueError("Split booking payment has no locked booking.")
                 if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
                     raise ValueError("Booking is no longer eligible for dispatch after payment.")
                 def dispatch_paid_booking(booking_id):
@@ -354,7 +376,9 @@ def _process_verified_payment(
             )
             from decimal import Decimal
 
-            parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            parent_order = locked_parent_order
+            if parent_order is None:
+                raise ValueError("Parent-order payment has no locked order.")
             order_items = list(
                 parent_order.items.exclude(booking__status=Booking.Status.CANCELLED)
                 .select_related("booking").order_by("id")
@@ -443,7 +467,9 @@ def _process_verified_payment(
 
         # Parent-order payment: legacy full-payment settlement.
         if payment.order_id:
-            parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            parent_order = locked_parent_order
+            if parent_order is None:
+                raise ValueError("Parent-order payment has no locked order.")
             order_bookings = list(
                 parent_order.items.select_related("booking").order_by("id")
             )
