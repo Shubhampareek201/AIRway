@@ -545,12 +545,16 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(attempt.status, PaymentAttempt.Status.REFUNDED)
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="webhook_test_secret")
-    def test_refund_webhook_with_wrong_amount_does_not_change_refund_ledger(self):
+    @patch("apps.payments.installment_service.razorpay.Client")
+    def test_refund_webhook_with_wrong_amount_does_not_change_refund_ledger(self, client_class):
         attempt = self._attempt(order_id="order_refund_webhook_mismatch")
         mark_final_balance_attempt_failed(
             attempt_id=attempt.pk, provider_order_id="order_refund_webhook_mismatch",
             payload={"event": "payment.failed"},
         )
+        client_class.return_value.payment.refund.return_value = {
+            "id": "rfnd_webhook_mismatch", "status": "pending",
+        }
         refund = refund_late_final_capture(
             attempt_id=attempt.pk,
             razorpay_payment_id="pay_refund_webhook_mismatch",
