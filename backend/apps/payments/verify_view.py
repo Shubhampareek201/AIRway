@@ -747,9 +747,14 @@ class PaymentWebhookView(APIView):
                 from .models import PaymentAttempt, RefundRecord
                 refund_notes = refund_entity.get("notes") or {}
                 record_id = refund_notes.get("airway_refund_record_id")
+                try:
+                    record_id = int(record_id) if record_id not in (None, "") else None
+                except (TypeError, ValueError):
+                    logger.warning("Refund webhook contains an invalid AIRway refund record ID.")
+                    record_id = -1
                 # Resolve without a row lock first so we can acquire the
                 # linked attempt before locking the refund ledger row.
-                lookup = RefundRecord.objects.select_related("payment").filter(pk=record_id).first() if record_id else None
+                lookup = RefundRecord.objects.select_related("payment").filter(pk=record_id).first() if record_id is not None else None
                 # If signed notes explicitly name a record, an unknown ID must
                 # not fall back to another record merely by provider refund ID.
                 if not record_id:
