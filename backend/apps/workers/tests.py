@@ -816,6 +816,21 @@ class WorkerJobLifecycleTest(TestCase):
             subtotal=Decimal("2000.00"),
             total_amount=Decimal("2000.00"),
         )
+        cancelled_anchor = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.CANCELLED,
+        )
+        OrderItem.objects.create(
+            order=order,
+            booking=cancelled_anchor,
+            quantity=1,
+            line_subtotal=Decimal("1000.00"),
+            line_total=Decimal("1000.00"),
+        )
         bookings = []
         advances = []
         for index in range(2):
@@ -869,7 +884,8 @@ class WorkerJobLifecycleTest(TestCase):
             for advance in advances
         ]
         WorkerOffer.objects.create(
-            booking=bookings[0],
+            # Parent-order offers may remain anchored to a line cancelled earlier.
+            booking=cancelled_anchor,
             order=order,
             worker=self.worker_profile,
             batch_number=3,
