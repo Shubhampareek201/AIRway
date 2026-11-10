@@ -424,7 +424,9 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
             order.save(update_fields=["status", "metadata", "updated_at"])
 
     # Submit gateway refunds after the cancellation/refund ledger transaction.
-    # Provider failures remain visible in the refund ledger for reconciliation.
+    # Separate provider submission from local persistence: if Razorpay accepted
+    # a refund but our DB write fails, reconciliation must discover it by notes;
+    # we must never reinterpret that as a safe reason to submit another refund.
     for record_id, payment_id, amount_paise, attempt_id in created_refunds:
         try:
             import razorpay
@@ -441,19 +443,38 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
             )
             if not provider_refund.get("id"):
                 raise ValueError("Razorpay did not return a refund ID.")
+        except Exception as exc:
+            logger.exception("Platform unavailability refund submission failed for record %s", record_id)
+            try:
+                from apps.payments.installment_service import _persist_refund_submission
+                _persist_refund_submission(
+                    record_id=record_id,
+                    submission_error=exc,
+                    attempt_id=attempt_id,
+                )
+            except Exception:
+                # Keep the durable REQUESTED record for read-only provider
+                # reconciliation if even local error persistence is unavailable.
+                logger.exception(
+                    "Could not persist refund submission failure for record %s; reconciliation is required",
+                    record_id,
+                )
+            continue
+
+        try:
             from apps.payments.installment_service import _persist_refund_submission
             _persist_refund_submission(
                 record_id=record_id,
                 provider_refund=provider_refund,
                 attempt_id=attempt_id,
             )
-        except Exception as exc:
-            logger.exception("Platform unavailability refund submission failed for record %s", record_id)
-            from apps.payments.installment_service import _persist_refund_submission
-            _persist_refund_submission(
-                record_id=record_id,
-                submission_error=exc,
-                attempt_id=attempt_id,
+        except Exception:
+            # The gateway may already have accepted the refund. Leave the
+            # durable record unresolved so reconcile_refund_record can locate
+            # the provider refund by airway_refund_record_id notes.
+            logger.exception(
+                "Razorpay refund submitted but AIRway could not persist response for record %s",
+                record_id,
             )
     unresolved = RefundRecord.objects.filter(
         pk__in=refund_record_ids,
