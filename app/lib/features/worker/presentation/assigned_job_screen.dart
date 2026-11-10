@@ -254,14 +254,15 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         reason: reason,
       );
       if (mounted) {
+        final message = result['status'] == 'cancelled'
+            ? (result['refund_status'] == 'processed'
+                ? 'No professional was available. The job was cancelled and the full refund was processed.'
+                : 'The job was cancelled. The full refund is recorded and awaiting payment reconciliation.')
+            : result['dispatch_pending'] == true
+                ? 'Assignment released. AIRway will retry finding another professional.'
+                : 'Assignment released. AIRway is finding another professional.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result['dispatch_pending'] == true
-                  ? 'Assignment released. AIRway will retry finding another professional.'
-                  : 'Assignment released. AIRway is finding another professional.',
-            ),
-          ),
+          SnackBar(content: Text(message)),
         );
         await _loadAssignedJob();
       }
