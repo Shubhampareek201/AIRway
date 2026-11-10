@@ -728,6 +728,118 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertEqual(refund.platform_fee, Decimal("0.00"))
         self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
 
+    def test_parent_order_unavailability_releases_and_refunds_every_active_line(self):
+        from decimal import Decimal
+        from unittest.mock import Mock, patch
+        from apps.bookings.models import DispatchConfiguration, Order, OrderItem
+        from apps.payments.models import (
+            Payment, PaymentAllocation, PaymentInstallment, RefundRecord,
+        )
+        from apps.payments.lifecycle import create_financial_plan
+
+        order = Order.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            status=Order.Status.AWAITING_SERVICE,
+            subtotal=Decimal("2000.00"),
+            total_amount=Decimal("2000.00"),
+        )
+        bookings = []
+        advances = []
+        for index in range(2):
+            booking = Booking.objects.create(
+                customer=self.customer_user,
+                address=self.customer_address,
+                service=self.service,
+                booking_mode="scheduled",
+                scheduled_at=_tomorrow_at_noon() + timedelta(hours=index * 2),
+                status=Booking.Status.ASSIGNED,
+                pricing_snapshot={"total": "1000.00"},
+            )
+            OrderItem.objects.create(
+                order=order,
+                booking=booking,
+                quantity=1,
+                line_subtotal=Decimal("1000.00"),
+                line_total=Decimal("1000.00"),
+            )
+            BookingAssignment.objects.create(
+                booking=booking,
+                worker=self.worker_profile,
+                accepted_at=timezone.now(),
+            )
+            plan = create_financial_plan(booking)
+            advance = plan.installments.get(kind=PaymentInstallment.Kind.ADVANCE)
+            advance.status = PaymentInstallment.Status.PAID
+            advance.amount_captured = Decimal("500.00")
+            advance.save(update_fields=["status", "amount_captured", "updated_at"])
+            plan.advance_captured = Decimal("500.00")
+            plan.save(update_fields=["advance_captured", "updated_at"])
+            bookings.append(booking)
+            advances.append(advance)
+
+        payment = Payment.objects.create(
+            order=order,
+            customer=self.customer_user,
+            amount=Decimal("1000.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_parent_worker_unavailable",
+        )
+        allocations = [
+            PaymentAllocation.objects.create(
+                payment=payment,
+                installment=advance,
+                amount=Decimal("500.00"),
+                gateway_amount=Decimal("500.00"),
+                wallet_amount=Decimal("0.00"),
+            )
+            for advance in advances
+        ]
+        WorkerOffer.objects.create(
+            booking=bookings[0],
+            order=order,
+            worker=self.worker_profile,
+            batch_number=3,
+            status=WorkerOffer.Status.ACCEPTED,
+            expires_at=timezone.now() + timedelta(minutes=5),
+            accepted_at=timezone.now(),
+        )
+        config = DispatchConfiguration.get_solo()
+        config.is_enabled = True
+        config.max_batches = 3
+        config.save()
+
+        refund_mock = Mock(side_effect=[
+            {"id": "rfnd_parent_line_1", "status": "processed", "amount": 50000},
+            {"id": "rfnd_parent_line_2", "status": "processed", "amount": 50000},
+        ])
+        client = Mock()
+        client.payment.refund = refund_mock
+
+        self.client.force_authenticate(user=self.worker_user)
+        with patch("razorpay.Client", return_value=client):
+            response = self.client.post(
+                f"/api/v1/workers/jobs/{bookings[0].assignment.pk}/unavailable/",
+                data={"reason": "Vehicle breakdown; unable to complete the order."},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "cancelled")
+        self.assertEqual(response.data["refund_status"], "processed")
+        self.assertEqual(refund_mock.call_count, 2)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CANCELLED)
+        for booking, allocation in zip(bookings, allocations):
+            booking.refresh_from_db()
+            self.assertEqual(booking.status, Booking.Status.CANCELLED)
+            self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
+            refund = RefundRecord.objects.get(payment_allocation=allocation)
+            self.assertEqual(refund.refund_amount, Decimal("500.00"))
+            self.assertEqual(refund.platform_fee, Decimal("0.00"))
+            self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
+
     def test_worker_cannot_release_split_payment_job_after_start(self):
         booking = Booking.objects.create(
             customer=self.customer_user,
