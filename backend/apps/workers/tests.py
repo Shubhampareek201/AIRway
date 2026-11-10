@@ -597,6 +597,74 @@ class WorkerJobLifecycleTest(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.IN_PROGRESS)
 
+    def test_worker_can_release_accepted_split_payment_job_before_start(self):
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+        from apps.payments.lifecycle import create_financial_plan
+        create_financial_plan(booking)
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/unavailable/",
+            data={"reason": "Vehicle breakdown; cannot reach customer."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "awaiting_assignment")
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+        self.assertFalse(BookingAssignment.objects.filter(pk=assignment.pk).exists())
+        self.assertTrue(
+            WorkerOffer.objects.filter(
+                booking=booking, order__isnull=True,
+                status=WorkerOffer.Status.PENDING,
+            ).exists()
+        )
+
+    def test_worker_cannot_release_split_payment_job_after_start(self):
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            started_at=timezone.now(),
+        )
+        from apps.payments.lifecycle import create_financial_plan
+        create_financial_plan(booking)
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/unavailable/",
+            data={"reason": "Unexpected emergency after start."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409, response.data)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+        self.assertTrue(BookingAssignment.objects.filter(pk=assignment.pk).exists())
+
     def test_worker_cannot_use_legacy_reject_for_split_payment_booking(self):
         """Legacy rejection must not bypass split-payment refund/reassignment handling."""
         booking = Booking.objects.create(
