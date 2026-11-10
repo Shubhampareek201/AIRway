@@ -596,6 +596,40 @@ class WorkerJobRejectView(APIView):
         return Response({"detail": "Job rejected.", "status": booking.status})
 
 
+class WorkerJobUnavailableView(APIView):
+    """Release an accepted split-payment assignment before service start."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        reason = request.data.get("reason")
+        if not isinstance(reason, str) or len(reason.strip()) < 10:
+            return Response(
+                {"reason": ["Please provide at least 10 characters explaining why you cannot fulfil this job."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(reason) > 500:
+            return Response(
+                {"reason": ["Reason must be 500 characters or fewer."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            from .unavailability import (
+                WorkerUnavailabilityError,
+                release_split_payment_assignment,
+            )
+            result = release_split_payment_assignment(
+                assignment_id=job_id,
+                worker_user=request.user,
+                reason=reason.strip(),
+            )
+        except BookingAssignment.DoesNotExist:
+            return Response({"detail": "Job assignment not found."}, status=status.HTTP_404_NOT_FOUND)
+        except WorkerUnavailabilityError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(result, status=status.HTTP_200_OK)
+
+
 class WorkerJobStartView(APIView):
     permission_classes = [IsAuthenticated]
 
