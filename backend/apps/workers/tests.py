@@ -638,6 +638,96 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
         self.assertTrue(booking.financial_plan.state == "active")
 
+    def test_exhausted_dispatch_batches_cancel_and_fully_refund_advance(self):
+        from decimal import Decimal
+        from unittest.mock import patch
+        from apps.bookings.models import DispatchConfiguration
+        from apps.payments.models import (
+            Payment, PaymentAllocation, PaymentInstallment, RefundRecord,
+        )
+        from apps.payments.lifecycle import create_financial_plan
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+        plan = create_financial_plan(booking)
+        advance = plan.installments.get(kind=PaymentInstallment.Kind.ADVANCE)
+        advance.status = PaymentInstallment.Status.PAID
+        advance.amount_captured = Decimal("500.00")
+        advance.save(update_fields=["status", "amount_captured", "updated_at"])
+        plan.advance_captured = Decimal("500.00")
+        plan.save(update_fields=["advance_captured", "updated_at"])
+        payment = Payment.objects.create(
+            booking=booking,
+            customer=self.customer_user,
+            amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_worker_unavailable",
+        )
+        allocation = PaymentAllocation.objects.create(
+            payment=payment,
+            installment=advance,
+            amount=Decimal("500.00"),
+            gateway_amount=Decimal("500.00"),
+            wallet_amount=Decimal("0.00"),
+        )
+        WorkerOffer.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            batch_number=3,
+            status=WorkerOffer.Status.ACCEPTED,
+            expires_at=timezone.now() + timedelta(minutes=5),
+            accepted_at=timezone.now(),
+        )
+        config = DispatchConfiguration.get_solo()
+        config.is_enabled = True
+        config.max_batches = 3
+        config.save()
+
+        gateway = type("Gateway", (), {})()
+        gateway.payment = type(
+            "PaymentGateway",
+            (),
+            {"refund": lambda _self, payment_id, payload: {
+                "id": "rfnd_worker_unavailable",
+                "status": "processed",
+                "amount": payload["amount"],
+            }},
+        )()
+        client = type("RazorpayClient", (), {"payment": gateway.payment})()
+
+        self.client.force_authenticate(user=self.worker_user)
+        with patch("razorpay.Client", return_value=client):
+            response = self.client.post(
+                f"/api/v1/workers/jobs/{assignment.pk}/unavailable/",
+                data={"reason": "Vehicle breakdown; unable to reach the customer."},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "cancelled")
+        booking.refresh_from_db()
+        plan.refresh_from_db()
+        refund = RefundRecord.objects.get(payment_allocation=allocation)
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(plan.state, "cancelled")
+        self.assertEqual(refund.reason, RefundRecord.Reason.PROVIDER_UNAVAILABLE)
+        self.assertEqual(refund.refund_amount, Decimal("500.00"))
+        self.assertEqual(refund.platform_fee, Decimal("0.00"))
+        self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
+
     def test_worker_cannot_release_split_payment_job_after_start(self):
         booking = Booking.objects.create(
             customer=self.customer_user,
