@@ -111,7 +111,7 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
         for booking in bookings:
             Notification.objects.create(
                 user=booking.customer,
-                type=Notification.Type.BOOKING_ASSIGNED,
+                type=Notification.Type.WORKER_UNAVAILABLE,
                 title="Finding Another Professional",
                 body="Your professional is unavailable. AIRway is arranging another eligible professional; your payment remains protected.",
                 channel=Notification.Channel.IN_APP,
