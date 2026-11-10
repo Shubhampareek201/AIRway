@@ -679,6 +679,7 @@ class FinalBalanceAttemptTests(TestCase):
             "rfnd_processed_during_lookup",
         )
 
+    @patch("apps.payments.installment_service.razorpay.Client")
     def test_missing_provider_refund_stays_pending_without_resubmission(self, client_class):
         payment = Payment.objects.create(
             booking=self.booking, customer=self.customer, amount=Decimal("500.00"),
