@@ -528,8 +528,16 @@ def _notify_refund_reconciliation_required(*, booking_ids, order_id, detail):
     from apps.notifications.models import Notification
 
     staff_users = get_user_model().objects.filter(is_staff=True, is_active=True)
-    notifications = [
-        Notification(
+    notifications = []
+    for user in staff_users:
+        if Notification.objects.filter(
+            user=user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Platform refund reconciliation required",
+            body=detail[:1000],
+        ).exists():
+            continue
+        notifications.append(Notification(
             user=user,
             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
             title="Platform refund reconciliation required",
@@ -540,8 +548,6 @@ def _notify_refund_reconciliation_required(*, booking_ids, order_id, detail):
                 "order_id": order_id,
                 "booking_ids": list(booking_ids),
             },
-        )
-        for user in staff_users
-    ]
+        ))
     if notifications:
         Notification.objects.bulk_create(notifications)
