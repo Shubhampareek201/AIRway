@@ -1,6 +1,8 @@
 """Safe reassignment when an accepted split-payment worker cannot fulfil a job."""
 import logging
+from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -8,7 +10,9 @@ from apps.bookings.models import (
     Booking, BookingAssignment, BookingStatusHistory, Order, OrderItem, WorkerOffer,
 )
 from apps.notifications.models import Notification
-from apps.payments.models import BookingFinancialPlan
+from apps.payments.models import (
+    BookingFinancialPlan, PaymentAllocation, PaymentInstallment, RefundRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +127,7 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
             )
 
     dispatch_pending = False
+    dispatch_error = False
     try:
         from apps.bookings.dispatcher import DispatcherService
         if order:
@@ -132,10 +137,42 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
         dispatch_pending = not bool(offers)
     except Exception:
         dispatch_pending = True
+        dispatch_error = True
         logger.exception(
             "Re-dispatch failed after worker unavailability for assignment %s",
             assignment_id,
         )
+
+    # Only the configured maximum number of completed offer batches is a
+    # terminal dispatch outcome. No eligible worker right now, disabled
+    # dispatch, and transient errors remain retryable and must not trigger a
+    # premature customer cancellation/refund.
+    if not dispatch_error and _configured_batches_exhausted(
+        order_id=order_id, booking_ids=booking_ids,
+    ):
+        refunded = _cancel_unfulfillable_bookings(
+            order_id=order_id,
+            booking_ids=booking_ids,
+            worker_user=worker_user,
+            reason=reason,
+        )
+        if refunded:
+            return {
+                "detail": "No eligible professional accepted within the configured dispatch batches. The service was cancelled and a full refund has been initiated.",
+                "status": "cancelled",
+                "booking_ids": booking_ids,
+                "order_id": order_id,
+                "dispatch_pending": False,
+                "refund_status": "initiated",
+            }
+        return {
+            "detail": "No eligible professional accepted within the configured dispatch batches. AIRway needs to reconcile the captured payment before closing this service; support has been notified.",
+            "status": "awaiting_assignment",
+            "booking_ids": booking_ids,
+            "order_id": order_id,
+            "dispatch_pending": True,
+            "refund_status": "reconciliation_required",
+        }
 
     return {
         "detail": "Assignment released. AIRway is looking for another eligible professional.",
@@ -144,3 +181,221 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
         "order_id": order_id,
         "dispatch_pending": dispatch_pending,
     }
+
+
+def _configured_batches_exhausted(*, order_id, booking_ids):
+    from django.db.models import Max
+    from apps.bookings.models import DispatchConfiguration
+
+    config = DispatchConfiguration.get_solo()
+    if not config.is_enabled or config.max_batches < 1:
+        return False
+    offers = WorkerOffer.objects.filter(
+        order_id=order_id if order_id else None,
+        booking_id__in=booking_ids,
+    )
+    if offers.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
+        return False
+    last_batch = offers.aggregate(value=Max("batch_number"))["value"] or 0
+    return last_batch >= config.max_batches
+
+
+def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason):
+    """Cancel all affected lines and create full, source-reconciled refunds."""
+    from apps.bookings.models import BookingStatusHistory
+    from apps.notifications.models import Notification
+    from apps.wallet.models import Wallet, WalletTransaction
+    from apps.payments.order_cancellation import _credit_wallet_refund
+
+    created_refunds = []
+    with transaction.atomic():
+        order = (
+            Order.objects.select_for_update().get(pk=order_id)
+            if order_id else None
+        )
+        bookings = list(
+            Booking.objects.select_for_update().filter(pk__in=booking_ids).order_by("pk")
+        )
+        if len(bookings) != len(booking_ids) or any(
+            booking.status != Booking.Status.CONFIRMED
+            or BookingAssignment.objects.filter(booking=booking).exists()
+            for booking in bookings
+        ):
+            return False
+
+        plans = {
+            plan.booking_id: plan
+            for plan in BookingFinancialPlan.objects.select_for_update().filter(
+                booking_id__in=booking_ids,
+            ).order_by("booking_id")
+        }
+        if len(plans) != len(booking_ids):
+            return False
+
+        allocations = list(
+            PaymentAllocation.objects.select_for_update().filter(
+                installment__financial_plan__booking_id__in=booking_ids,
+                installment__kind=PaymentInstallment.Kind.ADVANCE,
+            ).select_related(
+                "installment__financial_plan__booking",
+                "payment",
+                "payment_attempt",
+            ).order_by("pk")
+        )
+        allocation_totals = {booking_id: Decimal("0.00") for booking_id in booking_ids}
+        for allocation in allocations:
+            allocation_totals[allocation.installment.financial_plan.booking_id] += allocation.amount
+
+        # Captured advance money must reconcile to immutable allocations before
+        # any terminal state is committed. Otherwise support must investigate.
+        for booking_id, plan in plans.items():
+            if allocation_totals[booking_id] != plan.advance_captured:
+                logger.error(
+                    "Cannot auto-refund unavailable booking %s: captured advance %s != allocated %s",
+                    booking_id, plan.advance_captured, allocation_totals[booking_id],
+                )
+                return False
+
+        for allocation in allocations:
+            booking = allocation.installment.financial_plan.booking
+            gateway_amount = allocation.gateway_amount
+            wallet_amount = allocation.wallet_amount
+            amount = allocation.amount
+            record, created = RefundRecord.objects.get_or_create(
+                idempotency_key=f"worker-unavailable:booking:{booking.pk}:allocation:{allocation.pk}",
+                defaults={
+                    "booking": booking,
+                    "payment": allocation.payment,
+                    "payment_attempt": allocation.payment_attempt,
+                    "payment_allocation": allocation,
+                    "reason": RefundRecord.Reason.PROVIDER_UNAVAILABLE,
+                    "gross_amount": amount,
+                    "platform_fee": Decimal("0.00"),
+                    "refund_amount": amount,
+                    "gateway_refund_amount": gateway_amount,
+                    "wallet_refund_amount": wallet_amount,
+                    "status": (
+                        RefundRecord.Status.REQUESTED
+                        if gateway_amount > 0 else RefundRecord.Status.PROCESSED
+                    ),
+                    "requested_at": timezone.now(),
+                    "processed_at": timezone.now() if gateway_amount <= 0 else None,
+                    "provider_payload": {
+                        "policy": "platform_unavailable_full_refund",
+                        "worker_id": getattr(worker_user, "worker_profile", None).pk
+                        if hasattr(worker_user, "worker_profile") else None,
+                        "allocation_id": allocation.pk,
+                    },
+                },
+            )
+            if not created:
+                # A pre-existing record may be a legitimate retry only if its
+                # immutable amounts and source links still match exactly.
+                if (
+                    record.refund_amount != amount
+                    or record.gateway_refund_amount != gateway_amount
+                    or record.wallet_refund_amount != wallet_amount
+                    or record.payment_allocation_id != allocation.pk
+                ):
+                    raise WorkerUnavailabilityError(
+                        "An existing refund record conflicts with the captured allocation. Contact AIRway support."
+                    )
+            _credit_wallet_refund(record)
+            if gateway_amount > 0 and record.status != RefundRecord.Status.PROCESSED:
+                payment_id = (
+                    allocation.payment.razorpay_payment_id
+                    if allocation.payment_id
+                    else allocation.payment_attempt.provider_payment_id
+                )
+                if not payment_id:
+                    record.status = RefundRecord.Status.PENDING
+                    record.provider_payload = {
+                        **(record.provider_payload or {}),
+                        "reconciliation_required": "Captured gateway payment ID is missing.",
+                    }
+                    record.save(update_fields=["status", "provider_payload", "updated_at"])
+                elif created:
+                    created_refunds.append((record.pk, payment_id, int(gateway_amount * 100), allocation.payment_attempt_id))
+
+        for booking in bookings:
+            plan = plans[booking.pk]
+            plan.refunded_total += allocation_totals[booking.pk]
+            plan.state = BookingFinancialPlan.State.CANCELLED
+            plan.save(update_fields=["refunded_total", "state", "updated_at"])
+            PaymentInstallment.objects.filter(
+                financial_plan=plan,
+                kind=PaymentInstallment.Kind.FINAL_BALANCE,
+            ).exclude(status=PaymentInstallment.Status.PAID).update(
+                status=PaymentInstallment.Status.CANCELLED,
+            )
+            old_status = booking.status
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = timezone.now()
+            booking.cancelled_by = worker_user
+            booking.cancellation_reason = (
+                f"Platform cancellation: no eligible professional accepted within configured dispatch batches. "
+                f"Worker report: {reason[:400]}"
+            )
+            booking.save(update_fields=[
+                "status", "cancelled_at", "cancelled_by",
+                "cancellation_reason", "updated_at",
+            ])
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                from_status=old_status,
+                to_status=Booking.Status.CANCELLED,
+                changed_by=worker_user,
+                note="Platform cancellation after configured dispatch batches exhausted; full advance refund initiated.",
+            )
+            Notification.objects.create(
+                user=booking.customer,
+                type=Notification.Type.BOOKING_CANCELLED,
+                title="Service Cancelled — Full Refund",
+                body="AIRway could not find an eligible professional. Your captured booking advance is being fully refunded; no cancellation fee was deducted.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "order_id": order_id, "refund_policy": "platform_unavailable_full_refund"},
+            )
+
+        if order:
+            order.status = Order.Status.CANCELLED
+            order.metadata = {
+                **(order.metadata or {}),
+                "fully_cancelled": True,
+                "cancellation_reason": "dispatch_batches_exhausted",
+                "refund_policy": "platform_unavailable_full_refund",
+            }
+            order.save(update_fields=["status", "metadata", "updated_at"])
+
+    # Submit gateway refunds after the cancellation/refund ledger transaction.
+    # Provider failures remain visible in the refund ledger for reconciliation.
+    for record_id, payment_id, amount_paise, attempt_id in created_refunds:
+        try:
+            import razorpay
+            gateway = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+            provider_refund = gateway.payment.refund(
+                payment_id,
+                {
+                    "amount": amount_paise,
+                    "notes": {
+                        "airway_refund_record_id": str(record_id),
+                        "reason": "Platform unable to fulfil before service start",
+                    },
+                },
+            )
+            if not provider_refund.get("id"):
+                raise ValueError("Razorpay did not return a refund ID.")
+            from apps.payments.installment_service import _persist_refund_submission
+            _persist_refund_submission(
+                record_id=record_id,
+                provider_refund=provider_refund,
+                attempt_id=attempt_id,
+            )
+        except Exception as exc:
+            logger.exception("Platform unavailability refund submission failed for record %s", record_id)
+            from apps.payments.installment_service import _persist_refund_submission
+            _persist_refund_submission(
+                record_id=record_id,
+                submission_error=exc,
+                attempt_id=attempt_id,
+            )
+    return True
