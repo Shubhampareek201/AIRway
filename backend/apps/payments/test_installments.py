@@ -584,7 +584,7 @@ class FinalBalanceAttemptTests(TestCase):
         refund.refresh_from_db()
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(refund.status, RefundRecord.Status.PENDING)
-        self.assertIsNone(refund.provider_refund_id)
+        self.assertEqual(refund.provider_refund_id, "rfnd_webhook_mismatch")
 
     @patch("apps.payments.installment_service.razorpay.Client")
     def test_refund_reconciliation_matches_provider_note_and_amount(self, client_class):
