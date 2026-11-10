@@ -9,6 +9,7 @@ class Notification(TimeStampedModel):
     class Type(models.TextChoices):
         BOOKING_CONFIRMED = "booking_confirmed", "Booking Confirmed"
         BOOKING_ASSIGNED = "booking_assigned", "Worker Assigned"
+        WORKER_UNAVAILABLE = "worker_unavailable", "Worker Unavailable"
         BOOKING_STARTED = "booking_started", "Service Started"
         BOOKING_COMPLETED = "booking_completed", "Service Completed"
         BOOKING_CANCELLED = "booking_cancelled", "Booking Cancelled"
