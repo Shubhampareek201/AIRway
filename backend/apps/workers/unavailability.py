@@ -314,11 +314,27 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
 
         for allocation in allocations:
             booking = allocation.installment.financial_plan.booking
+            refund_key = f"worker-unavailable:booking:{booking.pk}:allocation:{allocation.pk}"
+            conflicting_refund = RefundRecord.objects.filter(
+                payment_allocation=allocation,
+            ).exclude(idempotency_key=refund_key).exists()
+            if conflicting_refund:
+                detail = (
+                    f"Booking {booking.pk} advance allocation {allocation.pk} already has "
+                    "a refund record from another lifecycle."
+                )
+                logger.error("Cannot auto-refund unavailable booking: %s", detail)
+                _notify_refund_reconciliation_required(
+                    booking_ids=[booking.pk],
+                    order_id=order_id,
+                    detail=detail,
+                )
+                return False
             gateway_amount = allocation.gateway_amount
             wallet_amount = allocation.wallet_amount
             amount = allocation.amount
             record, created = RefundRecord.objects.get_or_create(
-                idempotency_key=f"worker-unavailable:booking:{booking.pk}:allocation:{allocation.pk}",
+                idempotency_key=refund_key,
                 defaults={
                     "booking": booking,
                     "payment": allocation.payment,
