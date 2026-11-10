@@ -105,20 +105,21 @@ class DispatcherService:
         )
         already_offered = set(existing.values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
-        DispatchAttempt.objects.create(
-            booking=booking,
-            batch_number=batch_number,
-            candidate_count=len(candidates),
-            status=(
-                DispatchAttempt.Status.OFFERS_CREATED
-                if candidates else DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
-            ),
-            retry_after=(
-                timezone.now() + timedelta(minutes=expiry_minutes)
-                if not candidates else None
-            ),
-            details={"reason": "eligible_worker_batch" if candidates else "no_eligible_workers"},
-        )
+        if candidates or financial_plan:
+            DispatchAttempt.objects.create(
+                booking=booking,
+                batch_number=batch_number,
+                candidate_count=len(candidates),
+                status=(
+                    DispatchAttempt.Status.OFFERS_CREATED
+                    if candidates else DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
+                ),
+                retry_after=(
+                    timezone.now() + timedelta(minutes=expiry_minutes)
+                    if not candidates else None
+                ),
+                details={"reason": "eligible_worker_batch" if candidates else "no_eligible_workers"},
+            )
         if not candidates:
             return []
         return cls._create_offers(
@@ -239,20 +240,22 @@ class DispatcherService:
                 )
                 if eligible_ids else []
             )
-            DispatchAttempt.objects.create(
-                order=order,
-                batch_number=batch_number,
-                candidate_count=len(workers),
-                status=(
-                    DispatchAttempt.Status.OFFERS_CREATED
-                    if workers else DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
-                ),
-                retry_after=(
-                    timezone.now() + timedelta(minutes=expiry_minutes)
-                    if not workers else None
-                ),
-                details={"reason": "eligible_worker_batch" if workers else "no_eligible_workers"},
-            )
+            track_empty_batch = bool(plans) and all(plans)
+            if workers or track_empty_batch:
+                DispatchAttempt.objects.create(
+                    order=order,
+                    batch_number=batch_number,
+                    candidate_count=len(workers),
+                    status=(
+                        DispatchAttempt.Status.OFFERS_CREATED
+                        if workers else DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
+                    ),
+                    retry_after=(
+                        timezone.now() + timedelta(minutes=expiry_minutes)
+                        if not workers else None
+                    ),
+                    details={"reason": "eligible_worker_batch" if workers else "no_eligible_workers"},
+                )
             if not workers:
                 return []
             return cls._create_offers(
