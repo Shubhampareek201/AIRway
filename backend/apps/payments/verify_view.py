@@ -768,7 +768,7 @@ class PaymentWebhookView(APIView):
                             pk=lookup.payment_attempt_id,
                         ).first()
                     refund_record = (
-                        RefundRecord.objects.select_for_update().select_related(
+                        RefundRecord.objects.select_for_update(of=("self",)).select_related(
                             "payment", "payment_attempt",
                         ).filter(pk=lookup.pk).first()
                         if lookup else None
