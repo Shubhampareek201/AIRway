@@ -824,6 +824,51 @@ class FinalBalanceAttemptTests(TestCase):
         self.assertEqual(final.status, PaymentInstallment.Status.PAID)
         self.assertEqual(PaymentAttempt.objects.filter(installment=final).count(), 0)
 
+    def test_parent_order_completes_when_cancelled_line_balance_is_cancelled(self):
+        order = Order.objects.create(
+            customer=self.customer, address=self.address,
+            status=Order.Status.AWAITING_FINAL_PAYMENT, total_amount="1000.01",
+        )
+        cancelled_booking, _, cancelled_final = self._create_completed_booking(
+            "1000.00", order=order,
+        )
+        cancelled_booking.status = Booking.Status.CANCELLED
+        cancelled_booking.save(update_fields=["status", "updated_at"])
+        cancelled_final.status = PaymentInstallment.Status.CANCELLED
+        cancelled_final.save(update_fields=["status", "updated_at"])
+
+        active_booking, _, active_final = self._create_completed_booking(
+            "0.01", order=order,
+        )
+        active_booking.status = Booking.Status.IN_PROGRESS
+        active_booking.completed_at = None
+        active_booking.save(update_fields=["status", "completed_at", "updated_at"])
+        worker_user = User.objects.create_user(
+            phone="+919876540005", password="worker-password",
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED,
+        )
+        BookingAssignment.objects.create(
+            booking=active_booking, worker=worker, accepted_at=timezone.now(),
+        )
+        _, completion_code = issue_service_otp(
+            booking_id=active_booking.pk,
+            purpose="completion",
+            requested_by=self.customer,
+        )
+        verify_service_otp(
+            booking_id=active_booking.pk,
+            purpose="completion",
+            code=completion_code,
+            worker_user=worker_user,
+        )
+
+        active_final.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(active_final.status, PaymentInstallment.Status.PAID)
+        self.assertEqual(order.status, Order.Status.COMPLETED)
+
     def test_parent_order_completes_only_after_every_line_balance_is_paid(self):
         order = Order.objects.create(
             customer=self.customer, address=self.address,
