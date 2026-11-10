@@ -562,6 +562,27 @@ class WorkerJobRejectView(APIView):
             return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.ASSIGNED:
             return Response({"detail": "Job must be assigned to be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # This legacy endpoint directly cancels a booking and has no refund or
+        # parent-order reassignment orchestration. Do not let it bypass the
+        # split-payment refund policy or cancel only one line of a shared order.
+        from apps.bookings.models import OrderItem
+        from apps.payments.models import BookingFinancialPlan
+        if (
+            BookingFinancialPlan.objects.filter(booking=booking).exists()
+            or OrderItem.objects.filter(booking=booking).exists()
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "This booking uses the split-payment or parent-order lifecycle. "
+                        "Use the supported offer-decline flow before acceptance, or contact "
+                        "AIRway support for reassignment and refund handling."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         old = booking.status
         booking.status = Booking.Status.CANCELLED
         booking.cancellation_reason = request.data.get("reason", "")
