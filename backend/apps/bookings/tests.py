@@ -3892,3 +3892,35 @@ class ParentOrderLineCancellationTests(BookingAPITestMixin, TestCase):
         self.assertEqual(RefundRecord.objects.filter(booking=booking).count(), 1)
         self.assertEqual(client_class.return_value.payment.refund.call_count, 1)
 
+    def test_dispatch_failure_does_not_fail_committed_cancellation_or_skip_refund(self):
+        from unittest.mock import patch
+        from apps.payments.models import RefundRecord
+
+        order, items, _plans, _payment = self._create_paid_split_order()
+        booking = items[0].booking
+
+        with patch(
+            "apps.bookings.dispatcher.DispatcherService.dispatch_order",
+            side_effect=RuntimeError("temporary dispatch outage"),
+        ), patch("razorpay.Client") as client_class:
+            client_class.return_value.payment.refund.return_value = {
+                "id": "rfnd_dispatch_outage",
+                "status": "pending",
+            }
+            response = self.client.post(
+                f"/api/v1/bookings/orders/{order.pk}/items/{booking.pk}/cancel/",
+                {"reason": "Customer changed plans"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["dispatch_pending"])
+        booking.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+        refund = RefundRecord.objects.get(booking=booking)
+        self.assertEqual(refund.provider_refund_id, "rfnd_dispatch_outage")
+        self.assertEqual(client_class.return_value.payment.refund.call_count, 1)
+
+
