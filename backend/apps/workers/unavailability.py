@@ -150,20 +150,23 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
     if not dispatch_error and _configured_batches_exhausted(
         order_id=order_id, booking_ids=booking_ids,
     ):
-        refunded = _cancel_unfulfillable_bookings(
+        refund_status = _cancel_unfulfillable_bookings(
             order_id=order_id,
             booking_ids=booking_ids,
             worker_user=worker_user,
             reason=reason,
         )
-        if refunded:
+        if refund_status:
             return {
-                "detail": "No eligible professional accepted within the configured dispatch batches. The service was cancelled and a full refund has been initiated.",
+                "detail": (
+                    "No eligible professional accepted within the configured dispatch batches. "
+                    "The service was cancelled and the full captured advance is recorded for refund."
+                ),
                 "status": "cancelled",
                 "booking_ids": booking_ids,
                 "order_id": order_id,
                 "dispatch_pending": False,
-                "refund_status": "initiated",
+                "refund_status": refund_status,
             }
         return {
             "detail": "No eligible professional accepted within the configured dispatch batches. AIRway needs to reconcile the captured payment before closing this service; support has been notified.",
@@ -208,6 +211,7 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
     from apps.payments.order_cancellation import _credit_wallet_refund
 
     created_refunds = []
+    refund_record_ids = []
     with transaction.atomic():
         order = (
             Order.objects.select_for_update().get(pk=order_id)
@@ -233,7 +237,7 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
             return False
 
         allocations = list(
-            PaymentAllocation.objects.select_for_update().filter(
+            PaymentAllocation.objects.select_for_update(of=("self",)).filter(
                 installment__financial_plan__booking_id__in=booking_ids,
                 installment__kind=PaymentInstallment.Kind.ADVANCE,
             ).select_related(
@@ -300,6 +304,7 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
                     raise WorkerUnavailabilityError(
                         "An existing refund record conflicts with the captured allocation. Contact AIRway support."
                     )
+            refund_record_ids.append(record.pk)
             _credit_wallet_refund(record)
             if gateway_amount > 0 and record.status != RefundRecord.Status.PROCESSED:
                 payment_id = (
@@ -398,4 +403,12 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
                 submission_error=exc,
                 attempt_id=attempt_id,
             )
-    return True
+    unresolved = RefundRecord.objects.filter(
+        pk__in=refund_record_ids,
+        status__in=[
+            RefundRecord.Status.REQUESTED,
+            RefundRecord.Status.PENDING,
+            RefundRecord.Status.FAILED,
+        ],
+    ).exists()
+    return "pending_reconciliation" if unresolved else "processed"
