@@ -312,6 +312,8 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
                 )
                 return False
 
+        # Preflight every line before writing any refund or wallet ledger entry.
+        # A conflict on one line must not leave earlier lines partially refunded.
         for allocation in allocations:
             booking = allocation.installment.financial_plan.booking
             refund_key = f"worker-unavailable:booking:{booking.pk}:allocation:{allocation.pk}"
@@ -330,6 +332,10 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
                     detail=detail,
                 )
                 return False
+
+        for allocation in allocations:
+            booking = allocation.installment.financial_plan.booking
+            refund_key = f"worker-unavailable:booking:{booking.pk}:allocation:{allocation.pk}"
             gateway_amount = allocation.gateway_amount
             wallet_amount = allocation.wallet_amount
             amount = allocation.amount
@@ -354,24 +360,24 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
                     "processed_at": timezone.now() if gateway_amount <= 0 else None,
                     "provider_payload": {
                         "policy": "platform_unavailable_full_refund",
-                        "worker_id": getattr(worker_user, "worker_profile", None).pk
-                        if hasattr(worker_user, "worker_profile") else None,
+                        "worker_id": (
+                            getattr(worker_user, "worker_profile", None).pk
+                            if worker_user is not None and hasattr(worker_user, "worker_profile")
+                            else None
+                        ),
                         "allocation_id": allocation.pk,
                     },
                 },
             )
-            if not created:
-                # A pre-existing record may be a legitimate retry only if its
-                # immutable amounts and source links still match exactly.
-                if (
-                    record.refund_amount != amount
-                    or record.gateway_refund_amount != gateway_amount
-                    or record.wallet_refund_amount != wallet_amount
-                    or record.payment_allocation_id != allocation.pk
-                ):
-                    raise WorkerUnavailabilityError(
-                        "An existing refund record conflicts with the captured allocation. Contact AIRway support."
-                    )
+            if not created and (
+                record.refund_amount != amount
+                or record.gateway_refund_amount != gateway_amount
+                or record.wallet_refund_amount != wallet_amount
+                or record.payment_allocation_id != allocation.pk
+            ):
+                raise WorkerUnavailabilityError(
+                    "An existing refund record conflicts with the captured allocation. Contact AIRway support."
+                )
             refund_record_ids.append(record.pk)
             _credit_wallet_refund(record)
             if gateway_amount > 0 and record.status != RefundRecord.Status.PROCESSED:
@@ -388,7 +394,10 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
                     }
                     record.save(update_fields=["status", "provider_payload", "updated_at"])
                 elif created:
-                    created_refunds.append((record.pk, payment_id, int(gateway_amount * 100), allocation.payment_attempt_id))
+                    created_refunds.append((
+                        record.pk, payment_id, int(gateway_amount * 100),
+                        allocation.payment_attempt_id,
+                    ))
 
         for booking in bookings:
             plan = plans[booking.pk]
