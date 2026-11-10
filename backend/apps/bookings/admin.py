@@ -12,6 +12,7 @@ from .models import (
     Order,
     OrderItem,
     DispatchConfiguration,
+    DispatchAttempt,
 )
 
 
@@ -100,6 +101,30 @@ class DispatchConfigurationAdmin(ModelAdmin):
 
     def has_add_permission(self, request):
         return not DispatchConfiguration.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+
+@admin.register(DispatchAttempt)
+class DispatchAttemptAdmin(ModelAdmin):
+    list_display = (
+        "id", "order", "booking", "batch_number",
+        "candidate_count", "status", "retry_after", "created_at",
+    )
+    list_filter = ("status", "created_at")
+    search_fields = ("order__id", "booking__id")
+    readonly_fields = (
+        "order", "booking", "batch_number", "candidate_count",
+        "status", "retry_after", "details", "created_at", "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
