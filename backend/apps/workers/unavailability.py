@@ -196,8 +196,9 @@ def _configured_batches_exhausted(*, order_id, booking_ids):
     from apps.bookings.models import DispatchAttempt, DispatchConfiguration
 
     config = DispatchConfiguration.get_solo()
-    if not config.is_enabled or config.max_batches < 1:
+    if not config.is_enabled:
         return False
+    max_batches = max(int(config.max_batches or 1), 1)
     offers = (
         WorkerOffer.objects.filter(order_id=order_id)
         if order_id
@@ -214,7 +215,7 @@ def _configured_batches_exhausted(*, order_id, booking_ids):
     )
     last_offer_batch = offers.aggregate(value=Max("batch_number"))["value"] or 0
     last_attempt_batch = attempts.aggregate(value=Max("batch_number"))["value"] or 0
-    return max(last_offer_batch, last_attempt_batch) >= config.max_batches
+    return max(last_offer_batch, last_attempt_batch) >= max_batches
 
 
 def finalize_exhausted_dispatch(*, order_id=None, booking_id=None):
