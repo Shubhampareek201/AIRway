@@ -2735,6 +2735,44 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(len(offers), 5)
         self.assertEqual(WorkerOffer.objects.filter(booking=booking).count(), 5)
 
+    def test_dispatcher_records_and_paces_empty_eligible_worker_batches(self):
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.bookings.models import DispatchAttempt
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+
+        first_result = DispatcherService.dispatch_offers(booking)
+        self.assertEqual(first_result, [])
+        first_attempt = DispatchAttempt.objects.get(booking=booking, batch_number=1)
+        self.assertEqual(first_attempt.status, DispatchAttempt.Status.NO_ELIGIBLE_WORKERS)
+        self.assertEqual(first_attempt.candidate_count, 0)
+        self.assertGreater(first_attempt.retry_after, timezone.now())
+
+        # The periodic recovery task must not consume all configured batches
+        # by retrying an empty batch every minute.
+        second_result = DispatcherService.dispatch_offers(booking)
+        self.assertEqual(second_result, [])
+        self.assertEqual(DispatchAttempt.objects.filter(booking=booking).count(), 1)
+
+        DispatchAttempt.objects.filter(pk=first_attempt.pk).update(
+            retry_after=timezone.now() - timedelta(seconds=1),
+        )
+        third_result = DispatcherService.dispatch_offers(booking)
+        self.assertEqual(third_result, [])
+        self.assertTrue(
+            DispatchAttempt.objects.filter(
+                booking=booking,
+                batch_number=2,
+                status=DispatchAttempt.Status.NO_ELIGIBLE_WORKERS,
+            ).exists()
+        )
+
     def test_dispatcher_limits_to_batch_size(self):
         """DispatcherService should respect batch_size parameter."""
         from apps.bookings.dispatcher import DispatcherService
