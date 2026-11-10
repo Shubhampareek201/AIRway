@@ -100,9 +100,14 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
                 note=f"Accepted worker reported unable to fulfil before start OTP. Reason: {reason[:500]}",
             )
 
-        WorkerOffer.objects.filter(
-            order_id=order_id if order_id else None,
-            booking_id__in=booking_ids,
+        offer_scope = (
+            WorkerOffer.objects.filter(order_id=order_id)
+            if order_id
+            else WorkerOffer.objects.filter(
+                booking_id=booking_ids[0], order__isnull=True,
+            )
+        )
+        offer_scope.filter(
             status__in=[WorkerOffer.Status.ACCEPTED, WorkerOffer.Status.PENDING],
         ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
 
@@ -193,9 +198,12 @@ def _configured_batches_exhausted(*, order_id, booking_ids):
     config = DispatchConfiguration.get_solo()
     if not config.is_enabled or config.max_batches < 1:
         return False
-    offers = WorkerOffer.objects.filter(
-        order_id=order_id if order_id else None,
-        booking_id__in=booking_ids,
+    offers = (
+        WorkerOffer.objects.filter(order_id=order_id)
+        if order_id
+        else WorkerOffer.objects.filter(
+            booking_id=booking_ids[0], order__isnull=True,
+        )
     )
     if offers.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
         return False
