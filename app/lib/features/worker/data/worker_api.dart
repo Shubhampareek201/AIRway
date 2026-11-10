@@ -119,6 +119,18 @@ class WorkerApi {
     );
   }
 
+  static Future<Map<String, dynamic>> reportUnableToFulfil(
+    int assignmentId, {
+    required String reason,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/unavailable/',
+      method: 'POST',
+      data: {'reason': reason},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<Map<String, dynamic>> startJob(
     int assignmentId, {
     String? otp,
