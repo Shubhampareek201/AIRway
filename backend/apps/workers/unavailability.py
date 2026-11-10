@@ -462,6 +462,15 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
             RefundRecord.Status.FAILED,
         ],
     ).exists()
+    if unresolved:
+        _notify_refund_reconciliation_required(
+            booking_ids=booking_ids,
+            order_id=order_id,
+            detail=(
+                "Platform-unavailability refund records remain pending or failed. "
+                "Reconcile the gateway outcome before any manual retry."
+            ),
+        )
     return "pending_reconciliation" if unresolved else "processed"
 
 
