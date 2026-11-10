@@ -19,6 +19,7 @@ def expire_pending_offers():
     """Expire offers and advance each exhausted order/booking to its next batch."""
     from apps.bookings.models import WorkerOffer, Order, Booking
     from apps.bookings.dispatcher import DispatcherService
+    from apps.workers.unavailability import finalize_exhausted_dispatch
     from apps.notifications.models import Notification
 
     now = timezone.now()
@@ -49,12 +50,16 @@ def expire_pending_offers():
 
     for order_id in order_ids:
         if not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
-            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            offers = DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            if not offers:
+                finalize_exhausted_dispatch(order_id=order_id)
     for booking_id in booking_ids:
         if not WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING).exists():
             booking = Booking.objects.filter(pk=booking_id).first()
             if booking:
-                DispatcherService.dispatch_offers(booking)
+                offers = DispatcherService.dispatch_offers(booking)
+                if not offers:
+                    finalize_exhausted_dispatch(booking_id=booking_id)
     logger.info("Expired %s worker offers; advanced %s orders and %s bookings", len(expired), len(order_ids), len(booking_ids))
     return len(expired)
 
@@ -64,6 +69,7 @@ def retry_failed_dispatches():
     """Recover eligible unassigned orders and standalone bookings using Admin limits."""
     from apps.bookings.models import Booking, Order, WorkerOffer, DispatchConfiguration
     from apps.bookings.dispatcher import DispatcherService
+    from apps.workers.unavailability import finalize_exhausted_dispatch
 
     config = DispatchConfiguration.get_solo()
     if not config.is_enabled:
@@ -78,6 +84,8 @@ def retry_failed_dispatches():
         offers = DispatcherService.dispatch_order(order)
         if offers:
             dispatched += 1
+        else:
+            finalize_exhausted_dispatch(order_id=order.pk)
 
     standalone = Booking.objects.filter(
         status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED],
@@ -89,8 +97,11 @@ def retry_failed_dispatches():
             status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED],
         ).exists():
             continue
-        if DispatcherService.dispatch_offers(booking):
+        offers = DispatcherService.dispatch_offers(booking)
+        if offers:
             dispatched += 1
+        else:
+            finalize_exhausted_dispatch(booking_id=booking.pk)
     logger.info("Retry dispatch: created %s new batches", dispatched)
     return dispatched
 
