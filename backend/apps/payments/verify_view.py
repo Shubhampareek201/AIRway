@@ -836,11 +836,21 @@ class PaymentWebhookView(APIView):
                         refund_record.provider_payload = payload
                         if provider_refund_id and not refund_record.provider_refund_id:
                             refund_record.provider_refund_id = provider_refund_id
-                        refund_record.save(update_fields=[
-                            "status", "processed_at", "provider_payload",
-                            "provider_refund_id", "updated_at"
-                        ])
-                        if attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
+                        try:
+                            # A concurrent webhook/reconciliation may claim the
+                            # globally unique provider ID after the ownership read.
+                            with transaction.atomic():
+                                refund_record.save(update_fields=[
+                                    "status", "processed_at", "provider_payload",
+                                    "provider_refund_id", "updated_at"
+                                ])
+                        except IntegrityError:
+                            logger.exception(
+                                "Concurrent refund provider-ID ownership conflict: %s",
+                                provider_refund_id,
+                            )
+                            refund_record = None
+                        if refund_record and attempt and attempt.status != PaymentAttempt.Status.CAPTURED:
                             refund_states = list(
                                 RefundRecord.objects.filter(
                                     payment_attempt=attempt,
