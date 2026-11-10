@@ -510,7 +510,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 : const Icon(Icons.play_arrow_rounded),
             label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
           ),
-          if (job.requiresServiceOtp) ...[
+          if (job.requiresServiceOtp && job.assignment.acceptedAt != null) ...[
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _isActionInProgress ? null : _reportUnableToFulfil,
