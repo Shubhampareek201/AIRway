@@ -275,9 +275,19 @@ def settle_final_balance_attempt(
         attempt_ref = PaymentAttempt.objects.select_related(
             "installment__financial_plan",
         ).get(pk=attempt_id)
-        booking = Booking.objects.select_for_update().get(
-            pk=attempt_ref.installment.financial_plan.booking_id,
+        booking_id = attempt_ref.installment.financial_plan.booking_id
+        # Match the global parent-order -> booking -> plan -> installment ->
+        # attempt lock order used by OTP verification and line cancellation.
+        # Reading the relation first is intentionally unlocked; the parent row
+        # is the serialization point for all mutations within a multi-line order.
+        order_id = OrderItem.objects.filter(
+            booking_id=booking_id,
+        ).values_list("order_id", flat=True).first()
+        parent_order = (
+            Order.objects.select_for_update().get(pk=order_id)
+            if order_id else None
         )
+        booking = Booking.objects.select_for_update().get(pk=booking_id)
         plan = BookingFinancialPlan.objects.select_for_update().get(
             pk=attempt_ref.installment.financial_plan_id,
         )
@@ -349,11 +359,7 @@ def settle_final_balance_attempt(
             "status", "provider_payment_id", "captured_at", "provider_payload", "updated_at",
         ])
 
-        order_id = OrderItem.objects.filter(booking_id=booking.pk).values_list(
-            "order_id", flat=True,
-        ).first()
-        if order_id:
-            parent_order = Order.objects.select_for_update().get(pk=order_id)
+        if parent_order:
             all_completed = not parent_order.items.exclude(
                 booking__status__in=(
                     Booking.Status.COMPLETED,
