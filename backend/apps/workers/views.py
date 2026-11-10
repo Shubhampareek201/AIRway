@@ -1181,10 +1181,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
         if order_id and not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
             from apps.bookings.models import Order
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            if not offers:
+                finalize_exhausted_dispatch(order_id=order_id)
         elif not order_id and not WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING).exists():
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            if not offers:
+                finalize_exhausted_dispatch(booking_id=booking_id)
         return Response({"detail": "Offer declined."})
 
     @action(detail=True, methods=["post"], url_path="withdraw")
@@ -1207,10 +1213,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
         if order_id and not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
             from apps.bookings.models import Order
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
+            if not offers:
+                finalize_exhausted_dispatch(order_id=order_id)
         elif not order_id and not WorkerOffer.objects.filter(
             booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING
         ).exists():
             from apps.bookings.dispatcher import DispatcherService
-            DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            from .unavailability import finalize_exhausted_dispatch
+            offers = DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
+            if not offers:
+                finalize_exhausted_dispatch(booking_id=booking_id)
         return Response({"detail": "Offer withdrawn."})
