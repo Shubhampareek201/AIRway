@@ -38,7 +38,7 @@ class DispatcherService:
     @transaction.atomic
     def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None):
         """Dispatch a standalone booking through configured priority batches."""
-        from apps.bookings.models import Booking, OrderItem, WorkerOffer, DispatchConfiguration
+        from apps.bookings.models import Booking, OrderItem, WorkerOffer, DispatchAttempt, DispatchConfiguration
         # Resolve the parent before taking a booking lock. Order acceptance
         # consistently locks order first, then bookings.
         order_id = OrderItem.objects.filter(
@@ -69,8 +69,19 @@ class DispatcherService:
         existing = WorkerOffer.objects.filter(booking=booking, order__isnull=True)
         if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
             return []
+        attempts = DispatchAttempt.objects.filter(booking=booking)
+        last_attempt = attempts.order_by("-batch_number").first()
+        if (
+            last_attempt
+            and last_attempt.status == DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
+            and last_attempt.retry_after
+            and last_attempt.retry_after > timezone.now()
+        ):
+            return []
         from django.db.models import Max
-        batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
+        last_offer_batch = existing.aggregate(value=Max("batch_number"))["value"] or 0
+        last_attempt_batch = attempts.aggregate(value=Max("batch_number"))["value"] or 0
+        batch_number = max(last_offer_batch, last_attempt_batch) + 1
         if batch_number > max(int(config.max_batches or 1), 1):
             return []
         duration = (booking.variant.duration_minutes if booking.variant_id and booking.variant.duration_minutes else booking.service.duration_minutes) or 60
@@ -94,6 +105,22 @@ class DispatcherService:
         )
         already_offered = set(existing.values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
+        DispatchAttempt.objects.create(
+            booking=booking,
+            batch_number=batch_number,
+            candidate_count=len(candidates),
+            status=(
+                DispatchAttempt.Status.OFFERS_CREATED
+                if candidates else DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
+            ),
+            retry_after=(
+                timezone.now() + timedelta(minutes=expiry_minutes)
+                if not candidates else None
+            ),
+            details={"reason": "eligible_worker_batch" if candidates else "no_eligible_workers"},
+        )
+        if not candidates:
+            return []
         return cls._create_offers(
             booking=booking, order=None, workers=candidates,
             batch_number=batch_number, expiry_minutes=expiry_minutes,
@@ -103,7 +130,7 @@ class DispatcherService:
     @classmethod
     def dispatch_order(cls, order):
         """Offer a parent order only to workers eligible for every service line."""
-        from apps.bookings.models import Booking, BookingAssignment, WorkerOffer, DispatchConfiguration, Order
+        from apps.bookings.models import Booking, BookingAssignment, WorkerOffer, DispatchAttempt, DispatchConfiguration, Order
         from apps.workers.models import WorkerProfile
         from django.db.models import Max
 
@@ -154,6 +181,24 @@ class DispatcherService:
                 logger.info("Order %s has overlapping service times; dispatch skipped", order.pk)
                 return []
 
+            existing = WorkerOffer.objects.filter(order=order)
+            if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
+                return []
+            attempts = DispatchAttempt.objects.filter(order=order)
+            last_attempt = attempts.order_by("-batch_number").first()
+            expiry_minutes = max(int(config.offer_expiry_minutes or 1), 1)
+            if (
+                last_attempt
+                and last_attempt.status == DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
+                and last_attempt.retry_after
+                and last_attempt.retry_after > timezone.now()
+            ):
+                return []
+            last_offer_batch = existing.aggregate(value=Max("batch_number"))["value"] or 0
+            last_attempt_batch = attempts.aggregate(value=Max("batch_number"))["value"] or 0
+            batch_number = max(last_offer_batch, last_attempt_batch) + 1
+            if batch_number > max(int(config.max_batches or 1), 1):
+                return []
             eligible_ids = None
             for booking in bookings:
                 duration = (
@@ -181,23 +226,35 @@ class DispatcherService:
                 line_ids = set(line_workers.values_list("pk", flat=True))
                 eligible_ids = line_ids if eligible_ids is None else eligible_ids.intersection(line_ids)
                 if not eligible_ids:
-                    return []
+                    break
 
-            existing = WorkerOffer.objects.filter(order=order)
-            if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
-                return []
-            batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
-            if batch_number > max(int(config.max_batches or 1), 1):
-                return []
             already_offered = set(existing.values_list("worker_id", flat=True))
             batch_size = max(int(config.batch_size or 1), 1)
-            expiry_minutes = max(int(config.offer_expiry_minutes or 1), 1)
-            workers = list(
-                WorkerProfile.objects.filter(pk__in=eligible_ids)
-                .exclude(pk__in=already_offered)
-                .select_related("user")
-                .order_by(*cls._priority_ordering(config.priority_order))[:batch_size]
+            workers = (
+                list(
+                    WorkerProfile.objects.filter(pk__in=eligible_ids)
+                    .exclude(pk__in=already_offered)
+                    .select_related("user")
+                    .order_by(*cls._priority_ordering(config.priority_order))[:batch_size]
+                )
+                if eligible_ids else []
             )
+            DispatchAttempt.objects.create(
+                order=order,
+                batch_number=batch_number,
+                candidate_count=len(workers),
+                status=(
+                    DispatchAttempt.Status.OFFERS_CREATED
+                    if workers else DispatchAttempt.Status.NO_ELIGIBLE_WORKERS
+                ),
+                retry_after=(
+                    timezone.now() + timedelta(minutes=expiry_minutes)
+                    if not workers else None
+                ),
+                details={"reason": "eligible_worker_batch" if workers else "no_eligible_workers"},
+            )
+            if not workers:
+                return []
             return cls._create_offers(
                 booking=anchor, order=order, workers=workers,
                 batch_number=batch_number, expiry_minutes=expiry_minutes,
