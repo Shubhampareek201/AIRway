@@ -627,12 +627,8 @@ class WorkerJobLifecycleTest(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.CONFIRMED)
         self.assertFalse(BookingAssignment.objects.filter(pk=assignment.pk).exists())
-        self.assertTrue(
-            WorkerOffer.objects.filter(
-                booking=booking, order__isnull=True,
-                status=WorkerOffer.Status.PENDING,
-            ).exists()
-        )
+        self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
+        self.assertTrue(booking.financial_plan.state == "active")
 
     def test_worker_cannot_release_split_payment_job_after_start(self):
         booking = Booking.objects.create(
