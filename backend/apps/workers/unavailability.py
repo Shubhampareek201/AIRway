@@ -193,7 +193,7 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
 
 def _configured_batches_exhausted(*, order_id, booking_ids):
     from django.db.models import Max
-    from apps.bookings.models import DispatchConfiguration
+    from apps.bookings.models import DispatchAttempt, DispatchConfiguration
 
     config = DispatchConfiguration.get_solo()
     if not config.is_enabled or config.max_batches < 1:
@@ -207,8 +207,41 @@ def _configured_batches_exhausted(*, order_id, booking_ids):
     )
     if offers.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
         return False
-    last_batch = offers.aggregate(value=Max("batch_number"))["value"] or 0
-    return last_batch >= config.max_batches
+    attempts = (
+        DispatchAttempt.objects.filter(order_id=order_id)
+        if order_id
+        else DispatchAttempt.objects.filter(booking_id=booking_ids[0])
+    )
+    last_offer_batch = offers.aggregate(value=Max("batch_number"))["value"] or 0
+    last_attempt_batch = attempts.aggregate(value=Max("batch_number"))["value"] or 0
+    return max(last_offer_batch, last_attempt_batch) >= config.max_batches
+
+
+def finalize_exhausted_dispatch(*, order_id=None, booking_id=None):
+    """Finalize a split-payment target after its configured dispatch batches end."""
+    if order_id:
+        booking_ids = list(
+            OrderItem.objects.filter(order_id=order_id)
+            .exclude(booking__status=Booking.Status.CANCELLED)
+            .order_by("booking_id")
+            .values_list("booking_id", flat=True)
+        )
+    elif booking_id:
+        booking_ids = [booking_id]
+    else:
+        return None
+    if not booking_ids or not _configured_batches_exhausted(
+        order_id=order_id, booking_ids=booking_ids,
+    ):
+        return None
+    if BookingFinancialPlan.objects.filter(booking_id__in=booking_ids).count() != len(booking_ids):
+        return None
+    return _cancel_unfulfillable_bookings(
+        order_id=order_id,
+        booking_ids=booking_ids,
+        worker_user=None,
+        reason="No eligible professional accepted within the configured dispatch batches.",
+    )
 
 
 def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason):
@@ -228,7 +261,7 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
             Booking.objects.select_for_update().filter(pk__in=booking_ids).order_by("pk")
         )
         if len(bookings) != len(booking_ids) or any(
-            booking.status != Booking.Status.CONFIRMED
+            booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
             or BookingAssignment.objects.filter(booking=booking).exists()
             for booking in bookings
         ):
