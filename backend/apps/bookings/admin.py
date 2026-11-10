@@ -126,5 +126,8 @@ class DispatchAttemptAdmin(ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return False
 
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_staff
+
     def has_delete_permission(self, request, obj=None):
         return False
