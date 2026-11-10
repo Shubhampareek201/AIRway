@@ -613,7 +613,14 @@ class WorkerJobLifecycleTest(TestCase):
             accepted_at=timezone.now(),
         )
         from apps.payments.lifecycle import create_financial_plan
-        create_financial_plan(booking)
+        plan = create_financial_plan(booking)
+        from apps.payments.models import PaymentInstallment
+        advance = plan.installments.get(kind=PaymentInstallment.Kind.ADVANCE)
+        advance.status = PaymentInstallment.Status.PAID
+        advance.amount_captured = advance.amount_due
+        advance.save(update_fields=["status", "amount_captured", "updated_at"])
+        plan.advance_captured = advance.amount_due
+        plan.save(update_fields=["advance_captured", "updated_at"])
 
         self.client.force_authenticate(user=self.worker_user)
         response = self.client.post(
@@ -624,6 +631,7 @@ class WorkerJobLifecycleTest(TestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["status"], "awaiting_assignment")
+        self.assertTrue(response.data["dispatch_pending"])
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.CONFIRMED)
         self.assertFalse(BookingAssignment.objects.filter(pk=assignment.pk).exists())
