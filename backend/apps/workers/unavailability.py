@@ -169,7 +169,7 @@ def release_split_payment_assignment(*, assignment_id, worker_user, reason):
                 "refund_status": refund_status,
             }
         return {
-            "detail": "No eligible professional accepted within the configured dispatch batches. AIRway needs to reconcile the captured payment before closing this service; support has been notified.",
+            "detail": "No eligible professional accepted within the configured dispatch batches. AIRway could not safely reconcile the captured payment; support review is required before the service can be closed.",
             "status": "awaiting_assignment",
             "booking_ids": booking_ids,
             "order_id": order_id,
@@ -207,7 +207,6 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
     """Cancel all affected lines and create full, source-reconciled refunds."""
     from apps.bookings.models import BookingStatusHistory
     from apps.notifications.models import Notification
-    from apps.wallet.models import Wallet, WalletTransaction
     from apps.payments.order_cancellation import _credit_wallet_refund
 
     created_refunds = []
@@ -234,6 +233,11 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
             ).order_by("booking_id")
         }
         if len(plans) != len(booking_ids):
+            _notify_refund_reconciliation_required(
+                booking_ids=booking_ids,
+                order_id=order_id,
+                detail="A split-payment financial plan is missing during platform unavailability refund.",
+            )
             return False
 
         allocations = list(
@@ -254,9 +258,15 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
         # any terminal state is committed. Otherwise support must investigate.
         for booking_id, plan in plans.items():
             if allocation_totals[booking_id] != plan.advance_captured:
-                logger.error(
-                    "Cannot auto-refund unavailable booking %s: captured advance %s != allocated %s",
-                    booking_id, plan.advance_captured, allocation_totals[booking_id],
+                detail = (
+                    f"Booking {booking_id}: captured advance {plan.advance_captured} "
+                    f"does not match allocated tender {allocation_totals[booking_id]}."
+                )
+                logger.error("Cannot auto-refund unavailable booking %s: %s", booking_id, detail)
+                _notify_refund_reconciliation_required(
+                    booking_ids=[booking_id],
+                    order_id=order_id,
+                    detail=detail,
                 )
                 return False
 
@@ -412,3 +422,29 @@ def _cancel_unfulfillable_bookings(*, order_id, booking_ids, worker_user, reason
         ],
     ).exists()
     return "pending_reconciliation" if unresolved else "processed"
+
+
+
+def _notify_refund_reconciliation_required(*, booking_ids, order_id, detail):
+    """Create an in-app operations alert without exposing payment data to workers."""
+    from django.contrib.auth import get_user_model
+    from apps.notifications.models import Notification
+
+    staff_users = get_user_model().objects.filter(is_staff=True, is_active=True)
+    notifications = [
+        Notification(
+            user=user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Platform refund reconciliation required",
+            body=detail[:1000],
+            channel=Notification.Channel.IN_APP,
+            data={
+                "event": "worker_unavailability_refund_reconciliation",
+                "order_id": order_id,
+                "booking_ids": list(booking_ids),
+            },
+        )
+        for user in staff_users
+    ]
+    if notifications:
+        Notification.objects.bulk_create(notifications)
