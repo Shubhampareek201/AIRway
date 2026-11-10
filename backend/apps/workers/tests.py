@@ -597,6 +597,38 @@ class WorkerJobLifecycleTest(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.IN_PROGRESS)
 
+    def test_worker_cannot_use_legacy_reject_for_split_payment_booking(self):
+        """Legacy rejection must not bypass split-payment refund/reassignment handling."""
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+        from apps.payments.lifecycle import create_financial_plan
+        create_financial_plan(booking)
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/reject/",
+            data={"reason": "Cannot attend"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409, response.data)
+        booking.refresh_from_db()
+        assignment.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+        self.assertEqual(assignment.worker_id, self.worker_profile.pk)
+
     def test_cannot_start_job_not_assigned(self):
         """Cannot start a job without assignment."""
         booking = Booking.objects.create(
