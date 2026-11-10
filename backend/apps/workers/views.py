@@ -613,6 +613,10 @@ class WorkerJobUnavailableView(APIView):
                 {"reason": ["Reason must be 500 characters or fewer."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not BookingAssignment.objects.filter(
+            pk=job_id, worker__user=request.user,
+        ).exists():
+            return Response({"detail": "Job assignment not found."}, status=status.HTTP_404_NOT_FOUND)
         try:
             from .unavailability import (
                 WorkerUnavailabilityError,
