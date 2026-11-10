@@ -324,9 +324,28 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
             order=order, status=WorkerOffer.Status.PENDING,
         ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
 
+    dispatch_pending = False
     if should_dispatch:
         from apps.bookings.dispatcher import DispatcherService
-        DispatcherService.dispatch_order(order)
+        try:
+            offers = DispatcherService.dispatch_order(order)
+            # No eligible batch is also a pending dispatch: the existing
+            # periodic retry task will re-evaluate the order as availability
+            # and Admin dispatch configuration change.
+            dispatch_pending = not bool(offers)
+        except Exception:
+            # Cancellation and its refund ledger are already committed. Do not
+            # turn a successful cancellation into an HTTP 500 or skip gateway
+            # refund processing because dispatch had a transient failure.
+            # retry_failed_dispatches() is scheduled every minute and safely
+            # retries AWAITING_ASSIGNMENT orders without active offers.
+            dispatch_pending = True
+            logger.exception(
+                "Dispatch failed after cancellation of booking %s in order %s; "
+                "the periodic dispatch recovery task will retry",
+                booking.pk,
+                order.pk,
+            )
 
     provider_error = None
     if refund_record and refund_record.gateway_refund_amount > ZERO:
@@ -408,4 +427,5 @@ def cancel_parent_order_line(*, order_id, booking_id, customer, reason=""):
         "refund_amount": str(response_terms["refund_amount"]),
         "platform_fee": str(response_terms["platform_fee"]),
         "refund_message": provider_error,
+        "dispatch_pending": dispatch_pending,
     }
