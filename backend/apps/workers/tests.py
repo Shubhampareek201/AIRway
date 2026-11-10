@@ -728,6 +728,78 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertEqual(refund.platform_fee, Decimal("0.00"))
         self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
 
+    def test_periodic_recovery_finalizes_exhausted_empty_dispatch_batches(self):
+        from decimal import Decimal
+        from unittest.mock import Mock, patch
+        from apps.bookings.models import DispatchAttempt, DispatchConfiguration
+        from apps.bookings.tasks import retry_failed_dispatches
+        from apps.payments.models import (
+            Payment, PaymentAllocation, PaymentInstallment, RefundRecord,
+        )
+        from apps.payments.lifecycle import create_financial_plan
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.CONFIRMED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        plan = create_financial_plan(booking)
+        advance = plan.installments.get(kind=PaymentInstallment.Kind.ADVANCE)
+        advance.status = PaymentInstallment.Status.PAID
+        advance.amount_captured = Decimal("500.00")
+        advance.save(update_fields=["status", "amount_captured", "updated_at"])
+        plan.advance_captured = Decimal("500.00")
+        plan.save(update_fields=["advance_captured", "updated_at"])
+        payment = Payment.objects.create(
+            booking=booking,
+            customer=self.customer_user,
+            amount=Decimal("500.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_empty_batches",
+        )
+        allocation = PaymentAllocation.objects.create(
+            payment=payment,
+            installment=advance,
+            amount=Decimal("500.00"),
+            gateway_amount=Decimal("500.00"),
+            wallet_amount=Decimal("0.00"),
+        )
+        config = DispatchConfiguration.get_solo()
+        config.is_enabled = True
+        config.max_batches = 3
+        config.save()
+        for batch_number in range(1, 4):
+            DispatchAttempt.objects.create(
+                booking=booking,
+                batch_number=batch_number,
+                candidate_count=0,
+                status=DispatchAttempt.Status.NO_ELIGIBLE_WORKERS,
+                retry_after=timezone.now() - timedelta(minutes=1),
+            )
+
+        client = Mock()
+        client.payment.refund.return_value = {
+            "id": "rfnd_empty_batches",
+            "status": "processed",
+            "amount": 50000,
+        }
+        with patch("razorpay.Client", return_value=client):
+            retry_failed_dispatches()
+
+        booking.refresh_from_db()
+        plan.refresh_from_db()
+        refund = RefundRecord.objects.get(payment_allocation=allocation)
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(plan.state, "cancelled")
+        self.assertEqual(refund.refund_amount, Decimal("500.00"))
+        self.assertEqual(refund.platform_fee, Decimal("0.00"))
+        self.assertEqual(refund.status, RefundRecord.Status.PROCESSED)
+
     def test_parent_order_unavailability_releases_and_refunds_every_active_line(self):
         from decimal import Decimal
         from unittest.mock import Mock, patch
