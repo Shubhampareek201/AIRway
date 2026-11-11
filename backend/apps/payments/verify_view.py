@@ -942,7 +942,9 @@ class PaymentWebhookView(APIView):
         elif event_type in ("refund.processed", "refund.failed"):
             refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
             gateway_refund_id = refund_entity.get("id")
-            if gateway_refund_id:
+            refund_notes = refund_entity.get("notes") or {}
+            refund_pk = refund_notes.get("airway_refund_id")
+            if gateway_refund_id or refund_pk:
                 from .refunds import reconcile_gateway_refund
 
                 refund = reconcile_gateway_refund(
@@ -950,6 +952,7 @@ class PaymentWebhookView(APIView):
                     event_type,
                     refund_entity.get("status", ""),
                     refund_entity.get("amount"),
+                    refund_pk=refund_pk,
                 )
                 if refund is not None:
                     payment = refund.payment
