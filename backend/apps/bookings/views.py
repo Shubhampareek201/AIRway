@@ -25,6 +25,23 @@ from apps.accounts.models import Address
 from apps.catalog.audience import validate_beauty_audience
 
 
+def _schedule_booking_refund(booking_id):
+    import logging
+    from apps.payments.models import PaymentRefund
+    from apps.payments.refunds import request_booking_refunds
+
+    try:
+        booking = Booking.objects.get(pk=booking_id)
+        request_booking_refunds(
+            booking,
+            reason=PaymentRefund.Reason.CUSTOMER_CANCELLATION,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Could not schedule cancellation refund for booking %s", booking_id
+        )
+
+
 class BookingViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -133,6 +150,12 @@ class BookingViewSet(viewsets.ModelViewSet):
             body="Your booking has been cancelled.",
             channel=Notification.Channel.IN_APP,
             data={"booking_id": booking.id},
+        )
+
+        # Refund only this service's captured allocations. Run after commit so
+        # a gateway/network failure cannot roll back the customer's cancellation.
+        transaction.on_commit(
+            lambda booking_id=booking.id: _schedule_booking_refund(booking_id)
         )
 
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
