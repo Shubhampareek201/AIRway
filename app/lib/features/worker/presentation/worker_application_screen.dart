@@ -75,8 +75,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       final statusData = await WorkerAppApi.fetchWorkerApplicationStatus();
       if (statusData == null) return;
 
+      _nameController.text = statusData['name']?.toString() ?? '';
+      _emailController.text = statusData['email']?.toString() ?? '';
+
       final workerProfile = statusData['worker_profile'];
-      if (workerProfile == null) return;
+      if (workerProfile == null) {
+        if (mounted) setState(() {});
+        return;
+      }
 
       // Check if there's already a PENDING application
       final status = workerProfile['status'];
@@ -217,6 +223,18 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     if (_profilePhoto == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile photo is required. Please take a photo first.')),
+      );
+      return;
+    }
+    if (_nameController.text.trim().isEmpty || _addressController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your full name and residential address.')),
+      );
+      return;
+    }
+    if (_weeklySchedule.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one working day and its hours.')),
       );
       return;
     }
@@ -849,9 +867,17 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const Divider(),
         _buildReviewItem('ID Document', hasIdDoc, hasIdDoc ? _selectedIdType.toUpperCase() : null),
         const Divider(),
-        _buildReviewItem('Experience', _experienceYears != null && _experienceYears! > 0, '$_experienceYears years'),
+        _buildReviewItem('Residential address', _addressController.text.trim().isNotEmpty),
         const Divider(),
-        _buildReviewItem('Bio', _bio?.isNotEmpty == true, _bio?.isNotEmpty == true ? 'Added' : 'Not added'),
+        _buildReviewItem('Weekly working hours', _weeklySchedule.isNotEmpty, _weeklySchedule.length.toString() + ' day(s) selected'),
+        const Divider(),
+        _buildReviewItem('Qualification', _qualificationController.text.trim().isNotEmpty, _qualificationController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
+        const Divider(),
+        _buildReviewItem('Experience', _experienceController.text.trim().isNotEmpty, _experienceController.text.trim().isEmpty ? 'Not provided' : _experienceController.text.trim() + ' years'),
+        const Divider(),
+        _buildReviewItem('Equipment / products', _equipmentController.text.trim().isNotEmpty, _equipmentController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
+        const Divider(),
+        _buildReviewItem('Bio', _bioController.text.trim().isNotEmpty, _bioController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
         const SizedBox(height: 24),
         const Card(
           color: Colors.amber,
