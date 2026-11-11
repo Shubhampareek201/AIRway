@@ -101,7 +101,26 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         _experienceYears = _existingExperienceYears;
         _bio = _existingBio;
         _selectedIdType = idType ?? 'aadhaar';
-        _hasExistingPhoto = workerProfile['photo_url'] != null;
+        _hasExistingPhoto = workerProfile['has_photo'] == true || workerProfile['photo_url'] != null;
+        _qualificationController.text = workerProfile['qualification']?.toString() ?? '';
+        _equipmentController.text = workerProfile['equipment_details']?.toString() ?? '';
+        _addressController.text = workerProfile['residential_address']?.toString() ?? '';
+        _landmarkController.text = workerProfile['landmark']?.toString() ?? '';
+        _bioController.text = _existingBio ?? '';
+        _experienceController.text = _existingExperienceYears?.toString() ?? '';
+        final savedSchedule = workerProfile['schedule'];
+        if (savedSchedule is Map) {
+          for (final entry in savedSchedule.entries) {
+            final day = int.tryParse(entry.key.toString());
+            if (day != null && entry.value is Map) {
+              final times = Map<String, dynamic>.from(entry.value as Map);
+              _weeklySchedule[day] = {
+                'start': times['start']?.toString() ?? '09:00',
+                'end': times['end']?.toString() ?? '18:00',
+              };
+            }
+          }
+        }
 
         // Load existing services and zones
         final serviceIds = workerProfile['service_ids'] as List?;
