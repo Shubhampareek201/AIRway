@@ -21,6 +21,9 @@ class PaymentRefundAdmin(ModelAdmin):
         "failure_reason", "processed_at", "created_at", "updated_at",
     )
 
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_staff
+
     def has_add_permission(self, request):
         return False
 
