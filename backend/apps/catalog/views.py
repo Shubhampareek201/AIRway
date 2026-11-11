@@ -30,7 +30,9 @@ def _location_from_address(request):
     else:
         address = None
     if address is None:
-        raise ValidationError({"address_id": "Select a valid saved service address in an active service zone."})
+        if address_id:
+            raise ValidationError({"address_id": "Select a valid saved service address in an active service zone."})
+        return None
 
     return address.zone.city, address.zone
 
