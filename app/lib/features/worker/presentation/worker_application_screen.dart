@@ -567,7 +567,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
               isTakingNewPhoto ? 'Photo ready for verification' : 'Required for worker verification',
               style: const TextStyle(color: AirwayColors.textSecondary),
             ),
-            trailing: TextButton(onPressed: _pickPhoto, child: Text(isTakingNewPhoto ? 'Retake' : 'Take Photo')),
+            trailing: TextButton(onPressed: _pickPhoto, child: Text(isTakingNewPhoto ? 'Retake' : hasExistingPhoto ? 'Replace' : 'Take Photo')),
             onTap: _pickPhoto,
           ),
         ),
