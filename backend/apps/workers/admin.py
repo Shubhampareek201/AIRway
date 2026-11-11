@@ -164,10 +164,19 @@ class WorkerProfileAdmin(ModelAdmin):
                 ],
                 status=WorkerDocument.Status.VERIFIED,
             ).exists()
-            has_service = worker.worker_services.exists()
-            has_zone = worker.worker_zones.exists()
+            has_service = worker.worker_services.filter(
+                service__is_active=True, service__category__is_active=True
+            ).exists()
+            has_zone = worker.worker_zones.filter(
+                zone__is_active=True, zone__city__is_active=True
+            ).exists()
+            has_schedule = worker.schedules.filter(is_active=True).exists()
+            has_photo = worker.documents.filter(
+                doc_type=WorkerDocument.DocumentType.PHOTO,
+                status=WorkerDocument.Status.VERIFIED,
+            ).exists()
 
-            if not (has_verified_id and has_service and has_zone):
+            if not (has_verified_id and has_photo and has_service and has_zone and has_schedule):
                 skipped_count += 1
                 continue
 
@@ -195,8 +204,8 @@ class WorkerProfileAdmin(ModelAdmin):
             self.message_user(
                 request,
                 f"{skipped_count} application(s) were not approved. "
-                "Only pending applications with a verified ID, at least one service, "
-                "and at least one service zone can be approved.",
+                "Approval requires a verified ID and profile photo, at least one active service, "
+                "one active service zone, and valid working hours.",
                 messages.WARNING,
             )
 
