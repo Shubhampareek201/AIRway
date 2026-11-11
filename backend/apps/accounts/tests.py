@@ -591,7 +591,7 @@ class WorkerApplicationTest(APITestCase):
             },
             format="multipart",
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 409)
         self.assertIn("already exists", response.data["detail"].lower())
 
     def test_rejected_application_shows_reason_on_mode_switch(self):
