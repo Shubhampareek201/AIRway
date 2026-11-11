@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Address
 from apps.workers.eligibility import eligible_worker_profiles
+from apps.workers.models import WorkerProfile, WorkerService
 from .models import Banner, Category, CityService, Service
 from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer
 
@@ -66,11 +67,16 @@ def _city_service_ids(city, zone=None):
 def _available_service_ids(city, zone=None):
     if city is None:
         return None
-    return set(
-        eligible_worker_profiles(city=city, zone=zone)
-        .values_list("worker_services__service_id", flat=True)
-        .distinct()
+    eligible_workers = eligible_worker_profiles(city=city, zone=zone)
+    service_links = WorkerService.objects.filter(
+        worker__in=eligible_workers,
+        service__is_active=True,
+        service__category__is_active=True,
+    ).filter(
+        Q(service__requires_female_worker=False)
+        | Q(worker__gender=WorkerProfile.Gender.FEMALE)
     )
+    return set(service_links.values_list("service_id", flat=True).distinct())
 
 
 LAUNCH_CATEGORY_SLUGS = ("car-wash", "beauty", "electrical", "home-cleaning")
