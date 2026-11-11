@@ -353,6 +353,8 @@ class WorkerOnboardingView(APIView):
         name = str(data.get("name") or request.user.name).strip()
         email = str(data.get("email") or request.user.email).strip()
         gender = str(data.get("gender") or request.user.gender).strip()
+        if gender not in dict(WorkerProfile.Gender.choices):
+            gender = ""
         residential_address = str(data.get("residential_address") or "").strip()
         if not name:
             return Response({"name": ["Full name is required."]}, status=400)
@@ -360,7 +362,7 @@ class WorkerOnboardingView(APIView):
             return Response({"residential_address": ["Residential address is required."]}, status=400)
         if email and "@" not in email:
             return Response({"email": ["Enter a valid email address."]}, status=400)
-        if gender and gender not in dict(User.Gender.choices):
+        if gender and gender not in dict(WorkerProfile.Gender.choices):
             return Response({"gender": ["Choose a valid gender value."]}, status=400)
 
         profile = WorkerProfile.objects.create(
