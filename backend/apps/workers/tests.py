@@ -1982,3 +1982,53 @@ class CompleteWorkerOnboardingSubmissionTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(WorkerProfile.objects.filter(user=self.user).exists())
+
+
+class WorkerAvailabilityPrerequisiteTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            phone="+919876543222", password="password123", name="Approved Worker"
+        )
+        self.profile = WorkerProfile.objects.create(
+            user=self.user, status=WorkerProfile.Status.APPROVED
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.city = City.objects.create(name="Rawatbhata", state="Rajasthan")
+        self.zone = Zone.objects.create(name="Availability Zone", city=self.city, is_active=True)
+        self.category = Category.objects.create(title="Car Wash", slug="availability-car-wash")
+        self.service = Service.objects.create(
+            category=self.category,
+            title="Exterior Wash",
+            booking_mode="scheduled",
+            pricing_type="fixed",
+            is_active=True,
+        )
+
+    def test_worker_cannot_go_online_without_service_area_and_schedule(self):
+        response = self.client.post(
+            "/api/v1/workers/status/", {"is_online": True}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.profile.refresh_from_db()
+        self.assertFalse(self.profile.is_online)
+
+    def test_worker_can_go_online_with_active_service_area_and_schedule(self):
+        WorkerService.objects.create(worker=self.profile, service=self.service)
+        WorkerZone.objects.create(worker=self.profile, zone=self.zone)
+        WorkerSchedule.objects.create(
+            worker=self.profile,
+            weekday=0,
+            start_time="09:00",
+            end_time="18:00",
+            is_active=True,
+        )
+
+        response = self.client.post(
+            "/api/v1/workers/status/", {"is_online": True}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.is_online)
