@@ -146,6 +146,7 @@ class WorkerAppApi {
     String? equipmentDetails,
     required String residentialAddress,
     String? landmark,
+    String? upiId,
     required Map<int, Map<String, String>> schedule,
     File? profilePhoto,
   }) async {
@@ -166,6 +167,9 @@ class WorkerAppApi {
     }
     if (landmark != null && landmark.trim().isNotEmpty) {
       data['landmark'] = landmark.trim();
+    }
+    if (upiId != null && upiId.trim().isNotEmpty) {
+      data['upi_id'] = upiId.trim();
     }
 
     if (experienceYears != null && experienceYears > 0) {
