@@ -203,6 +203,7 @@ class CurrentUserView(APIView):
             data["worker_profile"] = {
                 "id": profile.id,
                 "status": profile.status,
+                "gender": profile.gender,
                 "upi_id": profile.upi_id,
                 "is_online": profile.is_online,
                 "rating_avg": float(profile.rating_avg) if profile.rating_avg else None,
