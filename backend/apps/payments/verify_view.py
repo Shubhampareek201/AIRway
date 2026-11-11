@@ -134,17 +134,14 @@ def _process_verified_payment(
 
         if payment.order_id and payment.stage == Payment.Stage.BALANCE:
             balance_order = Order.objects.select_for_update().get(pk=payment.order_id)
+            active_balance_items = balance_order.items.exclude(
+                booking__status=Booking.Status.CANCELLED
+            )
             if (
-                balance_order.items.filter(
-                    booking__status__in=[
-                        Booking.Status.PENDING,
-                        Booking.Status.CONFIRMED,
-                        Booking.Status.ASSIGNED,
-                        Booking.Status.IN_PROGRESS,
-                        Booking.Status.DISPUTED,
-                    ]
+                not active_balance_items.exists()
+                or active_balance_items.exclude(
+                    booking__status=Booking.Status.COMPLETED
                 ).exists()
-                or not balance_order.items.filter(booking__status=Booking.Status.COMPLETED).exists()
             ):
                 logger.error("Balance payment %s captured before all bookings were verified complete", payment.pk)
                 try:
@@ -251,7 +248,7 @@ def _process_verified_payment(
                         "refunded_at": timezone.now().isoformat(),
                         "source": source,
                     }
-                    payment.save(update_fields=["status", "failed_at", "raw_response", "updated_at"])
+                    payment.save(update_fields=["razorpay_payment_id", "status", "failed_at", "raw_response", "updated_at"])
                     Notification.objects.create(
                         user=payment.customer,
                         type=Notification.Type.SYSTEM_ANNOUNCEMENT,
@@ -412,9 +409,19 @@ def _process_verified_payment(
                     DispatcherService.dispatch_order(parent_order)
                 message = f"Your 30% advance for AIRway order #{parent_order.id} was received. We are arranging your services."
             elif payment.stage == Payment.Stage.BALANCE:
-                if any(row.booking.status != Booking.Status.COMPLETED for row in order_items):
-                    logger.error("Balance payment %s captured before all services completed", payment.pk)
-                    return Response({"detail": "Captured payment requires reconciliation: services are not all complete.", "payment_id": payment.pk}, status=status.HTTP_409_CONFLICT)
+                active_order_items = [
+                    row for row in order_items
+                    if row.booking.status != Booking.Status.CANCELLED
+                ]
+                if (
+                    not active_order_items
+                    or any(
+                        row.booking.status != Booking.Status.COMPLETED
+                        for row in active_order_items
+                    )
+                ):
+                    logger.error("Balance payment %s captured before all active services completed", payment.pk)
+                    return Response({"detail": "Captured payment requires reconciliation: all active services must be complete.", "payment_id": payment.pk}, status=status.HTTP_409_CONFLICT)
                 parent_order.status = (
                     Order.Status.PARTIALLY_CANCELLED
                     if any(row.booking.status == Booking.Status.CANCELLED for row in order_items)
