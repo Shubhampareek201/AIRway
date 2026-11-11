@@ -3689,6 +3689,8 @@ class ServiceRefundLifecycleTest(BookingAPITestMixin, TestCase):
         from apps.wallet.models import Wallet
 
         self.customer = self._create_user("+919876543299")
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.customer)
         self.address = self._create_address(self.customer)
         category = self._create_category("Refunds", "refund-lifecycle")
         service = self._create_service(category, "Refundable Service")
