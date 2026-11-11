@@ -203,12 +203,18 @@ def process_payment_refund(refund_id):
         return PaymentRefund.objects.get(pk=refund_id)
 
 
-def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amount=None):
+def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amount=None, refund_pk=None):
     """Apply signed Razorpay refund webhook events idempotently."""
     with transaction.atomic():
-        refund = PaymentRefund.objects.select_for_update().select_related(
+        refund_query = PaymentRefund.objects.select_for_update().select_related(
             "payment", "booking"
-        ).filter(gateway_refund_id=refund_id).first()
+        )
+        refund = (
+            refund_query.filter(gateway_refund_id=refund_id).first()
+            if refund_id else None
+        )
+        if refund is None and refund_pk:
+            refund = refund_query.filter(pk=refund_pk).first()
         if refund is None:
             return None
         if gateway_amount is not None and int(gateway_amount) != int(refund.gateway_amount * 100):
@@ -219,6 +225,8 @@ def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amou
             return None
         if refund.status == PaymentRefund.Status.PROCESSED:
             return refund
+        if refund_id and not refund.gateway_refund_id:
+            refund.gateway_refund_id = refund_id
         if event_type == "refund.processed" or gateway_status == "processed":
             refund.status = PaymentRefund.Status.PROCESSED
             refund.processed_at = timezone.now()
@@ -226,7 +234,10 @@ def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amou
         elif event_type == "refund.failed" or gateway_status == "failed":
             refund.status = PaymentRefund.Status.FAILED
             refund.failure_reason = "Razorpay reported that this refund failed."
-        refund.save(update_fields=["status", "processed_at", "failure_reason", "updated_at"])
+        refund.save(update_fields=[
+            "gateway_refund_id", "status", "processed_at",
+            "failure_reason", "updated_at",
+        ])
         if refund.status == PaymentRefund.Status.PROCESSED:
             _notify_refund(refund)
         else:
