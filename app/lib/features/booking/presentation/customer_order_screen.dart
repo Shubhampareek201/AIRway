@@ -451,12 +451,15 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Widget orderProgress(List<Map<String, dynamic>> rows, bool paid, bool advancePaid, bool staged, int advancePercentage) {
     final balancePercentage = 100 - advancePercentage;
-    final assigned = rows.isNotEmpty && rows.every((row) {
+    final activeRows = rows
+        .where((row) => row['booking_status']?.toString() != 'cancelled')
+        .toList();
+    final assigned = activeRows.isNotEmpty && activeRows.every((row) {
       final status = row['booking_status']?.toString();
       return status == 'assigned' || status == 'in_progress' || status == 'completed';
     });
-    final completed = rows.isNotEmpty &&
-        rows.every((row) => row['booking_status']?.toString() == 'completed');
+    final completed = activeRows.isNotEmpty &&
+        activeRows.every((row) => row['booking_status']?.toString() == 'completed');
     final steps = staged
         ? <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
@@ -523,6 +526,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ],
           ),
         ],
+        if (row['refunds'] is List && (row['refunds'] as List).isNotEmpty) ...[
+          const SizedBox(height: 10),
+          refundSection((row['refunds'] as List).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()),
+        ],
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
           onPressed: () => trackService(row),
@@ -530,6 +537,65 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           label: const Text('Track this service'),
         )),
       ]),
+    );
+  }
+
+  Widget refundSection(List<Map<String, dynamic>> refunds) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: pale,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Refund updates', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+          const SizedBox(height: 8),
+          for (var index = 0; index < refunds.length; index++) ...[
+            if (index > 0) const Divider(height: 16),
+            _refundRow(refunds[index]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _refundRow(Map<String, dynamic> refund) {
+    final status = refund['status']?.toString() ?? 'pending';
+    final reason = refund['reason']?.toString() ?? '';
+    final statusText = switch (status) {
+      'processed' => 'Refund completed',
+      'failed' => 'Refund needs attention',
+      'processing' => 'Refund processing',
+      _ => 'Refund pending',
+    };
+    final reasonText = reason == 'platform_unfulfilled'
+        ? 'AIRway could not fulfil this service'
+        : 'Service cancellation';
+    final amountValue = amount(refund['amount']);
+    final walletValue = amount(refund['wallet_amount']);
+    final gatewayValue = amount(refund['gateway_amount']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(statusText, style: const TextStyle(fontWeight: FontWeight.w800, color: ink))),
+            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: violet)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(reasonText, style: const TextStyle(color: sub, fontSize: 12)),
+        Text('AIRway wallet: ₹${walletValue.toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 12)),
+        Text('Original payment method: ₹${gatewayValue.toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 12)),
+        if (status == 'failed' && (refund['failure_reason']?.toString().isNotEmpty ?? false)) ...[
+          const SizedBox(height: 4),
+          Text(refund['failure_reason'].toString(), style: const TextStyle(color: Color(0xFFB3261E), fontSize: 12)),
+        ],
+      ],
     );
   }
 
