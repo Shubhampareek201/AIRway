@@ -1,11 +1,10 @@
 from django.contrib import admin, messages
-from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
-from django.utils import timezone
 from django.template.response import TemplateResponse
 from unfold.admin import ModelAdmin, TabularInline
 
-from apps.accounts.models import UserRole
+
+from .approval import approve_worker, get_approval_requirements
 
 from .models import (
     WorkerProfile,
@@ -135,37 +134,47 @@ class WorkerProfileAdmin(ModelAdmin):
         return ", ".join(names) if names else "Not added"
 
     def save_model(self, request, obj, form, change):
-        if obj.status == WorkerProfile.Status.APPROVED:
-            has_verified_id = obj.documents.filter(
-                doc_type__in=[
-                    WorkerDocument.DocumentType.AADHAAR,
-                    WorkerDocument.DocumentType.ID,
-                ],
-                status=WorkerDocument.Status.VERIFIED,
-            ).exists()
-            has_verified_photo = obj.documents.filter(
-                doc_type=WorkerDocument.DocumentType.PHOTO,
-                status=WorkerDocument.Status.VERIFIED,
-            ).exists()
-            has_service = obj.worker_services.filter(
-                service__is_active=True, service__category__is_active=True
-            ).exists()
-            has_zone = obj.worker_zones.filter(
-                zone__is_active=True, zone__city__is_active=True
-            ).exists()
-            has_schedule = obj.schedules.filter(is_active=True).exists()
-            if not all((has_verified_id, has_verified_photo, has_service, has_zone, has_schedule)):
-                from django.core.exceptions import ValidationError
-                raise ValidationError(
-                    "Worker approval requires verified ID and photo, active services, "
-                    "an active service zone, and working hours."
-                )
-            if not change or not WorkerProfile.objects.filter(
-                pk=obj.pk, status=WorkerProfile.Status.APPROVED
-            ).exists():
-                obj.approved_by = request.user
-                obj.approved_at = timezone.now()
+        previous_status = None
+        if change:
+            previous_status = (
+                WorkerProfile.objects
+                .filter(pk=obj.pk)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+        approval_requested = (
+            change
+            and obj.status == WorkerProfile.Status.APPROVED
+            and previous_status == WorkerProfile.Status.PENDING
+        )
+
+        if obj.status == WorkerProfile.Status.APPROVED and approval_requested:
+            # Inline documents/services/zones/schedules are saved after save_model.
+            # Keep the row pending until save_related can validate the saved inlines.
+            obj.status = WorkerProfile.Status.PENDING
+            obj.is_online = False
+        elif (
+            obj.status == WorkerProfile.Status.APPROVED
+            and previous_status != WorkerProfile.Status.APPROVED
+        ):
+            obj.status = (
+                previous_status
+                if previous_status is not None
+                else WorkerProfile.Status.PENDING
+            )
+            obj.is_online = False
+            self.message_user(
+                request,
+                "Only an existing pending worker application can be approved.",
+                messages.WARNING,
+            )
+
         super().save_model(request, obj, form, change)
+
+        if approval_requested:
+            request._worker_approval_requested = True
+            request._worker_approval_worker_id = obj.pk
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
@@ -183,51 +192,49 @@ class WorkerProfileAdmin(ModelAdmin):
 
         formset.save_m2m()
 
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        if not getattr(request, "_worker_approval_requested", False):
+            return
+
+        result = approve_worker(
+            request._worker_approval_worker_id,
+            request.user,
+        )
+        if result["status"] == "approved":
+            worker = result["worker"]
+            self.message_user(
+                request,
+                f"{worker.user.name or worker.user.phone} has been approved.",
+                messages.SUCCESS,
+            )
+        elif result["status"] == "ineligible":
+            missing = "; ".join(result["requirements"]["missing"])
+            self.message_user(
+                request,
+                "Application saved as pending. Missing approval requirements: " + missing,
+                messages.WARNING,
+            )
+        else:
+            self.message_user(
+                request,
+                "This application could not be approved because its status changed.",
+                messages.WARNING,
+            )
+
     def approve_workers(self, request, queryset):
         approved_count = 0
         skipped_count = 0
+        missing_requirements = set()
 
-        for worker in queryset:
-            if worker.status != WorkerProfile.Status.PENDING:
-                skipped_count += 1
-                continue
-
-            documents = worker.documents.all()
-            has_verified_id = documents.filter(
-                doc_type__in=[
-                    WorkerDocument.DocumentType.AADHAAR,
-                    WorkerDocument.DocumentType.ID,
-                ],
-                status=WorkerDocument.Status.VERIFIED,
-            ).exists()
-            has_service = worker.worker_services.filter(
-                service__is_active=True, service__category__is_active=True
-            ).exists()
-            has_zone = worker.worker_zones.filter(
-                zone__is_active=True, zone__city__is_active=True
-            ).exists()
-            has_schedule = worker.schedules.filter(is_active=True).exists()
-            has_photo = worker.documents.filter(
-                doc_type=WorkerDocument.DocumentType.PHOTO,
-                status=WorkerDocument.Status.VERIFIED,
-            ).exists()
-
-            if not (has_verified_id and has_photo and has_service and has_zone and has_schedule):
-                skipped_count += 1
-                continue
-
-            with transaction.atomic():
-                worker.status = WorkerProfile.Status.APPROVED
-                worker.approved_by = request.user
-                worker.approved_at = timezone.now()
-                worker.rejection_reason = ""
-                worker.save()
-
-                UserRole.objects.get_or_create(
-                    user=worker.user,
-                    role=UserRole.Role.WORKER,
-                )
+        for worker_id in queryset.values_list("pk", flat=True).iterator():
+            result = approve_worker(worker_id, request.user)
+            if result["status"] == "approved":
                 approved_count += 1
+            else:
+                skipped_count += 1
+                if result.get("requirements"):
+                    missing_requirements.update(result["requirements"]["missing"])
 
         if approved_count:
             self.message_user(
@@ -237,11 +244,13 @@ class WorkerProfileAdmin(ModelAdmin):
             )
 
         if skipped_count:
+            detail = (
+                " Missing requirements: " + "; ".join(sorted(missing_requirements))
+                if missing_requirements else ""
+            )
             self.message_user(
                 request,
-                f"{skipped_count} application(s) were not approved. "
-                "Approval requires a verified ID and profile photo, at least one active service, "
-                "one active service zone, and valid working hours.",
+                f"{skipped_count} application(s) were not approved.{detail}",
                 messages.WARNING,
             )
 
