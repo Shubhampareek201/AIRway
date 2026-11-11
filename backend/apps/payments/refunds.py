@@ -187,7 +187,7 @@ def process_payment_refund(refund_id):
         return PaymentRefund.objects.get(pk=refund_id)
 
 
-def reconcile_gateway_refund(refund_id, event_type, gateway_status):
+def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amount=None):
     """Apply signed Razorpay refund webhook events idempotently."""
     with transaction.atomic():
         refund = PaymentRefund.objects.select_for_update().select_related(
@@ -195,6 +195,14 @@ def reconcile_gateway_refund(refund_id, event_type, gateway_status):
         ).filter(gateway_refund_id=refund_id).first()
         if refund is None:
             return None
+        if gateway_amount is not None and int(gateway_amount) != int(refund.gateway_amount * 100):
+            logger.error(
+                "Razorpay refund amount mismatch for refund %s: expected %s, received %s",
+                refund.pk, int(refund.gateway_amount * 100), gateway_amount,
+            )
+            return None
+        if refund.status == PaymentRefund.Status.PROCESSED:
+            return refund
         if event_type == "refund.processed" or gateway_status == "processed":
             refund.status = PaymentRefund.Status.PROCESSED
             refund.processed_at = timezone.now()
