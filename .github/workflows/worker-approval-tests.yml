@@ -39,6 +39,8 @@ jobs:
           # existing local test baseline until the dependency pin is corrected.
           sed '/^django==/d' requirements.txt > /tmp/airway-ci-requirements.txt
           python -m pip install "Django==6.0.10" -r /tmp/airway-ci-requirements.txt
+          # manage.py imports dotenv, but python-dotenv is currently absent from requirements.txt.
+          python -m pip install "python-dotenv>=1.0"
 
       - name: Run Django system checks
         working-directory: backend
