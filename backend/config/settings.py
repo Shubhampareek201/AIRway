@@ -28,6 +28,11 @@ ALLOWED_HOSTS = os.environ.get(
     "DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,192.168.1.4"
 ).split(",")
 
+# Configurable parent-order advance percentage (default: 30%).
+ORDER_ADVANCE_PERCENTAGE = int(os.environ.get("ORDER_ADVANCE_PERCENTAGE", "30"))
+if not 1 <= ORDER_ADVANCE_PERCENTAGE <= 99:
+    raise ValueError("ORDER_ADVANCE_PERCENTAGE must be between 1 and 99.")
+
 
 # Application definition
 

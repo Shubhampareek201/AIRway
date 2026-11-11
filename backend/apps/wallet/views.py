@@ -296,16 +296,48 @@ class WalletRefundView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            payment_filter = Q(booking=booking)
+            booking_total = Decimal(str(booking.total_amount))
+            collected_for_booking = Decimal("0.00")
             try:
-                order_id = booking.order_item.order_id
+                order_item = booking.order_item
+                order_id = order_item.order_id
             except OrderItem.DoesNotExist:
+                order_item = None
                 order_id = None
+
             if order_id:
-                payment_filter |= Q(order_id=order_id)
-            if not Payment.objects.filter(payment_filter, status=Payment.Status.PAID).exists():
+                order = order_item.order
+                allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+                payments = Payment.objects.filter(
+                    order=order,
+                    status=Payment.Status.PAID,
+                )
+                for paid_payment in payments:
+                    stage = paid_payment.stage
+                    if stage == Payment.Stage.LEGACY:
+                        collected_for_booking += min(booking_total, order_item.line_total)
+                    else:
+                        rows = allocation.get(stage, [])
+                        line = next(
+                            (entry for entry in rows if entry.get("order_item_id") == order_item.id),
+                            None,
+                        )
+                        if line:
+                            collected_for_booking += Decimal(str(line.get("amount", "0")))
+            else:
+                paid_booking_payment = Payment.objects.filter(
+                    booking=booking,
+                    status=Payment.Status.PAID,
+                ).first()
+                if paid_booking_payment:
+                    collected_for_booking = min(
+                        booking_total,
+                        paid_booking_payment.amount + paid_booking_payment.wallet_amount,
+                    )
+
+            if collected_for_booking <= 0:
                 return Response(
-                    {"detail": "A successful payment for this booking is required before refunding."},
+                    {"detail": "No collected payment amount is allocated to this booking."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -315,8 +347,7 @@ class WalletRefundView(APIView):
                 reference_id=str(booking.id),
                 status=WalletTransaction.Status.COMPLETED,
             ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
-            booking_total = Decimal(str(booking.total_amount))
-            refundable = booking_total - already_refunded
+            refundable = max(collected_for_booking - already_refunded, Decimal("0.00"))
             if amount > refundable:
                 return Response(
                     {"detail": f"Refund exceeds the remaining refundable amount of ₹{refundable}."},

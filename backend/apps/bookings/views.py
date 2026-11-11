@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
 from django.db import transaction
+from django.conf import settings
 from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
@@ -57,6 +58,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def cancel(self, request, pk=None):
         from apps.bookings.models import WorkerOffer
 
@@ -73,6 +75,18 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking.cancelled_by = request.user
         booking.save()
 
+        assignment = getattr(booking, "assignment", None)
+        if assignment:
+            Notification.objects.create(
+                user=assignment.worker.user,
+                type=Notification.Type.WORKER_OFFER_WITHDRAWN,
+                title="Service Cancelled",
+                body=f"The customer cancelled booking #{booking.id}. This service is no longer assigned to you.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id},
+            )
+            assignment.delete()
+
         BookingStatusHistory.objects.create(
             booking=booking,
             from_status=old_status,
@@ -81,11 +95,36 @@ class BookingViewSet(viewsets.ModelViewSet):
             note=f"Cancelled by customer. Reason: {reason}",
         )
 
-        # Cancel all pending worker offers for this booking
-        WorkerOffer.objects.filter(booking=booking, status=WorkerOffer.Status.PENDING).update(
-            status=WorkerOffer.Status.EXPIRED,
-            responded_at=timezone.now(),
-        )
+        # Cancel pending offers for the affected service. For grouped orders,
+        # withdraw the shared order offer and redispatch only if active lines
+        # remain unassigned and the required advance has already been captured.
+        order_item = getattr(booking, "order_item", None)
+        if order_item:
+            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+            active_remaining = order.items.exclude(
+                booking__status=Booking.Status.CANCELLED
+            ).exists()
+            order.status = (
+                Order.Status.PARTIALLY_CANCELLED
+                if active_remaining else Order.Status.CANCELLED
+            )
+            order.save(update_fields=["status", "updated_at"])
+            WorkerOffer.objects.filter(
+                order=order, status=WorkerOffer.Status.PENDING
+            ).update(
+                status=WorkerOffer.Status.WITHDRAWN,
+                responded_at=timezone.now(),
+            )
+            if active_remaining:
+                from apps.bookings.dispatcher import DispatcherService
+                DispatcherService.dispatch_order(order)
+        else:
+            WorkerOffer.objects.filter(
+                booking=booking, status=WorkerOffer.Status.PENDING
+            ).update(
+                status=WorkerOffer.Status.EXPIRED,
+                responded_at=timezone.now(),
+            )
 
         Notification.objects.create(
             user=request.user,
@@ -311,6 +350,19 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        order_item = getattr(booking, "order_item", None)
+        if order_item and "payment_allocation_v1" in (order_item.order.metadata or {}):
+            from apps.payments.models import Payment
+            if not Payment.objects.filter(
+                order=order_item.order,
+                stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).exists():
+                return Response(
+                    {"detail": "The customer advance payment has not been verified."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         old_status = booking.status
         booking.status = Booking.Status.IN_PROGRESS
         booking.save()
@@ -344,72 +396,137 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="complete")
     def complete_job(self, request, pk=None):
-        """Mark booking as completed (worker finished the job)."""
-        from apps.notifications.models import Notification
+        """Issue a customer-shared OTP, then complete only after worker verification."""
+        import secrets
+        from datetime import timedelta
+        from django.contrib.auth.hashers import check_password, make_password
+        from apps.bookings.models import BookingCompletionOTP
 
-        booking = Booking.objects.filter(pk=pk).first()
+        booking = Booking.objects.select_related("customer").filter(pk=pk).first()
         if not booking:
             return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
-
         assignment = getattr(booking, "assignment", None)
-
         if not assignment:
-            return Response(
-                {"detail": "This booking has no assignment."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+            return Response({"detail": "This booking has no assignment."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            user_worker_profile = request.user.worker_profile
+            worker_profile = request.user.worker_profile
         except ObjectDoesNotExist:
-            return Response(
-                {"detail": "User is not a worker."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if assignment.worker != user_worker_profile:
-            return Response(
-                {"detail": "Only the assigned worker can complete this job."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
+            return Response({"detail": "User is not a worker."}, status=status.HTTP_403_FORBIDDEN)
+        if assignment.worker_id != worker_profile.id:
+            return Response({"detail": "Only the assigned worker can complete this job."}, status=status.HTTP_403_FORBIDDEN)
         if booking.status != Booking.Status.IN_PROGRESS:
-            return Response(
-                {"detail": f"Cannot complete job in {booking.get_status_display()} state."},
-                status=status.HTTP_400_BAD_REQUEST
+            return Response({"detail": f"Cannot complete job in {booking.get_status_display()} state."}, status=status.HTTP_400_BAD_REQUEST)
+
+        supplied_code = str(request.data.get("otp", "")).strip()
+        with transaction.atomic():
+            locked_booking = Booking.objects.select_for_update().get(pk=booking.pk)
+            otp_record = BookingCompletionOTP.objects.select_for_update().filter(booking=locked_booking).first()
+            now = timezone.now()
+
+            if not supplied_code:
+                if otp_record and otp_record.verified_at:
+                    return Response({"detail": "This service has already been verified."}, status=status.HTTP_409_CONFLICT)
+                if otp_record and otp_record.expires_at > now:
+                    return Response({
+                        "detail": "A completion code has already been sent to the customer. Ask the customer to share it.",
+                        "otp_required": True,
+                        "expires_at": otp_record.expires_at.isoformat(),
+                    }, status=status.HTTP_200_OK)
+                code = f"{secrets.randbelow(1_000_000):06d}"
+                expires_at = now + timedelta(minutes=10)
+                values = {
+                    "code_hash": make_password(code),
+                    "expires_at": expires_at,
+                    "attempts": 0,
+                    "last_sent_at": now,
+                    "verified_at": None,
+                }
+                if otp_record:
+                    for field, value in values.items():
+                        setattr(otp_record, field, value)
+                    otp_record.save(update_fields=[*values.keys(), "updated_at"])
+                else:
+                    otp_record = BookingCompletionOTP.objects.create(booking=locked_booking, **values)
+
+                Notification.objects.create(
+                    user=locked_booking.customer,
+                    type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                    title="Share your service completion code",
+                    body=f"Your AIRway completion code for booking #{locked_booking.id} is {code}. Share it with your assigned professional only after the service is finished. It expires in 10 minutes.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": locked_booking.id, "purpose": "service_completion_otp", "expires_at": expires_at.isoformat()},
+                )
+                return Response({
+                    "detail": "Completion code sent to the customer in the AIRway app. Ask the customer to share it.",
+                    "otp_required": True,
+                    "expires_at": expires_at.isoformat(),
+                }, status=status.HTTP_200_OK)
+
+            if not otp_record or otp_record.verified_at:
+                return Response({"detail": "No active completion code. Request a new code first."}, status=status.HTTP_400_BAD_REQUEST)
+            if otp_record.expires_at <= now:
+                return Response({"detail": "Completion code expired. Request a new code."}, status=status.HTTP_400_BAD_REQUEST)
+            if otp_record.attempts >= 5:
+                return Response({"detail": "Too many incorrect attempts. Request a new code after it expires."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            if len(supplied_code) != 6 or not supplied_code.isdigit() or not check_password(supplied_code, otp_record.code_hash):
+                otp_record.attempts += 1
+                otp_record.save(update_fields=["attempts", "updated_at"])
+                remaining = max(5 - otp_record.attempts, 0)
+                return Response({"detail": "Invalid completion code.", "attempts_remaining": remaining}, status=status.HTTP_400_BAD_REQUEST)
+
+            otp_record.verified_at = now
+            otp_record.save(update_fields=["verified_at", "updated_at"])
+            old_status = locked_booking.status
+            locked_booking.status = Booking.Status.COMPLETED
+            locked_booking.completed_at = now
+            worker_notes = str(request.data.get("notes", "")).strip()
+            if worker_notes:
+                locked_booking.worker_notes = worker_notes
+            locked_booking.save(update_fields=["status", "completed_at", "worker_notes", "updated_at"])
+            assignment.completed_at = now
+            assignment.save(update_fields=["completed_at", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=locked_booking,
+                from_status=old_status,
+                to_status=Booking.Status.COMPLETED,
+                changed_by=request.user,
+                note="Service completion verified with customer-shared OTP.",
             )
 
-        old_status = booking.status
-        booking.status = Booking.Status.COMPLETED
-        booking.completed_at = timezone.now()
-        booking.save()
+            order = getattr(locked_booking, "order_item", None)
+            balance_ready = False
+            if order:
+                order_items = list(order.order.items.select_related("booking"))
+                balance_ready = all(
+                    row.booking.status == Booking.Status.COMPLETED
+                    or row.booking.status == Booking.Status.CANCELLED
+                    for row in order_items
+                )
+                if balance_ready:
+                    Notification.objects.create(
+                        user=locked_booking.customer,
+                        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                        title="All services completed",
+                        body=f"All active services in AIRway order #{order.order_id} are verified. Your remaining balance is now due.",
+                        channel=Notification.Channel.IN_APP,
+                        data={"order_id": order.order_id, "payment_stage": "balance"},
+                    )
 
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.COMPLETED,
-            changed_by=request.user,
-            note="Worker completed the job",
-        )
-
-        if assignment:
-            assignment.completed_at = timezone.now()
-            assignment.save()
-
-        Notification.objects.create(
-            user=booking.customer,
-            type=Notification.Type.BOOKING_COMPLETED,
-            title="Service Completed",
-            body="The service has been completed successfully.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
+            Notification.objects.create(
+                user=locked_booking.customer,
+                type=Notification.Type.BOOKING_COMPLETED,
+                title="Service Completion Verified",
+                body="Your service completion was verified successfully.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": locked_booking.id, "order_id": order.order_id if order else None},
+            )
 
         return Response({
-            "detail": "Job marked as completed.",
-            "status": booking.status,
-            "completed_at": assignment.completed_at,
-        })
+            "detail": "Service completion verified successfully.",
+            "status": Booking.Status.COMPLETED,
+            "completed_at": now.isoformat(),
+            "order_balance_ready": balance_ready,
+        }, status=status.HTTP_200_OK)
 
 
 class CustomerCheckoutView(APIView):
@@ -619,10 +736,54 @@ class CustomerCheckoutView(APIView):
         order.total_amount = grand_total
         order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
 
-        from apps.bookings.dispatcher import DispatcherService
-        order_offers = DispatcherService.dispatch_order(order)
-        if dispatch_results:
-            dispatch_results[0]["offers_sent"] = len(order_offers)
+        # Persist the exact 30/70 split before returning the checkout response so
+        # the customer sees the due-now amount even before opening Razorpay.
+        from decimal import ROUND_HALF_UP
+        allocation_items = list(order.items.all())
+        advance_percentage = Decimal(str(getattr(settings, "ORDER_ADVANCE_PERCENTAGE", 30)))
+        advance_total = (order.total_amount * advance_percentage / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        balance_total = order.total_amount - advance_total
+        advance_rows, balance_rows = [], []
+        allocated_advance = Decimal("0.00")
+        allocated_balance = Decimal("0.00")
+        for index, item in enumerate(allocation_items):
+            if index == len(allocation_items) - 1:
+                advance_line = advance_total - allocated_advance
+                balance_line = balance_total - allocated_balance
+            else:
+                ratio = item.line_total / order.total_amount if order.total_amount else Decimal("0")
+                advance_line = (advance_total * ratio).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                balance_line = item.line_total - advance_line
+                allocated_advance += advance_line
+                allocated_balance += balance_line
+            advance_rows.append({
+                "order_item_id": item.id,
+                "booking_id": item.booking_id,
+                "amount": str(advance_line),
+            })
+            balance_rows.append({
+                "order_item_id": item.id,
+                "booking_id": item.booking_id,
+                "amount": str(balance_line),
+            })
+        order.metadata = {
+            **(order.metadata or {}),
+            "payment_allocation_v1": {
+                "percentage": str(advance_percentage),
+                "advance_total": str(advance_total),
+                "balance_total": str(balance_total),
+                "advance": advance_rows,
+                "balance": balance_rows,
+            },
+        }
+        order.save(update_fields=["metadata", "updated_at"])
+
+        # Worker dispatch is intentionally gated behind verified 30% advance.
+        # Payment webhook/verification triggers DispatcherService.dispatch_order.
 
         cart.items.all().delete()
         return Response({
@@ -643,12 +804,9 @@ class CustomerCheckoutView(APIView):
                 }
                 for row in order.items.all()
             ],
-            "dispatch": dispatch_results,
-            "next_step": (
-                "Worker offers sent. Track assignment in the order; payment unlocks after every service is assigned."
-                if any(row["offers_sent"] for row in dispatch_results)
-                else "No single approved worker is currently eligible and available for every service and selected time in this order. The order is waiting for worker assignment."
-            ),
+            "dispatch": {"offers_sent": 0, "deferred_until_advance_payment": True},
+            "next_step": "Pay the 30% advance to start worker matching. The remaining 70% is due after all services are completed and verified.",
+
         }, status=status.HTTP_201_CREATED)
 
 
@@ -656,11 +814,16 @@ class CustomerOrderDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, order_id):
+        from apps.payments.models import Payment
+
         order = get_object_or_404(
-            Order.objects.prefetch_related("items__booking__assignment__worker__user"),
+            Order.objects.prefetch_related("items__booking__assignment__worker__user", "payments"),
             pk=order_id,
             customer=request.user,
         )
+        allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+        advance_rows = {row["order_item_id"]: row for row in allocation.get("advance", [])}
+        balance_rows = {row["order_item_id"]: row for row in allocation.get("balance", [])}
         items = []
         for row in order.items.all():
             booking = row.booking
@@ -680,9 +843,52 @@ class CustomerOrderDetailView(APIView):
                 ),
                 "quantity": row.quantity,
                 "line_total": str(row.line_total),
+                "advance_amount": advance_rows.get(row.id, {}).get("amount"),
+                "balance_amount": balance_rows.get(row.id, {}).get("amount"),
+                "completion_verified": booking.status == Booking.Status.COMPLETED,
             })
-        # GET endpoints must not advance order lifecycle state. Worker offer
-        # acceptance performs the AWAITING_PAYMENT transition atomically.
+
+        is_staged_payment = bool(allocation)
+        advance_payment = order.payments.filter(stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).first()
+        balance_payment = order.payments.filter(stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).first()
+        legacy_payment = order.payments.filter(stage=Payment.Stage.LEGACY, status=Payment.Status.PAID).first()
+        legacy_ready = (
+            not is_staged_payment
+            and order.status == Order.Status.AWAITING_PAYMENT
+            and all(row["booking_status"] == Booking.Status.ASSIGNED for row in items)
+            and not legacy_payment
+        )
+        active_item_ids = {
+            row["order_item_id"] for row in items
+            if row["booking_status"] != Booking.Status.CANCELLED
+        }
+        active_advance_due = sum(
+            (
+                Decimal(str(entry.get("amount", "0")))
+                for entry in allocation.get("advance", [])
+                if entry.get("order_item_id") in active_item_ids
+            ),
+            Decimal("0.00"),
+        )
+        advance_due = active_advance_due if not advance_payment else Decimal("0")
+        active_balance_due = sum(
+            (
+                Decimal(str(entry.get("amount", "0")))
+                for entry in allocation.get("balance", [])
+                if entry.get("order_item_id") in active_item_ids
+            ),
+            Decimal("0.00"),
+        )
+        balance_due = active_balance_due if not balance_payment else Decimal("0")
+        active_rows = [
+            row for row in items
+            if row["booking_status"] != Booking.Status.CANCELLED
+        ]
+        all_services_verified = bool(active_rows) and all(
+            row["completion_verified"] for row in active_rows
+        )
+        ready_for_balance = bool(advance_payment and all_services_verified and not balance_payment)
+
         return Response({
             "id": order.id,
             "status": order.status,
@@ -690,8 +896,23 @@ class CustomerOrderDetailView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "is_staged_payment": is_staged_payment,
+            "advance_percentage": int(allocation.get("percentage", 30)),
+            "advance_total": allocation.get("advance_total"),
+            "balance_total": allocation.get("balance_total"),
+            "advance_paid": bool(advance_payment),
+            "balance_paid": bool(balance_payment),
+            "legacy_paid": bool(legacy_payment),
+            "advance_due": str(advance_due),
+            "balance_due": str(balance_due),
+            "legacy_payment_due": str(order.total_amount) if legacy_ready else "0.00",
+            "amount_due": str(advance_due + balance_due) if is_staged_payment else (str(order.total_amount) if legacy_ready else "0.00"),
+            "ready_for_advance": is_staged_payment and not advance_payment and order.status in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED),
+            "ready_for_balance": ready_for_balance,
+            "ready_for_legacy_payment": legacy_ready,
+            "ready_for_payment": ready_for_balance or legacy_ready,
+            "all_services_verified": all_services_verified,
             "items": items,
-            "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
         })
 
 
@@ -700,19 +921,49 @@ class CustomerOrderListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from apps.payments.models import Payment
+
         orders = Order.objects.filter(customer=request.user).prefetch_related(
-            "items__booking"
+            "items__booking", "payments"
         ).order_by("-created_at")
         results = []
         for order in orders:
-            # Order state is changed by the assignment workflow, never by a read.
+            allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+            staged = bool(allocation)
+            advance_paid = order.payments.filter(
+                stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID
+            ).exists()
+            balance_paid = order.payments.filter(
+                stage=Payment.Stage.BALANCE, status=Payment.Status.PAID
+            ).exists()
+            legacy_paid = order.payments.filter(
+                stage=Payment.Stage.LEGACY, status=Payment.Status.PAID
+            ).exists()
+            active_items = order.items.exclude(booking__status=Booking.Status.CANCELLED)
+            all_completed = active_items.exists() and not active_items.exclude(
+                booking__status=Booking.Status.COMPLETED
+            ).exists()
+            ready_for_advance = staged and not advance_paid and order.status in (
+                Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT,
+                Order.Status.PARTIALLY_CANCELLED,
+            )
+            ready_for_balance = staged and advance_paid and all_completed and not balance_paid
+            ready_for_legacy = (
+                not staged and order.status == Order.Status.AWAITING_PAYMENT and not legacy_paid
+            )
+            # Order state is changed by payment/assignment actions, never by a read.
             results.append({
                 "id": order.id,
                 "status": order.status,
                 "total_amount": str(order.total_amount),
                 "created_at": order.created_at,
                 "item_count": order.items.count(),
-                "ready_for_payment": order.status == Order.Status.AWAITING_PAYMENT,
+                "is_staged_payment": staged,
+                "advance_paid": advance_paid,
+                "balance_paid": balance_paid,
+                "ready_for_advance": ready_for_advance,
+                "ready_for_balance": ready_for_balance,
+                "ready_for_payment": ready_for_balance or ready_for_legacy,
             })
         return Response(results)
 

@@ -440,6 +440,7 @@ class WorkerJobListView(APIView):
                 "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
                 "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+            "payment_label": payment_label,
                 "worker_notes": booking.worker_notes or None,
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
             })
@@ -461,6 +462,31 @@ class WorkerJobDetailView(APIView):
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
+        from apps.payments.models import Payment
+        order_item = getattr(booking, "order_item", None)
+        if order_item:
+            order = order_item.order
+            allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+            if allocation:
+                advance_paid = Payment.objects.filter(
+                    order=order, stage=Payment.Stage.ADVANCE,
+                    status=Payment.Status.PAID,
+                ).exists()
+                payment_label = (
+                    "30% advance received. Remaining balance is due after OTP-verified completion."
+                    if advance_paid else "Customer advance payment is pending."
+                )
+            else:
+                legacy_paid = Payment.objects.filter(
+                    order=order, stage=Payment.Stage.LEGACY,
+                    status=Payment.Status.PAID,
+                ).exists()
+                payment_label = "Full order payment received." if legacy_paid else "Full order payment pending."
+        else:
+            booking_paid = Payment.objects.filter(
+                booking=booking, status=Payment.Status.PAID
+            ).exists()
+            payment_label = "Full booking payment received." if booking_paid else "Booking payment pending."
         customer_answers = dict(booking.customer_answers or {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
@@ -597,6 +623,19 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        order_item = getattr(booking, "order_item", None)
+        if order_item and "payment_allocation_v1" in (order_item.order.metadata or {}):
+            from apps.payments.models import Payment
+            if not Payment.objects.filter(
+                order=order_item.order,
+                stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).exists():
+                return Response(
+                    {"detail": "The customer advance payment has not been verified."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         if not assign.accepted_at:
             return Response(
                 {"detail": "Accept the job before starting work."},
@@ -632,20 +671,11 @@ class WorkerJobCompleteView(APIView):
         assign, booking = _get_assignment_and_booking(job_id, profile)
         if not booking:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-        if booking.status != Booking.Status.IN_PROGRESS:
-            return Response({"detail": "Job must be in progress."}, status=status.HTTP_400_BAD_REQUEST)
-        notes = request.data.get("notes", "")
-        assign.completed_at = timezone.now()
-        assign.save()
-        old = booking.status
-        booking.status = Booking.Status.COMPLETED
-        booking.worker_notes = notes
-        booking.save(update_fields=["status", "worker_notes"])
-        BookingStatusHistory.objects.create(
-            booking=booking, from_status=old, to_status=Booking.Status.COMPLETED,
-            changed_by=request.user, note="Worker marked complete.",
-        )
-        return Response({"detail": "Job completed.", "status": booking.status})
+
+        # Keep the worker-facing route, but route completion through the single
+        # booking lifecycle implementation that enforces customer OTP checks.
+        from apps.bookings.views import BookingViewSet
+        return BookingViewSet().complete_job(request, pk=booking.pk)
 
 
 class WorkerEarningsView(APIView):
@@ -924,13 +954,24 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
                     Booking.objects.select_for_update(of=("self",)).filter(order_item__order=order)
+                    .exclude(status=Booking.Status.CANCELLED)
                     .select_related("service__category", "variant", "address__zone__city")
                     .order_by("pk")
                 )
                 if not bookings:
                     return Response({"detail": "This order no longer has service bookings."}, status=status.HTTP_409_CONFLICT)
-                if order.status != Order.Status.AWAITING_ASSIGNMENT:
+                if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
+                from apps.payments.models import Payment
+                if "payment_allocation_v1" in (order.metadata or {}) and not Payment.objects.filter(
+                    order=order,
+                    stage=Payment.Stage.ADVANCE,
+                    status=Payment.Status.PAID,
+                ).exists():
+                    return Response(
+                        {"detail": "The customer's 30% advance must be verified before accepting this order."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
             else:
                 bookings = [Booking.objects.select_for_update(of=("self",)).select_related(
                     "service__category", "variant", "address__zone__city"
@@ -1021,7 +1062,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 ).exclude(pk=offer.pk).update(
                     status=WorkerOffer.Status.WITHDRAWN, responded_at=now
                 )
-                order.status = Order.Status.AWAITING_PAYMENT
+                order.status = (
+                    Order.Status.PARTIALLY_CANCELLED
+                    if order.items.filter(booking__status=Booking.Status.CANCELLED).exists()
+                    else Order.Status.AWAITING_PAYMENT
+                )
                 order.save(update_fields=["status", "updated_at"])
 
         if not order:

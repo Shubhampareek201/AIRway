@@ -12,6 +12,11 @@ class Payment(TimeStampedModel):
         RAZORPAY = "razorpay", "Razorpay"
         WALLET = "wallet", "AIRway Wallet"
 
+    class Stage(models.TextChoices):
+        LEGACY = "legacy", "Legacy full payment"
+        ADVANCE = "advance", "30% advance"
+        BALANCE = "balance", "70% balance"
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         PAID = "paid", "Paid"
@@ -25,10 +30,10 @@ class Payment(TimeStampedModel):
         null=True,
         blank=True,
     )
-    order = models.OneToOneField(
+    order = models.ForeignKey(
         Order,
         on_delete=models.PROTECT,
-        related_name="payment",
+        related_name="payments",
         null=True,
         blank=True,
     )
@@ -37,6 +42,7 @@ class Payment(TimeStampedModel):
         on_delete=models.PROTECT,
         related_name="payments",
     )
+    stage = models.CharField(max_length=20, choices=Stage.choices, default=Stage.LEGACY, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     wallet_amount = models.DecimalField(
         max_digits=10,
@@ -60,6 +66,16 @@ class Payment(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         constraints = [
+            models.UniqueConstraint(
+                fields=["order", "stage"],
+                condition=models.Q(order__isnull=False),
+                name="unique_order_payment_stage",
+            ),
+            models.UniqueConstraint(
+                fields=["razorpay_order_id"],
+                condition=~models.Q(razorpay_order_id=""),
+                name="unique_razorpay_order_id",
+            ),
             models.CheckConstraint(
                 condition=(
                     (models.Q(booking__isnull=False) & models.Q(order__isnull=True))

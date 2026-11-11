@@ -12,6 +12,7 @@ from .models import (
     Order,
     OrderItem,
     DispatchConfiguration,
+    BookingCompletionOTP,
 )
 
 
@@ -100,6 +101,28 @@ class DispatchConfigurationAdmin(ModelAdmin):
 
     def has_add_permission(self, request):
         return not DispatchConfiguration.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+
+@admin.register(BookingCompletionOTP)
+class BookingCompletionOTPAdmin(ModelAdmin):
+    list_display = ("booking", "expires_at", "attempts", "verified_at", "created_at")
+    list_filter = ("verified_at", "expires_at")
+    search_fields = ("booking__id", "booking__customer__phone")
+    readonly_fields = (
+        "booking", "expires_at", "attempts", "last_sent_at",
+        "verified_at", "created_at", "updated_at",
+    )
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False

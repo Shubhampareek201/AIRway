@@ -99,15 +99,30 @@ class DispatcherService:
         with transaction.atomic():
             order = Order.objects.select_for_update().get(pk=order.pk)
             config = DispatchConfiguration.get_solo()
-            if not config.is_enabled or order.status != Order.Status.AWAITING_ASSIGNMENT:
+            if not config.is_enabled or order.status not in (
+                Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED
+            ):
+                return []
+            # Dispatch is globally gated by a captured 30% advance. This also
+            # protects Celery retries and expired-offer batches from bypassing
+            # the checkout gate.
+            from apps.payments.models import Payment
+            if "payment_allocation_v1" in (order.metadata or {}) and not Payment.objects.filter(
+                order=order,
+                stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).exists():
                 return []
             items = list(order.items.select_related(
                 "booking__service__category", "booking__variant", "booking__address__zone__city"
             ).order_by("created_at"))
             if not items:
                 return []
-            bookings = [item.booking for item in items]
-            if any(
+            bookings = [
+                item.booking for item in items
+                if item.booking.status != Booking.Status.CANCELLED
+            ]
+            if not bookings or any(
                 booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
                 or BookingAssignment.objects.filter(booking=booking).exists()
                 for booking in bookings

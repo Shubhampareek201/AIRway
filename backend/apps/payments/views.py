@@ -109,128 +109,230 @@ def create_or_get_payment(booking, customer, trigger_source="api"):
     return payment, razorpay_order_id, False
 
 
-def create_or_get_order_payment(order, customer, wallet_amount=Decimal("0.00"), trigger_source="checkout"):
-    """Create/retrieve a parent-order payment and reserve the selected wallet amount."""
+def create_or_get_order_payment(
+    order,
+    customer,
+    wallet_amount=Decimal("0.00"),
+    trigger_source="checkout",
+    stage=Payment.Stage.ADVANCE,
+):
+    """Create or retrieve an idempotent advance or balance payment for an order."""
     try:
         requested = Decimal(str(wallet_amount))
     except (InvalidOperation, TypeError, ValueError):
         raise ValueError("Provide a valid wallet amount.")
-    try:
-        if not requested.is_finite() or requested < 0 or requested.quantize(Decimal("0.01")) != requested:
-            raise ValueError("Wallet amount must be non-negative and have at most two decimal places.")
-    except InvalidOperation:
-        raise ValueError("Provide a valid wallet amount.")
+    if not requested.is_finite() or requested < 0 or requested.quantize(Decimal("0.01")) != requested:
+        raise ValueError("Wallet amount must be non-negative and have at most two decimal places.")
     if order.customer_id != customer.id:
         raise ValueError("Order not found or access denied.")
+    if stage not in (Payment.Stage.LEGACY, Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
+        raise ValueError("Unsupported order payment stage.")
 
-    already_paid_payment = Payment.objects.filter(
-        order=order,
-        status=Payment.Status.PAID,
-    ).first()
-    if already_paid_payment:
-        return already_paid_payment, already_paid_payment.razorpay_order_id, True
-
-    booking_statuses = list(
-        order.items.select_related("booking").values_list("booking__status", flat=True)
-    )
-    if not booking_statuses:
+    items = list(order.items.select_related("booking").order_by("id"))
+    if not items:
         raise ValueError("This order has no service bookings.")
-    if any(value != Booking.Status.ASSIGNED for value in booking_statuses):
-        raise ValueError("Payment is available only after every service has an assigned worker.")
-    if order.status not in [Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT]:
-        raise ValueError("This order is not awaiting payment.")
-    if order.total_amount <= 0:
-        raise ValueError("Order total must be greater than zero.")
+
+    # Keep a deterministic per-service allocation in the order snapshot. The
+    # last line receives the rounding remainder so allocations always sum.
+    allocation_key = "payment_allocation_v1"
+    allocation = order.metadata.get(allocation_key) if isinstance(order.metadata, dict) else None
+    if stage != Payment.Stage.LEGACY and not allocation:
+        from decimal import ROUND_HALF_UP
+        advance_percentage = Decimal(str(settings.ORDER_ADVANCE_PERCENTAGE))
+        advance_total = (order.total_amount * advance_percentage / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        balance_total = order.total_amount - advance_total
+        advance_rows, balance_rows = [], []
+        allocated_advance = Decimal("0.00")
+        allocated_balance = Decimal("0.00")
+        for index, item in enumerate(items):
+            if index == len(items) - 1:
+                advance_line = advance_total - allocated_advance
+                balance_line = balance_total - allocated_balance
+            else:
+                ratio = item.line_total / order.total_amount if order.total_amount else Decimal("0")
+                advance_line = (advance_total * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                balance_line = item.line_total - advance_line
+                allocated_advance += advance_line
+                allocated_balance += balance_line
+            advance_rows.append({"order_item_id": item.id, "booking_id": item.booking_id, "amount": str(advance_line)})
+            balance_rows.append({"order_item_id": item.id, "booking_id": item.booking_id, "amount": str(balance_line)})
+        allocation = {
+            "percentage": str(settings.ORDER_ADVANCE_PERCENTAGE),
+            "advance_total": str(advance_total),
+            "balance_total": str(balance_total),
+            "advance": advance_rows,
+            "balance": balance_rows,
+        }
+        order.metadata = {**(order.metadata or {}), allocation_key: allocation}
+        order.save(update_fields=["metadata", "updated_at"])
+
+    active_items = [item for item in items if item.booking.status != Booking.Status.CANCELLED]
+    if stage in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
+        if not active_items:
+            raise ValueError("There are no active services remaining to pay for.")
+        allocation_rows = allocation.get(
+            "advance" if stage == Payment.Stage.ADVANCE else "balance", []
+        )
+        stage_total = sum(
+            (
+                Decimal(str(next(
+                    (row.get("amount", "0") for row in allocation_rows
+                     if row.get("order_item_id") == item.id),
+                    "0",
+                )))
+                for item in active_items
+            ),
+            Decimal("0.00"),
+        )
+    else:
+        stage_total = order.total_amount
+    if stage == Payment.Stage.LEGACY:
+        if order.status != Order.Status.AWAITING_PAYMENT or any(
+            item.booking.status != Booking.Status.ASSIGNED for item in items
+        ):
+            raise ValueError("Legacy full payment is available only for an assigned order awaiting payment.")
+        if Payment.objects.filter(order=order, stage=Payment.Stage.LEGACY, status=Payment.Status.PAID).exists():
+            paid = Payment.objects.get(order=order, stage=Payment.Stage.LEGACY, status=Payment.Status.PAID)
+            return paid, paid.razorpay_order_id, True
+    elif stage == Payment.Stage.ADVANCE:
+        if Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
+            paid = Payment.objects.get(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID)
+            return paid, paid.razorpay_order_id, True
+        if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED):
+            raise ValueError("This order is not eligible for an advance payment.")
+    else:
+        if not Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
+            raise ValueError("The advance payment must be completed first.")
+        if any(item.booking.status != Booking.Status.COMPLETED for item in active_items):
+            raise ValueError("Final balance is available only after every active service is completed and verified.")
+        if Payment.objects.filter(order=order, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).exists():
+            paid = Payment.objects.get(order=order, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID)
+            return paid, paid.razorpay_order_id, True
+
+    if stage_total <= 0:
+        raise ValueError("Payment amount must be greater than zero.")
+    if requested > stage_total:
+        raise ValueError("Wallet amount cannot exceed the amount due for this payment stage.")
     if requested > 0 and order.currency != "INR":
         raise ValueError("AIRway wallet can only be used for INR orders.")
-    if requested > order.total_amount:
-        raise ValueError("Wallet amount cannot exceed the order total.")
 
+    gateway_order_created = False
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=order.pk, customer=customer)
-        payment = Payment.objects.select_for_update().filter(order=locked_order).first()
+        if stage in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
+            locked_allocation = (locked_order.metadata or {}).get(allocation_key, {})
+            locked_rows = locked_allocation.get(
+                "advance" if stage == Payment.Stage.ADVANCE else "balance", []
+            )
+            locked_items = list(locked_order.items.select_related("booking"))
+            locked_active_items = [
+                item for item in locked_items
+                if item.booking.status != Booking.Status.CANCELLED
+            ]
+            locked_stage_total = sum(
+                (
+                    Decimal(str(next(
+                        (row.get("amount", "0") for row in locked_rows
+                         if row.get("order_item_id") == item.id),
+                        "0",
+                    )))
+                    for item in locked_active_items
+                ),
+                Decimal("0.00"),
+            )
+            if locked_stage_total != stage_total:
+                raise ValueError("The order changed while checkout was starting. Refresh the order and retry.")
+            if stage == Payment.Stage.BALANCE and (
+                not locked_active_items
+                or any(item.booking.status != Booking.Status.COMPLETED for item in locked_active_items)
+            ):
+                raise ValueError("Final balance is available only after every active service is completed and verified.")
+        elif stage == Payment.Stage.LEGACY:
+            locked_items = list(locked_order.items.select_related("booking"))
+            if locked_order.status != Order.Status.AWAITING_PAYMENT or any(
+                item.booking.status != Booking.Status.ASSIGNED for item in locked_items
+            ):
+                raise ValueError("Legacy full payment is no longer available for this order.")
+
+        payment = Payment.objects.select_for_update().filter(order=locked_order, stage=stage).first()
         if payment and payment.status == Payment.Status.PAID:
             return payment, payment.razorpay_order_id, True
-        if payment and payment.wallet_amount != requested:
+        if (
+            payment
+            and payment.wallet_amount != requested
+            and payment.status not in (Payment.Status.FAILED, Payment.Status.REFUNDED)
+        ):
             raise ValueError("A payment attempt already exists with a different wallet amount.")
-
+        expected_gateway_amount = stage_total - requested
+        if (
+            payment
+            and payment.razorpay_order_id
+            and payment.status in (Payment.Status.PENDING, Payment.Status.FAILED)
+            and payment.amount != expected_gateway_amount
+        ):
+            raise ValueError(
+                "A previous Razorpay attempt has a different amount and is still reconciling. Please wait before retrying this payment stage."
+            )
         if payment is None:
             payment = Payment.objects.create(
                 order=locked_order,
                 customer=customer,
-                amount=locked_order.total_amount - requested,
+                stage=stage,
+                amount=stage_total - requested,
                 wallet_amount=requested,
-                method=Payment.Method.WALLET if requested == locked_order.total_amount else Payment.Method.RAZORPAY,
+                method=Payment.Method.WALLET if requested == stage_total else Payment.Method.RAZORPAY,
                 status=Payment.Status.PENDING,
             )
-        elif payment.status in [Payment.Status.FAILED, Payment.Status.REFUNDED]:
-            # A timed-out attempt can reuse its gateway order. A refunded late
-            # capture must use a fresh Razorpay order so old callbacks cannot
-            # settle a new attempt.
+        elif payment.status in (Payment.Status.FAILED, Payment.Status.REFUNDED):
             was_refunded = payment.status == Payment.Status.REFUNDED
             payment.status = Payment.Status.PENDING
             payment.failed_at = None
-            payment.amount = locked_order.total_amount - requested
-            update_fields = ["status", "failed_at", "amount", "updated_at"]
+            payment.amount = stage_total - requested
+            payment.wallet_amount = requested
+            fields = ["status", "failed_at", "amount", "wallet_amount", "updated_at"]
             if was_refunded:
                 payment.razorpay_order_id = ""
                 payment.razorpay_payment_id = ""
                 payment.razorpay_signature = ""
                 payment.raw_response = {}
-                update_fields.extend([
-                    "razorpay_order_id",
-                    "razorpay_payment_id",
-                    "razorpay_signature",
-                    "raw_response",
-                ])
-            payment.save(update_fields=update_fields)
-
+                fields += ["razorpay_order_id", "razorpay_payment_id", "razorpay_signature", "raw_response"]
+            payment.save(update_fields=fields)
         if requested > 0:
             from apps.wallet.services import reserve_wallet_amount
             reserve_wallet_amount(payment, requested)
 
-        locked_order.status = Order.Status.AWAITING_PAYMENT
-        locked_order.save(update_fields=["status", "updated_at"])
+        # Create the Razorpay order while holding the parent-order lock. This
+        # prevents concurrent checkout taps from creating multiple gateway
+        # orders for the same stage record.
+        if payment.amount > 0 and not payment.razorpay_order_id:
+            gateway_order = client.order.create(data={
+                "amount": int(payment.amount * 100),
+                "currency": locked_order.currency,
+                "receipt": f"airway_{stage}_{locked_order.id}_{payment.id}",
+                "notes": {
+                    "airway_order_id": str(locked_order.id),
+                    "payment_stage": stage,
+                    "customer_id": str(customer.id),
+                    "wallet_amount": str(payment.wallet_amount),
+                },
+            })
+            payment.razorpay_order_id = gateway_order["id"]
+            payment.save(update_fields=["razorpay_order_id", "updated_at"])
+            gateway_order_created = True
 
     if payment.amount == 0:
         from .verify_view import _process_verified_payment
-        result = _process_verified_payment(
-            payment=payment,
-            razorpay_payment_id="",
-            razorpay_order_id="",
-            customer=customer,
-            source="wallet",
-        )
+        result = _process_verified_payment(payment, "", "", customer, "wallet")
         if getattr(result, "status_code", 500) >= 400:
             raise ValueError("Wallet payment could not be completed. Please retry.")
         payment.refresh_from_db()
         return payment, "", False
 
     if payment.razorpay_order_id:
-        return payment, payment.razorpay_order_id, True
-
-    try:
-        gateway_order = client.order.create(data={
-            "amount": int(payment.amount * 100),
-            "currency": locked_order.currency,
-            "receipt": f"airway_order_{locked_order.id}_{payment.id}",
-            "notes": {
-                "airway_order_id": str(locked_order.id),
-                "customer_id": str(customer.id),
-                "wallet_amount": str(payment.wallet_amount),
-            },
-        })
-    except Exception:
-        logger.exception("Razorpay order creation failed for AIRway order %s", locked_order.id)
-        raise
-
-    payment.razorpay_order_id = gateway_order["id"]
-    payment.save(update_fields=["razorpay_order_id", "updated_at"])
-    logger.info(
-        "Created Razorpay order for AIRway order %s: payment=%s source=%s",
-        locked_order.id, payment.id, trigger_source,
-    )
-    return payment, payment.razorpay_order_id, False
+        if gateway_order_created:
+            logger.info("Created %s payment for order %s (payment %s, %s)", stage, locked_order.id, payment.id, trigger_source)
+        return payment, payment.razorpay_order_id, not gateway_order_created
+    raise ValueError("Razorpay order could not be initialized. Please retry.")
 
 
 class CreateOrderView(APIView):
@@ -247,11 +349,21 @@ class CreateOrderView(APIView):
                 return Response({"detail": "Order not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
             try:
                 raw_wallet_amount = request.data.get("wallet_amount", "0.00")
+                requested_stage = request.data.get("stage")
+                if not requested_stage:
+                    requested_stage = (
+                        Payment.Stage.ADVANCE
+                        if (parent_order.metadata or {}).get("payment_allocation_v1")
+                        else Payment.Stage.LEGACY
+                    )
+                if requested_stage not in (Payment.Stage.LEGACY, Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
+                    return Response({"detail": "stage must be 'legacy', 'advance' or 'balance'."}, status=status.HTTP_400_BAD_REQUEST)
                 payment, razorpay_order_id, already_existed = create_or_get_order_payment(
                     order=parent_order,
                     customer=request.user,
                     wallet_amount=raw_wallet_amount,
                     trigger_source="checkout",
+                    stage=requested_stage,
                 )
             except ValueError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -263,6 +375,8 @@ class CreateOrderView(APIView):
                 "order_id": razorpay_order_id,
                 "amount": int(payment.amount * 100),
                 "total_amount": str(parent_order.total_amount),
+                "payment_stage": payment.stage,
+                "stage_amount": str(payment.amount + payment.wallet_amount),
                 "wallet_amount": str(payment.wallet_amount),
                 "currency": parent_order.currency,
                 "payment_exists": already_existed,

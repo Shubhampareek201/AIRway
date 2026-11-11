@@ -177,6 +177,7 @@ class WorkerAssignmentDetail {
   final DateTime scheduledAt;
   final DateTime? dropScheduledAt;
   final double amount;
+  final String? paymentLabel;
   final String? notes;
   final String? workerNotes;
   final List<Map<String, dynamic>> formResponses;
@@ -198,6 +199,7 @@ class WorkerAssignmentDetail {
     required this.scheduledAt,
     this.dropScheduledAt,
     required this.amount,
+    this.paymentLabel,
     this.notes,
     this.workerNotes,
     required this.formResponses,
@@ -221,6 +223,7 @@ class WorkerAssignmentDetail {
       scheduledAt: DateTime.parse(map['scheduled_at']),
       dropScheduledAt: map['drop_scheduled_at'] != null ? DateTime.parse(map['drop_scheduled_at']) : null,
       amount: double.tryParse(map['amount'].toString()) ?? 0.0,
+      paymentLabel: map['payment_label']?.toString(),
       notes: map['notes'],
       workerNotes: map['worker_notes'],
       formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),

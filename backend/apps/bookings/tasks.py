@@ -69,7 +69,9 @@ def retry_failed_dispatches():
     if not config.is_enabled:
         return 0
     dispatched = 0
-    orders = Order.objects.filter(status=Order.Status.AWAITING_ASSIGNMENT).order_by("created_at")
+    orders = Order.objects.filter(
+        status__in=[Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED]
+    ).order_by("created_at")
     for order in orders:
         if WorkerOffer.objects.filter(order=order, status__in=[
             WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED
@@ -150,13 +152,22 @@ def timeout_pending_payments():
             payment.status = Payment.Status.FAILED
             payment.failed_at = timezone.now()
             payment.save(update_fields=["status", "failed_at", "updated_at"])
+            stage_label = {
+                "advance": "30% advance",
+                "balance": "final balance",
+                "legacy": "full order payment",
+            }.get(payment.stage, "order payment")
             Notification.objects.create(
                 user=payment.customer,
                 type=Notification.Type.PAYMENT_TIMEOUT,
                 title="Order Payment Timed Out",
-                body="Your payment timed out. The wallet amount has been released; you can retry checkout.",
+                body=f"Your {stage_label} timed out. The wallet amount has been released; you can retry this payment stage.",
                 channel=Notification.Channel.IN_APP,
-                data={"order_id": payment.order_id, "payment_id": payment.id},
+                data={
+                    "order_id": payment.order_id,
+                    "payment_id": payment.id,
+                    "payment_stage": payment.stage,
+                },
             )
             count += 1
             logger.info("Timed out parent-order payment %s; wallet hold released", payment.id)

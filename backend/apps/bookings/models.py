@@ -416,3 +416,27 @@ class DispatchConfiguration(TimeStampedModel):
 
     def __str__(self):
         return "Worker dispatch configuration"
+
+
+
+class BookingCompletionOTP(TimeStampedModel):
+    """Hashed, expiring one-time code shared by the customer with the worker."""
+
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="completion_otp",
+    )
+    code_hash = models.CharField(max_length=256)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField()
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["expires_at", "verified_at"], name="booking_otp_exp_idx"),
+        ]
+
+    def __str__(self):
+        return f"Completion OTP for booking #{self.booking_id}"

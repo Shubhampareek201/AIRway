@@ -127,10 +127,14 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  static Future<Map<String, dynamic>> completeJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> completeJob(
+    int assignmentId, {
+    String? otp,
+  }) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/complete/',
       method: 'POST',
+      data: otp == null ? null : {'otp': otp},
     );
     return Map<String, dynamic>.from(result as Map);
   }

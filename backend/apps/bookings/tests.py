@@ -1298,7 +1298,23 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
 
         complete_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/complete/", format="json")
         self.assertEqual(complete_resp.status_code, 200)
-        self.assertEqual(complete_resp.data["status"], "completed")
+        self.assertTrue(complete_resp.data["otp_required"])
+        self.assertEqual(complete_resp.data["status"] if "status" in complete_resp.data else "in_progress", "in_progress")
+
+        import re
+        notification = Notification.objects.get(
+            user=self.customer,
+            title="Share your service completion code",
+        )
+        code_match = re.search(r"\bis (\d{6})\.", notification.body)
+        self.assertIsNotNone(code_match)
+        verify_resp = self.worker_client.post(
+            f"/api/v1/bookings/{booking.id}/complete/",
+            {"otp": code_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(verify_resp.status_code, 200, verify_resp.data)
+        self.assertEqual(verify_resp.data["status"], "completed")
 
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.COMPLETED)
@@ -3212,9 +3228,10 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         booking_id = response.data["items"][0]["booking_id"]
         self.assertEqual(
             WorkerOffer.objects.filter(booking_id=booking_id, worker=worker).count(),
-            1,
+            0,
         )
-        self.assertEqual(response.data["dispatch"][0]["offers_sent"], 1)
+        self.assertTrue(response.data["dispatch"]["deferred_until_advance_payment"])
+        self.assertEqual(response.data["next_step"].split(".")[0], "Pay the 30% advance to start worker matching")
 
     def test_checkout_creates_one_parent_order_and_booking_line(self):
         scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
@@ -3391,6 +3408,18 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         order = Order.objects.get(pk=response.data["order_id"])
+        self.assertFalse(WorkerOffer.objects.filter(order=order).exists())
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+        )
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_order(order)
         offers = WorkerOffer.objects.filter(order=order)
         self.assertEqual(offers.count(), 1)
         self.assertEqual(offers.get().worker, full_worker)
@@ -3427,6 +3456,18 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         order = Order.objects.get(pk=response.data["order_id"])
+        self.assertFalse(WorkerOffer.objects.filter(order=order).exists())
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+        )
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_order(order)
         offer = WorkerOffer.objects.get(order=order, worker=worker)
         worker_client = APIClient()
         worker_client.force_authenticate(user=worker_user)

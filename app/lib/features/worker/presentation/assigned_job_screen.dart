@@ -111,34 +111,88 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
   Future<void> _completeJob() async {
     if (!mounted || _jobDetail == null) return;
-
-    setState(() {
-      _isActionInProgress = true;
-    });
-
+    setState(() => _isActionInProgress = true);
     try {
-      await WorkerApi.completeJob(_jobDetail!.assignmentId);
+      final issued = await WorkerApi.completeJob(_jobDetail!.assignmentId);
+      if (!mounted) return;
+      setState(() => _isActionInProgress = false);
+      if (issued['otp_required'] != true) {
+        throw Exception(issued['detail'] ?? 'Could not request completion code.');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ask the customer to share the 6-digit completion code shown in their AIRway notifications.'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+      final controller = TextEditingController();
+      final code = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Verify service completion'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Enter the 6-digit code shared by the customer after the service is finished.'),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Customer completion code',
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (RegExp(r'^[0-9]{6}$').hasMatch(value)) {
+                  Navigator.pop(dialogContext, value);
+                }
+              },
+              child: const Text('Verify & complete'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (code == null || !mounted) {
+        await _loadAssignedJob();
+        return;
+      }
+      setState(() => _isActionInProgress = true);
+      final result = await WorkerApi.completeJob(
+        _jobDetail!.assignmentId,
+        otp: code,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job completed')),
+          SnackBar(content: Text(result['detail']?.toString() ?? 'Completion verified.')),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to complete job: $e')),
+          SnackBar(content: Text('Completion verification failed: $e')),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isActionInProgress = false;
-        });
-      }
+      if (mounted) setState(() => _isActionInProgress = false);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -320,23 +374,18 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
   Widget _buildPaymentInfo(WorkerAssignmentDetail job) {
     final status = job.status;
-
-    // Check if payment is expected based on status
-    final isPaid = status == BookingStatus.inProgress ||
-        status == BookingStatus.completed ||
-        status == BookingStatus.confirmed;
-
+    final isCompleted = status == BookingStatus.completed;
+    final paymentLabel = job.paymentLabel ??
+        (isCompleted ? 'Service completion verified.' : 'Payment status unavailable.');
+    final statusLabel = isCompleted ? 'Completion verified' : 'Advance / payment';
     return Card(
       child: ListTile(
         leading: const Icon(Icons.payment),
         title: const Text('Payment'),
-        subtitle: isPaid
-            ? const Text('Payment completed')
-            : const Text('Payment pending'),
+        subtitle: Text(paymentLabel),
         trailing: Chip(
-          label: Text(isPaid ? 'Paid' : 'Pending'),
-          backgroundColor:
-              isPaid ? Colors.green.shade100 : Colors.orange.shade100,
+          label: Text(statusLabel),
+          backgroundColor: isCompleted ? Colors.green.shade100 : Colors.orange.shade100,
         ),
       ),
     );

@@ -29,6 +29,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   bool walletLoading = true;
   bool loading = true;
   bool paying = false;
+  String _currentPaymentStage = 'advance';
   String? error;
   Timer? refreshTimer;
 
@@ -87,8 +88,16 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
   Future<void> startPayment() async {
-    if (order?['ready_for_payment'] != true || paying) return;
-    final total = amount(order?['total_amount']);
+    final advanceReady = order?['ready_for_advance'] == true;
+    final balanceReady = order?['ready_for_balance'] == true;
+    final legacyReady = order?['ready_for_legacy_payment'] == true;
+    if ((!advanceReady && !balanceReady && !legacyReady) || paying) return;
+    final stage = advanceReady ? 'advance' : balanceReady ? 'balance' : 'legacy';
+    _currentPaymentStage = stage;
+    final stageDue = amount(
+      advanceReady ? order?['advance_due']
+          : balanceReady ? order?['balance_due'] : order?['legacy_payment_due'],
+    );
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -98,9 +107,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       return;
     }
     final walletAmount = parsedWalletAmount;
-    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > total) {
+    if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > stageDue) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a wallet amount within your available balance and order total.')),
+        const SnackBar(content: Text('Enter a wallet amount within your available balance and the amount due now.')),
       );
       return;
     }
@@ -116,6 +125,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       final payment = await PaymentApi.createOrderForParent(
         widget.orderId,
         walletAmount: walletAmount.toStringAsFixed(2),
+        stage: stage,
       );
       await loadWalletBalance();
       if (payment['fully_paid_by_wallet'] == true || payment['already_paid'] == true) {
@@ -131,8 +141,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             title: const Text('Payment successful'),
             content: Text(
               paidByWallet
-                  ? 'Your order was paid using your AIRway wallet.'
-                  : 'Your AIRway order has already been paid and confirmed.',
+                  ? 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : _currentPaymentStage == 'balance' ? 'final 70% balance' : 'full payment'} was paid using your AIRway wallet.'
+                  : 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : _currentPaymentStage == 'balance' ? 'final 70% balance' : 'full payment'} has already been paid.',
             ),
             actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
           ),
@@ -194,7 +204,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           content: Text(
             refunded
                 ? 'The late payment was refunded because the wallet funds were no longer available. You can retry checkout.'
-                : 'Your AIRway order has been paid and confirmed.',
+                : 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : 'final 70% balance'} has been verified successfully.',
           ),
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
         ),
@@ -272,9 +282,22 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   Widget orderBody() {
     final rows = (order?['items'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-    final ready = order?['ready_for_payment'] == true;
-    final paid = order?['status'] == 'paid';
+    final serviceInProgress = rows.any((row) => row['booking_status'] == 'in_progress');
+    final advanceReady = order?['ready_for_advance'] == true;
+    final balanceReady = order?['ready_for_balance'] == true;
+    final legacyReady = order?['ready_for_legacy_payment'] == true;
+    final ready = advanceReady || balanceReady || legacyReady;
+    final advancePaid = order?['advance_paid'] == true;
+    final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
+    final dueNow = amount(
+      advanceReady ? order?['advance_due']
+          : balanceReady ? order?['balance_due'] : order?['legacy_payment_due'],
+    );
+    final advancePercentage = int.tryParse(order?['advance_percentage']?.toString() ?? '30') ?? 30;
+    final balancePercentage = 100 - advancePercentage;
+    final stageLabel = advanceReady ? '$advancePercentage% advance'
+        : balanceReady ? 'Final $balancePercentage% balance' : 'Full payment';
     return Column(children: [
       Expanded(child: ListView(
         padding: const EdgeInsets.all(18),
@@ -283,24 +306,52 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : ready ? 'All professionals assigned' : 'Your order is being arranged',
+              Text(paid ? 'Payment complete' : balanceReady ? 'All services verified' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Your order is being arranged',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
-              Text(paid ? 'Your services are confirmed.' : ready
-                  ? 'All services have an assigned professional. You can now complete payment.'
-                  : 'We are assigning professionals for each service. This page refreshes automatically.',
+              Text(paid ? 'Your order is fully paid.' : balanceReady
+                  ? 'Every active service is verified. Pay the remaining balance to close your order.'
+                  : advancePaid
+                      ? 'Your $advancePercentage% advance is received. Worker matching and service progress will appear here.'
+                      : advanceReady
+                          ? 'Pay $advancePercentage% now to start worker matching. The remaining $balancePercentage% is due only after all services are completed and verified.'
+                          : legacyReady
+                              ? 'This order was created before staged payments. Complete the remaining full payment to confirm it.'
+                              : 'Pay the $advancePercentage% advance to start worker matching. This page refreshes automatically.',
                   style: const TextStyle(color: sub, height: 1.4)),
               const SizedBox(height: 12),
               Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
           const SizedBox(height: 14),
-          orderProgress(rows, paid),
+          orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage),
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
+          if (serviceInProgress) ...[
+            Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(13)),
+              child: const Text(
+                'When your service is finished, check AIRway Notifications for the completion code and share it with your professional.',
+                style: TextStyle(color: sub, height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           for (final row in rows) serviceRow(row),
           if (ready && !paid) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(14)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(stageLabel, style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+                const SizedBox(height: 5),
+                Text('Order total ₹${total.toStringAsFixed(2)}', style: const TextStyle(color: sub)),
+                const SizedBox(height: 3),
+                Text('Due now ₹${dueNow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet)),
+              ]),
+            ),
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(16),
@@ -337,8 +388,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Order total', style: TextStyle(color: sub)),
-                      Text('₹${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
+                      const Text('Amount due now', style: TextStyle(color: sub)),
+                      Text('₹${dueNow.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
                     ],
                   ),
                   const SizedBox(height: 5),
@@ -355,7 +406,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                     children: [
                       const Text('Pay online', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
                       Text(
-                        '₹${(total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2)}',
+                        '₹${(dueNow - selectedWalletAmount).clamp(0, dueNow).toStringAsFixed(2)}',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet),
                       ),
                     ],
@@ -374,13 +425,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: paying ? null : startPayment,
               child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(
-                  selectedWalletAmount > 0 && selectedWalletAmount >= total
+                  selectedWalletAmount > 0 && selectedWalletAmount >= dueNow
                       ? 'Pay with AIRway wallet'
-                      : 'Pay ₹' + (total - selectedWalletAmount).clamp(0, total).toStringAsFixed(2),
+                      : 'Pay ₹' + (dueNow - selectedWalletAmount).clamp(0, dueNow).toStringAsFixed(2),
                 ),
             )),
           if (!ready && !paid)
-            const Text('Payment will unlock after every service has a professional assigned.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
+            const Text('Pay the 30% advance to start worker matching. The remaining 70% is due after all active services are verified.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
           if (paid)
             const Text('Paid successfully', style: TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
@@ -394,19 +445,28 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
-  Widget orderProgress(List<Map<String, dynamic>> rows, bool paid) {
+  Widget orderProgress(List<Map<String, dynamic>> rows, bool paid, bool advancePaid, bool staged, int advancePercentage) {
+    final balancePercentage = 100 - advancePercentage;
     final assigned = rows.isNotEmpty && rows.every((row) {
       final status = row['booking_status']?.toString();
       return status == 'assigned' || status == 'in_progress' || status == 'completed';
     });
     final completed = rows.isNotEmpty &&
         rows.every((row) => row['booking_status']?.toString() == 'completed');
-    final steps = <(String, String, bool)>[
-      ('Order placed', 'Your service request is received.', true),
-      ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
-      ('Payment', paid ? 'Payment verified successfully.' : assigned ? 'Payment is now available.' : 'Payment unlocks after assignment.', paid),
-      ('Service completed', completed ? 'All services are completed.' : 'Updates appear as work progresses.', completed),
-    ];
+    final steps = staged
+        ? <(String, String, bool)>[
+            ('Order placed', 'Your service request is received.', true),
+            ('$advancePercentage% advance', advancePaid ? 'Advance payment verified.' : 'Pay $advancePercentage% to start worker matching.', advancePaid),
+            ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+            ('Service completion', completed ? 'All services are verified with customer OTP.' : 'Each service is verified after the customer shares a code.', completed),
+            ('Remaining $balancePercentage%', paid ? 'Final balance paid. Order complete.' : completed ? 'Final balance is now due.' : 'Unlocked after all active services are verified.', paid),
+          ]
+        : <(String, String, bool)>[
+            ('Order placed', 'Your service request is received.', true),
+            ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+            ('Full payment', paid ? 'Payment verified successfully.' : 'Complete payment to confirm your order.', paid),
+            ('Service completion', completed ? 'Services completed.' : 'Updates appear as work progresses.', completed),
+          ];
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
@@ -450,6 +510,15 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
         if (scheduled.isNotEmpty) Text(scheduled, style: const TextStyle(color: sub, fontSize: 12)),
         if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
+        if (row['advance_amount'] != null && row['balance_amount'] != null) ...[
+          const SizedBox(height: 7),
+          Row(
+            children: [
+              Expanded(child: Text('Advance ₹${amount(row['advance_amount']).toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 11))),
+              Expanded(child: Text('Balance ₹${amount(row['balance_amount']).toStringAsFixed(2)}', textAlign: TextAlign.end, style: const TextStyle(color: sub, fontSize: 11))),
+            ],
+          ),
+        ],
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
           onPressed: () => trackService(row),

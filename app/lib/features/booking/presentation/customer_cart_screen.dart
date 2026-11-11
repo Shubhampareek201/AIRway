@@ -193,7 +193,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           title: const Text('Order placed'),
           content: Text(
             'Your order #' + result['order_id'].toString() +
-            ' has been created. Service professionals will be assigned. Payment becomes available after all services are assigned.',
+            ' has been created. Pay the 30% advance to start worker matching. The remaining 70% is due only after every service is completed and verified with the customer OTP.',
             textAlign: TextAlign.center,
           ),
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Continue'))],
@@ -249,7 +249,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               priceRow('Subtotal', '₹' + subtotal.toStringAsFixed(0)),
               priceRow('Taxes', 'Calculated at checkout'),
               const Divider(height: 20),
-              priceRow('Payment', 'After service assignment'),
+              priceRow('Payment', '30% advance now · 70% after verified completion'),
             ]),
           ),
         ],
