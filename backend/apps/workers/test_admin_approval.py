@@ -1,10 +1,15 @@
+from types import SimpleNamespace
+
+from django.contrib.admin.sites import AdminSite
+from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from apps.accounts.models import User, UserRole
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
+from apps.workers.admin import WorkerProfileAdmin
 from apps.workers.approval import approve_worker, get_approval_requirements
 from apps.workers.models import (
     WorkerDocument,
@@ -161,6 +166,67 @@ class WorkerApprovalServiceTests(TestCase):
 
         self.assertEqual(result["status"], "not_found")
         self.assertIsNone(result["worker"])
+
+    def _admin_request(self):
+        request = RequestFactory().post("/admin/")
+        request.user = self.admin
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        return request
+
+    def test_admin_single_record_approval_waits_for_inline_saves(self):
+        self.make_eligible()
+        admin_model = WorkerProfileAdmin(WorkerProfile, AdminSite())
+        request = self._admin_request()
+        worker = WorkerProfile.objects.get(pk=self.worker.pk)
+        worker.status = WorkerProfile.Status.APPROVED
+
+        admin_model.save_model(request, worker, form=None, change=True)
+
+        self.worker.refresh_from_db()
+        self.assertEqual(self.worker.status, WorkerProfile.Status.PENDING)
+        self.assertFalse(
+            UserRole.objects.filter(
+                user=self.worker_user,
+                role=UserRole.Role.WORKER,
+            ).exists()
+        )
+        self.assertTrue(request._worker_approval_requested)
+
+        admin_model.save_related(
+            request,
+            SimpleNamespace(save_m2m=lambda: None),
+            [],
+            change=True,
+        )
+
+        self.worker.refresh_from_db()
+        self.assertEqual(self.worker.status, WorkerProfile.Status.APPROVED)
+        self.assertTrue(
+            UserRole.objects.filter(
+                user=self.worker_user,
+                role=UserRole.Role.WORKER,
+            ).exists()
+        )
+
+    def test_admin_bulk_action_uses_shared_approval_service(self):
+        self.make_eligible()
+        admin_model = WorkerProfileAdmin(WorkerProfile, AdminSite())
+        request = self._admin_request()
+
+        admin_model.approve_workers(
+            request,
+            WorkerProfile.objects.filter(pk=self.worker.pk),
+        )
+
+        self.worker.refresh_from_db()
+        self.assertEqual(self.worker.status, WorkerProfile.Status.APPROVED)
+        self.assertTrue(
+            UserRole.objects.filter(
+                user=self.worker_user,
+                role=UserRole.Role.WORKER,
+            ).exists()
+        )
 
     def test_dashboard_approval_endpoint_uses_shared_service(self):
         self.make_eligible()
