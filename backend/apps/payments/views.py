@@ -309,6 +309,45 @@ def create_or_get_order_payment(
                 payment.raw_response = {}
                 fields += ["razorpay_order_id", "razorpay_payment_id", "razorpay_signature", "raw_response"]
             payment.save(update_fields=fields)
+        # Persist the exact captured wallet/gateway split per service line.
+        # This snapshot is immutable evidence for later partial cancellations.
+        from decimal import ROUND_HALF_UP
+        if stage in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
+            line_values = []
+            for active_item in locked_active_items:
+                line_value = Decimal(str(next(
+                    (row.get("amount", "0") for row in locked_rows
+                     if row.get("order_item_id") == active_item.id),
+                    "0",
+                )))
+                if line_value > 0:
+                    line_values.append((active_item, line_value))
+        else:
+            line_values = [(item, item.line_total) for item in locked_items if item.line_total > 0]
+        service_rows = []
+        wallet_allocated = Decimal("0.00")
+        for index, (active_item, line_value) in enumerate(line_values):
+            if index == len(line_values) - 1:
+                wallet_line = requested - wallet_allocated
+            else:
+                wallet_line = (requested * line_value / stage_total).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                wallet_allocated += wallet_line
+            wallet_line = max(Decimal("0.00"), min(wallet_line, line_value))
+            service_rows.append({
+                "order_item_id": active_item.id,
+                "booking_id": active_item.booking_id,
+                "total": str(line_value),
+                "wallet_amount": str(wallet_line),
+                "gateway_amount": str(line_value - wallet_line),
+            })
+        payment.raw_response = {
+            **(payment.raw_response or {}),
+            "service_allocation_v1": service_rows,
+        }
+        payment.save(update_fields=["raw_response", "updated_at"])
+
         if requested > 0:
             from apps.wallet.services import reserve_wallet_amount
             reserve_wallet_amount(payment, requested)
