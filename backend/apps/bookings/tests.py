@@ -3809,6 +3809,17 @@ class ServiceRefundLifecycleTest(BookingAPITestMixin, TestCase):
         self.assertEqual(refund.status, PaymentRefund.Status.PROCESSED)
         self.assertIsNotNone(refund.processed_at)
 
+        # The customer order endpoint must expose refunds on the matching service line.
+        response = self.client.get(f"/api/v1/bookings/orders/{self.order.pk}/")
+        self.assertEqual(response.status_code, 200)
+        line = next(
+            item for item in response.data["items"]
+            if item["booking_id"] == self.cancelled_booking.pk
+        )
+        self.assertEqual(len(line["refunds"]), 1)
+        self.assertEqual(line["refunds"][0]["id"], refund.pk)
+        self.assertEqual(line["refunds"][0]["status"], PaymentRefund.Status.PROCESSED)
+
     @patch("apps.payments.refunds.razorpay.Client")
     def test_gateway_failure_keeps_refund_unsettled_and_wallet_credit_idempotent(self, gateway_client):
         from decimal import Decimal
