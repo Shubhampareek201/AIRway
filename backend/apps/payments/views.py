@@ -187,13 +187,20 @@ def create_or_get_order_payment(
     else:
         stage_total = order.total_amount
     if stage == Payment.Stage.LEGACY:
+        # Idempotent retries must still succeed after the first payment has
+        # advanced the order out of AWAITING_PAYMENT (including wallet-only
+        # payments, which have no Razorpay order ID).
+        paid = Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.LEGACY,
+            status=Payment.Status.PAID,
+        ).first()
+        if paid:
+            return paid, paid.razorpay_order_id, True
         if order.status != Order.Status.AWAITING_PAYMENT or any(
             item.booking.status != Booking.Status.ASSIGNED for item in items
         ):
             raise ValueError("Legacy full payment is available only for an assigned order awaiting payment.")
-        if Payment.objects.filter(order=order, stage=Payment.Stage.LEGACY, status=Payment.Status.PAID).exists():
-            paid = Payment.objects.get(order=order, stage=Payment.Stage.LEGACY, status=Payment.Status.PAID)
-            return paid, paid.razorpay_order_id, True
     elif stage == Payment.Stage.ADVANCE:
         if Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
             paid = Payment.objects.get(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID)
@@ -219,6 +226,14 @@ def create_or_get_order_payment(
     gateway_order_created = False
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=order.pk, customer=customer)
+        payment = Payment.objects.select_for_update().filter(
+            order=locked_order, stage=stage
+        ).first()
+        # Check the settled record before validating the pre-payment order
+        # state: successful retries naturally arrive after the order changed.
+        if payment and payment.status == Payment.Status.PAID:
+            return payment, payment.razorpay_order_id, True
+
         if stage in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
             locked_allocation = (locked_order.metadata or {}).get(allocation_key, {})
             locked_rows = locked_allocation.get(
@@ -254,9 +269,6 @@ def create_or_get_order_payment(
             ):
                 raise ValueError("Legacy full payment is no longer available for this order.")
 
-        payment = Payment.objects.select_for_update().filter(order=locked_order, stage=stage).first()
-        if payment and payment.status == Payment.Status.PAID:
-            return payment, payment.razorpay_order_id, True
         if (
             payment
             and payment.wallet_amount != requested
