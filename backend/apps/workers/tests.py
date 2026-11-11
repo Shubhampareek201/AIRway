@@ -542,8 +542,26 @@ class WorkerJobLifecycleTest(TestCase):
         self.client.force_authenticate(user=self.worker_user)
         response = self.client.post(f"/api/v1/bookings/{booking.id}/complete/", format="json")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["status"], "completed")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["otp_required"])
+
+        import re
+        from apps.notifications.models import Notification
+        otp_notice = Notification.objects.filter(
+            user=self.customer_user,
+            data__purpose="service_completion_otp",
+            data__booking_id=booking.id,
+        ).latest("created_at")
+        otp_match = re.search(r"\b(\d{6})\b", otp_notice.body)
+        self.assertIsNotNone(otp_match, otp_notice.body)
+
+        verified_response = self.client.post(
+            f"/api/v1/bookings/{booking.id}/complete/",
+            {"otp": otp_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(verified_response.status_code, 200, verified_response.data)
+        self.assertEqual(verified_response.data["status"], "completed")
 
     def test_worker_can_start_paid_confirmed_job(self):
         """A paid booking remains startable after payment changes ASSIGNED to CONFIRMED."""
