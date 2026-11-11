@@ -139,12 +139,34 @@ class WorkerAppApi {
     required List<int> zoneIds,
     int? experienceYears,
     String? bio,
+    required String name,
+    required String email,
+    required String gender,
+    String? qualification,
+    String? equipmentDetails,
+    required String residentialAddress,
+    String? landmark,
+    required Map<int, Map<String, String>> schedule,
     File? profilePhoto,
   }) async {
     final data = <String, dynamic>{
       'services': serviceIds,
       'zones': zoneIds,
+      'name': name,
+      'email': email,
+      'gender': gender,
+      'residential_address': residentialAddress,
+      'schedule': jsonEncode(schedule.map((key, value) => MapEntry(key.toString(), value))),
     };
+    if (qualification != null && qualification.trim().isNotEmpty) {
+      data['qualification'] = qualification.trim();
+    }
+    if (equipmentDetails != null && equipmentDetails.trim().isNotEmpty) {
+      data['equipment_details'] = equipmentDetails.trim();
+    }
+    if (landmark != null && landmark.trim().isNotEmpty) {
+      data['landmark'] = landmark.trim();
+    }
 
     if (experienceYears != null && experienceYears > 0) {
       data['experience_years'] = experienceYears;
