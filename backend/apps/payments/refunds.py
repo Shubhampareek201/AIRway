@@ -83,7 +83,7 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
                     "wallet_amount": wallet_part,
                     "gateway_amount": gateway_part,
                     "reason": reason,
-                    "status": PaymentRefund.Status.PROCESSING,
+                    "status": PaymentRefund.Status.PENDING,
                 },
             )
             if was_created:
@@ -100,10 +100,16 @@ def process_payment_refund(refund_id):
         refund = PaymentRefund.objects.select_for_update().select_related(
             "payment", "booking", "payment__customer"
         ).get(pk=refund_id)
-        if refund.status == PaymentRefund.Status.PROCESSED:
+        if refund.status in (PaymentRefund.Status.PROCESSED, PaymentRefund.Status.PROCESSING):
             return refund
         if refund.status == PaymentRefund.Status.PENDING and refund.gateway_refund_id:
             return refund
+        if refund.status == PaymentRefund.Status.FAILED and refund.gateway_refund_id:
+            # A failed gateway refund must be reconciled before another request
+            # is issued; blindly retrying could double-refund a late success.
+            return refund
+        refund.status = PaymentRefund.Status.PROCESSING
+        refund.save(update_fields=["status", "updated_at"])
         payment = Payment.objects.select_for_update().get(pk=refund.payment_id)
 
         if refund.wallet_amount > 0:
