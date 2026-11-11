@@ -15,6 +15,7 @@ from .models import (
     OrderItem,
     DispatchConfiguration,
     BookingCompletionOTP,
+    WorkerOffer,
 )
 
 
