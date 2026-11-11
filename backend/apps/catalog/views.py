@@ -106,9 +106,15 @@ class CategoryListView(generics.ListAPIView):
         context = super().get_serializer_context()
         # Category visibility follows the active catalogue tree, not worker
         # presence or the completeness of CityService mapping rows.
-        context["visible_category_ids"] = set(
-            Category.objects.filter(is_active=True).values_list("id", flat=True)
-        )
+        location = _location_from_address(self.request)
+        if location is None:
+            visible_ids = set(
+                Category.objects.filter(is_active=True).values_list("id", flat=True)
+            )
+        else:
+            available_ids = _available_service_ids(*location)
+            visible_ids = _visible_category_ids(available_ids)
+        context["visible_category_ids"] = visible_ids
         return context
 
     def get_queryset(self):
@@ -116,6 +122,11 @@ class CategoryListView(generics.ListAPIView):
             is_active=True,
             parent__isnull=True,
         )
+        location = _location_from_address(self.request)
+        if location is not None:
+            queryset = queryset.filter(
+                pk__in=_visible_category_ids(_available_service_ids(*location))
+            )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
         return queryset.prefetch_related("children", "audience_options", "children__audience_options")
@@ -144,10 +155,7 @@ class ServiceListView(generics.ListAPIView):
 
         location = _location_from_address(self.request)
         if location is not None:
-            city, zone = location
-            queryset = queryset.filter(
-                pk__in=_city_service_ids(city, zone=zone)
-            )
+            queryset = queryset.filter(pk__in=_available_service_ids(*location))
 
         category_id = self.request.query_params.get("category")
         if category_id:
@@ -182,8 +190,7 @@ class ServiceDetailView(generics.RetrieveAPIView):
             queryset = _launch_catalogue_filter(queryset)
         location = _location_from_address(self.request)
         if location is not None:
-            city, zone = location
-            queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
+            queryset = queryset.filter(pk__in=_available_service_ids(*location))
         return queryset
 
 
