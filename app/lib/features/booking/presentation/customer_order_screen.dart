@@ -543,19 +543,25 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Widget refundSection(List<Map<String, dynamic>> refunds) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: pale,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: line),
+        color: const Color(0xFFF2F7F3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCE9DF)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Refund updates', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
-          const SizedBox(height: 8),
+          const Row(
+            children: [
+              Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF075B3C), size: 19),
+              SizedBox(width: 7),
+              Text('Refund updates', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+            ],
+          ),
+          const SizedBox(height: 9),
           for (var index = 0; index < refunds.length; index++) ...[
-            if (index > 0) const Divider(height: 16),
+            if (index > 0) const Divider(height: 16, color: Color(0xFFDCE9DF)),
             _refundRow(refunds[index]),
           ],
         ],
@@ -572,6 +578,12 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       'processing' => 'Refund processing',
       _ => 'Refund pending',
     };
+    final statusColor = switch (status) {
+      'processed' => const Color(0xFF167447),
+      'failed' => const Color(0xFFB3261E),
+      'processing' => const Color(0xFF946200),
+      _ => const Color(0xFF52665A),
+    };
     final reasonText = reason == 'platform_unfulfilled'
         ? 'AIRway could not fulfil this service'
         : 'Service cancellation';
@@ -583,8 +595,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: Text(statusText, style: const TextStyle(fontWeight: FontWeight.w800, color: ink))),
-            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: violet)),
+            Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.w800, color: statusColor))),
+            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF075B3C))),
           ],
         ),
         const SizedBox(height: 4),
