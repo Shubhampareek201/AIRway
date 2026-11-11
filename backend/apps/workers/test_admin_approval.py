@@ -112,10 +112,11 @@ class WorkerApprovalServiceTests(TestCase):
             result["missing"],
         )
 
-    def test_eligible_worker_is_approved_and_worker_role_is_created(self):
+    def test_eligible_worker_is_approved_offline_and_worker_role_is_created(self):
         self.make_eligible()
         self.worker.rejection_reason = "Old reason"
-        self.worker.save(update_fields=["rejection_reason", "updated_at"])
+        self.worker.is_online = True
+        self.worker.save(update_fields=["rejection_reason", "is_online", "updated_at"])
 
         result = approve_worker(self.worker.pk, self.admin)
 
@@ -125,6 +126,7 @@ class WorkerApprovalServiceTests(TestCase):
         self.assertEqual(self.worker.approved_by, self.admin)
         self.assertIsNotNone(self.worker.approved_at)
         self.assertEqual(self.worker.rejection_reason, "")
+        self.assertFalse(self.worker.is_online)
         self.assertTrue(
             UserRole.objects.filter(
                 user=self.worker_user,
