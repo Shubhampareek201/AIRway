@@ -31,6 +31,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   final TextEditingController _equipmentController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _landmarkController = TextEditingController();
+  final TextEditingController _upiController = TextEditingController();
   String _selectedGender = 'other';
   final Map<int, Map<String, String>> _weeklySchedule = {};
 
@@ -67,6 +68,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     _equipmentController.dispose();
     _addressController.dispose();
     _landmarkController.dispose();
+    _upiController.dispose();
     super.dispose();
   }
 
@@ -110,6 +112,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         _equipmentController.text = workerProfile['equipment_details']?.toString() ?? '';
         _addressController.text = workerProfile['residential_address']?.toString() ?? '';
         _landmarkController.text = workerProfile['landmark']?.toString() ?? '';
+        _upiController.text = workerProfile['upi_id']?.toString() ?? '';
         _bioController.text = _existingBio ?? '';
         _experienceController.text = _existingExperienceYears?.toString() ?? '';
         final savedSchedule = workerProfile['schedule'];
@@ -299,6 +302,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         equipmentDetails: _equipmentController.text,
         residentialAddress: _addressController.text.trim(),
         landmark: _landmarkController.text,
+        upiId: _upiController.text,
         schedule: _weeklySchedule,
         profilePhoto: _profilePhoto,
       );
@@ -588,6 +592,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         TextField(controller: _addressController, maxLines: 2, decoration: const InputDecoration(labelText: 'Residential address *', border: OutlineInputBorder())),
         const SizedBox(height: 10),
         TextField(controller: _landmarkController, decoration: const InputDecoration(labelText: 'Nearby landmark', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _upiController, decoration: const InputDecoration(labelText: 'UPI ID for payouts (optional)', border: OutlineInputBorder())),
         const SizedBox(height: 10),
         TextField(controller: _qualificationController, decoration: const InputDecoration(labelText: 'Qualification / training', border: OutlineInputBorder())),
         const SizedBox(height: 10),
