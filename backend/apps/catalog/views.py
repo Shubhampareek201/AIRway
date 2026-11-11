@@ -10,18 +10,25 @@ from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerial
 
 
 def _location_from_address(request):
-    address_id = request.query_params.get("address_id")
-    if not address_id:
+    # Worker enrolment must see the complete active catalogue, including
+    # services that do not yet have an approved worker in any zone.
+    if request.query_params.get("for_worker", "").lower() == "true":
         return None
 
-    address = Address.objects.filter(
-        pk=address_id,
+    address_id = request.query_params.get("address_id")
+    addresses = Address.objects.filter(
         user=request.user,
         deleted_at__isnull=True,
         zone__isnull=False,
         zone__is_active=True,
         zone__city__is_active=True,
-    ).select_related("zone__city").first()
+    ).select_related("zone__city")
+    if address_id:
+        address = addresses.filter(pk=address_id).first()
+    elif getattr(request.user, "is_authenticated", False):
+        address = addresses.filter(is_default=True).first() or addresses.order_by("-id").first()
+    else:
+        address = None
     if address is None:
         raise ValidationError({"address_id": "Select a valid saved service address in an active service zone."})
 
