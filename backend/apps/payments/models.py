@@ -88,3 +88,63 @@ class Payment(TimeStampedModel):
     def __str__(self):
         target = f"Order #{self.order_id}" if self.order_id else f"Booking #{self.booking_id}"
         return f"Payment #{self.pk} - {target} - ₹{self.amount} ({self.status})"
+
+
+class PaymentRefund(TimeStampedModel):
+    """Per-service refund ledger for order payments and legacy booking payments."""
+
+    class Status(models.TextChoices):
+        PROCESSING = "processing", "Processing"
+        PENDING = "pending", "Pending"
+        PROCESSED = "processed", "Processed"
+        FAILED = "failed", "Failed"
+
+    class Reason(models.TextChoices):
+        CUSTOMER_CANCELLATION = "customer_cancellation", "Customer cancellation"
+        PLATFORM_UNFULFILLED = "platform_unfulfilled", "AIRway unable to fulfil"
+
+    payment = models.ForeignKey(
+        Payment, on_delete=models.PROTECT, related_name="refunds"
+    )
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="payment_refunds"
+    )
+    order_item = models.ForeignKey(
+        "bookings.OrderItem",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_refunds",
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    wallet_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    gateway_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    reason = models.CharField(max_length=32, choices=Reason.choices)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PROCESSING, db_index=True
+    )
+    gateway_refund_id = models.CharField(max_length=100, blank=True, db_index=True)
+    failure_reason = models.CharField(max_length=500, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["payment", "booking"], name="unique_payment_refund_booking"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="payment_refund_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(wallet_amount__gte=0)
+                    & models.Q(gateway_amount__gte=0)
+                ),
+                name="payment_refund_components_nonnegative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Refund #{self.pk} - Booking #{self.booking_id} - ₹{self.amount} ({self.status})"
