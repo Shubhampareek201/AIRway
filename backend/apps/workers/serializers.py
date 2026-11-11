@@ -13,6 +13,10 @@ from .models import (
 
 class WorkerProfileSerializer(serializers.ModelSerializer):
     photo_url = serializers.SerializerMethodField()
+    services = serializers.SerializerMethodField()
+    zones = serializers.SerializerMethodField()
+    schedules = serializers.SerializerMethodField()
+    documents = serializers.SerializerMethodField()
     name = serializers.CharField(source="user.name", read_only=True)
     phone = serializers.CharField(source="user.phone", read_only=True)
 
@@ -33,7 +37,32 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
             "bio",
             "upi_id",
             "photo_url",
+            "services",
+            "zones",
+            "schedules",
+            "documents",
         ]
+
+    def get_services(self, obj):
+        return WorkerServiceSerializer(
+            obj.worker_services.select_related("service", "service__category"),
+            many=True,
+        ).data
+
+    def get_zones(self, obj):
+        return WorkerZoneSerializer(
+            obj.worker_zones.select_related("zone", "zone__city"),
+            many=True,
+        ).data
+
+    def get_schedules(self, obj):
+        return WorkerScheduleSerializer(
+            obj.schedules.filter(is_active=True),
+            many=True,
+        ).data
+
+    def get_documents(self, obj):
+        return WorkerDocumentSerializer(obj.documents.all(), many=True).data
 
     def get_photo_url(self, obj):
         if obj.status != WorkerProfile.Status.APPROVED:
