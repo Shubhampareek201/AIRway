@@ -109,18 +109,30 @@ def application_detail(request, worker_id):
         and doc.status == WorkerDocument.Status.VERIFIED
         for doc in documents
     )
-    has_service = worker.worker_services.exists()
-    has_zone = worker.worker_zones.exists()
+    has_photo = any(
+        doc.doc_type == WorkerDocument.DocumentType.PHOTO
+        and doc.status == WorkerDocument.Status.VERIFIED
+        for doc in documents
+    )
+    has_service = worker.worker_services.filter(
+        service__is_active=True, service__category__is_active=True
+    ).exists()
+    has_zone = worker.worker_zones.filter(
+        zone__is_active=True, zone__city__is_active=True
+    ).exists()
+    has_schedule = worker.schedules.filter(is_active=True).exists()
     can_approve = (
         worker.status == WorkerProfile.Status.PENDING
-        and has_verified_id and has_service and has_zone
+        and has_verified_id and has_photo and has_service and has_zone and has_schedule
     )
     return render(request, "workers/admin_dashboard/application_detail.html", {
         "worker": worker,
         "documents": documents,
         "has_verified_id": has_verified_id,
+        "has_photo": has_photo,
         "has_service": has_service,
         "has_zone": has_zone,
+        "has_schedule": has_schedule,
         "can_approve": can_approve,
         "active_page": "applications",
     })
@@ -163,8 +175,21 @@ def approve_application(request, worker_id):
         ).exists()
         if worker.status != WorkerProfile.Status.PENDING:
             messages.error(request, "This application is no longer pending.")
-        elif not has_verified_id or not worker.worker_services.exists() or not worker.worker_zones.exists():
-            messages.error(request, "Approval requires a verified ID, at least one service, and at least one service zone.")
+        elif (
+            not has_verified_id
+            or not worker.documents.filter(
+                doc_type=WorkerDocument.DocumentType.PHOTO,
+                status=WorkerDocument.Status.VERIFIED,
+            ).exists()
+            or not worker.worker_services.filter(
+                service__is_active=True, service__category__is_active=True
+            ).exists()
+            or not worker.worker_zones.filter(
+                zone__is_active=True, zone__city__is_active=True
+            ).exists()
+            or not worker.schedules.filter(is_active=True).exists()
+        ):
+            messages.error(request, "Approval requires a verified ID and photo, active services, an active service area, and working hours.")
         else:
             from django.utils import timezone
             worker.status = WorkerProfile.Status.APPROVED
