@@ -86,7 +86,16 @@ def approve_worker(worker_id, approved_by):
         worker.approved_by = approved_by
         worker.approved_at = timezone.now()
         worker.rejection_reason = ""
-        worker.save()
+        # Approval must never silently put a worker online.
+        worker.is_online = False
+        worker.save(update_fields=[
+            "status",
+            "approved_by",
+            "approved_at",
+            "rejection_reason",
+            "is_online",
+            "updated_at",
+        ])
 
         UserRole.objects.get_or_create(
             user=worker.user,
