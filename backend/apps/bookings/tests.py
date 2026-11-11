@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from django.db import IntegrityError
 from datetime import timedelta, time, datetime
+from unittest.mock import patch
 import pytz
 import datetime as dt_module
 
