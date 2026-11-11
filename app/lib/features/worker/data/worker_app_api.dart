@@ -208,8 +208,8 @@ class WorkerAppApi {
     required String docType,
     required File file,
   }) async {
-    if (!['aadhaar', 'id'].contains(docType)) {
-      throw Exception('Invalid document type. Must be "aadhaar" or "id".');
+    if (!['aadhaar', 'id', 'qualification', 'address_proof', 'other'].contains(docType)) {
+      throw Exception('Invalid worker document type.');
     }
 
     final result = await _authenticatedRequest(
