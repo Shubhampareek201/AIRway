@@ -381,6 +381,7 @@ def _process_verified_payment(
         payment.razorpay_signature = "verified"
         payment.paid_at = timezone.now()
         payment.raw_response = {
+            **(payment.raw_response or {}),
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
             "verified_at": timezone.now().isoformat(),
@@ -980,14 +981,20 @@ class PaymentWebhookView(APIView):
                 if payment.order_id:
                     # A failed attempt can be retried against the same Razorpay order.
                     # Keep the parent payment and wallet reservation pending.
-                    payment.raw_response = payload
+                    payment.raw_response = {
+                        **(payment.raw_response or {}),
+                        "last_gateway_attempt_event": payload,
+                    }
                     payment.save(update_fields=["raw_response", "updated_at"])
                     logger.info("Order payment %s attempt failed; reservation retained for retry", payment.id)
                 else:
                     payment.status = Payment.Status.FAILED
                     payment.failed_at = timezone.now()
-                    payment.raw_response = payload
-                    payment.save()
+                    payment.raw_response = {
+                        **(payment.raw_response or {}),
+                        "last_gateway_attempt_event": payload,
+                    }
+                    payment.save(update_fields=["status", "failed_at", "raw_response", "updated_at"])
                     logger.info(f"Payment {payment.id} marked as FAILED via webhook")
             else:
                 logger.info(f"Payment {payment.id} already PAID, not marking as FAILED")
