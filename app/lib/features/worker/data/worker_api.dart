@@ -74,17 +74,9 @@ class WorkerApi {
 
   static Future<WorkerProfile> getMyProfile() async {
     final result = Map<String, dynamic>.from(
-      await _request('/api/v1/auth/me/') as Map,
+      await _request('/api/v1/workers/me/') as Map,
     );
-    final workerData = result['worker_profile'];
-    if (workerData is! Map) {
-      throw Exception('No worker profile found for this account.');
-    }
-    return WorkerProfile.fromMap({
-      ...Map<String, dynamic>.from(workerData),
-      'name': result['name'],
-      'phone': result['phone'],
-    });
+    return WorkerProfile.fromMap(result);
   }
 
   static Future<List<WorkerOffer>> getJobOffers() async {
