@@ -1669,10 +1669,28 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         start_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
         self.assertEqual(start_resp.status_code, 200)
 
-        # Worker completes job
+        # First request issues the customer-shared completion OTP.
         complete_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/complete/", format="json")
-        self.assertEqual(complete_resp.status_code, 200)
-        self.assertEqual(complete_resp.data["status"], "completed")
+        self.assertEqual(complete_resp.status_code, 200, complete_resp.data)
+        self.assertTrue(complete_resp.data["otp_required"])
+
+        import re
+        otp_notice = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="service_completion_otp",
+            data__booking_id=booking_id,
+        ).latest("created_at")
+        otp_match = re.search(r"\b(\d{6})\b", otp_notice.body)
+        self.assertIsNotNone(otp_match, otp_notice.body)
+
+        # Worker submits the code shared by the customer.
+        verified_resp = worker_client.post(
+            f"/api/v1/bookings/{booking_id}/complete/",
+            {"otp": otp_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(verified_resp.status_code, 200, verified_resp.data)
+        self.assertEqual(verified_resp.data["status"], "completed")
 
     def test_9_customer_sees_completed_status(self):
         """Customer sees updated lifecycle after service completion."""
@@ -1697,7 +1715,27 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
         worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/complete/", format="json")
+        otp_response = worker_client.post(
+            f"/api/v1/bookings/{booking_id}/complete/", format="json"
+        )
+        self.assertEqual(otp_response.status_code, 200, otp_response.data)
+        self.assertTrue(otp_response.data["otp_required"])
+
+        import re
+        otp_notice = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="service_completion_otp",
+            data__booking_id=booking_id,
+        ).latest("created_at")
+        otp_match = re.search(r"\b(\d{6})\b", otp_notice.body)
+        self.assertIsNotNone(otp_match, otp_notice.body)
+        verified_response = worker_client.post(
+            f"/api/v1/bookings/{booking_id}/complete/",
+            {"otp": otp_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(verified_response.status_code, 200, verified_response.data)
+        self.assertEqual(verified_response.data["status"], "completed")
 
         # Customer checks status
         detail_resp = self.client.get(f"/api/v1/bookings/{booking_id}/")
@@ -2818,8 +2856,9 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(payment.status, Payment.Status.PAID)
         self.assertEqual(payment.razorpay_payment_id, "pay_test_capture")
 
-    def test_webhook_amount_mismatch_rejected(self):
-        """Webhook with wrong amount should be rejected."""
+    @patch("razorpay.Client")
+    def test_webhook_amount_mismatch_rejected(self, razorpay_client):
+        """A captured amount mismatch is automatically refunded, not settled."""
         from apps.payments.models import Payment
 
         booking = Booking.objects.create(
@@ -2842,14 +2881,21 @@ class PaymentWebhookTest(TestCase):
         payload = self._make_webhook_payload(
             "payment.captured", "order_amount_mismatch", "pay_amount_mismatch", 60000, "INR"
         )
+        gateway = razorpay_client.return_value
+        gateway.payment.fetch.return_value = {"amount": 60000, "amount_refunded": 0}
+        gateway.payment.refund.return_value = {"id": "rfnd_amount_mismatch"}
+
         response = self._post_webhook(payload)
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200, response.data)
         payment.refresh_from_db()
-        self.assertEqual(payment.status, Payment.Status.PENDING)  # Not changed
+        self.assertEqual(payment.status, Payment.Status.REFUNDED)
+        self.assertEqual(payment.razorpay_payment_id, "pay_amount_mismatch")
+        gateway.payment.refund.assert_called_once()
 
-    def test_webhook_currency_mismatch_rejected(self):
-        """Webhook with wrong currency should be rejected."""
+    @patch("razorpay.Client")
+    def test_webhook_currency_mismatch_rejected(self, razorpay_client):
+        """A captured currency mismatch is automatically refunded, not settled."""
         from apps.payments.models import Payment
 
         booking = Booking.objects.create(
@@ -2872,11 +2918,17 @@ class PaymentWebhookTest(TestCase):
         payload = self._make_webhook_payload(
             "payment.captured", "order_currency_mismatch", "pay_currency_mismatch", 50000, "USD"
         )
+        gateway = razorpay_client.return_value
+        gateway.payment.fetch.return_value = {"amount": 50000, "amount_refunded": 0}
+        gateway.payment.refund.return_value = {"id": "rfnd_currency_mismatch"}
+
         response = self._post_webhook(payload)
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200, response.data)
         payment.refresh_from_db()
-        self.assertEqual(payment.status, Payment.Status.PENDING)  # Not changed
+        self.assertEqual(payment.status, Payment.Status.REFUNDED)
+        self.assertEqual(payment.razorpay_payment_id, "pay_currency_mismatch")
+        gateway.payment.refund.assert_called_once()
 
     def test_webhook_idempotent_duplicate_captured(self):
         """Duplicate payment.captured events should be idempotent."""
@@ -2982,9 +3034,11 @@ class PaymentWebhookTest(TestCase):
         self.assertEqual(response1.status_code, 200)
 
         payment.refresh_from_db()
-        self.assertEqual(payment.status, Payment.Status.PAID)
+        # Authorization is not capture: never mark an order paid until funds
+        # are confirmed captured by Razorpay.
+        self.assertEqual(payment.status, Payment.Status.PENDING)
 
-        # Then: captured (duplicate, should be idempotent)
+        # Then: captured (the event that actually settles the payment)
         payload_capture = self._make_webhook_payload(
             "payment.captured", "order_auth_capture", "pay_auth_capture", 50000, "INR"
         )
