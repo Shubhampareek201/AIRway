@@ -1,4 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db import transaction
+from django.utils import timezone
 from unfold.admin import ModelAdmin, TabularInline
 
 from .models import (
@@ -75,6 +77,101 @@ class OrderAdmin(ModelAdmin):
     inlines = [OrderItemInline]
 
 
+@admin.action(description="Mark AIRway unable to fulfil and issue full service refund")
+def mark_unfulfillable_and_refund(modeladmin, request, queryset):
+    from apps.payments.models import PaymentRefund
+    from apps.payments.refunds import request_booking_refunds
+
+    cancelled = 0
+    for booking in queryset.select_related("customer").prefetch_related("order_item"):
+        with transaction.atomic():
+            locked = Booking.objects.select_for_update().get(pk=booking.pk)
+            if locked.status in (Booking.Status.CANCELLED, Booking.Status.COMPLETED):
+                continue
+            old_status = locked.status
+            locked.status = Booking.Status.CANCELLED
+            locked.cancelled_at = timezone.now()
+            locked.cancelled_by = request.user
+            locked.cancellation_reason = "AIRway unable to fulfil this service."
+            locked.save(update_fields=[
+                "status", "cancelled_at", "cancelled_by",
+                "cancellation_reason", "updated_at",
+            ])
+            BookingStatusHistory.objects.create(
+                booking=locked,
+                from_status=old_status,
+                to_status=Booking.Status.CANCELLED,
+                changed_by=request.user,
+                note="Cancelled by AIRway: unable to fulfil. Full service refund initiated.",
+            )
+            assignment = getattr(locked, "assignment", None)
+            if assignment:
+                assignment.delete()
+
+            order_item = getattr(locked, "order_item", None)
+            if order_item:
+                order = Order.objects.select_for_update().get(pk=order_item.order_id)
+                active_remaining = order.items.exclude(
+                    booking__status=Booking.Status.CANCELLED
+                ).exists()
+                order.status = (
+                    Order.Status.PARTIALLY_CANCELLED
+                    if active_remaining else Order.Status.CANCELLED
+                )
+                order.save(update_fields=["status", "updated_at"])
+                if not active_remaining:
+                    WorkerOffer.objects.filter(
+                        order=order, status=WorkerOffer.Status.PENDING
+                    ).update(
+                        status=WorkerOffer.Status.WITHDRAWN,
+                        responded_at=timezone.now(),
+                    )
+                else:
+                    WorkerOffer.objects.filter(
+                        order=order, status=WorkerOffer.Status.PENDING
+                    ).update(
+                        status=WorkerOffer.Status.WITHDRAWN,
+                        responded_at=timezone.now(),
+                    )
+                    from apps.bookings.dispatcher import DispatcherService
+                    DispatcherService.dispatch_order(order)
+            else:
+                WorkerOffer.objects.filter(
+                    booking=locked, status=WorkerOffer.Status.PENDING
+                ).update(
+                    status=WorkerOffer.Status.EXPIRED,
+                    responded_at=timezone.now(),
+                )
+
+            transaction.on_commit(
+                lambda booking_id=locked.pk: _issue_platform_refund(booking_id)
+            )
+            cancelled += 1
+
+    modeladmin.message_user(
+        request,
+        f"{cancelled} service(s) cancelled. Full refunds have been initiated where payments were captured.",
+        level=messages.SUCCESS if cancelled else messages.WARNING,
+    )
+
+
+def _issue_platform_refund(booking_id):
+    import logging
+    from apps.payments.refunds import request_booking_refunds
+
+    try:
+        booking = Booking.objects.get(pk=booking_id)
+        request_booking_refunds(
+            booking,
+            reason=PaymentRefund.Reason.PLATFORM_UNFULFILLED,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Could not initiate platform cancellation refund for booking %s",
+            booking_id,
+        )
+
+
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
     list_display = ("id", "customer", "service", "variant", "booking_mode", "status", "scheduled_at", "created_at")
@@ -82,6 +179,7 @@ class BookingAdmin(ModelAdmin):
     search_fields = ("customer__phone", "customer__name", "service__title")
     readonly_fields = ("created_at", "updated_at", "pricing_snapshot")
     inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline]
+    actions = [mark_unfulfillable_and_refund]
 
 
 @admin.register(BookingAssignment)
