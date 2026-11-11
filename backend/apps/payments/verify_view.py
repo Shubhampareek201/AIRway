@@ -949,6 +949,7 @@ class PaymentWebhookView(APIView):
                     gateway_refund_id,
                     event_type,
                     refund_entity.get("status", ""),
+                    refund_entity.get("amount"),
                 )
                 if refund is not None:
                     payment = refund.payment
