@@ -901,7 +901,7 @@ class PaymentWebhookView(APIView):
                             "expected_amount": expected_amount_paise,
                             "reason": "Webhook capture did not match payment attempt.",
                         }
-                        payment.save(update_fields=["status", "failed_at", "raw_response", "updated_at"])
+                        payment.save(update_fields=["razorpay_payment_id", "status", "failed_at", "raw_response", "updated_at"])
                         Notification.objects.create(
                             user=payment.customer,
                             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
