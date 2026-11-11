@@ -17,6 +17,11 @@ def _location_from_address(request):
         return None
 
     address_id = request.query_params.get("address_id")
+    if not getattr(request.user, "is_authenticated", False):
+        if address_id:
+            raise ValidationError({"address_id": "Sign in and select a valid saved service address."})
+        return None
+
     addresses = Address.objects.filter(
         user=request.user,
         deleted_at__isnull=True,
@@ -26,10 +31,8 @@ def _location_from_address(request):
     ).select_related("zone__city")
     if address_id:
         address = addresses.filter(pk=address_id).first()
-    elif getattr(request.user, "is_authenticated", False):
-        address = addresses.filter(is_default=True).first() or addresses.order_by("-id").first()
     else:
-        address = None
+        address = addresses.filter(is_default=True).first() or addresses.order_by("-id").first()
     if address is None:
         if address_id:
             raise ValidationError({"address_id": "Select a valid saved service address in an active service zone."})
@@ -40,12 +43,9 @@ def _location_from_address(request):
 
 def _city_service_ids(city, zone=None):
     """
-    Active services are browseable catalogue content by default.
-
     CityService is an explicit city-level opt-out: an inactive row hides that
-    service in the selected city. Worker online status, schedules and worker
-    assignments affect is_available, not whether customers can browse the
-    service catalogue.
+    service in the selected city. The customer catalogue applies this city
+    publication rule together with the eligible-worker service filter.
     """
     if city is None:
         return None
@@ -119,8 +119,8 @@ class CategoryListView(generics.ListAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Category visibility follows the active catalogue tree, not worker
-        # presence or the completeness of CityService mapping rows.
+        # Only expose category branches that contain a currently serviceable
+        # service for the selected customer location.
         location = _location_from_address(self.request)
         if location is None:
             visible_ids = set(
