@@ -94,10 +94,12 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if ((!advanceReady && !balanceReady && !legacyReady) || paying) return;
     final stage = advanceReady ? 'advance' : balanceReady ? 'balance' : 'legacy';
     _currentPaymentStage = stage;
-    final stageDue = amount(
-      advanceReady ? order?['advance_due']
-          : balanceReady ? order?['balance_due'] : order?['legacy_payment_due'],
-    );
+    final stageDueKey = advanceReady
+        ? 'advance_due'
+        : balanceReady
+            ? 'balance_due'
+            : 'legacy_payment_due';
+    final stageDue = amount(order == null ? null : order![stageDueKey]);
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -290,10 +292,12 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final advancePaid = order?['advance_paid'] == true;
     final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
-    final dueNow = amount(
-      advanceReady ? order?['advance_due']
-          : balanceReady ? order?['balance_due'] : order?['legacy_payment_due'],
-    );
+    final dueNowKey = advanceReady
+        ? 'advance_due'
+        : balanceReady
+            ? 'balance_due'
+            : 'legacy_payment_due';
+    final dueNow = amount(order == null ? null : order![dueNowKey]);
     final advancePercentage = int.tryParse(order?['advance_percentage']?.toString() ?? '30') ?? 30;
     final balancePercentage = 100 - advancePercentage;
     final stageLabel = advanceReady ? '$advancePercentage% advance'
