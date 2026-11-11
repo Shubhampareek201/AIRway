@@ -16,22 +16,25 @@ CENT = Decimal("0.01")
 
 
 def _line_stage_amount(payment, booking):
-    """Return the immutable per-line amount for this payment's stage."""
-    if payment.order_id:
-        item = OrderItem.objects.filter(order_id=payment.order_id, booking=booking).first()
-        if item is None:
-            return Decimal("0.00"), item
-        allocation = (payment.order.metadata or {}).get("payment_allocation_v1", {})
-        key = "advance" if payment.stage == Payment.Stage.ADVANCE else "balance"
-        rows = allocation.get(key, [])
-        raw = next(
-            (row.get("amount", "0") for row in rows if row.get("order_item_id") == item.id),
-            "0",
+    """Return the immutable per-service captured split for this payment."""
+    rows = (payment.raw_response or {}).get("service_allocation_v1", [])
+    row = next((entry for entry in rows if entry.get("booking_id") == booking.id), None)
+    if row:
+        item = OrderItem.objects.filter(pk=row.get("order_item_id")).first()
+        return (
+            Decimal(str(row.get("total", "0"))),
+            Decimal(str(row.get("wallet_amount", "0"))),
+            Decimal(str(row.get("gateway_amount", "0"))),
+            item,
         )
-        return Decimal(str(raw)), item
-    if payment.booking_id == booking.id:
-        return Decimal(str(payment.amount + payment.wallet_amount)), None
-    return Decimal("0.00"), None
+    if not payment.order_id and payment.booking_id == booking.id:
+        return (
+            payment.amount + payment.wallet_amount,
+            payment.wallet_amount,
+            payment.amount,
+            None,
+        )
+    return Decimal("0.00"), Decimal("0.00"), Decimal("0.00"), None
 
 
 def _component_allocation(payment, line_total, stage_total):
@@ -68,23 +71,8 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
     for payment in payments.distinct():
         with transaction.atomic():
             locked = Payment.objects.select_for_update().get(pk=payment.pk)
-            line_total, item = _line_stage_amount(locked, booking)
-            if line_total <= 0:
-                continue
-            if locked.order_id:
-                allocation = (locked.order.metadata or {}).get("payment_allocation_v1", {})
-                key = "advance" if locked.stage == Payment.Stage.ADVANCE else "balance"
-                rows = allocation.get(key, [])
-                stage_total = sum(
-                    (Decimal(str(row.get("amount", "0"))) for row in rows),
-                    Decimal("0.00"),
-                )
-            else:
-                stage_total = locked.amount + locked.wallet_amount
-            wallet_part, gateway_part = _component_allocation(
-                locked, line_total, stage_total
-            )
-            if wallet_part + gateway_part <= 0:
+            line_total, wallet_part, gateway_part, item = _line_stage_amount(locked, booking)
+            if line_total <= 0 or wallet_part + gateway_part <= 0:
                 continue
             refund, was_created = PaymentRefund.objects.get_or_create(
                 payment=locked,
@@ -173,7 +161,7 @@ def process_payment_refund(refund_id):
             gateway_status = response.get("status", "").lower()
             locked.status = (
                 PaymentRefund.Status.PROCESSED
-                if gateway_status == "processed" and locked.wallet_amount == 0
+                if gateway_status == "processed"
                 else PaymentRefund.Status.PENDING
             )
             if gateway_status == "processed":
