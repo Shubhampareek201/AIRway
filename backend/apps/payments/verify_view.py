@@ -940,35 +940,28 @@ class PaymentWebhookView(APIView):
 
         elif event_type in ("refund.processed", "refund.failed"):
             refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})
-            refunded_payment_id = refund_entity.get("payment_id")
-            payment = Payment.objects.filter(
-                razorpay_payment_id=refunded_payment_id
-            ).first() if refunded_payment_id else None
-            if payment:
-                payment.raw_response = {
-                    **(payment.raw_response or {}),
-                    "gateway_refund_event": {
-                        "event": event_type,
-                        "refund_id": refund_entity.get("id"),
-                        "status": refund_entity.get("status"),
-                        "amount": refund_entity.get("amount"),
-                        "updated_at": timezone.now().isoformat(),
-                    },
-                }
-                payment.save(update_fields=["raw_response", "updated_at"])
-                if event_type == "refund.failed":
-                    Notification.objects.create(
-                        user=payment.customer,
-                        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                        title="Refund needs attention",
-                        body="Razorpay reported that a refund could not be completed. AIRway support has been alerted to reconcile your payment.",
-                        channel=Notification.Channel.IN_APP,
-                        data={
-                            "payment_id": payment.id,
-                            "refund_id": refund_entity.get("id"),
-                            "order_id": payment.order_id,
+            gateway_refund_id = refund_entity.get("id")
+            if gateway_refund_id:
+                from .refunds import reconcile_gateway_refund
+
+                refund = reconcile_gateway_refund(
+                    gateway_refund_id,
+                    event_type,
+                    refund_entity.get("status", ""),
+                )
+                if refund is not None:
+                    payment = refund.payment
+                    payment.raw_response = {
+                        **(payment.raw_response or {}),
+                        "last_gateway_refund_event": {
+                            "event": event_type,
+                            "refund_id": gateway_refund_id,
+                            "status": refund_entity.get("status"),
+                            "amount": refund_entity.get("amount"),
+                            "updated_at": timezone.now().isoformat(),
                         },
-                    )
+                    }
+                    payment.save(update_fields=["raw_response", "updated_at"])
             return Response({"status": "ok"})
 
         elif event_type == 'payment.failed':
