@@ -25,6 +25,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   final TextEditingController _experienceController = TextEditingController();
   String? _bio;
   final TextEditingController _bioController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _qualificationController = TextEditingController();
+  final TextEditingController _equipmentController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _landmarkController = TextEditingController();
+  String _selectedGender = 'other';
+  final Map<int, Map<String, String>> _weeklySchedule = {};
 
   File? _profilePhoto;
   File? _idDocument;
@@ -53,6 +61,12 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   void dispose() {
     _experienceController.dispose();
     _bioController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _qualificationController.dispose();
+    _equipmentController.dispose();
+    _addressController.dispose();
+    _landmarkController.dispose();
     super.dispose();
   }
 
@@ -237,6 +251,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         zoneIds: _selectedZoneIds,
         experienceYears: int.tryParse(_experienceController.text),
         bio: _bioController.text.isEmpty ? null : _bioController.text,
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        gender: _selectedGender,
+        qualification: _qualificationController.text,
+        equipmentDetails: _equipmentController.text,
+        residentialAddress: _addressController.text.trim(),
+        landmark: _landmarkController.text,
+        schedule: _weeklySchedule,
         profilePhoto: _profilePhoto,
       );
 
@@ -478,46 +500,62 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     final hasExistingPhoto = _hasExistingPhoto;
     final isTakingNewPhoto = _profilePhoto != null;
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
-          radius: 28,
-          backgroundColor: AirwayColors.primarySoft,
-          child: isTakingNewPhoto
-              ? ClipOval(
-                  child: Image.file(
-                    _profilePhoto!,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                  ),
-                )
-              : hasExistingPhoto
-                  ? Icon(Icons.check_circle, size: 32, color: Colors.green[700])
-                  : const Icon(Icons.person, size: 32, color: AirwayColors.primary),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: CircleAvatar(
+              radius: 28,
+              backgroundColor: AirwayColors.primarySoft,
+              child: isTakingNewPhoto
+                  ? ClipOval(child: Image.file(_profilePhoto!, width: 48, height: 48, fit: BoxFit.cover))
+                  : hasExistingPhoto
+                      ? Icon(Icons.check_circle, size: 32, color: Colors.green[700])
+                      : const Icon(Icons.person, size: 32, color: AirwayColors.primary),
+            ),
+            title: const Text('Profile Photo *', style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(
+              isTakingNewPhoto ? 'Photo ready for verification' : 'Required for worker verification',
+              style: const TextStyle(color: AirwayColors.textSecondary),
+            ),
+            trailing: TextButton(onPressed: _pickPhoto, child: Text(isTakingNewPhoto ? 'Retake' : 'Take Photo')),
+            onTap: _pickPhoto,
+          ),
         ),
-        title: const Text('Profile Photo *', style: TextStyle(fontWeight: FontWeight.w800)),
-        subtitle: Text(
-          isTakingNewPhoto
-              ? 'New photo taken - will be submitted for verification'
-              : hasExistingPhoto
-                  ? 'Existing verified photo - tap to change'
-                  : 'Required for verification - take a photo with your device camera',
-          style: const TextStyle(color: AirwayColors.textSecondary),
+        const SizedBox(height: 20),
+        Text('Personal & Professional Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+        const SizedBox(height: 10),
+        TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Full legal name *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedGender,
+          decoration: const InputDecoration(labelText: 'Gender (for service matching)', border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'male', child: Text('Male')),
+            DropdownMenuItem(value: 'female', child: Text('Female')),
+            DropdownMenuItem(value: 'other', child: Text('Other')),
+          ],
+          onChanged: (value) { if (value != null) setState(() => _selectedGender = value); },
         ),
-        trailing: TextButton(
-          onPressed: _hasExistingPhoto && _profilePhoto == null ? null : _pickPhoto,
-          child: Text(isTakingNewPhoto
-              ? 'Retake'
-              : hasExistingPhoto
-                  ? 'Keep Photo'
-                  : 'Take Photo'),
-        ),
-        onTap: _pickPhoto,
-      ),
+        const SizedBox(height: 10),
+        TextField(controller: _addressController, maxLines: 2, decoration: const InputDecoration(labelText: 'Residential address *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _landmarkController, decoration: const InputDecoration(labelText: 'Nearby landmark', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _qualificationController, decoration: const InputDecoration(labelText: 'Qualification / training', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _experienceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Experience (years)', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _equipmentController, maxLines: 2, decoration: const InputDecoration(labelText: 'Tools, equipment or products you can bring', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _bioController, maxLines: 3, decoration: const InputDecoration(labelText: 'About your work / skills', border: OutlineInputBorder())),
+      ],
     );
   }
 
@@ -605,8 +643,72 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                             );
                           }).toList(),
                         ),
+          const SizedBox(height: 24),
+          _buildScheduleSection(),
         ],
       );
+
+  String _timeText(String value) {
+    final parts = value.split(':');
+    final hour = int.parse(parts[0]);
+    final minute = int.parse(parts[1]);
+    final time = TimeOfDay(hour: hour, minute: minute);
+    return time.format(context);
+  }
+
+  Future<void> _pickScheduleTime(int weekday, String key) async {
+    final current = _weeklySchedule[weekday]!;
+    final parts = current[key]!.split(':');
+    final initial = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    final picked = await showTimePicker(context: context, initialTime: initial);
+    if (picked == null) return;
+    final value = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    setState(() => current[key] = value);
+  }
+
+  Widget _buildScheduleSection() {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Weekly Working Hours *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+        const SizedBox(height: 6),
+        const Text('Choose the days and exact hours when you can accept jobs.', style: TextStyle(color: AirwayColors.textSecondary)),
+        const SizedBox(height: 8),
+        ...List.generate(7, (day) {
+          final selected = _weeklySchedule.containsKey(day);
+          return Card(
+            child: Column(
+              children: [
+                CheckboxListTile(
+                  value: selected,
+                  title: Text(days[day]),
+                  onChanged: (value) => setState(() {
+                    if (value == true) {
+                      _weeklySchedule[day] = {'start': '09:00', 'end': '18:00'};
+                    } else {
+                      _weeklySchedule.remove(day);
+                    }
+                  }),
+                ),
+                if (selected)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Row(
+                      children: [
+                        Expanded(child: OutlinedButton(onPressed: () => _pickScheduleTime(day, 'start'), child: Text('From ${_timeText(_weeklySchedule[day]!['start']!)}'))),
+                        const SizedBox(width: 8),
+                        Expanded(child: OutlinedButton(onPressed: () => _pickScheduleTime(day, 'end'), child: Text('To ${_timeText(_weeklySchedule[day]!['end']!)}'))),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
 
   Widget _buildIdDocumentSection() {
     final hasExistingIdDoc = _idDocumentUploaded;
