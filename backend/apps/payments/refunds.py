@@ -62,6 +62,22 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
     if booking.status != Booking.Status.CANCELLED:
         raise ValueError("Only cancelled bookings can be refunded.")
 
+    if hasattr(booking, "order_item"):
+        # Invalidate the wallet hold for any in-flight parent-order attempt.
+        # A late Razorpay capture is still recognised by its order ID and the
+        # staged-payment guard reverses it against the changed active allocation.
+        from apps.wallet.services import release_wallet_reservation
+
+        pending_attempts = Payment.objects.filter(
+            order_id=booking.order_item.order_id,
+            status=Payment.Status.PENDING,
+        )
+        for pending_payment in pending_attempts:
+            release_wallet_reservation(
+                pending_payment,
+                reason="Wallet hold released because a service in this order was cancelled.",
+            )
+
     payments = Payment.objects.filter(status=Payment.Status.PAID).filter(
         order__items__booking=booking
     ) if hasattr(booking, "order_item") else Payment.objects.filter(
