@@ -435,6 +435,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     status_history = BookingStatusHistorySerializer(many=True, read_only=True)
     assignment = BookingAssignmentSerializer(read_only=True)
     can_cancel = serializers.BooleanField(read_only=True)
+    refunds = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -445,7 +446,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "address_detail", "pricing_snapshot", "notes", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
             "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
-            "created_at", "updated_at"
+            "refunds", "created_at", "updated_at"
         ]
 
     def get_service_image(self, obj):
@@ -454,6 +455,24 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.service.image.url)
         return None
+
+    def get_refunds(self, obj):
+        from apps.payments.models import PaymentRefund
+
+        return [
+            {
+                "id": refund.pk,
+                "amount": str(refund.amount),
+                "wallet_amount": str(refund.wallet_amount),
+                "gateway_amount": str(refund.gateway_amount),
+                "status": refund.status,
+                "reason": refund.reason,
+                "failure_reason": refund.failure_reason,
+                "created_at": refund.created_at,
+                "processed_at": refund.processed_at,
+            }
+            for refund in PaymentRefund.objects.filter(booking=obj).order_by("created_at")
+        ]
 
     def get_address_detail(self, obj):
         addr = obj.address
