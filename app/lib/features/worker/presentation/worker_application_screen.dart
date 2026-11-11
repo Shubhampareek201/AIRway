@@ -577,39 +577,55 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     );
   }
 
-  Widget _buildServicesSection() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Services You Offer *',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Select all services you can perform',
-            style: TextStyle(color: AirwayColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          _services.isEmpty
-              ? const Text('Loading services...')
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _services.map((service) {
-                    final isSelected = _selectedServiceIds.contains(service.id);
-                    return FilterChip(
-                      selected: isSelected,
-                      label: Text(service.title),
-                      onSelected: (_) => _toggleService(service.id),
-                      selectedColor: AirwayColors.primary.withAlpha(30),
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : AirwayColors.text,
-                      ),
-                    );
-                  }).toList(),
+  Widget _buildServicesSection() {
+    final grouped = <String, List<Service>>{};
+    for (final service in _services) {
+      grouped.putIfAbsent(service.categoryName, () => []).add(service);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Services You Offer *',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Choose every individual service you are trained and willing to provide. Customers will only see services that have an approved, eligible worker in their area.',
+          style: TextStyle(color: AirwayColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        if (_services.isEmpty)
+          const Text('No active services are available for worker registration.')
+        else
+          ...grouped.entries.map((entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(entry.key, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AirwayColors.primary)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: entry.value.map((service) {
+                        final selected = _selectedServiceIds.contains(service.id);
+                        return FilterChip(
+                          selected: selected,
+                          label: Text(service.title),
+                          onSelected: (_) => _toggleService(service.id),
+                          selectedColor: AirwayColors.primary.withAlpha(30),
+                          labelStyle: TextStyle(color: selected ? Colors.white : AirwayColors.text),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ),
-        ],
-      );
+              )),
+      ],
+    );
+  }
+
 
   Widget _buildZonesSection() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
