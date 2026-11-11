@@ -101,6 +101,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         _experienceYears = _existingExperienceYears;
         _bio = _existingBio;
         _selectedIdType = idType ?? 'aadhaar';
+        final savedGender = workerProfile['gender']?.toString();
+        if (savedGender == 'male' || savedGender == 'female' || savedGender == 'other') {
+          _selectedGender = savedGender!;
+        }
         _hasExistingPhoto = workerProfile['has_photo'] == true || workerProfile['photo_url'] != null;
         _qualificationController.text = workerProfile['qualification']?.toString() ?? '';
         _equipmentController.text = workerProfile['equipment_details']?.toString() ?? '';
