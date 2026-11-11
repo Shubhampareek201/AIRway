@@ -3677,3 +3677,157 @@ class PartialCancellationBalanceSettlementTest(BookingAPITestMixin, TestCase):
         self.assertEqual(completed_item.booking.status, Booking.Status.COMPLETED)
         self.assertEqual(cancelled_item.booking.status, Booking.Status.CANCELLED)
 
+
+
+
+class ServiceRefundLifecycleTest(BookingAPITestMixin, TestCase):
+    """Cancellation refunds must follow immutable per-service payment splits."""
+
+    def setUp(self):
+        from decimal import Decimal
+        from apps.payments.models import Payment
+        from apps.wallet.models import Wallet
+
+        self.customer = self._create_user("+919876543299")
+        self.address = self._create_address(self.customer)
+        category = self._create_category("Refunds", "refund-lifecycle")
+        service = self._create_service(category, "Refundable Service")
+        self.cancelled_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=service,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.CANCELLED,
+            pricing_snapshot={"total": "100.00"},
+        )
+        self.active_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=service,
+            scheduled_at=timezone.now() + timedelta(days=2),
+            status=Booking.Status.PENDING,
+            pricing_snapshot={"total": "100.00"},
+        )
+        self.order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.PARTIALLY_CANCELLED,
+            total_amount=Decimal("200.00"),
+        )
+        self.cancelled_item = OrderItem.objects.create(
+            order=self.order, booking=self.cancelled_booking,
+            line_total=Decimal("100.00"),
+        )
+        self.active_item = OrderItem.objects.create(
+            order=self.order, booking=self.active_booking,
+            line_total=Decimal("100.00"),
+        )
+        self.payment = Payment.objects.create(
+            order=self.order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal("140.00"),
+            wallet_amount=Decimal("60.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_order_id="order_refund_lifecycle",
+            razorpay_payment_id="pay_refund_lifecycle",
+            raw_response={
+                "service_allocation_v1": [
+                    {
+                        "order_item_id": self.cancelled_item.id,
+                        "booking_id": self.cancelled_booking.id,
+                        "total": "100.00",
+                        "wallet_amount": "30.00",
+                        "gateway_amount": "70.00",
+                    },
+                    {
+                        "order_item_id": self.active_item.id,
+                        "booking_id": self.active_booking.id,
+                        "total": "100.00",
+                        "wallet_amount": "30.00",
+                        "gateway_amount": "70.00",
+                    },
+                ]
+            },
+        )
+        self.wallet, _ = Wallet.objects.get_or_create(user=self.customer)
+
+    @patch("apps.payments.refunds.razorpay.Client")
+    def test_partial_service_refund_uses_only_its_wallet_and_gateway_shares(self, gateway_client):
+        from decimal import Decimal
+        from apps.payments.models import PaymentRefund
+        from apps.payments.refunds import request_booking_refunds, reconcile_gateway_refund
+        from apps.wallet.models import WalletTransaction
+
+        gateway = gateway_client.return_value
+        gateway.payment.refund.return_value = {
+            "id": "rfnd_service_100",
+            "status": "pending",
+        }
+
+        refunds = request_booking_refunds(self.cancelled_booking)
+        refund = refunds.get(payment=self.payment)
+        self.wallet.refresh_from_db()
+
+        self.assertEqual(refund.amount, Decimal("100.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("30.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("70.00"))
+        self.assertEqual(refund.status, PaymentRefund.Status.PENDING)
+        self.assertEqual(self.wallet.balance, Decimal("30.00"))
+        self.assertEqual(
+            WalletTransaction.objects.filter(
+                reference_id=f"payment-refund:{refund.pk}:wallet",
+                status=WalletTransaction.Status.COMPLETED,
+            ).count(),
+            1,
+        )
+        gateway.payment.refund.assert_called_once_with(
+            "pay_refund_lifecycle",
+            {
+                "amount": 7000,
+                "notes": {
+                    "airway_refund_id": str(refund.pk),
+                    "airway_booking_id": str(self.cancelled_booking.pk),
+                    "reason": PaymentRefund.Reason.CUSTOMER_CANCELLATION,
+                },
+            },
+        )
+
+        # Repeated cancellation/refund scheduling cannot create another refund
+        # or credit the wallet twice.
+        request_booking_refunds(self.cancelled_booking)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal("30.00"))
+        self.assertEqual(PaymentRefund.objects.filter(booking=self.cancelled_booking).count(), 1)
+        gateway.payment.refund.assert_called_once()
+
+        reconcile_gateway_refund(
+            "rfnd_service_100", "refund.processed", "processed"
+        )
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, PaymentRefund.Status.PROCESSED)
+        self.assertIsNotNone(refund.processed_at)
+
+    @patch("apps.payments.refunds.razorpay.Client")
+    def test_gateway_failure_keeps_refund_unsettled_and_wallet_credit_idempotent(self, gateway_client):
+        from decimal import Decimal
+        from apps.payments.models import PaymentRefund
+        from apps.payments.refunds import request_booking_refunds, reconcile_gateway_refund
+
+        gateway = gateway_client.return_value
+        gateway.payment.refund.return_value = {
+            "id": "rfnd_service_failed",
+            "status": "pending",
+        }
+        refunds = request_booking_refunds(self.cancelled_booking)
+        refund = refunds.get(payment=self.payment)
+
+        reconcile_gateway_refund(
+            "rfnd_service_failed", "refund.failed", "failed"
+        )
+        refund.refresh_from_db()
+        self.wallet.refresh_from_db()
+        self.assertEqual(refund.status, PaymentRefund.Status.FAILED)
+        self.assertEqual(self.wallet.balance, Decimal("30.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("70.00"))
