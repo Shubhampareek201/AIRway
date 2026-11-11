@@ -26,6 +26,11 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
             "is_online",
             "rating_avg",
             "experience_years",
+            "qualification",
+            "equipment_details",
+            "residential_address",
+            "landmark",
+            "bio",
             "upi_id",
             "photo_url",
         ]
