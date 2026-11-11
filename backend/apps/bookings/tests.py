@@ -3451,8 +3451,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             cart=self.cart, service=second_service, variant=second_variant,
             quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
-        first_time = timezone.now() + timedelta(days=2)
-        second_time = timezone.now() + timedelta(days=3)
+        first_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
+        )
+        second_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=3), time(12, 0))
+        )
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
@@ -3499,8 +3503,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             cart=self.cart, service=second_service, variant=second_variant,
             quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
-        first_time = timezone.now() + timedelta(days=2)
-        second_time = timezone.now() + timedelta(days=3)
+        first_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
+        )
+        second_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=3), time(12, 0))
+        )
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
