@@ -45,6 +45,10 @@ class WorkerProfile(TimeStampedModel):
 
     experience_years = models.PositiveIntegerField(default=0)
     bio = models.TextField(blank=True)
+    qualification = models.CharField(max_length=255, blank=True)
+    equipment_details = models.TextField(blank=True)
+    residential_address = models.TextField(blank=True)
+    landmark = models.CharField(max_length=255, blank=True)
 
     upi_id = models.CharField(max_length=100, blank=True)
 
@@ -106,6 +110,8 @@ class WorkerDocument(TimeStampedModel):
         AADHAAR = "aadhaar", "Aadhaar"
         ID = "id", "Other ID"
         PHOTO = "photo", "Photograph"
+        ADDRESS_PROOF = "address_proof", "Address proof"
+        QUALIFICATION = "qualification", "Qualification certificate"
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):
