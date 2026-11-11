@@ -73,7 +73,10 @@ class WorkerProfileAdmin(ModelAdmin):
     )
     fieldsets = (
         ("Worker account", {"fields": ("user", "status", "gender")}),
-        ("Application details", {"fields": ("experience_years", "bio", "upi_id")}),
+        ("Application details", {"fields": (
+            "experience_years", "qualification", "equipment_details",
+            "residential_address", "landmark", "bio", "upi_id",
+        )}),
         ("Review decision", {"fields": ("rejection_reason", "approved_by", "approved_at")}),
         ("Performance (read only)", {
             "fields": ("is_online", "rating_avg", "rating_count", "acceptance_rate", "cancellation_count"),
@@ -130,6 +133,39 @@ class WorkerProfileAdmin(ModelAdmin):
     def zone_summary(self, obj):
         names = [link.zone.name for link in obj.worker_zones.all()]
         return ", ".join(names) if names else "Not added"
+
+    def save_model(self, request, obj, form, change):
+        if obj.status == WorkerProfile.Status.APPROVED:
+            has_verified_id = obj.documents.filter(
+                doc_type__in=[
+                    WorkerDocument.DocumentType.AADHAAR,
+                    WorkerDocument.DocumentType.ID,
+                ],
+                status=WorkerDocument.Status.VERIFIED,
+            ).exists()
+            has_verified_photo = obj.documents.filter(
+                doc_type=WorkerDocument.DocumentType.PHOTO,
+                status=WorkerDocument.Status.VERIFIED,
+            ).exists()
+            has_service = obj.worker_services.filter(
+                service__is_active=True, service__category__is_active=True
+            ).exists()
+            has_zone = obj.worker_zones.filter(
+                zone__is_active=True, zone__city__is_active=True
+            ).exists()
+            has_schedule = obj.schedules.filter(is_active=True).exists()
+            if not all((has_verified_id, has_verified_photo, has_service, has_zone, has_schedule)):
+                from django.core.exceptions import ValidationError
+                raise ValidationError(
+                    "Worker approval requires verified ID and photo, active services, "
+                    "an active service zone, and working hours."
+                )
+            if not change or not WorkerProfile.objects.filter(
+                pk=obj.pk, status=WorkerProfile.Status.APPROVED
+            ).exists():
+                obj.approved_by = request.user
+                obj.approved_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
