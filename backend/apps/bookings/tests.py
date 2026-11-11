@@ -3580,3 +3580,100 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {self.service.id, second_service.id},
         )
         self.assertFalse(self.cart.items.exists())
+
+class PartialCancellationBalanceSettlementTest(BookingAPITestMixin, TestCase):
+    """The final balance is due only for completed, non-cancelled order lines."""
+
+    def setUp(self):
+        self.customer = self._create_user("+919876543299")
+        self.category = self._create_category(
+            title="Balance settlement", slug="balance-settlement"
+        )
+        self.service = self._create_service(self.category)
+        self.address = self._create_address(self.customer)
+
+    def test_balance_capture_succeeds_when_other_order_line_was_cancelled(self):
+        from apps.payments.models import Payment
+        from apps.payments.verify_view import _process_verified_payment
+
+        completed_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.COMPLETED,
+        )
+        cancelled_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=2),
+            status=Booking.Status.CANCELLED,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.PARTIALLY_CANCELLED,
+            total_amount=Decimal("200.00"),
+            metadata={
+                "payment_allocation_v1": {
+                    "percentage": "30",
+                    "advance_total": "60.00",
+                    "balance_total": "140.00",
+                    "advance": [
+                        {"order_item_id": 1, "amount": "30.00"},
+                        {"order_item_id": 2, "amount": "30.00"},
+                    ],
+                    "balance": [
+                        {"order_item_id": 1, "amount": "70.00"},
+                        {"order_item_id": 2, "amount": "70.00"},
+                    ],
+                }
+            },
+        )
+        completed_item = OrderItem.objects.create(
+            order=order, booking=completed_booking, quantity=1,
+            line_total=Decimal("100.00"),
+        )
+        cancelled_item = OrderItem.objects.create(
+            order=order, booking=cancelled_booking, quantity=1,
+            line_total=Decimal("100.00"),
+        )
+        order.metadata["payment_allocation_v1"]["advance"] = [
+            {"order_item_id": completed_item.pk, "amount": "30.00"},
+            {"order_item_id": cancelled_item.pk, "amount": "30.00"},
+        ]
+        order.metadata["payment_allocation_v1"]["balance"] = [
+            {"order_item_id": completed_item.pk, "amount": "70.00"},
+            {"order_item_id": cancelled_item.pk, "amount": "70.00"},
+        ]
+        order.save(update_fields=["metadata", "updated_at"])
+
+        Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("70.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+            razorpay_order_id="order_partial_cancel_balance",
+        )
+
+        payment = Payment.objects.get(order=order, stage=Payment.Stage.BALANCE)
+        response = _process_verified_payment(
+            payment=payment,
+            razorpay_payment_id="pay_partial_cancel_balance",
+            razorpay_order_id="order_partial_cancel_balance",
+            customer=self.customer,
+            source="test",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        payment.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.razorpay_payment_id, "pay_partial_cancel_balance")
+        self.assertEqual(order.status, Order.Status.PARTIALLY_CANCELLED)
+        self.assertEqual(completed_item.booking.status, Booking.Status.COMPLETED)
+        self.assertEqual(cancelled_item.booking.status, Booking.Status.CANCELLED)
+
