@@ -267,127 +267,128 @@ class WorkerScheduleDetailView(APIView):
 
 
 class WorkerOnboardingView(APIView):
-    """Submit/complete worker onboarding. Called when user clicks Done on Step 5 of the onboarding flow."""
+    """Create a complete worker application only after validating every submitted field."""
     permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _list_value(value, field_name):
+        import json
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                value = [part.strip() for part in value.split(",") if part.strip()]
+        if not isinstance(value, list):
+            raise DjangoValidationError({field_name: "Provide a list of selected IDs."})
+        try:
+            values = [int(item) for item in value]
+        except (TypeError, ValueError):
+            raise DjangoValidationError({field_name: "Every selected value must be a valid ID."})
+        if not values or len(values) != len(set(values)):
+            raise DjangoValidationError({field_name: "Select at least one unique value."})
+        return values
 
     @transaction.atomic
     def post(self, request):
-        # Check if user already applied (WorkerProfile exists)
         if WorkerProfile.objects.filter(user=request.user).exists():
             return Response(
                 {"detail": "Worker application already exists."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
-        # Validate profile_photo is required
-        profile_photo = request.data.get("profile_photo")
+        data = request.data
+        profile_photo = data.get("profile_photo")
         if not profile_photo:
-            return Response(
-                {"profile_photo": ["This field is required."]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Validate it is a real image (Pillow will raise for non-images)
+            return Response({"profile_photo": ["This field is required."]}, status=400)
+        if profile_photo.size > 5 * 1024 * 1024:
+            return Response({"profile_photo": ["File size must not exceed 5MB."]}, status=400)
         try:
             from PIL import Image as PILImage
-            if hasattr(profile_photo, 'read'):
-                profile_photo.seek(0)
+            profile_photo.seek(0)
             PILImage.open(profile_photo).verify()
-            if hasattr(profile_photo, 'seek'):
-                profile_photo.seek(0)
+            profile_photo.seek(0)
         except Exception:
-            return Response(
-                {"profile_photo": ["Upload a valid image. The file you uploaded was not a valid image."]},
-                status=status.HTTP_400_BAD_REQUEST,
+            return Response({"profile_photo": ["Upload a valid image." ]}, status=400)
+
+        try:
+            service_ids = self._list_value(data.get("services"), "services")
+            zone_ids = self._list_value(data.get("zones"), "zones")
+            services = list(Service.objects.filter(
+                pk__in=service_ids, is_active=True, category__is_active=True
+            ))
+            zones = list(Zone.objects.filter(
+                pk__in=zone_ids, is_active=True, city__is_active=True
+            ))
+            if len(services) != len(service_ids):
+                return Response({"services": ["One or more selected services are invalid or inactive."]}, status=400)
+            if len(zones) != len(zone_ids):
+                return Response({"zones": ["One or more selected service areas are invalid or inactive."]}, status=400)
+
+            experience = int(data.get("experience_years", 0) or 0)
+            if experience < 0 or experience > 60:
+                return Response({"experience_years": ["Enter experience between 0 and 60 years."]}, status=400)
+
+            schedule_data = data.get("schedule", {})
+            if isinstance(schedule_data, str):
+                import json
+                schedule_data = json.loads(schedule_data)
+            if not isinstance(schedule_data, dict):
+                return Response({"schedule": ["Provide working hours for each selected weekday."]}, status=400)
+            schedules = []
+            for weekday_raw, times in schedule_data.items():
+                weekday = int(weekday_raw)
+                if weekday not in range(7) or not isinstance(times, dict):
+                    raise ValueError("Invalid weekday schedule.")
+                start_time = forms.TimeField().to_python(times.get("start"))
+                end_time = forms.TimeField().to_python(times.get("end"))
+                if start_time is None or end_time is None or start_time >= end_time:
+                    raise ValueError("Each working day must have an end time after its start time.")
+                schedules.append((weekday, start_time, end_time))
+            if not schedules:
+                return Response({"schedule": ["Select at least one working day and set its hours."]}, status=400)
+        except (DjangoValidationError, ValueError, TypeError, KeyError) as exc:
+            detail = getattr(exc, "message_dict", None) or {"detail": str(exc)}
+            return Response(detail, status=400)
+
+        name = str(data.get("name") or request.user.name).strip()
+        email = str(data.get("email") or request.user.email).strip()
+        gender = str(data.get("gender") or request.user.gender).strip()
+        if not name:
+            return Response({"name": ["Full name is required."]}, status=400)
+        if email and "@" not in email:
+            return Response({"email": ["Enter a valid email address."]}, status=400)
+        if gender and gender not in dict(User.Gender.choices):
+            return Response({"gender": ["Choose a valid gender value."]}, status=400)
+
+        profile = WorkerProfile.objects.create(
+            user=request.user,
+            gender=gender,
+            experience_years=experience,
+            bio=str(data.get("bio") or "").strip(),
+            qualification=str(data.get("qualification") or "").strip(),
+            equipment_details=str(data.get("equipment_details") or "").strip(),
+            residential_address=str(data.get("residential_address") or "").strip(),
+            landmark=str(data.get("landmark") or "").strip(),
+        )
+        request.user.name = name
+        request.user.email = email
+        if gender:
+            request.user.gender = gender
+        request.user.save(update_fields=["name", "email", "gender"])
+
+        WorkerService.objects.bulk_create([
+            WorkerService(worker=profile, service=service) for service in services
+        ])
+        WorkerZone.objects.bulk_create([
+            WorkerZone(worker=profile, zone=zone) for zone in zones
+        ])
+        WorkerSchedule.objects.bulk_create([
+            WorkerSchedule(
+                worker=profile, weekday=weekday,
+                start_time=start_time, end_time=end_time, is_active=True,
             )
-
-        # Reject files larger than 5MB
-        if hasattr(profile_photo, 'size') and profile_photo.size > 5 * 1024 * 1024:
-            return Response(
-                {"profile_photo": ["File size must not exceed 5MB."]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Update User profile fields
-        user_updates = {}
-        if "name" in request.data and request.data["name"]:
-            name = str(request.data["name"]).strip()
-            if name:
-                request.user.name = name
-                user_updates["name"] = name
-        if "email" in request.data and request.data["email"]:
-            email = str(request.data["email"]).strip()
-            if email:
-                request.user.email = email
-                user_updates["email"] = email
-        if "gender" in request.data and request.data["gender"]:
-            gender = request.data["gender"]
-            if gender in dict(User.Gender.choices):
-                request.user.gender = gender
-                user_updates["gender"] = gender
-        if user_updates:
-            request.user.save(update_fields=list(user_updates.keys()))
-
-        # Create WorkerProfile first (required for FK relationships)
-        profile = WorkerProfile.objects.create(user=request.user)
-
-        # Attach services by id/title (Service doesn't have slug field)
-        services = request.data.get("services", [])
-        for sid in services:
-            if not sid:
-                continue
-            try:
-                service = Service.objects.get(pk=int(sid), is_active=True)
-            except (Service.DoesNotExist, ValueError, TypeError):
-                try:
-                    service = Service.objects.get(title__iexact=str(sid), is_active=True)
-                except Service.DoesNotExist:
-                    try:
-                        service = Service.objects.get(title__icontains=str(sid), is_active=True)
-                    except Service.DoesNotExist:
-                        continue
-            WorkerService.objects.get_or_create(worker=profile, service=service)
-
-        # Attach zones by id/name
-        zones = request.data.get("zones", [])
-        for zid in zones:
-            if not zid:
-                continue
-            try:
-                zone = Zone.objects.get(pk=int(zid), is_active=True)
-            except (Zone.DoesNotExist, ValueError, TypeError):
-                try:
-                    zone = Zone.objects.get(name__iexact=str(zid), is_active=True)
-                except Zone.DoesNotExist:
-                    try:
-                        zone = Zone.objects.get(name__icontains=str(zid), is_active=True)
-                    except Zone.DoesNotExist:
-                        continue
-            WorkerZone.objects.get_or_create(worker=profile, zone=zone)
-
-        # Attach schedules keyed by weekday (0=Monday..6=Sunday)
-        schedule = request.data.get("schedule", {})
-        for weekday_str, times in schedule.items():
-            try:
-                weekday = int(weekday_str)
-            except (ValueError, TypeError):
-                continue
-            if not isinstance(times, dict):
-                continue
-            start = str(times.get("start", "")).strip()
-            end = str(times.get("end", "")).strip()
-            if not start or not end:
-                continue
-            try:
-                s = forms.TimeField().to_python(start)
-                e = forms.TimeField().to_python(end)
-            except DjangoValidationError:
-                continue
-            WorkerSchedule.objects.update_or_create(
-                worker=profile, weekday=weekday, defaults={"start_time": s, "end_time": e, "is_active": True},
-            )
-
-        # Save profile photo as WorkerDocument
+            for weekday, start_time, end_time in schedules
+        ])
         WorkerDocument.objects.create(
             worker=profile,
             doc_type=WorkerDocument.DocumentType.PHOTO,
@@ -395,14 +396,11 @@ class WorkerOnboardingView(APIView):
             status=WorkerDocument.Status.PENDING,
         )
 
-        profile.status = WorkerProfile.Status.PENDING
-        profile.save(update_fields=["status"])
-
         return Response({
-            "message": "Onboarding submitted. Awaiting admin approval.",
+            "message": "Worker application submitted. Awaiting admin verification.",
             "status": profile.status,
-            "active_mode": request.user.active_mode,
             "worker_status": profile.status,
+            "active_mode": request.user.active_mode,
         }, status=status.HTTP_201_CREATED)
 
 
