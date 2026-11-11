@@ -39,16 +39,14 @@ class WorkerAppApi {
         final body = <List<int>>[];
 
         void addField(String key, dynamic value) {
-          if (value is List) {
-            final strValue = value.toString().replaceAll(']', '').replaceAll('[', '');
-            body.add(utf8.encode('--$boundary\r\n'));
-            body.add(utf8.encode('Content-Disposition: form-data; name="$key"\r\n\r\n'));
-            body.add(utf8.encode('$strValue\r\n'));
-          } else if (value is int || value is String) {
-            body.add(utf8.encode('--$boundary\r\n'));
-            body.add(utf8.encode('Content-Disposition: form-data; name="$key"\r\n\r\n'));
-            body.add(utf8.encode('$value\r\n'));
-          }
+          final strValue = value is List || value is Map
+              ? jsonEncode(value)
+              : value.toString();
+          body.add(utf8.encode('--$boundary\r\n'));
+          body.add(utf8.encode(
+            'Content-Disposition: form-data; name="$key"\r\n\r\n',
+          ));
+          body.add(utf8.encode('$strValue\r\n'));
         }
 
         if (data != null) {
@@ -182,7 +180,9 @@ class WorkerAppApi {
     final result = await _authenticatedRequest(
       '/api/v1/workers/apply/',
       method: 'POST',
-      data: profilePhoto != null ? data : null,
+      // Send application fields even when reusing an already-uploaded photo.
+      // Existing applications are detected by the backend before it validates a new photo.
+      data: data,
       file: profilePhoto,
       fileFieldName: profilePhoto != null ? 'profile_photo' : null,
     );

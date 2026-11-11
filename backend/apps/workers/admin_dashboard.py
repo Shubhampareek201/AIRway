@@ -1,13 +1,12 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import user_passes_test
-from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from apps.accounts.models import UserRole
 from .models import WorkerDocument, WorkerProfile
+from .approval import approve_worker, get_approval_requirements
 
 
 def _is_super_admin(user):
@@ -103,40 +102,26 @@ def application_detail(request, worker_id):
         ),
         pk=worker_id,
     )
+
     documents = list(worker.documents.all())
-    has_verified_id = any(
-        doc.doc_type in (WorkerDocument.DocumentType.AADHAAR, WorkerDocument.DocumentType.ID)
-        and doc.status == WorkerDocument.Status.VERIFIED
-        for doc in documents
-    )
-    has_photo = any(
-        doc.doc_type == WorkerDocument.DocumentType.PHOTO
-        and doc.status == WorkerDocument.Status.VERIFIED
-        for doc in documents
-    )
-    has_service = worker.worker_services.filter(
-        service__is_active=True, service__category__is_active=True
-    ).exists()
-    has_zone = worker.worker_zones.filter(
-        zone__is_active=True, zone__city__is_active=True
-    ).exists()
-    has_schedule = worker.schedules.filter(is_active=True).exists()
-    can_approve = (
-        worker.status == WorkerProfile.Status.PENDING
-        and has_verified_id and has_photo and has_service and has_zone and has_schedule
-    )
+    requirements = get_approval_requirements(worker)
+
     return render(request, "workers/admin_dashboard/application_detail.html", {
         "worker": worker,
         "documents": documents,
-        "has_verified_id": has_verified_id,
-        "has_photo": has_photo,
-        "has_service": has_service,
-        "has_zone": has_zone,
-        "has_schedule": has_schedule,
-        "can_approve": can_approve,
+        "has_verified_id": requirements["has_verified_id"],
+        "has_photo": requirements["has_verified_photo"],
+        "has_verified_photo": requirements["has_verified_photo"],
+        "has_service": requirements["has_service"],
+        "has_zone": requirements["has_zone"],
+        "has_schedule": requirements["has_schedule"],
+        "approval_requirements": requirements,
+        "can_approve": (
+            worker.status == WorkerProfile.Status.PENDING
+            and requirements["eligible"]
+        ),
         "active_page": "applications",
     })
-
 
 @require_POST
 @super_admin_required
@@ -164,43 +149,26 @@ def review_document(request, worker_id, document_id):
 @require_POST
 @super_admin_required
 def approve_application(request, worker_id):
-    with transaction.atomic():
-        worker = get_object_or_404(
-            WorkerProfile.objects.select_for_update().select_related("user"),
-            pk=worker_id,
-        )
-        has_verified_id = worker.documents.filter(
-            doc_type__in=[WorkerDocument.DocumentType.AADHAAR, WorkerDocument.DocumentType.ID],
-            status=WorkerDocument.Status.VERIFIED,
-        ).exists()
-        if worker.status != WorkerProfile.Status.PENDING:
-            messages.error(request, "This application is no longer pending.")
-        elif (
-            not has_verified_id
-            or not worker.documents.filter(
-                doc_type=WorkerDocument.DocumentType.PHOTO,
-                status=WorkerDocument.Status.VERIFIED,
-            ).exists()
-            or not worker.worker_services.filter(
-                service__is_active=True, service__category__is_active=True
-            ).exists()
-            or not worker.worker_zones.filter(
-                zone__is_active=True, zone__city__is_active=True
-            ).exists()
-            or not worker.schedules.filter(is_active=True).exists()
-        ):
-            messages.error(request, "Approval requires a verified ID and photo, active services, an active service area, and working hours.")
-        else:
-            from django.utils import timezone
-            worker.status = WorkerProfile.Status.APPROVED
-            worker.approved_by = request.user
-            worker.approved_at = timezone.now()
-            worker.rejection_reason = ""
-            worker.save()
-            UserRole.objects.get_or_create(user=worker.user, role=UserRole.Role.WORKER)
-            messages.success(request, f"{worker.user.name or worker.user.phone} has been approved.")
-    return redirect("admin_dashboard:application_detail", worker_id=worker_id)
+    result = approve_worker(worker_id, request.user)
 
+    if result["status"] == "approved":
+        worker = result["worker"]
+        messages.success(
+            request,
+            f"{worker.user.name or worker.user.phone} has been approved.",
+        )
+    elif result["status"] == "ineligible":
+        messages.error(
+            request,
+            "This application cannot be approved yet. Missing requirements: "
+            + "; ".join(result["requirements"]["missing"]),
+        )
+    elif result["status"] == "already_processed":
+        messages.error(request, "This application is no longer pending.")
+    else:
+        messages.error(request, "This worker application could not be found.")
+
+    return redirect("admin_dashboard:application_detail", worker_id=worker_id)
 
 @require_POST
 @super_admin_required

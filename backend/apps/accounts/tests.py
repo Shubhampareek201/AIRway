@@ -449,6 +449,8 @@ class WorkerApplicationTest(APITestCase):
             {
                 "services": [self.service.id],
                 "zones": [self.zone.id],
+                "residential_address": "12 Test Street, Rawatbhata",
+                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
                 "profile_photo": photo,
             },
             format="multipart",
@@ -507,6 +509,8 @@ class WorkerApplicationTest(APITestCase):
             {
                 "services": [self.service.id],
                 "zones": [self.zone.id],
+                "residential_address": "12 Test Street, Rawatbhata",
+                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
                 "profile_photo": worker_photo,
             },
             format="multipart",
@@ -543,6 +547,8 @@ class WorkerApplicationTest(APITestCase):
             {
                 "services": [self.service.id],
                 "zones": [self.zone.id],
+                "residential_address": "12 Test Street, Rawatbhata",
+                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
                 "profile_photo": photo,
             },
             format="multipart",
@@ -564,6 +570,8 @@ class WorkerApplicationTest(APITestCase):
             {
                 "services": [self.service.id],
                 "zones": [self.zone.id],
+                "residential_address": "12 Test Street, Rawatbhata",
+                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
                 "profile_photo": photo,
             },
             format="multipart",
@@ -577,11 +585,13 @@ class WorkerApplicationTest(APITestCase):
             {
                 "services": [self.service.id],
                 "zones": [self.zone.id],
+                "residential_address": "12 Test Street, Rawatbhata",
+                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
                 "profile_photo": photo2,
             },
             format="multipart",
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 409)
         self.assertIn("already exists", response.data["detail"].lower())
 
     def test_rejected_application_shows_reason_on_mode_switch(self):

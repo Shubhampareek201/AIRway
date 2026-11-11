@@ -274,12 +274,25 @@ class WorkerOnboardingView(APIView):
     @staticmethod
     def _list_value(value, field_name):
         import json
+
         if isinstance(value, str):
             try:
-                value = json.loads(value)
+                parsed = json.loads(value)
             except (TypeError, ValueError):
-                value = [part.strip() for part in value.split(",") if part.strip()]
-        if not isinstance(value, list):
+                parsed = [part.strip() for part in value.split(",") if part.strip()]
+            value = parsed if isinstance(parsed, list) else [parsed]
+        elif isinstance(value, (list, tuple)) and len(value) == 1 and isinstance(value[0], str):
+            # Multipart clients may send a JSON-encoded array as one form value.
+            # QueryDict.getlist() then returns e.g. ['[1, 2]']; unwrap that array
+            # while preserving repeated form values such as ['1', '2'].
+            try:
+                parsed = json.loads(value[0])
+            except (TypeError, ValueError):
+                parsed = None
+            if isinstance(parsed, list):
+                value = parsed
+
+        if not isinstance(value, (list, tuple)):
             raise DjangoValidationError({field_name: "Provide a list of selected IDs."})
         try:
             values = [int(item) for item in value]
@@ -312,8 +325,12 @@ class WorkerOnboardingView(APIView):
             return Response({"profile_photo": ["Upload a valid image." ]}, status=400)
 
         try:
-            service_ids = self._list_value(data.get("services"), "services")
-            zone_ids = self._list_value(data.get("zones"), "zones")
+            # Multipart requests encode repeated list fields as QueryDict values.
+            # getlist() preserves every selected ID; JSON requests keep their native lists.
+            service_values = data.getlist("services") if hasattr(data, "getlist") else data.get("services")
+            zone_values = data.getlist("zones") if hasattr(data, "getlist") else data.get("zones")
+            service_ids = self._list_value(service_values, "services")
+            zone_ids = self._list_value(zone_values, "zones")
             services = list(Service.objects.filter(
                 pk__in=service_ids, is_active=True, category__is_active=True
             ))

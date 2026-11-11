@@ -1,0 +1,55 @@
+name: Worker approval backend tests
+
+on:
+  pull_request:
+    branches:
+      - feat/worker-onboarding-service-availability
+    paths:
+      - "backend/**"
+      - ".github/workflows/worker-approval-tests.yml"
+  push:
+    branches:
+      - feat/worker-approval-completion
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          # requirements.txt currently pins Django 6.1.2, which is not installable
+          # and conflicts with django-celery-beat (<6.1). Use the project's
+          # existing local test baseline until the dependency pin is corrected.
+          sed '/^django==/d' requirements.txt > /tmp/airway-ci-requirements.txt
+          python -m pip install "Django==6.0.10" -r /tmp/airway-ci-requirements.txt
+          # manage.py imports dotenv, but python-dotenv is currently absent from requirements.txt.
+          python -m pip install "python-dotenv>=1.0"
+
+      - name: Run Django system checks
+        working-directory: backend
+        run: python manage.py check --settings=config.test_settings
+
+      - name: Run worker approval regression tests
+        working-directory: backend
+        run: python manage.py test apps.workers.test_admin_approval --settings=config.test_settings --verbosity 2
+
+      - name: Run complete backend regression suite
+        working-directory: backend
+        run: python manage.py test --settings=config.test_settings --verbosity 1
