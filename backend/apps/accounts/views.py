@@ -207,8 +207,26 @@ class CurrentUserView(APIView):
                 "is_online": profile.is_online,
                 "rating_avg": float(profile.rating_avg) if profile.rating_avg else None,
                 "experience_years": profile.experience_years,
+                "qualification": profile.qualification,
+                "equipment_details": profile.equipment_details,
+                "residential_address": profile.residential_address,
+                "landmark": profile.landmark,
+                "bio": profile.bio,
                 "rejection_reason": profile.rejection_reason,
                 "photo_url": self._get_worker_photo_url(profile, request),
+                "has_photo": profile.documents.filter(
+                    doc_type=WorkerDocument.DocumentType.PHOTO
+                ).exists(),
+                "id_type": self._get_worker_id_type(profile),
+                "service_ids": list(profile.worker_services.values_list("service_id", flat=True)),
+                "zone_ids": list(profile.worker_zones.values_list("zone_id", flat=True)),
+                "schedule": {
+                    str(slot.weekday): {
+                        "start": slot.start_time.strftime("%H:%M"),
+                        "end": slot.end_time.strftime("%H:%M"),
+                    }
+                    for slot in profile.schedules.filter(is_active=True)
+                },
             }
         except WorkerProfile.DoesNotExist:
             pass
@@ -235,6 +253,15 @@ class CurrentUserView(APIView):
                 "status": None,
                 "rejection_reason": None,
             }
+
+    def _get_worker_id_type(self, profile):
+        document = profile.documents.filter(
+            doc_type__in=[
+                WorkerDocument.DocumentType.AADHAAR,
+                WorkerDocument.DocumentType.ID,
+            ]
+        ).order_by("-created_at").first()
+        return document.doc_type if document else None
 
     def _get_worker_photo_url(self, profile, request):
         """Return the photo URL from WorkerDocument if available."""
