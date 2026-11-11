@@ -142,6 +142,13 @@ class NearbyWorkersAPITest(TestCase):
         )
         WorkerService.objects.create(worker=worker_profile, service=self.service)
         WorkerZone.objects.create(worker=worker_profile, zone=self.zone)
+        WorkerSchedule.objects.create(
+            worker=worker_profile,
+            weekday=0,
+            start_time="09:00",
+            end_time="18:00",
+            is_active=True,
+        )
 
         response = self.client.get(f"/api/v1/workers/nearby/?address_id={self.customer_address.id}")
 
