@@ -378,7 +378,19 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       _detailTile(Icons.verified_user_outlined, 'Application', 'Approved'),
       if (profile.services.isNotEmpty) _detailTile(Icons.category_outlined, 'Services', profile.services.join(', ')),
       if (profile.zones.isNotEmpty) _detailTile(Icons.map_outlined, 'Service areas', profile.zones.join(', ')),
-      if (profile.schedules.isNotEmpty) _detailTile(Icons.schedule_outlined, 'Working days', profile.schedules.map((item) => item['weekday_display']?.toString() ?? '').where((value) => value.isNotEmpty).join(', ')),
+      if (profile.schedules.isNotEmpty) _detailTile(
+        Icons.schedule_outlined,
+        'Working hours',
+        profile.schedules.map((item) {
+          final day = item['weekday_display']?.toString() ?? '';
+          final start = item['start_time']?.toString() ?? '';
+          final end = item['end_time']?.toString() ?? '';
+          final range = start.length >= 5 && end.length >= 5
+              ? '${start.substring(0, 5)}–${end.substring(0, 5)}'
+              : '';
+          return [day, range].where((value) => value.isNotEmpty).join(' ');
+        }).join(', '),
+      ),
       const SizedBox(height: 16),
       OutlinedButton.icon(onPressed: _refresh, icon: const Icon(Icons.sync), label: const Text('Refresh profile')),
       const SizedBox(height: 20),
