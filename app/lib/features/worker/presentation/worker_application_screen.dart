@@ -243,7 +243,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
 
   Future<void> _submitApplication() async {
     if (!mounted) return;
-    if (_profilePhoto == null) {
+    if (_profilePhoto == null && !_hasExistingPhoto) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile photo is required. Please take a photo first.')),
       );
@@ -312,7 +312,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       if (!mounted) return;
       final errorStr = e.toString();
 
-      if (errorStr.contains('Worker profile already exists')) {
+      if (errorStr.toLowerCase().contains('already exists')) {
         // Profile exists - check if ID document was uploaded
         if (_idDocumentUploaded) {
           setState(() => _error = 'Your worker application is already complete. You can switch to Worker mode from settings.');
@@ -399,7 +399,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   void _nextStep() {
     switch (_currentStep) {
       case WorkerApplicationStep.photo:
-        if (_profilePhoto == null) {
+        if (_profilePhoto == null && !_hasExistingPhoto) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Please take a profile photo first.')),
           );
@@ -978,7 +978,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         ] else ...[
           Expanded(
             child: ElevatedButton(
-              onPressed: _profilePhoto != null ? _nextStep : null,
+              onPressed: (_profilePhoto != null || _hasExistingPhoto) ? _nextStep : null,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
