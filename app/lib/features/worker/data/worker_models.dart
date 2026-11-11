@@ -19,6 +19,15 @@ class WorkerProfile {
   final double? ratingAvg;
   final int? experienceYears;
   final String? rejectionReason;
+  final String? qualification;
+  final String? equipmentDetails;
+  final String? residentialAddress;
+  final String? landmark;
+  final String? bio;
+  final List<String> services;
+  final List<String> zones;
+  final List<Map<String, dynamic>> schedules;
+  final List<Map<String, dynamic>> documents;
 
   WorkerProfile({
     this.id,
@@ -30,6 +39,15 @@ class WorkerProfile {
     this.ratingAvg,
     this.experienceYears,
     this.rejectionReason,
+    this.qualification,
+    this.equipmentDetails,
+    this.residentialAddress,
+    this.landmark,
+    this.bio,
+    this.services = const [],
+    this.zones = const [],
+    this.schedules = const [],
+    this.documents = const [],
   });
 
   factory WorkerProfile.fromMap(Map<String, dynamic> map) {
@@ -43,6 +61,29 @@ class WorkerProfile {
       ratingAvg: map['rating_avg'] != null ? (map['rating_avg'] as num).toDouble() : null,
       experienceYears: map['experience_years'] as int?,
       rejectionReason: map['rejection_reason'] as String?,
+      qualification: map['qualification'] as String?,
+      equipmentDetails: map['equipment_details'] as String?,
+      residentialAddress: map['residential_address'] as String?,
+      landmark: map['landmark'] as String?,
+      bio: map['bio'] as String?,
+      services: (map['services'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => item['service_title']?.toString() ?? '')
+          .where((value) => value.isNotEmpty)
+          .toList(),
+      zones: (map['zones'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => item['zone_name']?.toString() ?? '')
+          .where((value) => value.isNotEmpty)
+          .toList(),
+      schedules: (map['schedules'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
+      documents: (map['documents'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
     );
   }
 }
