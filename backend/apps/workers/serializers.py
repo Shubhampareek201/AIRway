@@ -56,6 +56,10 @@ class WorkerProfileUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "experience_years",
             "bio",
+            "qualification",
+            "equipment_details",
+            "residential_address",
+            "landmark",
             "upi_id",
         ]
 
