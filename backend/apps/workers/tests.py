@@ -1887,3 +1887,98 @@ class PaymentIdempotencyTests(TestCase):
 
         # Only one payment record
         self.assertEqual(Payment.objects.filter(booking=booking).count(), 1)
+
+
+class CompleteWorkerOnboardingSubmissionTests(TestCase):
+    def setUp(self):
+        from apps.accounts.models import User
+        from apps.core.models import City, Zone
+        from apps.catalog.models import Category, Service
+
+        self.user = User.objects.create_user(
+            phone="+919876543221",
+            password="password123",
+            name="Applicant",
+        )
+        self.city = City.objects.create(name="Rawatbhata", state="Rajasthan")
+        self.zone = Zone.objects.create(name="Rawatbhata Main", city=self.city, is_active=True)
+        self.category = Category.objects.create(title="Electrical", slug="onboarding-electrical")
+        self.service = Service.objects.create(
+            category=self.category,
+            title="Electrical Repair",
+            booking_mode="scheduled",
+            pricing_type="fixed",
+            is_active=True,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _profile_photo(self):
+        from io import BytesIO
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        output = BytesIO()
+        Image.new("RGB", (20, 20), color="white").save(output, format="PNG")
+        return SimpleUploadedFile(
+            "worker-profile.png", output.getvalue(), content_type="image/png"
+        )
+
+    def _payload(self):
+        import json
+        return {
+            "name": "Applicant Worker",
+            "email": "worker@example.com",
+            "gender": "other",
+            "services": json.dumps([self.service.pk]),
+            "zones": json.dumps([self.zone.pk]),
+            "experience_years": "3",
+            "qualification": "ITI Electrical",
+            "equipment_details": "Tester, insulated tools",
+            "residential_address": "Rawatbhata, Rajasthan",
+            "landmark": "Near main market",
+            "bio": "Experienced electrical repair professional",
+            "schedule": json.dumps({
+                "0": {"start": "09:00", "end": "18:00"},
+                "2": {"start": "10:00", "end": "17:00"},
+            }),
+            "profile_photo": self._profile_photo(),
+        }
+
+    def test_complete_application_persists_services_zones_profile_and_hours(self):
+        response = self.client.post(
+            "/api/v1/workers/apply/", self._payload(), format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        profile = WorkerProfile.objects.get(user=self.user)
+        self.assertEqual(profile.status, WorkerProfile.Status.PENDING)
+        self.assertEqual(profile.qualification, "ITI Electrical")
+        self.assertEqual(profile.equipment_details, "Tester, insulated tools")
+        self.assertEqual(profile.residential_address, "Rawatbhata, Rajasthan")
+        self.assertEqual(profile.landmark, "Near main market")
+        self.assertEqual(list(profile.worker_services.values_list("service_id", flat=True)), [self.service.pk])
+        self.assertEqual(list(profile.worker_zones.values_list("zone_id", flat=True)), [self.zone.pk])
+        self.assertEqual(profile.schedules.count(), 2)
+        self.assertTrue(profile.documents.filter(doc_type=WorkerDocument.DocumentType.PHOTO).exists())
+
+    def test_invalid_selected_service_rejects_application_without_partial_profile(self):
+        payload = self._payload()
+        payload["services"] = "[999999]"
+        response = self.client.post(
+            "/api/v1/workers/apply/", payload, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(WorkerProfile.objects.filter(user=self.user).exists())
+
+    def test_missing_weekly_hours_rejects_application_without_partial_profile(self):
+        import json
+        payload = self._payload()
+        payload["schedule"] = json.dumps({})
+        response = self.client.post(
+            "/api/v1/workers/apply/", payload, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(WorkerProfile.objects.filter(user=self.user).exists())
