@@ -333,6 +333,10 @@ def create_or_get_order_payment(
                 wallet_line = (requested * line_value / stage_total).quantize(
                     Decimal("0.01"), rounding=ROUND_HALF_UP
                 )
+                wallet_line = min(
+                    wallet_line,
+                    max(Decimal("0.00"), requested - wallet_allocated),
+                )
                 wallet_allocated += wallet_line
             wallet_line = max(Decimal("0.00"), min(wallet_line, line_value))
             service_rows.append({
