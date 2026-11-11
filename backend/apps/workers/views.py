@@ -372,6 +372,7 @@ class WorkerOnboardingView(APIView):
             equipment_details=str(data.get("equipment_details") or "").strip(),
             residential_address=residential_address,
             landmark=str(data.get("landmark") or "").strip(),
+            upi_id=str(data.get("upi_id") or "").strip(),
         )
         request.user.name = name
         request.user.email = email
