@@ -157,6 +157,7 @@ def mark_unfulfillable_and_refund(modeladmin, request, queryset):
 
 def _issue_platform_refund(booking_id):
     import logging
+    from apps.payments.models import PaymentRefund
     from apps.payments.refunds import request_booking_refunds
 
     try:
