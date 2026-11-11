@@ -281,6 +281,16 @@ class WorkerOnboardingView(APIView):
             except (TypeError, ValueError):
                 parsed = [part.strip() for part in value.split(",") if part.strip()]
             value = parsed if isinstance(parsed, list) else [parsed]
+        elif isinstance(value, (list, tuple)) and len(value) == 1 and isinstance(value[0], str):
+            # Multipart clients may send a JSON-encoded array as one form value.
+            # QueryDict.getlist() then returns e.g. ['[1, 2]']; unwrap that array
+            # while preserving repeated form values such as ['1', '2'].
+            try:
+                parsed = json.loads(value[0])
+            except (TypeError, ValueError):
+                parsed = None
+            if isinstance(parsed, list):
+                value = parsed
 
         if not isinstance(value, (list, tuple)):
             raise DjangoValidationError({field_name: "Provide a list of selected IDs."})
