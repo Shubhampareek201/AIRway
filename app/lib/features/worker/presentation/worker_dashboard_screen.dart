@@ -376,6 +376,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       _detailTile(Icons.handyman_outlined, 'Tools / equipment', profile.equipmentDetails?.isNotEmpty == true ? profile.equipmentDetails! : 'Not added'),
       _detailTile(Icons.payments_outlined, 'UPI ID', (profile.upiId?.isNotEmpty == true) ? profile.upiId! : 'Not added'),
       _detailTile(Icons.verified_user_outlined, 'Application', 'Approved'),
+      if (profile.bio?.isNotEmpty == true) _detailTile(Icons.person_outline_rounded, 'About your work', profile.bio!),
+      if (profile.documents.isNotEmpty) _detailTile(
+        Icons.description_outlined,
+        'Verification documents',
+        profile.documents.map((item) {
+          final type = item['doc_type']?.toString() ?? 'Document';
+          final status = item['status']?.toString() ?? 'pending';
+          return '$type: $status';
+        }).join(', '),
+      ),
       if (profile.services.isNotEmpty) _detailTile(Icons.category_outlined, 'Services', profile.services.join(', ')),
       if (profile.zones.isNotEmpty) _detailTile(Icons.map_outlined, 'Service areas', profile.zones.join(', ')),
       if (profile.schedules.isNotEmpty) _detailTile(
