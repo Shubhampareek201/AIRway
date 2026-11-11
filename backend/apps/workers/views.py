@@ -875,6 +875,20 @@ class WorkerStatusUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if online:
+            has_service = profile.worker_services.filter(
+                service__is_active=True, service__category__is_active=True
+            ).exists()
+            has_zone = profile.worker_zones.filter(
+                zone__is_active=True, zone__city__is_active=True
+            ).exists()
+            has_schedule = profile.schedules.filter(is_active=True).exists()
+            if not all((has_service, has_zone, has_schedule)):
+                return Response(
+                    {"detail": "Add at least one active service, service area, and working-hours schedule before going online."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         profile.is_online = online
         profile.save(update_fields=["is_online", "updated_at"])
         return Response({"is_online": profile.is_online})
