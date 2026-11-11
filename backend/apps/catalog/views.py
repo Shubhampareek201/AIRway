@@ -112,8 +112,10 @@ class CategoryListView(generics.ListAPIView):
                 Category.objects.filter(is_active=True).values_list("id", flat=True)
             )
         else:
-            available_ids = _available_service_ids(*location)
-            visible_ids = _visible_category_ids(available_ids)
+            city, zone = location
+            available_ids = _available_service_ids(city, zone)
+            catalogue_ids = _city_service_ids(city, zone=zone)
+            visible_ids = _visible_category_ids(available_ids.intersection(catalogue_ids))
         context["visible_category_ids"] = visible_ids
         return context
 
@@ -125,7 +127,11 @@ class CategoryListView(generics.ListAPIView):
         location = _location_from_address(self.request)
         if location is not None:
             queryset = queryset.filter(
-                pk__in=_visible_category_ids(_available_service_ids(*location))
+                pk__in=_visible_category_ids(
+                    _available_service_ids(*location).intersection(
+                        _city_service_ids(location[0], zone=location[1])
+                    )
+                )
             )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
@@ -155,7 +161,9 @@ class ServiceListView(generics.ListAPIView):
 
         location = _location_from_address(self.request)
         if location is not None:
-            queryset = queryset.filter(pk__in=_available_service_ids(*location))
+            city, zone = location
+            queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
+            queryset = queryset.filter(pk__in=_available_service_ids(city, zone))
 
         category_id = self.request.query_params.get("category")
         if category_id:
@@ -190,7 +198,9 @@ class ServiceDetailView(generics.RetrieveAPIView):
             queryset = _launch_catalogue_filter(queryset)
         location = _location_from_address(self.request)
         if location is not None:
-            queryset = queryset.filter(pk__in=_available_service_ids(*location))
+            city, zone = location
+            queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
+            queryset = queryset.filter(pk__in=_available_service_ids(city, zone))
         return queryset
 
 
