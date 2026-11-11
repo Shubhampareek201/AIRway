@@ -839,8 +839,14 @@ class CustomerOrderDetailView(APIView):
     def get(self, request, order_id):
         from apps.payments.models import Payment
 
+        from apps.payments.models import PaymentRefund
+
         order = get_object_or_404(
-            Order.objects.prefetch_related("items__booking__assignment__worker__user", "payments"),
+            Order.objects.prefetch_related(
+                "items__booking__assignment__worker__user",
+                "items__booking__payment_refunds",
+                "payments",
+            ),
             pk=order_id,
             customer=request.user,
         )
@@ -869,6 +875,20 @@ class CustomerOrderDetailView(APIView):
                 "advance_amount": advance_rows.get(row.id, {}).get("amount"),
                 "balance_amount": balance_rows.get(row.id, {}).get("amount"),
                 "completion_verified": booking.status == Booking.Status.COMPLETED,
+                "refunds": [
+                    {
+                        "id": refund.pk,
+                        "amount": str(refund.amount),
+                        "wallet_amount": str(refund.wallet_amount),
+                        "gateway_amount": str(refund.gateway_amount),
+                        "status": refund.status,
+                        "reason": refund.reason,
+                        "failure_reason": refund.failure_reason,
+                        "created_at": refund.created_at,
+                        "processed_at": refund.processed_at,
+                    }
+                    for refund in booking.payment_refunds.all()
+                ],
             })
 
         is_staged_payment = bool(allocation)
