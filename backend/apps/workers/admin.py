@@ -91,11 +91,11 @@ class WorkerProfileAdmin(ModelAdmin):
     actions = ["approve_workers", "suspend_workers", "reject_workers"]
 
     def get_queryset(self, request):
-        queryset = super().get_queryset(request).select_related("user").prefetch_related(
-            "documents",
-            "worker_services__service",
-            "worker_zones__zone",
-        )
+        # Avoid prefetch_related here: Unfold's changelist processing uses
+        # QuerySet.iterator() without chunk_size, which raises on prefetched
+        # querysets under Django 6. Related summaries are intentionally loaded
+        # per visible row; list_per_page keeps this bounded.
+        queryset = super().get_queryset(request).select_related("user")
         # Keep applications needing attention at the top of the queue.
         return queryset.annotate(
             pending_order=Case(
