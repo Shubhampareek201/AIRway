@@ -2039,3 +2039,74 @@ class WorkerAvailabilityPrerequisiteTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.profile.refresh_from_db()
         self.assertTrue(self.profile.is_online)
+
+
+class WorkerCapabilityEligibilityRegressionTests(TestCase):
+    def setUp(self):
+        self.city = City.objects.create(name="Capability City", state="Rajasthan")
+        self.zone = Zone.objects.create(name="Capability Zone", city=self.city, is_active=True)
+        self.category = Category.objects.create(title="Electrical", slug="capability-electrical")
+        self.service = Service.objects.create(
+            category=self.category, title="Fan Repair",
+            booking_mode="scheduled", pricing_type="fixed", is_active=True,
+        )
+        self.user = User.objects.create_user(
+            phone="+919876540001", password="password123", name="Legacy Worker",
+        )
+        self.worker = WorkerProfile.objects.create(
+            user=self.user, status=WorkerProfile.Status.APPROVED, is_online=True,
+        )
+        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
+        WorkerSchedule.objects.create(
+            worker=self.worker, weekday=0, start_time="00:00", end_time="23:59",
+            is_active=True,
+        )
+        self.link = WorkerService.objects.create(worker=self.worker, service=self.service)
+
+    def test_legacy_worker_remains_eligible_for_task_neutral_service(self):
+        from apps.workers.eligibility import eligible_workers_for_service
+
+        self.assertTrue(
+            eligible_workers_for_service(self.service, zone=self.zone).filter(pk=self.worker.pk).exists()
+        )
+
+    def test_task_specific_work_requires_verified_matching_capability(self):
+        from apps.workers.eligibility import eligible_workers_for_service
+
+        self.assertFalse(
+            eligible_workers_for_service(
+                self.service, zone=self.zone, required_tasks=["Wiring replacement"],
+            ).filter(pk=self.worker.pk).exists()
+        )
+        self.link.capabilities = ["Wiring replacement"]
+        self.link.capabilities_verified = True
+        self.link.save(update_fields=["capabilities", "capabilities_verified", "updated_at"])
+        self.assertTrue(
+            eligible_workers_for_service(
+                self.service, zone=self.zone, required_tasks=["Wiring replacement"],
+            ).filter(pk=self.worker.pk).exists()
+        )
+        self.assertFalse(
+            eligible_workers_for_service(
+                self.service, zone=self.zone, required_tasks=["Motor rewinding"],
+            ).filter(pk=self.worker.pk).exists()
+        )
+
+    def test_approval_requires_capabilities_for_every_active_service(self):
+        from apps.workers.approval import get_approval_requirements
+
+        second_service = Service.objects.create(
+            category=self.category, title="Switch Repair",
+            booking_mode="scheduled", pricing_type="fixed", is_active=True,
+        )
+        second_link = WorkerService.objects.create(
+            worker=self.worker, service=second_service,
+            capabilities=["Switch replacement"], capabilities_verified=True,
+        )
+        self.link.capabilities = ["Wiring replacement"]
+        self.link.capabilities_verified = True
+        self.link.save(update_fields=["capabilities", "capabilities_verified", "updated_at"])
+        self.assertTrue(get_approval_requirements(self.worker)["has_verified_capabilities"])
+        second_link.capabilities_verified = False
+        second_link.save(update_fields=["capabilities_verified", "updated_at"])
+        self.assertFalse(get_approval_requirements(self.worker)["has_verified_capabilities"])
