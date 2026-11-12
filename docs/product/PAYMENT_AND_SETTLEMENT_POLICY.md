@@ -1,171 +1,96 @@
-# AIRway Payment, Booking Fee & Settlement Policy
+# AIRway Payment, Completion & Settlement Policy
 
-**Status:** Product decision record — approved direction, implementation deferred  
-**Last updated:** 8 November 2026  
-**Scope:** All AIRway service categories and fulfilment modes
+**Status:** Approved product direction; implementation exists in the current codebase and requires continued end-to-end verification  
+**Last updated:** 12 November 2026  
+**Scope:** Customer orders, all service lines, worker fulfilment, wallet and Razorpay
 
-> This document records the payment decisions discussed for AIRway. It is a planning reference only. Do not treat it as implemented behaviour or begin payment changes from this document until the service-category booking flows have been completed and reviewed.
+> This is the canonical payment policy. It supersedes the earlier ₹39 booking-fee proposal in this document's history. Do not implement or display the ₹39 fee as the current AIRway policy.
 
-## 1. Product objective
+## 1. Customer payment model
 
-AIRway should make booking feel trustworthy for first-time customers while protecting professionals and businesses from avoidable no-shows. The payment experience must work consistently across the marketplace rather than creating separate payment systems for home visits, business-location appointments and customer-selected locations.
+- Collect a configurable **30% advance when the customer places an order**.
+- Do not start worker dispatch/assignment until the advance payment is verified as successful.
+- Collect the remaining **70% only after all services in the order are completed and completion is verified through the customer OTP flow**.
+- The percentage is configurable through `ORDER_ADVANCE_PERCENTAGE`, with a default of 30%; the production launch configuration must be reviewed and fixed to the approved value.
+- Show the customer the full order total, advance due now, balance due after verified completion, and any wallet contribution before payment confirmation.
+- Never treat a client-side success screen, screenshot, or worker assertion as proof of online payment. Verify through server-side Razorpay signature/webhook/reconciliation.
 
-## 2. Agreed booking-fee direction
+## 2. Multi-service orders and allocation
 
-- Charge a **₹39 booking fee** at booking time.
-- The fee applies across all service categories and all supported fulfilment modes:
-  - At Home — professional visits the customer.
-  - At Business Location — customer visits a salon, car-wash centre or other listed business.
-  - At Customer-Selected Location — where the service and provider support it.
-- The customer pays the booking fee online before the booking is confirmed.
-- The ₹39 is **credited against the final service bill**. It is not intended to be an additional fee on top of the agreed service price.
-- Example only: if the final approved service bill is ₹300, the customer has already paid ₹39 and owes ₹261 after service.
-- A rescheduled booking should carry its existing booking-fee credit forward; it should not trigger a second fee merely because the appointment was rescheduled.
-- The fee is non-refundable for a customer-caused late cancellation or no-show only where the applicable rule was clearly shown and accepted before payment.
-- If AIRway, the business or the professional cannot fulfil the confirmed booking, the customer must be offered a refund or a rebooking that the customer explicitly accepts. Do not retain the fee when the platform/provider fails to deliver.
+- An order may contain multiple service/booking lines.
+- Allocate the advance and remaining balance deterministically across service lines, using currency-safe decimal arithmetic and assigning any rounding remainder deterministically so line allocations sum exactly to the order totals.
+- Persist the allocation snapshot used for payment and refunds; do not recalculate historical allocations from mutable catalogue prices.
+- A partial cancellation must adjust the active order allocation safely without charging or refunding unrelated service lines.
+- The balance becomes payable only when every non-cancelled service line has reached the required completed state and the completion OTP verification requirements are satisfied.
+- If a service line is cancelled or cannot be fulfilled, apply the documented per-service refund/reconciliation rules and recalculate only the still-active unpaid balance.
 
-### Decision still required: how the fee applies to multi-service checkout
+## 3. Payment methods and wallet
 
-AIRway supports a parent order containing multiple booking/service lines. The exact ₹39 charging unit has not yet been decided:
+- Razorpay is the online payment gateway for advance and final-balance collection.
+- AIRway Wallet may contribute to an eligible payment where supported. Wallet reservations, captures and releases must be ledger-backed, atomic and idempotent.
+- A wallet contribution and Razorpay amount must be displayed separately and must sum to the requested stage amount.
+- Never double-debit wallet funds on retries, and never release a reservation more than once.
+- Cash-after-service is a separate business capability and must not be silently treated as a verified Razorpay payment. It requires an explicit product decision, a recorded collection event, customer confirmation and admin reconciliation before launch.
 
-- **Option A — ₹39 per order/appointment:** one fee where multiple services are part of the same combined visit or appointment.
-- **Option B — ₹39 per booking/service line:** each separately created booking in the order attracts its own fee.
+## 4. Lifecycle and state integrity
 
-Recommended for customer simplicity: Option A when the services are genuinely part of one combined appointment/visit. If separate appointments, providers or time slots are created, the product may need to treat them as separate booking units. Final rule must be agreed before implementation; do not silently assume either option.
+1. Customer confirms the order and pays the 30% advance.
+2. Backend verifies the payment; only then may dispatch create worker offers.
+3. Worker accepts and fulfils the assigned service lines.
+4. Worker records completion; customer verifies completion using the required OTP.
+5. Once all active service lines are completed and verified, the backend creates or exposes the remaining 70% balance due.
+6. Customer pays the balance through Razorpay (and eligible wallet funds).
+7. Backend verifies/reconciles payment and marks the order financially settled.
 
-## 3. Remaining service balance
+Operational completion and financial settlement are distinct states. An order may be operationally completed while its balance is still pending, failed, or under reconciliation. Do not mark it financially settled until verified funds cover the outstanding amount.
 
-After the service is completed and the final amount is confirmed:
+## 5. Reliability and edge cases
 
-- Online payment through the configured payment gateway (Razorpay) should be the preferred option.
-- Cash after service (COD) should also be supported during launch.
-- The final payable amount must show an itemised breakdown: agreed base service price, customer-approved additions, applicable adjustments, ₹39 booking-fee credit and remaining balance.
-- A customer must approve any extra work or additional charge before it is added. No surprise charges after the work.
-- A booking/order must not be marked financially settled merely because a customer or professional says that an online payment was made. Online settlement requires server-side gateway verification/webhook reconciliation.
-- Cash collection must be recorded and reconciled; it must not be treated as a verified online payment.
+Implementation and tests must cover:
 
-## 4. Cancellation, no-show and fulfilment failure
+- Duplicate checkout requests and idempotent payment-order creation.
+- Razorpay signature verification and webhook signature verification.
+- Duplicate, delayed, out-of-order and retried webhooks.
+- Payment success where the app closes or loses network connectivity.
+- Failed, expired, pending and late-captured payments.
+- A late capture after cancellation or after the active order allocation changes.
+- Wallet reservation, capture, release and retry idempotency.
+- Multi-service advance/balance allocation and rounding.
+- Partial cancellation, platform/provider non-fulfilment and per-service refunds.
+- Refunds split between wallet and gateway components.
+- Completion OTP expiry, incorrect attempts, replay and duplicate completion requests.
+- Order state changes racing with payment capture, refund or worker acceptance.
+- Admin reconciliation and auditable manual exceptions.
 
-The following principles are agreed; exact time thresholds and customer-facing wording remain to be finalised.
+Network calls to Razorpay must not be held inside long-running database transactions. Lock ordering, unique constraints and idempotency keys must protect concurrent requests. A gateway timeout is an unknown outcome until reconciled; it is not proof of failure.
 
-| Scenario | Intended treatment |
-|---|---|
-| Customer cancels before the free-cancellation cutoff | Refund the booking fee under the final published cancellation policy. |
-| Customer cancels after the cutoff | Booking fee may be retained if the rule was clearly disclosed and accepted. |
-| Customer no-show after the defined grace period | Booking fee may be retained if the no-show process and evidence requirements are satisfied. |
-| Professional/business cancels or does not arrive | Refund the booking fee, or offer a customer-approved rebooking. |
-| AIRway cannot find an eligible provider or cannot fulfil the booking | Refund, or offer an alternative that the customer explicitly accepts. |
-| Customer reschedules under the allowed policy | Carry the existing booking-fee credit forward; do not charge again solely for rescheduling. |
-| Payment fails before confirmation | Do not confirm the booking; allow a safe retry and release any temporary slot hold when it expires. |
-| Payment succeeds but the app loses connection | Reconcile using the gateway's server-side status/webhook before deciding whether to confirm or retry. |
+## 6. Cancellation and refunds
 
-**Open configuration decisions:** free-cancellation cutoff, no-show grace period, evidence required for a no-show, refund processing expectations, and any category-specific exceptions. These must be admin-configurable where appropriate and displayed clearly to customers before checkout.
+- Refund eligibility is evaluated per affected service line and payment stage.
+- A customer cancellation must not refund another completed or active service line by accident.
+- If AIRway or the provider cannot fulfil a service, refund the affected customer's paid amount or offer a rebooking only with the customer's explicit acceptance.
+- Wallet-funded amounts return to the wallet; gateway-funded amounts are refunded through Razorpay and reconciled using gateway references.
+- Refund requests and processing must be idempotent, with durable states for processing, pending, processed and failed.
+- Failed or ambiguous gateway refunds require reconciliation before another refund request is submitted.
+- Cancellation cutoffs, no-show fees, cash collection and any other exception policy require explicit product approval and clear customer disclosure; do not infer a ₹39 fee or invent a penalty.
 
-## 5. Service completion and final-bill controls
+## 7. Admin controls and auditability
 
-A trustworthy close-out flow should provide an auditable record:
+Admin operations must be permission-controlled and auditable. Administrators need visibility into order totals, advance/balance stages, service-line allocations, wallet reservations, gateway references, webhook/reconciliation outcomes, refunds and outstanding balances. Manual corrections must record the actor, reason, timestamp and before/after values.
 
-1. Professional/business marks arrival or appointment check-in.
-2. Customer verifies the professional/booking using an OTP or another approved verification method.
-3. Service start is recorded with a timestamp.
-4. The scope and expected amount are visible to the customer before work begins.
-5. Any scope change or add-on is presented to the customer and explicitly approved before work proceeds.
-6. Professional records service completion and the final itemised amount.
-7. Customer is notified and can review the final bill and the ₹39 credit.
-8. Customer pays the outstanding balance online or in cash.
-9. The payment/collection is recorded and reconciled before the order is considered financially settled.
+## 8. Source of truth
 
-The system should retain timestamps and relevant status history so that disputes can be investigated. Admin overrides must be permission-controlled and auditable.
+The backend is authoritative for:
+- The configured advance percentage and calculated amounts.
+- Order and service-line payment allocations.
+- Payment and refund state transitions.
+- Completion OTP verification and eligibility to collect the balance.
+- Wallet ledger changes and financial settlement.
 
-## 6. Cash collection and unpaid balances
+Flutter displays backend state and submits user intent; it must never independently decide that an order is paid, completed, refunded or settled.
 
-For cash payments:
+## 9. Verification status
 
-- Professional records the cash amount received against the correct booking/order.
-- Customer confirms the amount/receipt in the app or through an approved confirmation mechanism such as OTP.
-- The system stores the cash collection record separately from gateway transactions.
-- Admin can review and reconcile cash collections, provider earnings, AIRway commission and outstanding amounts.
-- A professional must not be able to mark an online payment as successful by uploading a screenshot or changing a client-side status.
+The repository contains staged order payments, per-service allocation, wallet reservation/release, Razorpay verification/webhook paths, completion OTP and refund handling. These are implementation indicators, not proof that the complete production lifecycle is verified. Continue cross-layer review and run the relevant PostgreSQL-backed tests, Flutter model/widget tests, API integration tests and sandbox gateway tests before claiming production readiness.
 
-If a customer refuses or fails to pay after service:
-
-- Professional can report the unpaid amount with supporting details/evidence.
-- Customer receives a notification and a fair opportunity to respond or raise a dispute.
-- Admin reviews disputed cases and records the resolution.
-- Verified outstanding balances may restrict future bookings, subject to a clear appeal and Admin-exception process.
-- The product must recognise that allowing payment after service carries residual collection/bad-debt risk; app controls cannot guarantee collection.
-
-## 7. Payment integrity and edge cases
-
-Implementation must account for:
-
-- Idempotency to prevent duplicate booking-fee or balance charges.
-- Server-side verification of gateway orders and payments.
-- Webhook-based reconciliation when the customer closes the app, loses connectivity or returns late from checkout.
-- Safe retry behaviour after payment failure.
-- Temporary slot holds with expiry, so failed payment does not block availability indefinitely.
-- Refund tracking and clear payment/refund states.
-- Partial, duplicate, failed, pending and reversed transactions.
-- Multiple booking lines under one parent order, including clear allocation of fee credits and balance payments.
-- Atomic, consistent order-level status transitions; payment for one line must not accidentally settle unrelated lines.
-- Admin audit history for refunds, cash reconciliation, manual corrections and exceptions.
-
-## 8. Admin controls
-
-Admin should be able to configure and audit, without requiring an app release where practical:
-
-- Booking-fee amount (initial agreed value: ₹39).
-- Whether the fee is enabled for a service/category and supported fulfilment mode, while preserving the agreed all-services/all-modes launch default.
-- Fee application unit once the multi-service rule is decided.
-- Cancellation cutoff and no-show grace period.
-- Refund/rebooking handling and reason codes.
-- Supported payment methods (online and cash).
-- Cash reconciliation, unpaid balances, disputes and controlled exceptions.
-- Payment/refund status history and staff actions.
-
-Any change to the ₹39 policy should be versioned and applied transparently to new bookings; existing bookings should retain the policy terms shown at the time of booking.
-
-## 9. Unified payment model
-
-Use one payment and settlement architecture for all fulfilment modes. The booking's fulfilment mode determines where/how the service is delivered; it should not create a separate payment engine.
-
-The model should distinguish at least:
-
-- Booking fee collected.
-- Booking-fee credit applied to the final bill.
-- Final service amount agreed by the customer.
-- Outstanding balance.
-- Online payment transaction status.
-- Cash collected and confirmation status.
-- Refund amount/status.
-- Disputed or unpaid balance.
-- Financial settlement status.
-
-Booking/order lifecycle status and financial settlement status should be related but distinct. For example, a service can be operationally completed while its balance remains unpaid or disputed.
-
-## 10. Implementation sequence — deliberately deferred
-
-Do not implement the payment flow yet. Complete and validate the full service-category and booking experience first.
-
-When the team returns to payments:
-
-1. Reconfirm the multi-service fee unit and all open policy thresholds.
-2. Audit the complete current checkout, booking, dispatch, completion, payment, refund and COD code paths.
-3. Design the data model and state transitions before editing code.
-4. Implement booking-fee collection and credit allocation.
-5. Implement final-bill approval, online balance payment and cash collection/reconciliation.
-6. Secure all completion/payment endpoints and remove inconsistent duplicate pathways.
-7. Add tests for gateway failures, webhook retries, duplicate requests, cancellations, no-shows, refunds, COD, multi-line orders and disputes.
-8. Review customer-facing policy wording and applicable legal/payment requirements before public launch.
-
-## 11. Explicit non-goals for the current phase
-
-- No payment code changes as part of recording this document.
-- No assumption that the ₹39 fee is charged per service line until the open decision is resolved.
-- No invented service prices, cancellation thresholds, refund timelines or legal claims.
-- No treating a customer screenshot or client-side flag as proof of payment.
-- No marking an order financially settled while a verified balance remains outstanding.
-
----
-
-**Decision summary:** ₹39 paid online at booking, credited against the final bill, across all services and fulfilment modes; remaining balance payable after service online (preferred) or cash; customer-caused late cancellation/no-show may forfeit the fee under a clearly disclosed policy; provider/AIRway failure leads to refund or customer-approved rebooking. **Implementation is intentionally postponed until the service-category flows are complete.**
+**Explicitly superseded:** The previous ₹39 booking-fee proposal and its “payment implementation deferred” instruction are not the current AIRway payment policy.
