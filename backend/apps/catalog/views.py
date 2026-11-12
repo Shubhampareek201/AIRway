@@ -144,19 +144,10 @@ class CategoryListView(generics.ListAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Only expose category branches that contain a currently serviceable
-        # service for the selected customer location.
-        location = _location_from_address(self.request)
-        if location is None:
-            visible_ids = set(
-                Category.objects.filter(is_active=True).values_list("id", flat=True)
-            )
-        else:
-            city, zone = location
-            available_ids = _available_service_ids(city, zone)
-            catalogue_ids = _city_service_ids(city, zone=zone)
-            visible_ids = _visible_category_ids(available_ids.intersection(catalogue_ids))
-        context["visible_category_ids"] = visible_ids
+        # Category discovery is catalogue-driven, not worker-driven. Customers
+        # can browse active categories even when no matching professional is
+        # currently available in their selected area.
+        context["visible_category_ids"] = None
         return context
 
     def get_queryset(self):
@@ -164,15 +155,6 @@ class CategoryListView(generics.ListAPIView):
             is_active=True,
             parent__isnull=True,
         )
-        location = _location_from_address(self.request)
-        if location is not None:
-            queryset = queryset.filter(
-                pk__in=_visible_category_ids(
-                    _available_service_ids(*location).intersection(
-                        _city_service_ids(location[0], zone=location[1])
-                    )
-                )
-            )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
         return queryset.prefetch_related("children", "audience_options", "children__audience_options")
@@ -206,7 +188,7 @@ class ServiceListView(generics.ListAPIView):
         if location is not None:
             city, zone = location
             queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
-            queryset = queryset.filter(pk__in=_available_service_ids(city, zone))
+
 
         category_id = self.request.query_params.get("category")
         if category_id:
@@ -246,7 +228,7 @@ class ServiceDetailView(generics.RetrieveAPIView):
         if location is not None:
             city, zone = location
             queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
-            queryset = queryset.filter(pk__in=_available_service_ids(city, zone))
+
         return queryset
 
 
