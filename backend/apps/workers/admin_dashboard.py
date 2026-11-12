@@ -171,7 +171,10 @@ def bookings(request):
             | Q(service__title__icontains=query)
         )
         if query.isdigit():
-            queryset = queryset | Booking.objects.filter(pk=int(query)).select_related(
+            exact = Booking.objects.filter(pk=int(query))
+            if status_filter != "all":
+                exact = exact.filter(status=status_filter)
+            queryset = queryset | exact.select_related(
                 "customer", "service", "variant", "assignment__worker__user", "order_item__order"
             )
     return render(request, "workers/admin_dashboard/bookings.html", {
@@ -198,9 +201,12 @@ def payments(request):
             | Q(razorpay_order_id__icontains=query) | Q(razorpay_payment_id__icontains=query)
         )
         if query.isdigit():
-            queryset = queryset | Payment.objects.filter(
+            exact = Payment.objects.filter(
                 Q(pk=int(query)) | Q(order_id=int(query)) | Q(booking_id=int(query))
-            ).select_related("customer", "order", "booking")
+            )
+            if status_filter != "all":
+                exact = exact.filter(status=status_filter)
+            queryset = queryset | exact.select_related("customer", "order", "booking")
     refunds = PaymentRefund.objects.select_related(
         "payment", "booking", "booking__customer"
     ).order_by("-created_at")[:20]
