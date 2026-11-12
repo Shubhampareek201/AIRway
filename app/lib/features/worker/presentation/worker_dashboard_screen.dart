@@ -26,6 +26,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   bool _loading = true;
   bool _availabilitySaving = false;
   String? _error;
+  String? _offersError;
+  String? _jobsError;
+  String? _earningsError;
   int _selectedTab = 0;
 
   static const _tabTitles = ['Home', 'Jobs', 'Earnings', 'Profile'];
@@ -36,33 +39,86 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     _loadDashboard();
   }
 
+  Future<T?> _loadSection<T>(
+    Future<T> Function() load,
+    void Function(String message) onError,
+  ) async {
+    try {
+      return await load();
+    } catch (error) {
+      onError(error.toString().replaceFirst('Exception: ', ''));
+      return null;
+    }
+  }
+
   Future<void> _loadDashboard({bool showLoader = true}) async {
     if (mounted) {
       setState(() {
         if (showLoader) _loading = true;
         _error = null;
+        _offersError = null;
+        _jobsError = null;
+        _earningsError = null;
       });
     }
+
+    String? profileError;
+    String? offersError;
+    String? jobsError;
+    String? earningsError;
+
+    final profileFuture = _loadSection(
+      WorkerApi.getMyProfile,
+      (message) => profileError = message,
+    );
+    final offersFuture = _loadSection(
+      WorkerApi.getJobOffers,
+      (message) => offersError = message,
+    );
+    final jobsFuture = _loadSection(
+      WorkerApi.getAssignedJobs,
+      (message) => jobsError = message,
+    );
+    final earningsFuture = _loadSection(
+      WorkerApi.getEarnings,
+      (message) => earningsError = message,
+    );
+
     try {
-      final results = await Future.wait<dynamic>([
-        WorkerApi.getMyProfile(),
-        WorkerApi.getJobOffers(),
-        WorkerApi.getAssignedJobs(),
-        WorkerApi.getEarnings(),
-      ]);
-      final profile = results[0] as WorkerProfile;
+      final profile = await profileFuture;
+      if (profile == null) {
+        throw Exception(profileError ?? 'Could not load your worker profile.');
+      }
       if (profile.status != 'approved') {
         throw Exception('Your worker profile is ${profile.status}. Contact AIRway support.');
       }
+
+      final results = await Future.wait<dynamic>([
+        offersFuture,
+        jobsFuture,
+        earningsFuture,
+      ]);
       if (!mounted) return;
+
       setState(() {
         _profile = profile;
-        _offers = results[1] as List<WorkerOffer>;
-        _assignedJobs = results[2] as List<Map<String, dynamic>>;
-        _earnings = results[3] as List<Map<String, dynamic>>;
+        if (results[0] != null) _offers = results[0] as List<WorkerOffer>;
+        if (results[1] != null) {
+          _assignedJobs = results[1] as List<Map<String, dynamic>>;
+        }
+        if (results[2] != null) {
+          _earnings = results[2] as List<Map<String, dynamic>>;
+        }
+        _offersError = offersError;
+        _jobsError = jobsError;
+        _earningsError = earningsError;
       });
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.toString().replaceFirst('Exception: ', '');
+        });
+      }
     } finally {
       if (mounted && showLoader) setState(() => _loading = false);
     }
@@ -267,9 +323,13 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       const SizedBox(height: 16),
       _sectionHeading('Recent job offers', action: 'View all', onAction: _openOffers),
       const SizedBox(height: 8),
-      ..._offers.where((o) => o.status == WorkerOffer.pending).take(3).map(_buildOfferPreview),
-      if (pendingCount == 0)
-        const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'New job offers will appear here.'),
+      if (_offersError != null)
+        _SectionErrorCard(message: _offersError!, onRetry: _refresh)
+      else ...[
+        ..._offers.where((o) => o.status == WorkerOffer.pending).take(3).map(_buildOfferPreview),
+        if (pendingCount == 0)
+          const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'New job offers will appear here.'),
+      ],
     ]);
   }
 
@@ -281,14 +341,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     return _page([
       _sectionHeading('New job offers', action: 'View all', onAction: _openOffers),
       const SizedBox(height: 8),
-      if (pendingOffers.isEmpty)
+      if (_offersError != null)
+        _SectionErrorCard(message: _offersError!, onRetry: _refresh)
+      else if (pendingOffers.isEmpty)
         const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'Check back when customers request a service.')
       else
         ...pendingOffers.take(4).map(_buildOfferPreview),
       const SizedBox(height: 20),
       _sectionHeading('Assigned jobs', action: 'Open jobs', onAction: _openAssignedJobs),
       const SizedBox(height: 8),
-      if (active.isEmpty)
+      if (_jobsError != null)
+        _SectionErrorCard(message: _jobsError!, onRetry: _refresh)
+      else if (active.isEmpty)
         const _EmptyCard(icon: Icons.work_outline, title: 'No active jobs', subtitle: 'Accepted jobs will appear here.')
       else
         ...active.take(5).map(_buildJobPreview),
@@ -327,7 +391,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       const SizedBox(height: 20),
       const Text('Recent activity', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
-      if (_earnings.isEmpty)
+      if (_earningsError != null)
+        _SectionErrorCard(message: _earningsError!, onRetry: _refresh)
+      else if (_earnings.isEmpty)
         const _EmptyCard(icon: Icons.account_balance_wallet_outlined, title: 'No earnings yet', subtitle: 'Completed and credited jobs will show here.')
       else
         ..._earnings.map(_buildEarningRow),
@@ -588,6 +654,32 @@ class _EmptyCard extends StatelessWidget {
             Text(subtitle, textAlign: TextAlign.center,
                 style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionErrorCard extends StatelessWidget {
+  const _SectionErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.cloud_off_outlined, color: Colors.orange),
+        title: const Text('This section could not be loaded'),
+        subtitle: Text(message, maxLines: 3, overflow: TextOverflow.ellipsis),
+        trailing: IconButton(
+          tooltip: 'Retry',
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh),
         ),
       ),
     );
