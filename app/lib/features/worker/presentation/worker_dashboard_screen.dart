@@ -204,10 +204,20 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
-    await SecureSessionStorage.clearSession();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
+    if (confirmed != true || !mounted) return;
+    try {
+      await SecureSessionStorage.clearSession();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not sign out: $e')),
+      );
+    }
   }
   void _openOffers() {
     Navigator.of(context).push(
@@ -268,17 +278,15 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        // Only the visible tab's scrollable should trigger pull-to-refresh.
-        notificationPredicate: (notification) => notification.depth == 0,
-        child: IndexedStack(
-          index: _selectedTab,
-          children: [
-            _buildHomeTab(profile),
-            _buildJobsTab(),
-            _buildEarningsTab(),
-            _buildProfileTab(profile),
-          ],
-        ),
+        // Build only the selected tab. Keeping four independent ListViews
+        // mounted in an IndexedStack caused competing sliver layout/scroll
+        // lifecycles on some Android devices.
+        child: switch (_selectedTab) {
+          0 => _buildHomeTab(profile),
+          1 => _buildJobsTab(),
+          2 => _buildEarningsTab(),
+          _ => _buildProfileTab(profile),
+        },
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTab,
@@ -294,9 +302,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   }
 
   Widget _page(List<Widget> children) => ListView(
-        // Each IndexedStack tab must own its scroll position. Leaving this
-        // implicit makes vertical lists inherit the same PrimaryScrollController
-        // and can cause scroll/gesture conflicts between the mounted tabs.
+        // The dashboard now mounts only the selected tab, avoiding multiple
+        // active sliver trees competing during layout. Keep an independent,
+        // non-primary scroll position and allow pull-to-refresh.
         primary: false,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
