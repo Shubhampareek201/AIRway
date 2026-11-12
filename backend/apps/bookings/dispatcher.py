@@ -80,6 +80,7 @@ class DispatcherService:
             exclude_customer_id=booking.customer_id,
             required_gender=gender,
             priority_order=config.priority_order,
+            required_tasks=(booking.variant.included_tasks if booking.variant_id else []),
         )
         already_offered = set(existing.values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
@@ -164,6 +165,7 @@ class DispatcherService:
                     exclude_booking_id=booking.pk,
                     exclude_customer_id=booking.customer_id,
                     required_gender=gender,
+                    required_tasks=(booking.variant.included_tasks if booking.variant_id else []),
                 )
                 line_ids = set(line_workers.values_list("pk", flat=True))
                 eligible_ids = line_ids if eligible_ids is None else eligible_ids.intersection(line_ids)
@@ -267,6 +269,7 @@ class DispatcherService:
         cls, service, zone, scheduled_at, duration_minutes,
         drop_scheduled_at=None, exclude_booking_id=None,
         exclude_customer_id=None, required_gender=None, priority_order=None,
+        required_tasks=None,
     ):
         """Return workers who can cover every visit without a schedule or job conflict."""
         from apps.workers.models import WorkerProfile
@@ -279,7 +282,7 @@ class DispatcherService:
             return WorkerProfile.objects.none()
 
         eligible_workers = eligible_workers_for_service(
-            service, zone=zone,
+            service, zone=zone, required_tasks=required_tasks,
         )
         if required_gender:
             eligible_workers = eligible_workers.filter(gender=required_gender)

@@ -134,6 +134,7 @@ class WorkerAppApi {
 
   static Future<Map<String, dynamic>> submitWorkerApplication({
     required List<int> serviceIds,
+    required Map<int, List<String>> serviceCapabilities,
     required List<int> zoneIds,
     int? experienceYears,
     String? bio,
@@ -150,6 +151,7 @@ class WorkerAppApi {
   }) async {
     final data = <String, dynamic>{
       'services': serviceIds,
+      'service_capabilities': jsonEncode(serviceCapabilities.map((key, value) => MapEntry(key.toString(), value))),
       'zones': zoneIds,
       'name': name,
       'email': email,

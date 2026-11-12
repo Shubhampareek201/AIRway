@@ -115,11 +115,18 @@ class ServiceSerializer(serializers.ModelSerializer):
     pricing_type_display = serializers.CharField(source="get_pricing_type_display", read_only=True)
     audience_display = serializers.CharField(source="get_audience_display", read_only=True)
     images = ServiceImageSerializer(many=True, read_only=True)
-    variants = ServiceVariantSerializer(many=True, read_only=True)
+    variants = serializers.SerializerMethodField()
     addons = AddOnSerializer(many=True, read_only=True)
     form_fields = FormFieldSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source="category.title", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
+
+    def get_variants(self, obj):
+        queryset = obj.variants.filter(is_active=True)
+        available_ids = self.context.get("available_variant_ids")
+        if available_ids is not None:
+            queryset = queryset.filter(pk__in=available_ids)
+        return ServiceVariantSerializer(queryset, many=True, context=self.context).data
 
     def get_is_available(self, obj):
         available_ids = self.context.get("available_service_ids")

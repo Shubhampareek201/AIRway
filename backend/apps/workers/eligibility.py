@@ -62,14 +62,20 @@ def eligible_worker_profiles(*, city=None, zone=None):
     return queryset.distinct()
 
 
-def eligible_workers_for_service(service, *, zone=None, city=None):
+def eligible_workers_for_service(service, *, zone=None, city=None, required_tasks=None):
     """Return the shared eligible worker pool for one active service."""
     if not service.is_active or not service.category.is_active:
         return WorkerProfile.objects.none()
 
-    return eligible_worker_profiles(
-        city=city,
-        zone=zone,
-    ).filter(
+    queryset = eligible_worker_profiles(city=city, zone=zone).filter(
         worker_services__service=service,
-    ).distinct().select_related("user")
+        worker_services__capabilities_verified=True,
+    ).exclude(worker_services__service=service, worker_services__capabilities=[])
+    required = [str(task).strip() for task in (required_tasks or []) if str(task).strip()]
+    if required:
+        queryset = queryset.filter(
+            worker_services__service=service,
+            worker_services__capabilities__contains=required,
+            worker_services__capabilities_verified=True,
+        )
+    return queryset.distinct().select_related("user")

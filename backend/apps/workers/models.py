@@ -163,6 +163,8 @@ class WorkerService(TimeStampedModel):
         on_delete=models.PROTECT,
         related_name="assigned_workers",
     )
+    capabilities = models.JSONField(default=list, blank=True, help_text="Task names this worker claims to be trained to perform.")
+    capabilities_verified = models.BooleanField(default=False, help_text="Set only after admin review.")
 
     class Meta:
         constraints = [

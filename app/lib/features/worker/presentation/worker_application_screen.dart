@@ -20,6 +20,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   List<Service> _services = [];
   List<dynamic> _zones = [];
   final List<int> _selectedServiceIds = [];
+  final Map<int, Set<String>> _selectedServiceCapabilities = {};
+  final Map<int, TextEditingController> _capabilityControllers = {};
   final List<int> _selectedZoneIds = [];
   int? _experienceYears;
   final TextEditingController _experienceController = TextEditingController();
@@ -69,6 +71,9 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     _addressController.dispose();
     _landmarkController.dispose();
     _upiController.dispose();
+    for (final controller in _capabilityControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -234,6 +239,21 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     });
   }
 
+  Map<int, List<String>> _buildServiceCapabilities() {
+    final result = <int, List<String>>{};
+    for (final serviceId in _selectedServiceIds) {
+      final tasks = <String>{...?_selectedServiceCapabilities[serviceId]};
+      final custom = _capabilityControllers[serviceId]?.text
+              .split(",")
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty) ??
+          const <String>[];
+      tasks.addAll(custom);
+      result[serviceId] = tasks.toList();
+    }
+    return result;
+  }
+
   void _toggleZone(int zoneId) {
     setState(() {
       if (_selectedZoneIds.contains(zoneId)) {
@@ -292,6 +312,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     try {
       await WorkerAppApi.submitWorkerApplication(
         serviceIds: _selectedServiceIds,
+        serviceCapabilities: _buildServiceCapabilities(),
         zoneIds: _selectedZoneIds,
         experienceYears: int.tryParse(_experienceController.text),
         bio: _bioController.text.isEmpty ? null : _bioController.text,
@@ -416,6 +437,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Please select at least one service.')),
           );
+          return;
+        }
+        if (_selectedServiceIds.any((id) => (_buildServiceCapabilities()[id]?.isNotEmpty ?? false) == false)) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose or enter at least one task for every selected service.')));
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.zones);
@@ -651,6 +676,28 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                   ],
                 ),
               )),
+        if (_selectedServiceIds.isNotEmpty) ...[
+          const Divider(height: 28),
+          Text("Specific tasks you can perform", style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+          const SizedBox(height: 6),
+          const Text("Choose tasks listed in your service packages where available. Add any other work you are trained to perform, separated by commas. Admin will verify these claims.", style: TextStyle(color: AirwayColors.textSecondary)),
+          const SizedBox(height: 10),
+          ..._services.where((service) => _selectedServiceIds.contains(service.id)).map((service) {
+            final tasks = service.variants.expand((variant) => variant.includedTasks).map((task) => task.trim()).where((task) => task.isNotEmpty).toSet().toList()..sort();
+            final controller = _capabilityControllers.putIfAbsent(service.id, () => TextEditingController());
+            final selected = _selectedServiceCapabilities.putIfAbsent(service.id, () => <String>{});
+            return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(service.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (tasks.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 6, children: tasks.map((task) => FilterChip(label: Text(task), selected: selected.contains(task), onSelected: (value) => setState(() { if (value) { selected.add(task); } else { selected.remove(task); } }))).toList()),
+              ],
+              const SizedBox(height: 8),
+              TextField(controller: controller, maxLines: 2, decoration: const InputDecoration(labelText: "Other tasks (comma separated)", hintText: "e.g. root touch-up, hair spa", border: OutlineInputBorder())),
+              if (tasks.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: Text("No package task checklist is configured yet. Enter the exact tasks you can perform.", style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary))),
+            ])));
+          }),
+        ],
       ],
     );
   }

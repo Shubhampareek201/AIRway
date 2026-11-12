@@ -76,7 +76,26 @@ def _available_service_ids(city, zone=None):
         Q(service__requires_female_worker=False)
         | Q(worker__gender=WorkerProfile.Gender.FEMALE)
     )
-    return set(service_links.values_list("service_id", flat=True).distinct())
+    return set(service_links.filter(capabilities_verified=True).exclude(capabilities=[]).values_list("service_id", flat=True).distinct())
+
+def _available_variant_ids(city, zone=None):
+    if city is None:
+        return None
+    eligible_workers = eligible_worker_profiles(city=city, zone=zone)
+    links = WorkerService.objects.filter(
+        worker__in=eligible_workers,
+        service__is_active=True,
+        service__category__is_active=True,
+        capabilities_verified=True,
+    ).exclude(capabilities=[]).select_related("service").prefetch_related("service__variants")
+    available = set()
+    for link in links:
+        skills = {str(task).strip() for task in (link.capabilities or []) if str(task).strip()}
+        for variant in link.service.variants.filter(is_active=True):
+            required = {str(task).strip() for task in (variant.included_tasks or []) if str(task).strip()}
+            if required.issubset(skills):
+                available.add(variant.pk)
+    return available
 
 
 LAUNCH_CATEGORY_SLUGS = ("car-wash", "beauty", "electrical", "home-cleaning")
@@ -163,6 +182,9 @@ class ServiceListView(generics.ListAPIView):
         context["available_service_ids"] = (
             None if location is None else _available_service_ids(*location)
         )
+        context["available_variant_ids"] = (
+            None if location is None else _available_variant_ids(*location)
+        )
         return context
 
     def get_queryset(self):
@@ -200,6 +222,9 @@ class ServiceDetailView(generics.RetrieveAPIView):
         location = _location_from_address(self.request)
         context["available_service_ids"] = (
             None if location is None else _available_service_ids(*location)
+        )
+        context["available_variant_ids"] = (
+            None if location is None else _available_variant_ids(*location)
         )
         return context
 

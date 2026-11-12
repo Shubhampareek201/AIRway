@@ -11,6 +11,7 @@ urlpatterns = [
     path("applications/", views.applications, name="applications"),
     path("applications/<int:worker_id>/", views.application_detail, name="application_detail"),
     path("applications/<int:worker_id>/documents/<int:document_id>/", views.review_document, name="review_document"),
+    path("applications/<int:worker_id>/services/<int:service_link_id>/verify/", views.verify_service_capabilities, name="verify_service_capabilities"),
     path("applications/<int:worker_id>/approve/", views.approve_application, name="approve_application"),
     path("applications/<int:worker_id>/reject/", views.reject_application, name="reject_application"),
 ]

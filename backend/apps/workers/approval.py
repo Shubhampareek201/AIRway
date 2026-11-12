@@ -9,6 +9,7 @@ APPROVAL_REQUIREMENTS = {
     "has_verified_id": "Verified ID (Aadhaar or other ID)",
     "has_verified_photo": "Verified profile photograph",
     "has_service": "At least one active service in an active category",
+    "has_verified_capabilities": "Task capabilities verified by admin",
     "has_zone": "At least one active zone in an active city",
     "has_schedule": "At least one active working schedule",
 }
@@ -32,6 +33,10 @@ def get_approval_requirements(worker):
             service__is_active=True,
             service__category__is_active=True,
         ).exists(),
+        "has_verified_capabilities": worker.worker_services.filter(
+            service__is_active=True, service__category__is_active=True,
+            capabilities_verified=True,
+        ).exclude(capabilities=[]).exists(),
         "has_zone": worker.worker_zones.filter(
             zone__is_active=True,
             zone__city__is_active=True,

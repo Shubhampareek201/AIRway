@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 
 from .models import WorkerDocument, WorkerProfile
 from .approval import approve_worker, get_approval_requirements
+from .models import WorkerService
 
 
 def _is_super_admin(user):
@@ -143,6 +144,22 @@ def review_document(request, worker_id, document_id):
         messages.success(request, "Document marked as rejected.")
     else:
         messages.error(request, "Invalid document action.")
+    return redirect("admin_dashboard:application_detail", worker_id=worker.pk)
+
+
+@require_POST
+@super_admin_required
+def verify_service_capabilities(request, worker_id, service_link_id):
+    worker = get_object_or_404(WorkerProfile, pk=worker_id)
+    link = get_object_or_404(WorkerService, pk=service_link_id, worker=worker)
+    if worker.status != WorkerProfile.Status.PENDING:
+        messages.error(request, "Only pending applications can have capabilities reviewed.")
+    elif not link.capabilities:
+        messages.error(request, "No task capabilities were submitted for this service.")
+    else:
+        link.capabilities_verified = True
+        link.save(update_fields=["capabilities_verified", "updated_at"])
+        messages.success(request, f"Capabilities verified for {link.service.title}.")
     return redirect("admin_dashboard:application_detail", worker_id=worker.pk)
 
 

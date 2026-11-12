@@ -106,7 +106,7 @@ class WorkerServiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkerService
-        fields = ["id", "service", "service_title"]
+        fields = ["id", "service", "service_title", "capabilities", "capabilities_verified"]
 
 
 class WorkerZoneSerializer(serializers.ModelSerializer):

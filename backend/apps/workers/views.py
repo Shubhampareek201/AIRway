@@ -162,7 +162,15 @@ class WorkerServiceListView(APIView):
             service = Service.objects.get(pk=int(service_id), is_active=True)
         except (Service.DoesNotExist, ValueError, TypeError):
             return Response({"service": ["Invalid service."]}, status=status.HTTP_400_BAD_REQUEST)
-        obj, created = WorkerService.objects.get_or_create(worker=profile, service=service)
+        capabilities = request.data.get("capabilities")
+        if not isinstance(capabilities, list) or not any(str(item).strip() for item in capabilities):
+            return Response({"capabilities": ["Provide specific task capabilities."]}, status=400)
+        normalized = list(dict.fromkeys(str(item).strip() for item in capabilities if str(item).strip()))
+        obj, created = WorkerService.objects.get_or_create(worker=profile, service=service, defaults={"capabilities": normalized})
+        if not created and obj.capabilities != normalized:
+            obj.capabilities = normalized
+            obj.capabilities_verified = False
+            obj.save(update_fields=["capabilities", "capabilities_verified", "updated_at"])
         serializer = WorkerServiceSerializer(obj)
         return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
@@ -331,6 +339,26 @@ class WorkerOnboardingView(APIView):
             zone_values = data.getlist("zones") if hasattr(data, "getlist") else data.get("zones")
             service_ids = self._list_value(service_values, "services")
             zone_ids = self._list_value(zone_values, "zones")
+            import json
+            raw_capabilities = data.get("service_capabilities", {})
+            if isinstance(raw_capabilities, str):
+                raw_capabilities = json.loads(raw_capabilities)
+            if not isinstance(raw_capabilities, dict):
+                return Response({"service_capabilities": ["Provide tasks for each selected service."]}, status=400)
+            service_capabilities = {}
+            for raw_id, raw_tasks in raw_capabilities.items():
+                try:
+                    service_id = int(raw_id)
+                except (TypeError, ValueError):
+                    return Response({"service_capabilities": ["Invalid service ID."]}, status=400)
+                if not isinstance(raw_tasks, list):
+                    return Response({"service_capabilities": ["Tasks must be a list."]}, status=400)
+                tasks = list(dict.fromkeys(str(task).strip() for task in raw_tasks if str(task).strip()))
+                if not tasks or len(tasks) > 100 or any(len(task) > 150 for task in tasks):
+                    return Response({"service_capabilities": ["Each service needs 1-100 task names, up to 150 characters each."]}, status=400)
+                service_capabilities[service_id] = tasks
+            if set(service_capabilities) != set(service_ids):
+                return Response({"service_capabilities": ["Submit task capabilities for every selected service only."]}, status=400)
             services = list(Service.objects.filter(
                 pk__in=service_ids, is_active=True, category__is_active=True
             ))
@@ -401,7 +429,8 @@ class WorkerOnboardingView(APIView):
         request.user.save(update_fields=["name", "email", "gender"])
 
         WorkerService.objects.bulk_create([
-            WorkerService(worker=profile, service=service) for service in services
+            WorkerService(worker=profile, service=service, capabilities=service_capabilities[service.pk])
+            for service in services
         ])
         WorkerZone.objects.bulk_create([
             WorkerZone(worker=profile, zone=zone) for zone in zones
