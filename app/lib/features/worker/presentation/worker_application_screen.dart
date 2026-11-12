@@ -24,7 +24,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   List<dynamic> _zones = [];
   final List<int> _selectedServiceIds = [];
   final Map<int, Set<String>> _selectedServiceCapabilities = {};
-  final Map<int, TextEditingController> _capabilityControllers = {};
+  final Map<int, int> _selectedServiceExperience = {};
   final List<int> _selectedZoneIds = [];
   int? _experienceYears;
   final TextEditingController _experienceController = TextEditingController();
@@ -76,9 +76,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     _addressController.dispose();
     _landmarkController.dispose();
     _upiController.dispose();
-    for (final controller in _capabilityControllers.values) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
@@ -245,18 +242,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   Map<int, List<String>> _buildServiceCapabilities() {
-    final result = <int, List<String>>{};
-    for (final serviceId in _selectedServiceIds) {
-      final tasks = <String>{...?_selectedServiceCapabilities[serviceId]};
-      final custom = _capabilityControllers[serviceId]?.text
-              .split(",")
-              .map((item) => item.trim())
-              .where((item) => item.isNotEmpty) ??
-          const <String>[];
-      tasks.addAll(custom);
-      result[serviceId] = tasks.toList();
-    }
-    return result;
+    return {
+      for (final serviceId in _selectedServiceIds)
+        serviceId: (_selectedServiceCapabilities[serviceId] ?? <String>{}).toList(),
+    };
   }
 
   void _toggleZone(int zoneId) {
@@ -368,7 +357,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         serviceIds: _selectedServiceIds,
         serviceCapabilities: _buildServiceCapabilities(),
         zoneIds: _selectedZoneIds,
-        experienceYears: int.tryParse(_experienceController.text),
+        experienceYears: null,
+        serviceExperienceYears: {for (final id in _selectedServiceIds) id: (_selectedServiceExperience[id] ?? 0)},
         bio: _bioController.text.isEmpty ? null : _bioController.text,
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
@@ -698,8 +688,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const SizedBox(height: 10),
         TextField(controller: _qualificationController, decoration: const InputDecoration(labelText: 'Qualification / training', border: OutlineInputBorder())),
         const SizedBox(height: 10),
-        TextField(controller: _experienceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Experience (years)', border: OutlineInputBorder())),
-        const SizedBox(height: 10),
+
         TextField(controller: _equipmentController, maxLines: 2, decoration: const InputDecoration(labelText: 'Tools, equipment or products you can bring', border: OutlineInputBorder())),
         const SizedBox(height: 10),
         TextField(controller: _bioController, maxLines: 3, decoration: const InputDecoration(labelText: 'About your work / skills', border: OutlineInputBorder())),
@@ -760,17 +749,21 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           const SizedBox(height: 10),
           ..._services.where((service) => _selectedServiceIds.contains(service.id)).map((service) {
             final tasks = service.variants.expand((variant) => variant.includedTasks).map((task) => task.trim()).where((task) => task.isNotEmpty).toSet().toList()..sort();
-            final controller = _capabilityControllers.putIfAbsent(service.id, () => TextEditingController());
             final selected = _selectedServiceCapabilities.putIfAbsent(service.id, () => <String>{});
             return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(service.title, style: const TextStyle(fontWeight: FontWeight.w800)),
               if (tasks.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 6, children: tasks.map((task) => FilterChip(label: Text(task), selected: selected.contains(task), onSelected: (value) => setState(() { if (value) { selected.add(task); } else { selected.remove(task); } }))).toList()),
-              ],
-              const SizedBox(height: 8),
-              TextField(controller: controller, maxLines: 2, decoration: const InputDecoration(labelText: "Other tasks (comma separated)", hintText: "e.g. root touch-up, hair spa", border: OutlineInputBorder())),
-              if (tasks.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: Text("No package task checklist is configured yet. Enter the exact tasks you can perform.", style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary))),
+              ] else
+                const Padding(padding: EdgeInsets.only(top: 8), child: Text("Service tasks are not configured yet. Please contact AIRway support; no manual task entry is needed.", style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary))),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                value: _selectedServiceExperience[service.id] ?? 0,
+                decoration: const InputDecoration(labelText: 'Your experience in this service', border: OutlineInputBorder()),
+                items: List.generate(31, (year) => DropdownMenuItem(value: year, child: Text(year == 0 ? 'Beginner / Less than 1 year' : '$year ${year == 1 ? 'year' : 'years'}'))),
+                onChanged: (value) => setState(() { if (value != null) _selectedServiceExperience[service.id] = value; }),
+              ),
             ])));
           }),
         ],
