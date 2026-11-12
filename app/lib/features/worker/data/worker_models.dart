@@ -1,5 +1,11 @@
 // Standalone model file - no part directive
 
+double? _parseWorkerRating(dynamic value) {
+  if (value == null) return null;
+  final parsed = value is num ? value.toDouble() : double.tryParse(value.toString().trim());
+  return parsed != null && parsed.isFinite ? parsed : null;
+}
+
 String workerCustomerAnswerLabel(String key, dynamic value) {
   if (key == 'professional_preference') {
     return value?.toString() == 'female'
@@ -58,7 +64,7 @@ class WorkerProfile {
       phone: map['phone'] as String?,
       upiId: map['upi_id'] as String?,
       isOnline: map['is_online'] as bool? ?? false,
-      ratingAvg: map['rating_avg'] != null ? (map['rating_avg'] as num).toDouble() : null,
+      ratingAvg: _parseWorkerRating(map['rating_avg']),
       experienceYears: map['experience_years'] as int?,
       rejectionReason: map['rejection_reason'] as String?,
       qualification: map['qualification'] as String?,
