@@ -607,10 +607,29 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 
   Widget _detailTile(IconData icon, String title, String value) {
     return Card(
-      child: ListTile(
-        leading: Icon(icon, color: AirwayColors.primary),
-        title: Text(title),
-        trailing: Text(value, textAlign: TextAlign.end, overflow: TextOverflow.ellipsis),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AirwayColors.primary),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(value, softWrap: true),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
