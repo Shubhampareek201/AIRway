@@ -404,12 +404,26 @@ class WorkerOnboardingView(APIView):
         residential_address = str(data.get("residential_address") or "").strip()
         if not name:
             return Response({"name": ["Full name is required."]}, status=400)
+        if not email:
+            return Response({"email": ["Email address is required."]}, status=400)
+        if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+            return Response({"email": ["Enter a valid email address."]}, status=400)
         if not residential_address:
             return Response({"residential_address": ["Residential address is required."]}, status=400)
-        if email and "@" not in email:
-            return Response({"email": ["Enter a valid email address."]}, status=400)
-        if gender and gender not in dict(WorkerProfile.Gender.choices):
-            return Response({"gender": ["Choose a valid gender value."]}, status=400)
+        if gender not in dict(WorkerProfile.Gender.choices):
+            return Response({"gender": ["Choose your gender to continue."]}, status=400)
+
+        try:
+            latitude = Decimal(str(data.get("latitude"))) if data.get("latitude") not in (None, "") else None
+            longitude = Decimal(str(data.get("longitude"))) if data.get("longitude") not in (None, "") else None
+            if (latitude is None) != (longitude is None):
+                raise ValueError
+            if latitude is not None and not (Decimal("-90") <= latitude <= Decimal("90")):
+                raise ValueError
+            if longitude is not None and not (Decimal("-180") <= longitude <= Decimal("180")):
+                raise ValueError
+        except Exception:
+            return Response({"location": ["Provide valid GPS coordinates together."]}, status=400)
 
         profile = WorkerProfile.objects.create(
             user=request.user,
@@ -419,6 +433,8 @@ class WorkerOnboardingView(APIView):
             qualification=str(data.get("qualification") or "").strip(),
             equipment_details=str(data.get("equipment_details") or "").strip(),
             residential_address=residential_address,
+            latitude=latitude,
+            longitude=longitude,
             landmark=str(data.get("landmark") or "").strip(),
             upi_id=str(data.get("upi_id") or "").strip(),
         )
