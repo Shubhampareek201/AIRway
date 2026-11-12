@@ -196,8 +196,11 @@ def payments(request):
         queryset = queryset.filter(
             Q(customer__name__icontains=query) | Q(customer__phone__icontains=query)
             | Q(razorpay_order_id__icontains=query) | Q(razorpay_payment_id__icontains=query)
-            | Q(order__id__icontains=query) | Q(booking__id__icontains=query)
         )
+        if query.isdigit():
+            queryset = queryset | Payment.objects.filter(
+                Q(pk=int(query)) | Q(order_id=int(query)) | Q(booking_id=int(query))
+            ).select_related("customer", "order", "booking")
     refunds = PaymentRefund.objects.select_related(
         "payment", "booking", "booking__customer"
     ).order_by("-created_at")[:20]
