@@ -268,15 +268,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: IndexedStack(
-          index: _selectedTab,
-          children: [
-            _buildHomeTab(profile),
-            _buildJobsTab(),
-            _buildEarningsTab(),
-            _buildProfileTab(profile),
-          ],
-        ),
+        // Keep exactly one scrollable tab mounted at a time. Keeping several
+        // ListViews alive inside an IndexedStack can trigger competing sliver
+        // layout passes on some Android devices.
+        child: _buildSelectedTab(profile),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTab,
@@ -291,7 +286,17 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     );
   }
 
+  Widget _buildSelectedTab(WorkerProfile profile) {
+    return switch (_selectedTab) {
+      0 => _buildHomeTab(profile),
+      1 => _buildJobsTab(),
+      2 => _buildEarningsTab(),
+      _ => _buildProfileTab(profile),
+    };
+  }
+
   Widget _page(List<Widget> children) => ListView(
+        key: PageStorageKey<String>(_tabTitles[_selectedTab]),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: children,
