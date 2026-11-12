@@ -282,7 +282,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
           child: Text(
-            'Available services (${services.length})',
+            'Services (${services.length})',
             style: const TextStyle(
               color: AirwayColors.text,
               fontSize: 17,
@@ -362,7 +362,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       borderRadius: BorderRadius.circular(15),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _openService(service),
+        onTap: service.isAvailable ? () => _openService(service) : null,
         child: Container(
           padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
@@ -424,7 +424,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
               ),
               const SizedBox(width: 8),
               OutlinedButton(
-                onPressed: () => _startAddFlow(service),
+                onPressed: service.isAvailable ? () => _startAddFlow(service) : null,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AirwayColors.primary,
                   side: const BorderSide(color: AirwayColors.primary),
@@ -433,8 +433,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                 ),
-                child: const Text(
-                  'ADD',
+                child: Text(
+                  service.isAvailable ? 'ADD' : 'UNAVAILABLE',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
                 ),
               ),
