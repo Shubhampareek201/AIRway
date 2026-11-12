@@ -24,9 +24,9 @@ super_admin_required = user_passes_test(_is_super_admin, login_url="admin_dashbo
 
 def _audit(request, obj, message):
     """Write custom-dashboard mutations to Django's standard admin activity log."""
-    LogEntry.objects.log_action(
+    LogEntry.objects.create(
         user_id=request.user.pk,
-        content_type_id=ContentType.objects.get_for_model(obj).pk,
+        content_type=ContentType.objects.get_for_model(obj),
         object_id=str(obj.pk),
         object_repr=str(obj)[:200],
         action_flag=CHANGE,
@@ -59,7 +59,7 @@ def admin_logout(request):
 @super_admin_required
 def dashboard(request):
     counts = {
-        "customers": User.objects.filter(active_mode=User.Mode.CUSTOMER).count(),
+        "customers": User.objects.filter(Q(active_mode=User.Mode.CUSTOMER) | Q(roles__role="customer")).distinct().count(),
         "professionals": WorkerProfile.objects.count(),
         "pending": WorkerProfile.objects.filter(status=WorkerProfile.Status.PENDING).count(),
         "approved": WorkerProfile.objects.filter(status=WorkerProfile.Status.APPROVED).count(),
@@ -139,7 +139,7 @@ def professionals(request):
 @super_admin_required
 def customers(request):
     query = request.GET.get("q", "").strip()
-    queryset = User.objects.filter(active_mode=User.Mode.CUSTOMER).prefetch_related(
+    queryset = User.objects.filter(Q(active_mode=User.Mode.CUSTOMER) | Q(roles__role="customer")).prefetch_related(
         "addresses", "bookings"
     )
     if query:
@@ -263,6 +263,31 @@ def activity(request):
         "events": events[:50],
         "active_page": "activity",
     })
+
+
+@require_POST
+@super_admin_required
+def update_professional_status(request, worker_id):
+    worker = get_object_or_404(WorkerProfile.objects.select_related("user"), pk=worker_id)
+    action = request.POST.get("action", "").strip()
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        messages.error(request, "Please add a reason so this status change is recorded.")
+    elif action == "suspend" and worker.status == WorkerProfile.Status.APPROVED:
+        worker.status = WorkerProfile.Status.SUSPENDED
+        worker.is_online = False
+        worker.save(update_fields=["status", "is_online", "updated_at"])
+        _audit(request, worker, f"Professional suspended: {reason}")
+        messages.success(request, "Professional suspended and set offline.")
+    elif action == "restore" and worker.status == WorkerProfile.Status.SUSPENDED:
+        worker.status = WorkerProfile.Status.APPROVED
+        worker.is_online = False
+        worker.save(update_fields=["status", "is_online", "updated_at"])
+        _audit(request, worker, f"Professional restored to approved status (remains offline): {reason}")
+        messages.success(request, "Professional restored to approved status and remains offline.")
+    else:
+        messages.error(request, "This status transition is not allowed.")
+    return redirect("admin_dashboard:application_detail", worker_id=worker_id)
 
 
 @super_admin_required
