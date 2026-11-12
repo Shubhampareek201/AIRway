@@ -372,6 +372,9 @@ class ZoneListView(APIView):
                 "name": zone.name,
                 "city_id": zone.city_id,
                 "city_name": zone.city.name,
+                "latitude": str(zone.latitude) if zone.latitude is not None else None,
+                "longitude": str(zone.longitude) if zone.longitude is not None else None,
+                "coverage_radius_meters": zone.coverage_radius_meters,
             }
             for zone in zones
         ])
