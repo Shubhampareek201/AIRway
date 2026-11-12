@@ -165,6 +165,7 @@ class WorkerService(TimeStampedModel):
     )
     capabilities = models.JSONField(default=list, blank=True, help_text="Task names this worker claims to be trained to perform.")
     capabilities_verified = models.BooleanField(default=False, help_text="Set only after admin review.")
+    experience_years = models.PositiveIntegerField(default=0, help_text="Worker-reported experience for this service.")
 
     class Meta:
         constraints = [
