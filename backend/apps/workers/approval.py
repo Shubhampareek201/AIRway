@@ -25,7 +25,16 @@ def get_approval_requirements(worker):
                 WorkerDocument.DocumentType.ID,
             ],
             status=WorkerDocument.Status.VERIFIED,
-        ).exists(),
+        ).exists() or (
+            worker.documents.filter(
+                doc_type=WorkerDocument.DocumentType.AADHAAR_FRONT,
+                status=WorkerDocument.Status.VERIFIED,
+            ).exists()
+            and worker.documents.filter(
+                doc_type=WorkerDocument.DocumentType.AADHAAR_BACK,
+                status=WorkerDocument.Status.VERIFIED,
+            ).exists()
+        ),
         "has_verified_photo": worker.documents.filter(
             doc_type=WorkerDocument.DocumentType.PHOTO,
             status=WorkerDocument.Status.VERIFIED,
