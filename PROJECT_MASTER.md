@@ -278,7 +278,8 @@ cd app && flutter build apk
 - **Applications:** existing document review and approval workflow retained; approval eligibility remains server-validated.
 - **Professionals:** searchable status directory; approved professionals can be suspended and restored with a required reason; suspension forces offline and restoration does not automatically set online.
 - **Customers:** searchable customer directory with address and booking counts; profile editing remains in the existing protected Django admin.
-- **Bookings:** searchable booking status view, order/service/customer/assignment/schedule/payment context; established booking admin remains the mutation path.
+- **Bookings:** searchable booking status view, service/customer/assignment/schedule/payment context; established booking admin remains the mutation path.
+- **Orders:** separate parent-order view with service lines, checkout totals, payment stages and order status.
 - **Payments & refunds:** payment stage, method, status, gateway references and refund ledger visibility; payment, refund and wallet ledgers are read-only to prevent unsafe manual financial edits.
 - **Services & catalogue:** category/service totals and readiness checks for missing service images, active variants and approved worker mappings; existing catalogue admin remains the CRUD path for categories, services, variants, add-ons, form fields and city availability.
 - **Activity log:** Django admin change log, booking status history, payment history and service/variant/add-on history.
