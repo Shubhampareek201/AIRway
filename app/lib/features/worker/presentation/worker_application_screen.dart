@@ -24,10 +24,17 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   List<dynamic> _zones = [];
   final List<int> _selectedServiceIds = [];
   final Map<int, Set<String>> _selectedServiceCapabilities = {};
-  final Map<int, int> _selectedServiceExperience = {};
+  final Map<String, String> _fieldErrors = {};
+  final _photoKey = GlobalKey();
+  final _nameKey = GlobalKey();
+  final _emailKey = GlobalKey();
+  final _genderKey = GlobalKey();
+  final _addressKey = GlobalKey();
+  final _servicesKey = GlobalKey();
+  final _zonesKey = GlobalKey();
+  final _scheduleKey = GlobalKey();
+  final _idDocumentKey = GlobalKey();
   final List<int> _selectedZoneIds = [];
-  int? _experienceYears;
-  final TextEditingController _experienceController = TextEditingController();
   String? _bio;
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
@@ -46,7 +53,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   double? _latitude;
   double? _longitude;
 
-  int? _existingExperienceYears;
   String? _existingBio;
   List<int> _existingServiceIds = [];
   List<int> _existingZoneIds = [];
@@ -62,12 +68,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     _loadExistingApplication();
     _loadServicesAndZones();
     _bioController.text = _existingBio ?? '';
-    _experienceController.text = _existingExperienceYears?.toString() ?? '';
   }
 
   @override
   void dispose() {
-    _experienceController.dispose();
     _bioController.dispose();
     _nameController.dispose();
     _emailController.dispose();
@@ -105,9 +109,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
 
       // Mark that profile exists to show "Continue Application" in UI
       setState(() {
-        _existingExperienceYears = workerProfile['experience_years'];
         _existingBio = workerProfile['bio'];
-        _experienceYears = _existingExperienceYears;
         _bio = _existingBio;
         _selectedIdType = idType ?? 'aadhaar';
         final savedGender = workerProfile['gender']?.toString();
@@ -121,8 +123,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         _landmarkController.text = workerProfile['landmark']?.toString() ?? '';
         _upiController.text = workerProfile['upi_id']?.toString() ?? '';
         _bioController.text = _existingBio ?? '';
-        _experienceController.text = _existingExperienceYears?.toString() ?? '';
-        final savedSchedule = workerProfile['schedule'];
+            final savedSchedule = workerProfile['schedule'];
         if (savedSchedule is Map) {
           for (final entry in savedSchedule.entries) {
             final day = int.tryParse(entry.key.toString());
@@ -201,7 +202,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         maxHeight: 800,
       );
       if (picked != null && mounted) {
-        setState(() => _profilePhoto = File(picked.path));
+        setState(() {
+          _profilePhoto = File(picked.path);
+          _fieldErrors.remove('photo');
+        });
       }
     } catch (e) {
       if (!mounted) return;
@@ -231,6 +235,46 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     }
   }
 
+  void _clearValidationError(String field) {
+    if (!_fieldErrors.containsKey(field) || !mounted) return;
+    setState(() => _fieldErrors.remove(field));
+  }
+
+  Future<void> _showStepErrors(Map<String, String> errors) async {
+    if (!mounted) return;
+    setState(() {
+      _fieldErrors
+        ..clear()
+        ..addAll(errors);
+    });
+    final firstField = errors.keys.first;
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    final target = <String, GlobalKey>{
+      'photo': _photoKey,
+      'name': _nameKey,
+      'email': _emailKey,
+      'gender': _genderKey,
+      'address': _addressKey,
+      'services': _servicesKey,
+      'zones': _zonesKey,
+      'schedule': _scheduleKey,
+      'id_document': _idDocumentKey,
+    }[firstField]?.currentContext;
+    if (target != null) {
+      await Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        alignment: 0.18,
+      );
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errors.values.first)),
+      );
+    }
+  }
+
   void _toggleService(int serviceId) {
     setState(() {
       if (_selectedServiceIds.contains(serviceId)) {
@@ -238,6 +282,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       } else {
         _selectedServiceIds.add(serviceId);
       }
+      _fieldErrors.remove('services');
     });
   }
 
@@ -255,6 +300,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       } else {
         _selectedZoneIds.add(zoneId);
       }
+      _fieldErrors.remove('zones');
     });
   }
 
@@ -398,7 +444,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         serviceCapabilities: _buildServiceCapabilities(),
         zoneIds: _selectedZoneIds,
         experienceYears: null,
-        serviceExperienceYears: {for (final id in _selectedServiceIds) id: (_selectedServiceExperience[id] ?? 0)},
         bio: _bioController.text.isEmpty ? null : _bioController.text,
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
@@ -511,60 +556,70 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   void _nextStep() {
+    _fieldErrors.clear();
     switch (_currentStep) {
       case WorkerApplicationStep.photo:
+        final errors = <String, String>{};
         if (_profilePhoto == null && !_hasExistingPhoto) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please take a profile photo first.')),
-          );
-          return;
+          errors['photo'] = 'Profile photo is required. Take a clear photo to continue.';
         }
-        if (_nameController.text.trim().isEmpty ||
-            !_emailController.text.trim().contains('@') ||
-            _selectedGender == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Enter your name and valid email, and select your gender.')),
-          );
-          return;
+        if (_nameController.text.trim().isEmpty) {
+          errors['name'] = 'Enter your full legal name.';
+        }
+        final email = _emailController.text.trim();
+        if (email.isEmpty || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+          errors['email'] = 'Enter a valid email address.';
+        }
+        if (_selectedGender == null) {
+          errors['gender'] = 'Select your gender.';
         }
         if (_addressController.text.trim().isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Enter your residential address or use GPS.')),
-          );
+          errors['address'] = 'Enter your residential address or use GPS.';
+        }
+        if (errors.isNotEmpty) {
+          _showStepErrors(errors);
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.services);
         break;
       case WorkerApplicationStep.services:
         if (_selectedServiceIds.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select at least one service.')),
-          );
+          _showStepErrors({'services': 'Select at least one service you can provide.'});
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.zones);
         break;
       case WorkerApplicationStep.zones:
         if (_selectedZoneIds.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select at least one service zone.')),
-          );
+          _showStepErrors({'zones': 'Select at least one area where you are willing to work.'});
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.schedule);
         break;
       case WorkerApplicationStep.schedule:
-        if (_weeklySchedule.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one working day.')));
+        final invalidDays = _weeklySchedule.entries.any((entry) {
+          final start = entry.value['start'];
+          final end = entry.value['end'];
+          if (start == null || end == null) return true;
+          final startParts = start.split(':').map(int.tryParse).toList();
+          final endParts = end.split(':').map(int.tryParse).toList();
+          if (startParts.length != 2 || endParts.length != 2 ||
+              startParts.any((part) => part == null) || endParts.any((part) => part == null)) return true;
+          return endParts[0]! * 60 + endParts[1]! <= startParts[0]! * 60 + startParts[1]!;
+        });
+        if (_weeklySchedule.isEmpty || invalidDays) {
+          _showStepErrors({
+            'schedule': _weeklySchedule.isEmpty
+                ? 'Select at least one working day.'
+                : 'For every selected day, the end time must be later than the start time.',
+          });
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.idDocument);
         break;
       case WorkerApplicationStep.idDocument:
-        if (_idDocument == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please upload an ID document (Aadhaar or other ID).')),
-          );
+        if (_idDocument == null && !_idDocumentUploaded) {
+          _showStepErrors({'id_document': 'Upload a clear government ID document to continue.'});
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.review);
@@ -682,8 +737,15 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Card(
+          key: _photoKey,
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: _fieldErrors.containsKey('photo') ? Colors.red : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
           child: ListTile(
             contentPadding: const EdgeInsets.all(16),
             leading: CircleAvatar(
@@ -697,8 +759,11 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
             ),
             title: const Text('Profile Photo *', style: TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text(
-              isTakingNewPhoto ? 'Photo ready for verification' : 'Required for worker verification',
-              style: const TextStyle(color: AirwayColors.textSecondary),
+              _fieldErrors['photo'] ??
+                  (isTakingNewPhoto ? 'Photo ready for verification' : 'Required for worker verification'),
+              style: TextStyle(
+                color: _fieldErrors.containsKey('photo') ? Colors.red : AirwayColors.textSecondary,
+              ),
             ),
             trailing: TextButton(onPressed: _pickPhoto, child: Text(isTakingNewPhoto ? 'Retake' : hasExistingPhoto ? 'Replace' : 'Take Photo')),
             onTap: _pickPhoto,
@@ -707,22 +772,64 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const SizedBox(height: 20),
         Text('Personal & Professional Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
         const SizedBox(height: 10),
-        TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Full legal name *', border: OutlineInputBorder())),
+        TextField(
+          key: _nameKey,
+          controller: _nameController,
+          onChanged: (_) => _clearValidationError('name'),
+          decoration: InputDecoration(
+            labelText: 'Full legal name *',
+            border: const OutlineInputBorder(),
+            errorText: _fieldErrors['name'],
+          ),
+        ),
         const SizedBox(height: 10),
-        TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address *', border: OutlineInputBorder())),
+        TextField(
+          key: _emailKey,
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          onChanged: (_) => _clearValidationError('email'),
+          decoration: InputDecoration(
+            labelText: 'Email address *',
+            border: const OutlineInputBorder(),
+            errorText: _fieldErrors['email'],
+          ),
+        ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+          key: _genderKey,
           initialValue: _selectedGender,
-          decoration: const InputDecoration(labelText: 'Gender * (used for service matching)', border: OutlineInputBorder()),
+          decoration: InputDecoration(
+            labelText: 'Gender * (used for service matching)',
+            border: const OutlineInputBorder(),
+            errorText: _fieldErrors['gender'],
+          ),
           items: const [
             DropdownMenuItem(value: 'male', child: Text('Male')),
             DropdownMenuItem(value: 'female', child: Text('Female')),
             DropdownMenuItem(value: 'other', child: Text('Other')),
           ],
-          onChanged: (value) { if (value != null) setState(() => _selectedGender = value); },
+          onChanged: (value) {
+            if (value != null) {
+              setState(() {
+                _selectedGender = value;
+                _fieldErrors.remove('gender');
+              });
+            }
+          },
         ),
         const SizedBox(height: 10),
-        TextField(controller: _addressController, maxLines: 2, decoration: const InputDecoration(labelText: 'Residential address *', hintText: 'Use GPS or type your complete address', border: OutlineInputBorder())),
+        TextField(
+          key: _addressKey,
+          controller: _addressController,
+          maxLines: 2,
+          onChanged: (_) => _clearValidationError('address'),
+          decoration: InputDecoration(
+            labelText: 'Residential address *',
+            hintText: 'Use GPS or type your complete address',
+            border: const OutlineInputBorder(),
+            errorText: _fieldErrors['address'],
+          ),
+        ),
         const SizedBox(height: 6),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
           onPressed: _loading ? null : _fetchCurrentLocation,
@@ -759,34 +866,58 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         .where((service) => _selectedServiceIds.contains(service.id))
         .toList();
 
+    Widget serviceChips(List<Service> services) => Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: services.map((service) {
+        final selected = _selectedServiceIds.contains(service.id);
+        return FilterChip(
+          selected: selected,
+          label: Text(service.title),
+          onSelected: (_) => _toggleService(service.id),
+          selectedColor: AirwayColors.primary.withAlpha(30),
+        );
+      }).toList(),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Choose your main service areas *',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+        Text(
+          'Choose your main service areas *',
+          key: _servicesKey,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: _fieldErrors.containsKey('services') ? Colors.red : AirwayColors.text,
+          ),
+        ),
         const SizedBox(height: 8),
         const Text(
-          'Open one of AIRway’s four main service areas, then select the specific services you can provide. You can choose more than one area and multiple services.',
+          'Choose one or more of AIRway’s four launch services, then select every specific service you are able to provide.',
           style: TextStyle(color: AirwayColors.textSecondary),
         ),
+        if (_fieldErrors['services'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(_fieldErrors['services']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ),
         const SizedBox(height: 12),
         if (_services.isEmpty)
           const Text('No active launch services are available for worker registration. Please contact AIRway support.')
         else
           ...grouped.entries.map((rootEntry) {
-            final count = rootEntry.value.values
-                .fold<int>(0, (total, services) => total + services.length);
-            final hasSelection = rootEntry.value.values
-                .expand((services) => services)
-                .any((service) => _selectedServiceIds.contains(service.id));
+            final allServices = rootEntry.value.values.expand((items) => items).toList();
+            final count = allServices.length;
+            final hasSelection = allServices.any((service) => _selectedServiceIds.contains(service.id));
+            final isBeauty = allServices.any((service) => service.categoryRootSlug == 'beauty');
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: ExpansionTile(
                 initiallyExpanded: hasSelection,
-                title: Text(rootEntry.key,
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                title: Text(rootEntry.key, style: const TextStyle(fontWeight: FontWeight.w800)),
                 subtitle: Text(hasSelection
-                    ? 'Selected services in this area'
+                    ? '${allServices.where((service) => _selectedServiceIds.contains(service.id)).length} selected'
                     : '$count services available'),
                 children: [
                   for (final subcategory in rootEntry.value.entries)
@@ -795,22 +926,26 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(subcategory.key,
-                              style: TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary)),
+                          Text(subcategory.key, style: TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary)),
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: subcategory.value.map((service) {
-                              final selected = _selectedServiceIds.contains(service.id);
-                              return FilterChip(
-                                selected: selected,
-                                label: Text(service.title),
-                                onSelected: (_) => _toggleService(service.id),
-                                selectedColor: AirwayColors.primary.withAlpha(30),
-                              );
-                            }).toList(),
-                          ),
+                          if (isBeauty) ...[
+                            for (final audience in ['men', 'women', 'all'])
+                              if (subcategory.value.any((service) => service.audience == audience)) ...[
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6, bottom: 5),
+                                  child: Text(
+                                    audience == 'men'
+                                        ? 'Men’s services'
+                                        : audience == 'women'
+                                            ? 'Women’s services'
+                                            : 'Both / Unisex services',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                  ),
+                                ),
+                                serviceChips(subcategory.value.where((service) => service.audience == audience).toList()),
+                              ],
+                          ] else
+                            serviceChips(subcategory.value),
                         ],
                       ),
                     ),
@@ -820,24 +955,24 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           }),
         if (selectedServices.isNotEmpty) ...[
           const Divider(height: 28),
-          Text('What tasks can you perform?',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+          Text(
+            'Selected services and available work options',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text),
+          ),
           const SizedBox(height: 6),
           const Text(
-            'If task options are available, you may select the work you can do. This is optional during application; AIRway will confirm your skills before approval.',
+            'Review the service options and choose the tasks you can confidently perform. Task selection is optional now; AIRway verifies skills before approval.',
             style: TextStyle(color: AirwayColors.textSecondary),
           ),
           const SizedBox(height: 10),
           ...selectedServices.map((service) {
-            final tasks = service.variants
-                .expand((variant) => variant.includedTasks)
-                .map((task) => task.trim())
-                .where((task) => task.isNotEmpty)
-                .toSet()
-                .toList()
+            final variants = service.variants.where((variant) => variant.isActive).toList();
+            final tasks = <String>{
+              ...service.variants.expand((variant) => variant.includedTasks),
+              ...service.addons.map((addon) => addon.title),
+            }.map((task) => task.trim()).where((task) => task.isNotEmpty).toList()
               ..sort();
-            final selected = _selectedServiceCapabilities.putIfAbsent(
-                service.id, () => <String>{});
+            final selected = _selectedServiceCapabilities.putIfAbsent(service.id, () => <String>{});
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: Padding(
@@ -846,8 +981,35 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(service.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    if (service.categoryRootSlug == 'beauty')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          service.audience == 'men'
+                              ? 'For male customers'
+                              : service.audience == 'women'
+                                  ? 'For female customers'
+                                  : 'For all customers (unisex)',
+                          style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                        ),
+                      ),
+                    if (variants.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Text('Service options', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                      const SizedBox(height: 5),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: variants.map((variant) => Chip(
+                          label: Text(variant.title),
+                          visualDensity: VisualDensity.compact,
+                        )).toList(),
+                      ),
+                    ],
                     if (tasks.isNotEmpty) ...[
                       const SizedBox(height: 8),
+                      const Text('Tasks / additional work you can do', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                      const SizedBox(height: 5),
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
@@ -867,30 +1029,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
-                          'No task options are configured for this service yet. You can continue; AIRway will confirm your skills during application review.',
+                          'No task details have been configured for this service yet. You can still apply; AIRway will verify your skills before approval.',
                           style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
                         ),
                       ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      value: _selectedServiceExperience[service.id] ?? 0,
-                      decoration: const InputDecoration(
-                        labelText: 'Experience in this service',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: List.generate(
-                        31,
-                        (year) => DropdownMenuItem(
-                          value: year,
-                          child: Text(year == 0
-                              ? 'Beginner / Less than 1 year'
-                              : '$year ${year == 1 ? 'year' : 'years'}'),
-                        ),
-                      ),
-                      onChanged: (value) => setState(() {
-                        if (value != null) _selectedServiceExperience[service.id] = value;
-                      }),
-                    ),
                   ],
                 ),
               ),
@@ -906,8 +1048,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         children: [
           Text(
             'Where are you willing to work? *',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text),
+            key: _zonesKey,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _fieldErrors.containsKey('zones') ? Colors.red : AirwayColors.text),
           ),
+          if (_fieldErrors['zones'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(_fieldErrors['zones']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ),
           const SizedBox(height: 8),
           const Text(
             'Your home address and working areas are different. Choose every active AIRway area you can travel to. GPS only suggests a nearby area; it never limits your selection.',
@@ -974,7 +1122,16 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Weekly Working Hours *', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+        Text(
+          'Weekly Working Hours *',
+          key: _scheduleKey,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _fieldErrors.containsKey('schedule') ? Colors.red : AirwayColors.text),
+        ),
+        if (_fieldErrors['schedule'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(_fieldErrors['schedule']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ),
         const SizedBox(height: 6),
         const Text('Choose the days and exact hours when you can accept jobs.', style: TextStyle(color: AirwayColors.textSecondary)),
         const SizedBox(height: 8),
@@ -1022,8 +1179,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       children: [
         Text(
           'ID Document *',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text),
+          key: _idDocumentKey,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _fieldErrors.containsKey('id_document') ? Colors.red : AirwayColors.text),
         ),
+        if (_fieldErrors['id_document'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(_fieldErrors['id_document']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ),
         const SizedBox(height: 8),
         const Text(
           'Please upload a valid government ID for verification. Aadhaar or any government-issued photo ID is accepted.',
@@ -1158,7 +1321,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const Divider(),
         _buildReviewItem('Qualification', _qualificationController.text.trim().isNotEmpty, _qualificationController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
         const Divider(),
-        _buildReviewItem('Experience', _experienceController.text.trim().isNotEmpty, _experienceController.text.trim().isEmpty ? 'Not provided' : _experienceController.text.trim() + ' years'),
         const Divider(),
         _buildReviewItem('Equipment / products', _equipmentController.text.trim().isNotEmpty, _equipmentController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
         const Divider(),
@@ -1224,7 +1386,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         ] else ...[
           Expanded(
             child: ElevatedButton(
-              onPressed: (_profilePhoto != null || _hasExistingPhoto) ? _nextStep : null,
+              onPressed: _nextStep,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

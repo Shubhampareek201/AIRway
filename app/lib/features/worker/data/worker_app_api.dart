@@ -323,30 +323,52 @@ class WorkerAppApi {
       ..connectionTimeout = const Duration(seconds: 10);
 
     try {
-      final request = await client.getUrl(
-        Uri.parse('${AuthApi.baseUrl}/api/v1/catalog/services/?is_active=true&for_worker=true&launch_only=true'),
+      final baseUri = Uri.parse(
+        '${AuthApi.baseUrl}/api/v1/catalog/services/?is_active=true&for_worker=true&launch_only=true',
       );
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${(await SecureSessionStorage.readSession())?.accessToken}',
-      );
+      final accessToken = (await SecureSessionStorage.readSession())?.accessToken;
+      final services = <Service>[];
+      Uri? pageUri = baseUri;
+      final visitedPages = <String>{};
 
-      final response = await request.close().timeout(
-        const Duration(seconds: 15),
-      );
-      final text = await utf8.decoder.bind(response).join();
+      // DRF paginates catalogue responses. Fetch every page so categories
+      // later in the catalogue (especially Car Wash) are not omitted.
+      while (pageUri != null) {
+        if (!visitedPages.add(pageUri.toString()) || visitedPages.length > 50) {
+          throw const FormatException('Invalid catalogue pagination response');
+        }
+        if (pageUri.origin != baseUri.origin) {
+          throw const FormatException('Catalogue pagination returned an unexpected host');
+        }
 
-      final result = jsonDecode(text);
-      final list = result is List ? result : (result is Map ? result['results'] : null);
+        final request = await client.getUrl(pageUri);
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $accessToken');
+        final response = await request.close().timeout(const Duration(seconds: 20));
+        final text = await utf8.decoder.bind(response).join();
 
-      if (list is! List) {
-        throw const FormatException('Unexpected services response');
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw HttpException(
+            'Could not load worker services (HTTP ${response.statusCode}).',
+            uri: pageUri,
+          );
+        }
+
+        final result = jsonDecode(text);
+        final list = result is List ? result : (result is Map ? result['results'] : null);
+        if (list is! List) {
+          throw const FormatException('Unexpected services response');
+        }
+        services.addAll(
+          list.whereType<Map>().map(
+            (item) => Service.fromMap(Map<String, dynamic>.from(item)),
+          ),
+        );
+
+        final next = result is Map ? result['next']?.toString() : null;
+        pageUri = next == null || next.isEmpty ? null : baseUri.resolve(next);
       }
 
-      return list
-          .whereType<Map>()
-          .map((e) => Service.fromMap(Map<String, dynamic>.from(e)))
-          .toList();
+      return services;
     } finally {
       client.close(force: true);
     }
