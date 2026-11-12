@@ -88,22 +88,39 @@ class CatalogApi {
     return result.body;
   }
 
-  static List<T> _parseList<T>(
+  static Future<List<T>> _parseList<T>(
     dynamic result,
     T Function(Map<String, dynamic>) parse,
-  ) {
-    final list = result is List
-        ? result
-        : (result is Map ? result['results'] : null);
-
-    if (list is! List) {
-      throw const FormatException('Unexpected catalog list response');
+  ) async {
+    final items = <T>[];
+    dynamic page = result;
+    final baseUri = Uri.parse(AuthApi.baseUrl);
+    while (true) {
+      if (page is List) {
+        items.addAll(page.whereType<Map>().map(
+          (e) => parse(Map<String, dynamic>.from(e)),
+        ));
+        break;
+      }
+      if (page is! Map || page['results'] is! List) {
+        throw const FormatException('Unexpected catalog list response');
+      }
+      items.addAll((page['results'] as List).whereType<Map>().map(
+        (e) => parse(Map<String, dynamic>.from(e)),
+      ));
+      final next = page['next'];
+      if (next == null || next.toString().isEmpty) break;
+      final nextUri = Uri.parse(next.toString());
+      if (nextUri.hasAuthority &&
+          (nextUri.scheme != baseUri.scheme ||
+              nextUri.host != baseUri.host ||
+              nextUri.port != baseUri.port)) {
+        throw const FormatException('Catalog pagination URL changed API host');
+      }
+      final nextPath = '${nextUri.path}${nextUri.hasQuery ? '?${nextUri.query}' : ''}';
+      page = await request(nextPath);
     }
-
-    return list
-        .whereType<Map>()
-        .map((e) => parse(Map<String, dynamic>.from(e)))
-        .toList();
+    return items;
   }
 
   static Future<List<CatalogBanner>> listBanners({
