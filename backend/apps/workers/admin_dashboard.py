@@ -152,8 +152,8 @@ def review_document(request, worker_id, document_id):
 def verify_service_capabilities(request, worker_id, service_link_id):
     worker = get_object_or_404(WorkerProfile, pk=worker_id)
     link = get_object_or_404(WorkerService, pk=service_link_id, worker=worker)
-    if worker.status != WorkerProfile.Status.PENDING:
-        messages.error(request, "Only pending applications can have capabilities reviewed.")
+    if worker.status not in (WorkerProfile.Status.PENDING, WorkerProfile.Status.APPROVED):
+        messages.error(request, "Capabilities can only be reviewed for pending or approved workers.")
     elif not link.capabilities:
         messages.error(request, "No task capabilities were submitted for this service.")
     else:
