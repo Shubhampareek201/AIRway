@@ -1,11 +1,14 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_app_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:airway/features/location/data/location_api.dart';
 
-enum WorkerApplicationStep { photo, services, zones, idDocument, review }
+enum WorkerApplicationStep { photo, services, zones, schedule, idDocument, review }
 
 class WorkerApplicationScreen extends StatefulWidget {
   const WorkerApplicationScreen({super.key});
@@ -40,6 +43,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   File? _profilePhoto;
   File? _idDocument;
   String _selectedIdType = 'aadhaar';
+  double? _latitude;
+  double? _longitude;
 
   int? _existingExperienceYears;
   String? _existingBio;
@@ -255,13 +260,62 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   void _toggleZone(int zoneId) {
-    setState(() {
-      if (_selectedZoneIds.contains(zoneId)) {
-        _selectedZoneIds.removeWhere((id) => id == zoneId);
-      } else {
-        _selectedZoneIds.add(zoneId);
+    setState(() { _selectedZoneIds..clear()..add(zoneId); });
+  }
+
+  double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadius = 6371000.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLon = (lon2 - lon1) * math.pi / 180;
+    final a = math.pow(math.sin(dLat / 2), 2) +
+        math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180) *
+        math.pow(math.sin(dLon / 2), 2);
+    return earthRadius * 2 * math.asin(math.sqrt(a));
+  }
+
+  Future<void> _fetchCurrentLocation() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        throw Exception('Location permission is needed. You can type your address instead.');
       }
-    });
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final address = await LocationApi.reverse(position.latitude, position.longitude);
+      final formatted = (address['formatted'] ?? '').toString().trim();
+      if (formatted.isEmpty) throw Exception('Could not find an address. Please type it manually.');
+      final matches = <Map<String, dynamic>>[];
+      for (final raw in _zones) {
+        if (raw is! Map) continue;
+        final zone = Map<String, dynamic>.from(raw);
+        final lat = double.tryParse(zone['latitude']?.toString() ?? '');
+        final lon = double.tryParse(zone['longitude']?.toString() ?? '');
+        if (lat == null || lon == null) continue;
+        final distance = _distanceMeters(position.latitude, position.longitude, lat, lon);
+        final radius = int.tryParse(zone['coverage_radius_meters']?.toString() ?? '') ?? 0;
+        if (distance <= radius) { zone['_distance'] = distance; matches.add(zone); }
+      }
+      if (matches.isEmpty) throw Exception('AIRway is not serving this location yet.');
+      matches.sort((a, b) => (a['_distance'] as double).compareTo(b['_distance'] as double));
+      final selectedZone = matches.first;
+      if (!mounted) return;
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _addressController.text = formatted;
+        _selectedZoneIds..clear()..add(selectedZone['id'] as int);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Service area selected: ${selectedZone['name']}')),
+      );
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _submitApplication() async {
@@ -322,6 +376,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         qualification: _qualificationController.text,
         equipmentDetails: _equipmentController.text,
         residentialAddress: _addressController.text.trim(),
+        latitude: _latitude,
+        longitude: _longitude,
         landmark: _landmarkController.text,
         upiId: _upiController.text,
         schedule: _weeklySchedule,
@@ -412,8 +468,11 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       case WorkerApplicationStep.zones:
         setState(() => _currentStep = WorkerApplicationStep.services);
         break;
-      case WorkerApplicationStep.idDocument:
+      case WorkerApplicationStep.schedule:
         setState(() => _currentStep = WorkerApplicationStep.zones);
+        break;
+      case WorkerApplicationStep.idDocument:
+        setState(() => _currentStep = WorkerApplicationStep.schedule);
         break;
       case WorkerApplicationStep.review:
         setState(() => _currentStep = WorkerApplicationStep.idDocument);
@@ -450,6 +509,13 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Please select at least one service zone.')),
           );
+          return;
+        }
+        setState(() => _currentStep = WorkerApplicationStep.schedule);
+        break;
+      case WorkerApplicationStep.schedule:
+        if (_weeklySchedule.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one working day.')));
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.idDocument);
@@ -559,6 +625,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         return _buildServicesSection();
       case WorkerApplicationStep.zones:
         return _buildZonesSection();
+      case WorkerApplicationStep.schedule:
+        return _buildScheduleSection();
       case WorkerApplicationStep.idDocument:
         return _buildIdDocumentSection();
       case WorkerApplicationStep.review:
@@ -614,7 +682,15 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           onChanged: (value) { if (value != null) setState(() => _selectedGender = value); },
         ),
         const SizedBox(height: 10),
-        TextField(controller: _addressController, maxLines: 2, decoration: const InputDecoration(labelText: 'Residential address *', border: OutlineInputBorder())),
+        TextField(controller: _addressController, maxLines: 2, decoration: const InputDecoration(labelText: 'Residential address *', hintText: 'Use GPS or type your complete address', border: OutlineInputBorder())),
+        const SizedBox(height: 6),
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(
+          onPressed: _loading ? null : _fetchCurrentLocation,
+          icon: const Icon(Icons.my_location),
+          label: const Text('Use my current location'),
+        )),
+        if (_latitude != null && _longitude != null)
+          const Padding(padding: EdgeInsets.only(top: 4), child: Text('GPS location attached. Service area selected automatically.', style: TextStyle(color: Colors.green, fontSize: 12))),
         const SizedBox(height: 10),
         TextField(controller: _landmarkController, decoration: const InputDecoration(labelText: 'Nearby landmark', border: OutlineInputBorder())),
         const SizedBox(height: 10),
@@ -753,8 +829,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                             );
                           }).toList(),
                         ),
-          const SizedBox(height: 24),
-          _buildScheduleSection(),
         ],
       );
 
