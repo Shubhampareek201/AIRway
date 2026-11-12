@@ -39,39 +39,8 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     if (widget.initialCategories != null) {
       _categories = widget.initialCategories!;
       _loading = false;
-      if (widget.initialAnswers['beauty_audience'] != null) {
-        _filterCategoriesForAudience();
-      }
     } else {
       _loadCategories();
-    }
-  }
-
-  Future<void> _filterCategoriesForAudience() async {
-    final selected = widget.initialAnswers['beauty_audience']?.toString();
-    if (selected == null) return;
-    try {
-      final services = await CatalogApi.listServices(addressId: widget.addressId);
-      final visibleCategoryIds = services
-          .where((service) => BeautyAudience.includes(
-                selected: selected,
-                serviceAudience: service.audience,
-              ))
-          .map((service) => service.categoryId)
-          .toSet();
-
-      bool hasVisibleService(Category category) {
-        if (visibleCategoryIds.contains(category.id)) return true;
-        return category.children.any(hasVisibleService);
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _categories = _categories.where(hasVisibleService).toList();
-      });
-    } catch (_) {
-      // Keep the category tree visible if the audience filter request fails;
-      // the service list itself still applies the authoritative audience filter.
     }
   }
 
