@@ -1938,6 +1938,7 @@ class CompleteWorkerOnboardingSubmissionTests(TestCase):
             "email": "worker@example.com",
             "gender": "other",
             "services": json.dumps([self.service.pk]),
+            "service_capabilities": json.dumps({str(self.service.pk): ["Electrical repair"]}),
             "zones": json.dumps([self.zone.pk]),
             "experience_years": "3",
             "qualification": "ITI Electrical",
