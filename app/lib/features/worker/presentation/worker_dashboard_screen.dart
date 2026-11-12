@@ -268,6 +268,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
+        // Only the visible tab's scrollable should trigger pull-to-refresh.
+        notificationPredicate: (notification) => notification.depth == 0,
         child: IndexedStack(
           index: _selectedTab,
           children: [
@@ -292,6 +294,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   }
 
   Widget _page(List<Widget> children) => ListView(
+        // Each IndexedStack tab must own its scroll position. Leaving this
+        // implicit makes vertical lists inherit the same PrimaryScrollController
+        // and can cause scroll/gesture conflicts between the mounted tabs.
+        primary: false,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: children,
