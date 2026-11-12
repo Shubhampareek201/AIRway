@@ -35,6 +35,8 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
             "qualification",
             "equipment_details",
             "residential_address",
+            "latitude",
+            "longitude",
             "landmark",
             "bio",
             "upi_id",
@@ -90,6 +92,8 @@ class WorkerProfileUpdateSerializer(serializers.ModelSerializer):
             "qualification",
             "equipment_details",
             "residential_address",
+            "latitude",
+            "longitude",
             "landmark",
             "upi_id",
         ]
@@ -106,7 +110,7 @@ class WorkerServiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkerService
-        fields = ["id", "service", "service_title", "capabilities", "capabilities_verified"]
+        fields = ["id", "service", "service_title", "capabilities", "capabilities_verified", "experience_years"]
 
 
 class WorkerZoneSerializer(serializers.ModelSerializer):
