@@ -305,7 +305,7 @@ class Command(BaseCommand):
                                     else []),
                       fields=[
                           {"key": "occasion", "label": "Occasion", "field_type": "text", "required": title in ["Party Makeup", "Engagement Makeup", "Bridal Makeup"]},
-                          {"key": "event_date", "label": "Event date", "field_type": "text", "required": title in ["Engagement Makeup", "Bridal Makeup"]},
+                          {"key": "event_date", "label": "Event date", "field_type": "date", "required": title in ["Engagement Makeup", "Bridal Makeup"]},
                           {"key": "people_count", "label": "Number of people", "field_type": "number", "required": False},
                           {"key": "makeup_style", "label": "Preferred style", "field_type": "select",
                            "options": ["Natural", "Soft Glam", "Traditional", "HD", "Not sure"], "required": False},

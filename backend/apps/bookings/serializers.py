@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from decimal import Decimal
+from datetime import date
+import re
 from django.utils import timezone
 
 from .models import (
@@ -16,6 +18,17 @@ from apps.catalog.audience import validate_beauty_audience
 from apps.accounts.models import Address
 from apps.workers.eligibility import required_worker_gender_for_booking
 from apps.notifications.models import Notification
+
+ 
+def _is_valid_iso_date(value):
+    """Accept only real calendar dates in YYYY-MM-DD format."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
 
 
 class BookingAddOnSerializer(serializers.ModelSerializer):
@@ -251,6 +264,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 })
             if value in (None, ""):
                 continue
+            if field.field_type == FormField.FieldType.DATE and not _is_valid_iso_date(value):
+                raise serializers.ValidationError({
+                    "form_responses": f"Enter a valid date (YYYY-MM-DD) for {field.label}."
+                })
             if field.field_type == FormField.FieldType.SELECT:
                 allowed_values = set()
                 for option in (field.options or []):
@@ -715,6 +732,11 @@ class CartItemSerializer(serializers.ModelSerializer):
 
             # Choice answers must match the live catalogue options. Accept both
             # legacy string options and structured {label, value} options.
+            if field.field_type == "date" and not _is_valid_iso_date(value):
+                raise serializers.ValidationError({
+                    "form_answers": f"Enter a valid date (YYYY-MM-DD) for {field.label}."
+                })
+
             if field.field_type in ("select", "choice"):
                 allowed_values = set()
                 for option in (field.options or []):
