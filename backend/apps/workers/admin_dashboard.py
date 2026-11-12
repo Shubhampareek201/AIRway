@@ -285,7 +285,7 @@ def activity(request):
     for entry in admin_entries:
         events.append({
             "when": entry.action_time,
-            "actor": entry.user.name or entry.user.phone,
+            "actor": (entry.user.name or entry.user.phone) if entry.user else "Deleted admin account",
             "subject": entry.object_repr,
             "detail": entry.get_change_message() or "Admin record updated",
             "kind": "Admin change",
