@@ -174,7 +174,6 @@ def bookings(request):
             queryset = queryset | Booking.objects.filter(pk=int(query)).select_related(
                 "customer", "service", "variant", "assignment__worker__user", "order_item__order"
             )
-        )
     return render(request, "workers/admin_dashboard/bookings.html", {
         "bookings": queryset.order_by("-created_at")[:200],
         "status_filter": status_filter,
