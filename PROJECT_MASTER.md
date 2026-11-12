@@ -263,3 +263,46 @@ cd app && flutter build apk
 # Tables verified with psycopg2
 # All required columns present
 ```
+
+---
+
+## AIRway Super Admin Operations Dashboard (2026-11-12)
+
+**Implementation branch:** `feat/admin-operations-dashboard`  
+**Entry point:** `/control/`  
+**Access:** One Super Admin account (active + staff + superuser).  
+**Status:** Implemented on the feature branch; runtime verification is pending.
+
+### Dashboard areas added
+- **Overview:** live database counts for customers, professionals, pending applications, bookings, pending payments and refunds requiring attention; recent bookings and professional applications.
+- **Applications:** existing document review and approval workflow retained; approval eligibility remains server-validated.
+- **Professionals:** searchable status directory; approved professionals can be suspended and restored with a required reason; suspension forces offline and restoration does not automatically set online.
+- **Customers:** searchable customer directory with address and booking counts; profile editing remains in the existing protected Django admin.
+- **Bookings:** searchable booking status view, order/service/customer/assignment/schedule/payment context; established booking admin remains the mutation path.
+- **Payments & refunds:** payment stage, method, status, gateway references and refund ledger visibility; payment, refund and wallet ledgers are read-only to prevent unsafe manual financial edits.
+- **Services & catalogue:** category/service totals and readiness checks for missing service images, active variants and approved worker mappings; existing catalogue admin remains the CRUD path for categories, services, variants, add-ons, form fields and city availability.
+- **Activity log:** Django admin change log, booking status history, payment history and service/variant/add-on history.
+
+### Safety and audit rules
+- Every custom dashboard page is Super Admin protected; mutations are POST-only.
+- Document verification, application approval/rejection, professional suspension/restoration are server-side validated.
+- Approval never makes a professional online. Restoration also leaves the professional offline.
+- Rejection, suspension and restoration require a reason where applicable.
+- Custom dashboard mutations are written to Django's standard admin log.
+- Payment, refund, wallet transaction and wallet reservation records are exposed as read-only. Do not manually mark gateway payments paid or issue manual wallet balance changes from admin.
+- Booking cancellation/refund should use the existing booking admin action and refund service, not direct database status edits.
+- No database schema migration was introduced for this dashboard work.
+
+### Tests added
+- Operations page rendering coverage for all dashboard sections.
+- Professional suspension/restoration, offline-state and audit-reason coverage.
+- Missing-reason and POST-only enforcement coverage.
+
+### Verification still required before merging
+Run in the backend environment:
+```powershell
+python manage.py check
+python manage.py test apps.workers.test_admin_approval --verbosity 2
+python manage.py test --verbosity 1
+```
+Then manually verify `/control/` using a Super Admin account and test each navigation page against the existing development database. This feature branch has not yet been merged into the integration branch.
