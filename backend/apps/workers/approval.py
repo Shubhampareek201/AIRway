@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import UserRole
@@ -33,10 +34,14 @@ def get_approval_requirements(worker):
             service__is_active=True,
             service__category__is_active=True,
         ).exists(),
-        "has_verified_capabilities": worker.worker_services.filter(
-            service__is_active=True, service__category__is_active=True,
-            capabilities_verified=True,
-        ).exclude(capabilities=[]).exists(),
+        "has_verified_capabilities": (
+            worker.worker_services.filter(
+                service__is_active=True, service__category__is_active=True,
+            ).exists()
+            and not worker.worker_services.filter(
+                service__is_active=True, service__category__is_active=True,
+            ).filter(Q(capabilities_verified=False) | Q(capabilities=[])).exists()
+        ),
         "has_zone": worker.worker_zones.filter(
             zone__is_active=True,
             zone__city__is_active=True,
