@@ -1987,12 +1987,12 @@ class CompleteWorkerOnboardingSubmissionTests(TestCase):
         self.assertFalse(worker_service.capabilities_verified)
         self.assertEqual(worker_service.experience_years, 4)
 
-        # The application may be submitted, but empty/unverified skills cannot
-        # pass the separate admin approval gate.
+        # Selecting an active service is sufficient for application approval;
+        # task capability verification is not an additional approval gate.
         from apps.workers.approval import get_approval_requirements
         requirements = get_approval_requirements(profile)
-        self.assertFalse(requirements["has_verified_capabilities"])
-        self.assertFalse(requirements["eligible"])
+        self.assertTrue(requirements["has_service"])
+        self.assertTrue(requirements["eligible"])
 
     def test_gps_coordinates_do_not_override_worker_selected_service_areas(self):
         payload = self._payload()
@@ -2154,21 +2154,17 @@ class WorkerCapabilityEligibilityRegressionTests(TestCase):
             ).filter(pk=self.worker.pk).exists()
         )
 
-    def test_approval_requires_capabilities_for_every_active_service(self):
+    def test_selected_active_services_do_not_require_capability_verification_for_approval(self):
         from apps.workers.approval import get_approval_requirements
 
         second_service = Service.objects.create(
             category=self.category, title="Switch Repair",
             booking_mode="scheduled", pricing_type="fixed", is_active=True,
         )
-        second_link = WorkerService.objects.create(
+        WorkerService.objects.create(
             worker=self.worker, service=second_service,
-            capabilities=["Switch replacement"], capabilities_verified=True,
+            capabilities=[], capabilities_verified=False,
         )
-        self.link.capabilities = ["Wiring replacement"]
-        self.link.capabilities_verified = True
-        self.link.save(update_fields=["capabilities", "capabilities_verified", "updated_at"])
-        self.assertTrue(get_approval_requirements(self.worker)["has_verified_capabilities"])
-        second_link.capabilities_verified = False
-        second_link.save(update_fields=["capabilities_verified", "updated_at"])
-        self.assertFalse(get_approval_requirements(self.worker)["has_verified_capabilities"])
+        self.assertTrue(get_approval_requirements(self.worker)["has_service"])
+        self.assertNotIn("has_verified_capabilities", get_approval_requirements(self.worker))
+
