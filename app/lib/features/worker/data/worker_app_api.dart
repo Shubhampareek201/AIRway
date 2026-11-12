@@ -144,6 +144,8 @@ class WorkerAppApi {
     String? qualification,
     String? equipmentDetails,
     required String residentialAddress,
+    double? latitude,
+    double? longitude,
     String? landmark,
     String? upiId,
     required Map<int, Map<String, String>> schedule,
@@ -157,6 +159,8 @@ class WorkerAppApi {
       'email': email,
       'gender': gender,
       'residential_address': residentialAddress,
+      if (latitude != null && longitude != null) 'latitude': latitude,
+      if (latitude != null && longitude != null) 'longitude': longitude,
       'schedule': jsonEncode(schedule.map((key, value) => MapEntry(key.toString(), value))),
     };
     if (qualification != null && qualification.trim().isNotEmpty) {
