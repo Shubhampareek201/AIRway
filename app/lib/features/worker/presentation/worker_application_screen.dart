@@ -37,7 +37,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _landmarkController = TextEditingController();
   final TextEditingController _upiController = TextEditingController();
-  String _selectedGender = 'other';
+  String? _selectedGender;
   final Map<int, Map<String, String>> _weeklySchedule = {};
 
   File? _profilePhoto;
@@ -362,7 +362,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         bio: _bioController.text.isEmpty ? null : _bioController.text,
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
-        gender: _selectedGender,
+        gender: _selectedGender ?? '',
         qualification: _qualificationController.text,
         equipmentDetails: _equipmentController.text,
         residentialAddress: _addressController.text.trim(),
@@ -479,6 +479,20 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           );
           return;
         }
+        if (_nameController.text.trim().isEmpty ||
+            !_emailController.text.trim().contains('@') ||
+            _selectedGender == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Enter your name and valid email, and select your gender.')),
+          );
+          return;
+        }
+        if (_addressController.text.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Enter your residential address or use GPS.')),
+          );
+          return;
+        }
         setState(() => _currentStep = WorkerApplicationStep.services);
         break;
       case WorkerApplicationStep.services:
@@ -489,7 +503,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           return;
         }
         if (_selectedServiceIds.any((id) => (_buildServiceCapabilities()[id]?.isNotEmpty ?? false) == false)) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose or enter at least one task for every selected service.')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one available task for every selected service.')));
           return;
         }
         setState(() => _currentStep = WorkerApplicationStep.zones);
@@ -659,11 +673,11 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const SizedBox(height: 10),
         TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Full legal name *', border: OutlineInputBorder())),
         const SizedBox(height: 10),
-        TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address', border: OutlineInputBorder())),
+        TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address *', border: OutlineInputBorder())),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           initialValue: _selectedGender,
-          decoration: const InputDecoration(labelText: 'Gender (for service matching)', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'Gender * (used for service matching)', border: OutlineInputBorder()),
           items: const [
             DropdownMenuItem(value: 'male', child: Text('Male')),
             DropdownMenuItem(value: 'female', child: Text('Female')),
