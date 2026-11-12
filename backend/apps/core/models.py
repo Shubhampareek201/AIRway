@@ -39,6 +39,10 @@ class Zone(TimeStampedModel):
         null=True,
         blank=True,
     )
+    coverage_radius_meters = models.PositiveIntegerField(
+        default=5000,
+        help_text="Maximum GPS distance from this zone centre for automatic worker zone assignment.",
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
