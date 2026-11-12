@@ -69,13 +69,16 @@ def eligible_workers_for_service(service, *, zone=None, city=None, required_task
 
     queryset = eligible_worker_profiles(city=city, zone=zone).filter(
         worker_services__service=service,
-        worker_services__capabilities_verified=True,
-    ).exclude(worker_services__service=service, worker_services__capabilities=[])
+    )
     required = [str(task).strip() for task in (required_tasks or []) if str(task).strip()]
     if required:
+        # Task-specific packages require an explicit, admin-verified skill claim.
         queryset = queryset.filter(
             worker_services__service=service,
-            worker_services__capabilities__contains=required,
             worker_services__capabilities_verified=True,
+            worker_services__capabilities__contains=required,
         )
+    # Backward compatibility: approved workers enrolled before capability
+    # capture may still receive task-neutral service variants. Empty task lists
+    # never qualify for a variant that declares required tasks.
     return queryset.distinct().select_related("user")
