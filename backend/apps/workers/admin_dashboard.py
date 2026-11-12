@@ -168,7 +168,12 @@ def bookings(request):
     if query:
         queryset = queryset.filter(
             Q(customer__name__icontains=query) | Q(customer__phone__icontains=query)
-            | Q(service__title__icontains=query) | Q(pk__icontains=query)
+            | Q(service__title__icontains=query)
+        )
+        if query.isdigit():
+            queryset = queryset | Booking.objects.filter(pk=int(query)).select_related(
+                "customer", "service", "variant", "assignment__worker__user", "order_item__order"
+            )
         )
     return render(request, "workers/admin_dashboard/bookings.html", {
         "bookings": queryset.order_by("-created_at")[:200],
@@ -241,7 +246,7 @@ def activity(request):
     for entry in admin_entries:
         events.append({
             "when": entry.action_time,
-            "actor": entry.user.get_full_name() or entry.user.name or entry.user.phone,
+            "actor": entry.user.name or entry.user.phone,
             "subject": entry.object_repr,
             "detail": entry.get_change_message() or "Admin record updated",
             "kind": "Admin change",
