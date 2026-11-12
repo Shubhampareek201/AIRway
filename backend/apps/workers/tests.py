@@ -1992,7 +1992,8 @@ class CompleteWorkerOnboardingSubmissionTests(TestCase):
         from apps.workers.approval import get_approval_requirements
         requirements = get_approval_requirements(profile)
         self.assertTrue(requirements["has_service"])
-        self.assertTrue(requirements["eligible"])
+        self.assertNotIn("Task capabilities verified by admin", requirements["missing"])
+        self.assertFalse(requirements["eligible"])  # ID and photo still await admin verification.
 
     def test_gps_coordinates_do_not_override_worker_selected_service_areas(self):
         payload = self._payload()
