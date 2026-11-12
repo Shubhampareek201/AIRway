@@ -759,7 +759,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           const Divider(height: 28),
           Text("Specific tasks you can perform", style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text)),
           const SizedBox(height: 6),
-          const Text("Choose tasks listed in your service packages where available. Add any other work you are trained to perform, separated by commas. Admin will verify these claims.", style: TextStyle(color: AirwayColors.textSecondary)),
+          const Text("Select the tasks you can perform. AIRway will verify your selected skills before enabling task-specific jobs.", style: TextStyle(color: AirwayColors.textSecondary)),
           const SizedBox(height: 10),
           ..._services.where((service) => _selectedServiceIds.contains(service.id)).map((service) {
             final tasks = service.variants.expand((variant) => variant.includedTasks).map((task) => task.trim()).where((task) => task.isNotEmpty).toSet().toList()..sort();
@@ -795,7 +795,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Areas where you are available to work',
+            'Your service area is assigned automatically from your location.',
             style: TextStyle(color: AirwayColors.textSecondary),
           ),
           const SizedBox(height: 12),
@@ -805,7 +805,12 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                   ? Text('Failed to load zones: $_error', style: const TextStyle(color: Colors.red))
                   : _zones.isEmpty
                       ? const Text('No zones available')
-                      : Wrap(
+                      : _latitude != null && _selectedZoneIds.isNotEmpty
+                          ? Text(
+                              'Assigned area: ${_zones.firstWhere((z) => z['id'] == _selectedZoneIds.first)['name']}',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            )
+                          : Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: _zones.map<Widget>((zone) {
