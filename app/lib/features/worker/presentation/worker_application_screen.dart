@@ -542,10 +542,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           );
           return;
         }
-        if (_selectedServiceIds.any((id) => (_buildServiceCapabilities()[id]?.isNotEmpty ?? false) == false)) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one available task for every selected service.')));
-          return;
-        }
         setState(() => _currentStep = WorkerApplicationStep.zones);
         break;
       case WorkerApplicationStep.zones:
@@ -828,7 +824,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text)),
           const SizedBox(height: 6),
           const Text(
-            'For each selected service, choose the work you are confident doing. AIRway can verify these skills before matching relevant customer jobs.',
+            'If task options are available, you may select the work you can do. This is optional during application; AIRway will confirm your skills before approval.',
             style: TextStyle(color: AirwayColors.textSecondary),
           ),
           const SizedBox(height: 10),
@@ -871,7 +867,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
-                          'Service options are not configured yet. Please contact AIRway support before selecting this service.',
+                          'No task options are configured for this service yet. You can continue; AIRway will confirm your skills during application review.',
                           style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
                         ),
                       ),

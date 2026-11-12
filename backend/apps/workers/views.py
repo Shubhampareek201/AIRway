@@ -354,8 +354,8 @@ class WorkerOnboardingView(APIView):
                 if not isinstance(raw_tasks, list):
                     return Response({"service_capabilities": ["Tasks must be a list."]}, status=400)
                 tasks = list(dict.fromkeys(str(task).strip() for task in raw_tasks if str(task).strip()))
-                if not tasks or len(tasks) > 100 or any(len(task) > 150 for task in tasks):
-                    return Response({"service_capabilities": ["Each service needs 1-100 task names, up to 150 characters each."]}, status=400)
+                if len(tasks) > 100 or any(len(task) > 150 for task in tasks):
+                    return Response({"service_capabilities": ["Each service can include up to 100 task names, each up to 150 characters."]}, status=400)
                 service_capabilities[service_id] = tasks
             if set(service_capabilities) != set(service_ids):
                 return Response({"service_capabilities": ["Submit task capabilities for every selected service only."]}, status=400)

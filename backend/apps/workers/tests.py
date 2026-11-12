@@ -1970,6 +1970,30 @@ class CompleteWorkerOnboardingSubmissionTests(TestCase):
         self.assertEqual(profile.schedules.count(), 2)
         self.assertTrue(profile.documents.filter(doc_type=WorkerDocument.DocumentType.PHOTO).exists())
 
+    def test_application_can_submit_service_and_experience_without_preconfigured_tasks(self):
+        import json
+        payload = self._payload()
+        payload["service_capabilities"] = json.dumps({str(self.service.pk): []})
+        payload["service_experience_years"] = json.dumps({str(self.service.pk): 4})
+
+        response = self.client.post(
+            "/api/v1/workers/apply/", payload, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        profile = WorkerProfile.objects.get(user=self.user)
+        worker_service = profile.worker_services.get(service=self.service)
+        self.assertEqual(worker_service.capabilities, [])
+        self.assertFalse(worker_service.capabilities_verified)
+        self.assertEqual(worker_service.experience_years, 4)
+
+        # The application may be submitted, but empty/unverified skills cannot
+        # pass the separate admin approval gate.
+        from apps.workers.approval import get_approval_requirements
+        requirements = get_approval_requirements(profile)
+        self.assertFalse(requirements["has_verified_capabilities"])
+        self.assertFalse(requirements["eligible"])
+
     def test_gps_coordinates_do_not_override_worker_selected_service_areas(self):
         payload = self._payload()
         payload["latitude"] = "25.123456"
