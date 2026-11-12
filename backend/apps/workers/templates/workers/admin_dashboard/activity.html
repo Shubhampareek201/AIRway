@@ -1,6 +1,6 @@
 {% extends "workers/admin_dashboard/base.html" %}
 {% block title %}Activity log · AIRway Admin{% endblock %}
 {% block content %}
-<div class="page-head"><div><div class="eyebrow">Operations / Audit</div><h1>Activity log</h1><div class="muted">Recent administrative changes and booking status transitions. Use this to verify who changed what and when.</div></div><a class="btn btn-light" href="/admin/admin/logentry/">Full admin log ↗</a></div>
+<div class="page-head"><div><div class="eyebrow">Operations / Audit</div><h1>Activity log</h1><div class="muted">Recent administrative changes and booking status transitions. Use this to verify who changed what and when.</div></div><a class="btn btn-light" href="/admin/">Full admin log ↗</a></div>
 <div class="panel"><div class="panel-head"><h2>Latest activity <span class="muted">({{ events|length }} events)</span></h2></div><div class="panel-body"><div class="activity-list">{% for event in events %}<div class="activity-item"><div class="activity-time">{{ event.when|date:"d M Y, h:i A" }}<span class="subline">{{ event.kind }}</span></div><div><div class="activity-title">{{ event.subject }}</div><div class="activity-detail">{{ event.detail }} · By {{ event.actor|default:"System" }}</div></div></div>{% empty %}<div class="empty">No recorded activity yet.</div>{% endfor %}</div></div></div>
 {% endblock %}
