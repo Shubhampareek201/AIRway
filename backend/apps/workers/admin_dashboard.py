@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.models import User
 from apps.bookings.models import Booking, BookingStatusHistory, Order
-from apps.catalog.models import Category, Service
+from apps.catalog.models import AddOn, Category, Service, ServiceVariant
 from apps.payments.models import Payment, PaymentRefund
 from apps.workers.models import WorkerDocument, WorkerProfile
 from .approval import approve_worker, get_approval_requirements
@@ -267,6 +267,27 @@ def activity(request):
             "detail": f"{entry.from_status or 'Created'} → {entry.to_status}. {entry.note}".strip(),
             "kind": "Booking update",
         })
+    for entry in Payment.history.select_related("history_user").order_by("-history_date")[:30]:
+        actor = (entry.history_user.name or entry.history_user.phone) if entry.history_user else "Payment system"
+        action = {"+": "created", "~": "updated", "-": "deleted"}.get(entry.history_type, "changed")
+        events.append({
+            "when": entry.history_date,
+            "actor": actor,
+            "subject": f"Payment #{entry.id}",
+            "detail": f"Payment {action}: {entry.stage}, {entry.status}, ₹{entry.amount}",
+            "kind": "Payment update",
+        })
+    for model, label in ((Service, "Service"), (ServiceVariant, "Service variant"), (AddOn, "Service add-on")):
+        for entry in model.history.select_related("history_user").order_by("-history_date")[:20]:
+            actor = (entry.history_user.name or entry.history_user.phone) if entry.history_user else "System / import"
+            action = {"+": "created", "~": "updated", "-": "deleted"}.get(entry.history_type, "changed")
+            events.append({
+                "when": entry.history_date,
+                "actor": actor,
+                "subject": f"{label}: {entry.title}",
+                "detail": f"Catalogue item {action}. Active: {'yes' if entry.is_active else 'no'}",
+                "kind": "Catalogue update",
+            })
     events.sort(key=lambda event: event["when"], reverse=True)
     return render(request, "workers/admin_dashboard/activity.html", {
         "events": events[:50],
