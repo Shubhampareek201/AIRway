@@ -109,7 +109,9 @@ class WorkerProfile(TimeStampedModel):
 class WorkerDocument(TimeStampedModel):
 
     class DocumentType(models.TextChoices):
-        AADHAAR = "aadhaar", "Aadhaar"
+        AADHAAR = "aadhaar", "Legacy Aadhaar"
+        AADHAAR_FRONT = "aadhaar_front", "Aadhaar front"
+        AADHAAR_BACK = "aadhaar_back", "Aadhaar back"
         ID = "id", "Other ID"
         PHOTO = "photo", "Photograph"
         ADDRESS_PROOF = "address_proof", "Address proof"
