@@ -290,3 +290,71 @@ class WorkerApprovalServiceTests(TestCase):
         self.assertIn("/control/login/", response.url)
         self.worker.refresh_from_db()
         self.assertEqual(self.worker.status, WorkerProfile.Status.PENDING)
+
+
+    def test_all_operations_dashboard_pages_render_for_super_admin(self):
+        self.client.force_login(self.admin)
+        routes = (
+            "admin_dashboard:dashboard",
+            "admin_dashboard:applications",
+            "admin_dashboard:professionals",
+            "admin_dashboard:customers",
+            "admin_dashboard:bookings",
+            "admin_dashboard:payments",
+            "admin_dashboard:catalogue",
+            "admin_dashboard:activity",
+        )
+        for route in routes:
+            with self.subTest(route=route):
+                response = self.client.get(reverse(route))
+                self.assertEqual(response.status_code, 200)
+
+    def test_professional_can_be_suspended_and_restored_with_audit_reason(self):
+        from django.contrib.admin.models import LogEntry
+
+        self.worker.status = WorkerProfile.Status.APPROVED
+        self.worker.is_online = True
+        self.worker.save()
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("admin_dashboard:update_professional_status", args=[self.worker.pk]),
+            {"action": "suspend", "reason": "Documents need re-verification."},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.worker.refresh_from_db()
+        self.assertEqual(self.worker.status, WorkerProfile.Status.SUSPENDED)
+        self.assertFalse(self.worker.is_online)
+        self.assertTrue(
+            LogEntry.objects.filter(
+                object_id=str(self.worker.pk),
+                change_message__contains="Documents need re-verification.",
+            ).exists()
+        )
+
+        response = self.client.post(
+            reverse("admin_dashboard:update_professional_status", args=[self.worker.pk]),
+            {"action": "restore", "reason": "Documents re-verified."},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.worker.refresh_from_db()
+        self.assertEqual(self.worker.status, WorkerProfile.Status.APPROVED)
+        self.assertFalse(self.worker.is_online)
+
+    def test_professional_status_change_requires_reason_and_post(self):
+        self.worker.status = WorkerProfile.Status.APPROVED
+        self.worker.save()
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("admin_dashboard:update_professional_status", args=[self.worker.pk]),
+            {"action": "suspend", "reason": ""},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.worker.refresh_from_db()
+        self.assertEqual(self.worker.status, WorkerProfile.Status.APPROVED)
+
+        response = self.client.get(
+            reverse("admin_dashboard:update_professional_status", args=[self.worker.pk])
+        )
+        self.assertEqual(response.status_code, 405)
