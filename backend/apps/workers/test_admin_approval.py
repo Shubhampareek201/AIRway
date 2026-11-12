@@ -358,3 +358,8 @@ class WorkerApprovalServiceTests(TestCase):
             reverse("admin_dashboard:update_professional_status", args=[self.worker.pk])
         )
         self.assertEqual(response.status_code, 405)
+
+    def test_orders_page_renders_for_super_admin(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("admin_dashboard:orders"))
+        self.assertEqual(response.status_code, 200)
