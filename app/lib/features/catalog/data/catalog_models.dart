@@ -340,6 +340,8 @@ class Service {
   final int categoryId;
   final String categoryName;
   final String? categorySlug;
+  final String categoryRootName;
+  final String categoryRootSlug;
   final String title;
   final String? titleHi;
   final String? description;
@@ -372,6 +374,8 @@ class Service {
     required this.categoryId,
     required this.categoryName,
     this.categorySlug,
+    this.categoryRootName = '',
+    this.categoryRootSlug = '',
     required this.title,
     this.titleHi,
     this.description,
@@ -406,6 +410,8 @@ class Service {
       categoryId: map['category'],
       categoryName: map['category_name'] ?? '',
       categorySlug: map['category_slug'],
+      categoryRootName: map['category_root_name'] ?? map['category_name'] ?? '',
+      categoryRootSlug: map['category_root_slug'] ?? map['category_slug'] ?? '',
       title: map['title'] ?? '',
       titleHi: map['title_hi'],
       description: map['description'],

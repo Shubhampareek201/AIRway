@@ -249,7 +249,13 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   void _toggleZone(int zoneId) {
-    setState(() { _selectedZoneIds..clear()..add(zoneId); });
+    setState(() {
+      if (_selectedZoneIds.contains(zoneId)) {
+        _selectedZoneIds.remove(zoneId);
+      } else {
+        _selectedZoneIds.add(zoneId);
+      }
+    });
   }
 
   double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
@@ -263,45 +269,79 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   Future<void> _fetchCurrentLocation() async {
+    if (_loading) return;
     setState(() { _loading = true; _error = null; });
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        throw Exception('Location permission is needed. You can type your address instead.');
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw Exception('Please turn on Location/GPS on your phone, then try again.');
       }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permission is blocked. Allow it in phone Settings, or enter your address manually.');
+      }
+      if (permission == LocationPermission.denied) {
+        throw Exception('Location permission was not granted. You can enter your address manually.');
+      }
+
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      final address = await LocationApi.reverse(position.latitude, position.longitude);
-      final formatted = (address['formatted'] ?? '').toString().trim();
-      if (formatted.isEmpty) throw Exception('Could not find an address. Please type it manually.');
+      ).timeout(const Duration(seconds: 25));
+
+      // Keep GPS even when the reverse-geocoding provider is temporarily unavailable.
+      String formatted = '';
+      try {
+        final address = await LocationApi.reverse(position.latitude, position.longitude);
+        formatted = (address['formatted'] ?? '').toString().trim();
+      } catch (_) {
+        // The worker can enter the address manually.
+      }
+
       final matches = <Map<String, dynamic>>[];
       for (final raw in _zones) {
         if (raw is! Map) continue;
         final zone = Map<String, dynamic>.from(raw);
         final lat = double.tryParse(zone['latitude']?.toString() ?? '');
         final lon = double.tryParse(zone['longitude']?.toString() ?? '');
-        if (lat == null || lon == null) continue;
-        final distance = _distanceMeters(position.latitude, position.longitude, lat, lon);
         final radius = int.tryParse(zone['coverage_radius_meters']?.toString() ?? '') ?? 0;
-        if (distance <= radius) { zone['_distance'] = distance; matches.add(zone); }
+        if (lat == null || lon == null || radius <= 0) continue;
+        final distance = _distanceMeters(position.latitude, position.longitude, lat, lon);
+        if (distance <= radius) {
+          zone['_distance'] = distance;
+          matches.add(zone);
+        }
       }
-      if (matches.isEmpty) throw Exception('AIRway is not serving this location yet.');
-      matches.sort((a, b) => (a['_distance'] as double).compareTo(b['_distance'] as double));
-      final selectedZone = matches.first;
+      matches.sort((a, b) =>
+          (a['_distance'] as double).compareTo(b['_distance'] as double));
+
       if (!mounted) return;
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
-        _addressController.text = formatted;
-        _selectedZoneIds..clear()..add(selectedZone['id'] as int);
+        if (formatted.isNotEmpty) _addressController.text = formatted;
+        // GPS only suggests a nearby work area; it never restricts the worker.
+        if (matches.isNotEmpty) {
+          final nearestId = matches.first['id'];
+          if (nearestId is int && !_selectedZoneIds.contains(nearestId)) {
+            _selectedZoneIds.add(nearestId);
+          }
+        }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Service area selected: ${selectedZone['name']}')),
-      );
+
+      final message = formatted.isEmpty
+          ? 'GPS captured. Enter your residential address manually and choose your working areas below.'
+          : matches.isEmpty
+              ? 'Address detected. Choose the AIRway areas where you are willing to work.'
+              : 'Address detected. Nearby area suggested; you can select multiple working areas.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final message = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -563,7 +603,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
               const SizedBox(height: 16),
               Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: _submitApplication, child: const Text('Retry')),
+              OutlinedButton(onPressed: _loadServicesAndZones, child: const Text('Retry loading services and areas')),
             ],
           ),
         ),
@@ -711,136 +751,207 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   Widget _buildServicesSection() {
-    final grouped = <String, List<Service>>{};
+    final grouped = <String, Map<String, List<Service>>>{};
     for (final service in _services) {
-      grouped.putIfAbsent(service.categoryName, () => []).add(service);
+      final rootName = service.categoryRootName.trim().isEmpty
+          ? service.categoryName
+          : service.categoryRootName;
+      grouped.putIfAbsent(rootName, () => {});
+      grouped[rootName]!.putIfAbsent(service.categoryName, () => []).add(service);
     }
+    final selectedServices = _services
+        .where((service) => _selectedServiceIds.contains(service.id))
+        .toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Services You Offer *',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text),
-        ),
+        Text('Choose your main service areas *',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
         const SizedBox(height: 8),
         const Text(
-          'Choose every individual service you are trained and willing to provide. Customers will only see services that have an approved, eligible worker in their area.',
+          'Open one of AIRway’s four main service areas, then select the specific services you can provide. You can choose more than one area and multiple services.',
           style: TextStyle(color: AirwayColors.textSecondary),
         ),
         const SizedBox(height: 12),
         if (_services.isEmpty)
-          const Text('No active services are available for worker registration.')
+          const Text('No active launch services are available for worker registration. Please contact AIRway support.')
         else
-          ...grouped.entries.map((entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 18),
+          ...grouped.entries.map((rootEntry) {
+            final count = rootEntry.value.values
+                .fold<int>(0, (total, services) => total + services.length);
+            final hasSelection = rootEntry.value.values
+                .expand((services) => services)
+                .any((service) => _selectedServiceIds.contains(service.id));
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ExpansionTile(
+                initiallyExpanded: hasSelection,
+                title: Text(rootEntry.key,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text(hasSelection
+                    ? 'Selected services in this area'
+                    : '$count services available'),
+                children: [
+                  for (final subcategory in rootEntry.value.entries)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(subcategory.key,
+                              style: TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: subcategory.value.map((service) {
+                              final selected = _selectedServiceIds.contains(service.id);
+                              return FilterChip(
+                                selected: selected,
+                                label: Text(service.title),
+                                onSelected: (_) => _toggleService(service.id),
+                                selectedColor: AirwayColors.primary.withAlpha(30),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        if (selectedServices.isNotEmpty) ...[
+          const Divider(height: 28),
+          Text('What tasks can you perform?',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+          const SizedBox(height: 6),
+          const Text(
+            'For each selected service, choose the work you are confident doing. AIRway can verify these skills before matching relevant customer jobs.',
+            style: TextStyle(color: AirwayColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          ...selectedServices.map((service) {
+            final tasks = service.variants
+                .expand((variant) => variant.includedTasks)
+                .map((task) => task.trim())
+                .where((task) => task.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
+            final selected = _selectedServiceCapabilities.putIfAbsent(
+                service.id, () => <String>{});
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(entry.key, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AirwayColors.primary)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: entry.value.map((service) {
-                        final selected = _selectedServiceIds.contains(service.id);
-                        return FilterChip(
-                          selected: selected,
-                          label: Text(service.title),
-                          onSelected: (_) => _toggleService(service.id),
-                          selectedColor: AirwayColors.primary.withAlpha(30),
-                          labelStyle: TextStyle(color: selected ? Colors.white : AirwayColors.text),
-                        );
-                      }).toList(),
+                    Text(service.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    if (tasks.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: tasks.map((task) => FilterChip(
+                          label: Text(task),
+                          selected: selected.contains(task),
+                          onSelected: (value) => setState(() {
+                            if (value) {
+                              selected.add(task);
+                            } else {
+                              selected.remove(task);
+                            }
+                          }),
+                        )).toList(),
+                      ),
+                    ] else
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Service options are not configured yet. Please contact AIRway support before selecting this service.',
+                          style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: _selectedServiceExperience[service.id] ?? 0,
+                      decoration: const InputDecoration(
+                        labelText: 'Experience in this service',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: List.generate(
+                        31,
+                        (year) => DropdownMenuItem(
+                          value: year,
+                          child: Text(year == 0
+                              ? 'Beginner / Less than 1 year'
+                              : '$year ${year == 1 ? 'year' : 'years'}'),
+                        ),
+                      ),
+                      onChanged: (value) => setState(() {
+                        if (value != null) _selectedServiceExperience[service.id] = value;
+                      }),
                     ),
                   ],
                 ),
-              )),
-        if (_selectedServiceIds.isNotEmpty) ...[
-          const Divider(height: 28),
-          Text("Specific tasks you can perform", style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AirwayColors.text)),
-          const SizedBox(height: 6),
-          const Text("Select the tasks you can perform. AIRway will verify your selected skills before enabling task-specific jobs.", style: TextStyle(color: AirwayColors.textSecondary)),
-          const SizedBox(height: 10),
-          ..._services.where((service) => _selectedServiceIds.contains(service.id)).map((service) {
-            final tasks = service.variants.expand((variant) => variant.includedTasks).map((task) => task.trim()).where((task) => task.isNotEmpty).toSet().toList()..sort();
-            final selected = _selectedServiceCapabilities.putIfAbsent(service.id, () => <String>{});
-            return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(service.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-              if (tasks.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(spacing: 6, runSpacing: 6, children: tasks.map((task) => FilterChip(label: Text(task), selected: selected.contains(task), onSelected: (value) => setState(() { if (value) { selected.add(task); } else { selected.remove(task); } }))).toList()),
-              ] else
-                const Padding(padding: EdgeInsets.only(top: 8), child: Text("Service tasks are not configured yet. Please contact AIRway support; no manual task entry is needed.", style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary))),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                value: _selectedServiceExperience[service.id] ?? 0,
-                decoration: const InputDecoration(labelText: 'Your experience in this service', border: OutlineInputBorder()),
-                items: List.generate(31, (year) => DropdownMenuItem(value: year, child: Text(year == 0 ? 'Beginner / Less than 1 year' : '$year ${year == 1 ? 'year' : 'years'}'))),
-                onChanged: (value) => setState(() { if (value != null) _selectedServiceExperience[service.id] = value; }),
               ),
-            ])));
+            );
           }),
         ],
       ],
     );
   }
 
-
   Widget _buildZonesSection() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Service Zones *',
+            'Where are you willing to work? *',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Your service area is assigned automatically from your location.',
+            'Your home address and working areas are different. Choose every active AIRway area you can travel to. GPS only suggests a nearby area; it never limits your selection.',
             style: TextStyle(color: AirwayColors.textSecondary),
           ),
           const SizedBox(height: 12),
-          _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-                  ? Text('Failed to load zones: $_error', style: const TextStyle(color: Colors.red))
-                  : _zones.isEmpty
-                      ? const Text('No zones available')
-                      : _latitude != null && _selectedZoneIds.isNotEmpty
-                          ? Text(
-                              'Assigned area: ${_zones.firstWhere((z) => z['id'] == _selectedZoneIds.first)['name']}',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            )
-                          : Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _zones.map<Widget>((zone) {
-                            final zoneMap = zone as Map<String, dynamic>;
-                            final isSelected = _selectedZoneIds.contains(zoneMap['id']);
-                            return ChoiceChip(
-                              selected: isSelected,
-                              label: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(zoneMap['name'] as String, style: TextStyle(
-                                    color: isSelected ? Colors.white : AirwayColors.text,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                  )),
-                                  if (zoneMap['city_name'] != null)
-                                    Text(zoneMap['city_name'] as String,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: isSelected ? Colors.white70 : AirwayColors.textSecondary,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              onSelected: (_) => _toggleZone(zoneMap['id'] as int),
-                              selectedColor: AirwayColors.primary,
-                              labelStyle: const TextStyle(),
-                            );
-                          }).toList(),
-                        ),
+          if (_zones.isEmpty)
+            const Text('No active service areas are configured yet. Please contact AIRway support.')
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _zones.map<Widget>((rawZone) {
+                final zoneMap = Map<String, dynamic>.from(rawZone as Map);
+                final zoneId = int.tryParse(zoneMap['id'].toString());
+                if (zoneId == null) return const SizedBox.shrink();
+                final isSelected = _selectedZoneIds.contains(zoneId);
+                final cityName = zoneMap['city_name']?.toString();
+                return FilterChip(
+                  selected: isSelected,
+                  label: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(zoneMap['name']?.toString() ?? 'Service area',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (cityName != null && cityName.isNotEmpty)
+                        Text(cityName, style: const TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                  onSelected: (_) => _toggleZone(zoneId),
+                  selectedColor: AirwayColors.primary.withAlpha(30),
+                );
+              }).toList(),
+            ),
+          if (_selectedZoneIds.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('${_selectedZoneIds.length} working area(s) selected',
+                style: TextStyle(color: AirwayColors.primary, fontWeight: FontWeight.w700)),
+          ],
         ],
       );
 

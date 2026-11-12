@@ -120,6 +120,21 @@ class ServiceSerializer(serializers.ModelSerializer):
     form_fields = FormFieldSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source="category.title", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
+    category_root_name = serializers.SerializerMethodField()
+    category_root_slug = serializers.SerializerMethodField()
+
+    @staticmethod
+    def _root_category(obj):
+        category = obj.category
+        while category.parent_id and category.parent is not None:
+            category = category.parent
+        return category
+
+    def get_category_root_name(self, obj):
+        return self._root_category(obj).title
+
+    def get_category_root_slug(self, obj):
+        return self._root_category(obj).slug
 
     def get_variants(self, obj):
         queryset = obj.variants.filter(is_active=True)
@@ -145,7 +160,8 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = [
-            "id", "category", "category_name", "category_slug", "title", "title_hi", "description",
+            "id", "category", "category_name", "category_slug",
+            "category_root_name", "category_root_slug", "title", "title_hi", "description",
             "is_available",
             "image", "booking_mode", "booking_mode_display", "pricing_type", "pricing_type_display",
             "unit_label", "visit_fee", "duration_minutes", "buffer_minutes",

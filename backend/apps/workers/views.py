@@ -441,28 +441,9 @@ class WorkerOnboardingView(APIView):
         except Exception:
             return Response({"location": ["Provide valid GPS coordinates together."]}, status=400)
 
-        # New clients submit GPS coordinates (from GPS or a manually selected
-        # geocoded address). Resolve exactly one active service zone server-side.
-        if latitude is not None and longitude is not None:
-            import math
-            matching_zones = []
-            for candidate in Zone.objects.filter(
-                is_active=True, city__is_active=True,
-                latitude__isnull=False, longitude__isnull=False,
-            ):
-                lat1, lon1 = math.radians(float(latitude)), math.radians(float(longitude))
-                lat2, lon2 = math.radians(float(candidate.latitude)), math.radians(float(candidate.longitude))
-                dlat, dlon = lat2 - lat1, lon2 - lon1
-                haversine = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-                distance = 6371000 * 2 * math.asin(math.sqrt(haversine))
-                if distance <= candidate.coverage_radius_meters:
-                    matching_zones.append((distance, candidate))
-            if not matching_zones:
-                return Response({
-                    "location": ["AIRway is not serving this location yet. Please choose an address inside an active service area."]
-                }, status=400)
-            nearest_zone = min(matching_zones, key=lambda item: item[0])[1]
-            zones = [nearest_zone]
+        # Residential GPS and professional working areas are different concepts.
+        # The worker explicitly selects one or more service zones above. Never
+        # replace that selection with a single nearest zone derived from home GPS.
 
         profile = WorkerProfile.objects.create(
             user=request.user,

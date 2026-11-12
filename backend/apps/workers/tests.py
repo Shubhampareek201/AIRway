@@ -1970,6 +1970,43 @@ class CompleteWorkerOnboardingSubmissionTests(TestCase):
         self.assertEqual(profile.schedules.count(), 2)
         self.assertTrue(profile.documents.filter(doc_type=WorkerDocument.DocumentType.PHOTO).exists())
 
+    def test_gps_coordinates_do_not_override_worker_selected_service_areas(self):
+        payload = self._payload()
+        payload["latitude"] = "25.123456"
+        payload["longitude"] = "75.123456"
+
+        response = self.client.post(
+            "/api/v1/workers/apply/", payload, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        profile = WorkerProfile.objects.get(user=self.user)
+        self.assertEqual(
+            list(profile.worker_zones.values_list("zone_id", flat=True)),
+            [self.zone.pk],
+        )
+        self.assertEqual(str(profile.latitude), "25.123456")
+        self.assertEqual(str(profile.longitude), "75.123456")
+
+    def test_worker_can_select_multiple_working_areas(self):
+        import json
+        second_zone = Zone.objects.create(
+            name="Rawatbhata North", city=self.city, is_active=True
+        )
+        payload = self._payload()
+        payload["zones"] = json.dumps([self.zone.pk, second_zone.pk])
+
+        response = self.client.post(
+            "/api/v1/workers/apply/", payload, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        profile = WorkerProfile.objects.get(user=self.user)
+        self.assertCountEqual(
+            profile.worker_zones.values_list("zone_id", flat=True),
+            [self.zone.pk, second_zone.pk],
+        )
+
     def test_invalid_selected_service_rejects_application_without_partial_profile(self):
         payload = self._payload()
         payload["services"] = "[999999]"

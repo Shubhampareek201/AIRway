@@ -324,7 +324,7 @@ class WorkerAppApi {
 
     try {
       final request = await client.getUrl(
-        Uri.parse('${AuthApi.baseUrl}/api/v1/catalog/services/?is_active=true&for_worker=true'),
+        Uri.parse('${AuthApi.baseUrl}/api/v1/catalog/services/?is_active=true&for_worker=true&launch_only=true'),
       );
       request.headers.set(
         HttpHeaders.authorizationHeader,
