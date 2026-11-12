@@ -619,7 +619,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       child: ListTile(
         leading: Icon(icon, color: AirwayColors.primary),
         title: Text(title),
-        trailing: Text(value, textAlign: TextAlign.end, overflow: TextOverflow.ellipsis),
+        // Keep potentially long profile values in the subtitle instead of
+        // ListTile.trailing. A trailing paragraph can claim the full tile
+        // width on narrow devices and trigger a RenderListTile layout error.
+        subtitle: Text(value, textAlign: TextAlign.start),
+        isThreeLine: false,
       ),
     );
   }
