@@ -186,6 +186,37 @@ def bookings(request):
 
 
 @super_admin_required
+def orders(request):
+    status_filter = request.GET.get("status", "all")
+    allowed = {value for value, _label in Order.Status.choices}
+    if status_filter not in allowed and status_filter != "all":
+        status_filter = "all"
+    query = request.GET.get("q", "").strip()
+    queryset = Order.objects.select_related("customer", "address").prefetch_related(
+        "items__booking__service", "payments"
+    )
+    if status_filter != "all":
+        queryset = queryset.filter(status=status_filter)
+    if query:
+        queryset = queryset.filter(
+            Q(customer__name__icontains=query) | Q(customer__phone__icontains=query)
+        )
+        if query.isdigit():
+            exact = Order.objects.filter(pk=int(query))
+            if status_filter != "all":
+                exact = exact.filter(status=status_filter)
+            queryset = queryset | exact.select_related("customer", "address").prefetch_related(
+                "items__booking__service", "payments"
+            )
+    return render(request, "workers/admin_dashboard/orders.html", {
+        "orders": queryset.order_by("-created_at")[:200],
+        "status_filter": status_filter,
+        "query": query,
+        "active_page": "orders",
+    })
+
+
+@super_admin_required
 def payments(request):
     status_filter = request.GET.get("status", "all")
     allowed = {value for value, _label in Payment.Status.choices}
