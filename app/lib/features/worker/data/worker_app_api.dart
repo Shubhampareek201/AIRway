@@ -137,6 +137,7 @@ class WorkerAppApi {
     required Map<int, List<String>> serviceCapabilities,
     required List<int> zoneIds,
     int? experienceYears,
+    Map<int, int>? serviceExperienceYears,
     String? bio,
     required String name,
     required String email,
@@ -154,6 +155,7 @@ class WorkerAppApi {
     final data = <String, dynamic>{
       'services': serviceIds,
       'service_capabilities': jsonEncode(serviceCapabilities.map((key, value) => MapEntry(key.toString(), value))),
+      if (serviceExperienceYears != null) 'service_experience_years': jsonEncode(serviceExperienceYears.map((key, value) => MapEntry(key.toString(), value))),
       'zones': zoneIds,
       'name': name,
       'email': email,
