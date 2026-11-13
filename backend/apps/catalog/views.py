@@ -217,13 +217,12 @@ class CategoryListView(generics.ListAPIView):
         )
         location = _location_from_address(self.request)
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
-        service_ids = None
+        service_ids = _customer_priced_service_ids()
         if location is not None:
-            service_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
+            service_ids &= _enrolled_service_ids(*location) & _city_service_ids(*location)
         if audience_ids is not None:
-            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
-        if service_ids is not None:
-            queryset = queryset.filter(pk__in=_visible_category_ids(service_ids))
+            service_ids &= audience_ids
+        queryset = queryset.filter(pk__in=_visible_category_ids(service_ids))
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
         return queryset.prefetch_related("children", "audience_options", "children__audience_options")
