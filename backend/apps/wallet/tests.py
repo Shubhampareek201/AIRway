@@ -552,7 +552,7 @@ class ParentOrderWalletPaymentTest(TestCase):
 
     @patch("apps.payments.views.client.order.create")
     def test_insufficient_wallet_balance_rejects_without_creating_payment(self, create_order):
-        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        self.wallet.deposit(Decimal("200.00"), description="Test top-up")
         response = self.client.post(
             "/api/v1/payments/create-order/",
             {"order_id": self.order.id, "wallet_amount": "250.00"},
@@ -562,7 +562,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Payment.objects.filter(order=self.order).exists())
         self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance, Decimal("400.00"))
+        self.assertEqual(self.wallet.balance, Decimal("200.00"))
         self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
         create_order.assert_not_called()
 
@@ -616,7 +616,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         gateway = razorpay_client.return_value
         gateway.payment.fetch.return_value = {"amount_refunded": 0}
         gateway.payment.refund.return_value = {"id": "rfnd_wallet_late"}
-        self.wallet.deposit(Decimal("400.00"), description="Test top-up")
+        self.wallet.deposit(Decimal("500.00"), description="Test top-up")
         started = self.client.post(
             "/api/v1/payments/create-order/",
             {"order_id": self.order.id, "wallet_amount": "100.00"},
@@ -631,7 +631,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         from apps.bookings.tasks import timeout_pending_payments
         timeout_pending_payments()
         self.wallet.refresh_from_db()
-        self.wallet.debit(Decimal("400.00"), description="Spent after reservation release")
+        self.wallet.debit(Decimal("500.00"), description="Spent after reservation release")
 
         payload = {
             "event": "payment.captured",
@@ -667,7 +667,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUNDED)
         self.assertEqual(self.order.status, Order.Status.AWAITING_PAYMENT)
-        self.assertEqual(self.wallet.balance, Decimal("700.00"))
+        self.assertEqual(self.wallet.balance, Decimal("0.00"))
         gateway.payment.refund.assert_called_once()
         self.assertEqual(
             gateway.payment.refund.call_args.args[1]["amount"],
