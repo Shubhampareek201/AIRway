@@ -79,10 +79,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       final latest = await WorkerApi.getJobOffers();
       if (!mounted) return;
       setState(() => _offers = latest);
-      final offer = latest.where((item) =>
-          item.id == offerId && item.status == WorkerOffer.pending).firstOrNull;
-      if (offer != null) {
-        await _showIncomingOffer(offer);
+      final matching = latest.where((item) =>
+          item.id == offerId && item.status == WorkerOffer.pending).toList();
+      if (matching.isNotEmpty) {
+        await _showIncomingOffer(matching.first);
       } else {
         _openOffers();
       }
