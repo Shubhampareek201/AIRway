@@ -1080,7 +1080,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
                 from apps.payments.models import Payment
-                if "payment_allocation_v1" in (order.metadata or {}) and not Payment.objects.filter(
+                if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
                     order=order,
                     stage=Payment.Stage.ADVANCE,
                     status=Payment.Status.PAID,
@@ -1090,9 +1090,20 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_409_CONFLICT,
                     )
             else:
-                bookings = [Booking.objects.select_for_update(of=("self",)).select_related(
+                from apps.payments.models import Payment
+                standalone_booking = Booking.objects.select_for_update(of=("self",)).select_related(
                     "service__category", "variant", "address__zone__city"
-                ).get(pk=offer.booking_id)]
+                ).get(pk=offer.booking_id)
+                if not Payment.objects.filter(
+                    booking=standalone_booking,
+                    stage=Payment.Stage.ADVANCE,
+                    status=Payment.Status.PAID,
+                ).exists():
+                    return Response(
+                        {"detail": "The customer's 30% advance must be verified before accepting this booking."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                bookings = [standalone_booking]
 
             if order:
                 from apps.bookings.dispatcher import DispatcherService
@@ -1259,3 +1270,56 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             from apps.bookings.dispatcher import DispatcherService
             DispatcherService.dispatch_offers(Booking.objects.get(pk=booking_id))
         return Response({"detail": "Offer withdrawn."})
+
+
+class CustomerVerifiedWorkerProfileView(APIView):
+    """Expose only admin-approved professional information to the assigned customer."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, booking_id):
+        booking = Booking.objects.select_related(
+            "customer", "assignment__worker__user"
+        ).filter(pk=booking_id, customer=request.user).first()
+        if booking is None:
+            return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+        assignment = getattr(booking, "assignment", None)
+        if assignment is None or assignment.accepted_at is None:
+            return Response({"detail": "A worker has not accepted this booking yet."}, status=status.HTTP_409_CONFLICT)
+        worker = assignment.worker
+        if worker.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "Worker profile is not currently available."}, status=status.HTTP_404_NOT_FOUND)
+        photo = worker.documents.filter(
+            doc_type=WorkerDocument.DocumentType.PHOTO,
+            status=WorkerDocument.Status.VERIFIED,
+        ).order_by("-created_at", "-id").first()
+        try:
+            photo_url = request.build_absolute_uri(photo.file.url) if photo else None
+        except Exception:
+            photo_url = None
+        verified_services = worker.worker_services.filter(
+            capabilities_verified=True,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service", "service__category").order_by("service__title")
+        services = [{
+            "service": row.service.title,
+            "category": row.service.category.title,
+            "experience_years": row.experience_years,
+            "verified_skills": row.capabilities or [],
+        } for row in verified_services]
+        completed_jobs = BookingAssignment.objects.filter(
+            worker=worker, booking__status=Booking.Status.COMPLETED
+        ).count()
+        return Response({
+            "worker_id": worker.pk,
+            "name": worker.user.name or "AIRway Professional",
+            "photo_url": photo_url,
+            "bio": worker.bio,
+            "experience_years": worker.experience_years,
+            "qualification": worker.qualification,
+            "rating": str(worker.rating_avg),
+            "rating_count": worker.rating_count,
+            "completed_jobs": completed_jobs,
+            "services": services,
+            "verified": True,
+        })

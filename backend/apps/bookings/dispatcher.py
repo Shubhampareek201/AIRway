@@ -53,6 +53,13 @@ class DispatcherService:
         config = DispatchConfiguration.get_solo()
         if not config.is_enabled or booking.status not in (booking.Status.PENDING, booking.Status.CONFIRMED):
             return []
+        # Fail closed: a standalone booking also requires a captured 30% advance.
+        from apps.payments.models import Payment
+        if not Payment.objects.filter(
+            booking=booking, stage=Payment.Stage.ADVANCE,
+            status=Payment.Status.PAID,
+        ).exists():
+            return []
         batch_size = max(int(batch_size or config.batch_size), 1)
         expiry_minutes = max(int(expiry_minutes or config.offer_expiry_minutes), 1)
         existing = WorkerOffer.objects.filter(booking=booking, order__isnull=True)
@@ -108,7 +115,7 @@ class DispatcherService:
             # protects Celery retries and expired-offer batches from bypassing
             # the checkout gate.
             from apps.payments.models import Payment
-            if "payment_allocation_v1" in (order.metadata or {}) and not Payment.objects.filter(
+            if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
                 order=order,
                 stage=Payment.Stage.ADVANCE,
                 status=Payment.Status.PAID,
@@ -241,12 +248,34 @@ class DispatcherService:
                 if order else
                 f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
             )
+            from apps.payments.models import Payment
+            if order:
+                allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+                customer_total = str(order.total_amount)
+                advance_received = str(allocation.get("advance_total", "0"))
+                remaining_balance = str(allocation.get("balance_total", "0"))
+                address_text = order.address.full_address
+            else:
+                from decimal import Decimal
+                snapshot = booking.pricing_snapshot or {}
+                customer_total = str(snapshot.get("total", booking.total_amount))
+                advance_received = str(Payment.objects.filter(
+                    booking=booking, stage=Payment.Stage.ADVANCE,
+                    status=Payment.Status.PAID,
+                ).values_list("amount", flat=True).first() or "0")
+                remaining_balance = str(max(Decimal(customer_total) - Decimal(advance_received), Decimal("0")))
+                address_text = booking.address.full_address
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
                 "order_id": order.pk if order else None,
                 "service_ids": list(order.items.values_list("booking__service_id", flat=True)) if order else [booking.service_id],
+                "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
+                "address": address_text,
+                "customer_total": customer_total,
+                "advance_received": advance_received,
+                "remaining_balance": remaining_balance,
                 "notification_kind": "worker_offer",
             }
             Notification.objects.create(

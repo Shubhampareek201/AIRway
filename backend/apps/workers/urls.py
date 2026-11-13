@@ -23,6 +23,7 @@ from .views import (
     WorkerStreaksView,
     WorkerStatusUpdateView,
     WorkerOfferViewSet,
+    CustomerVerifiedWorkerProfileView,
 )
 
 router = DefaultRouter()
@@ -33,6 +34,7 @@ app_name = "workers"
 urlpatterns = [
     path("nearby/", NearbyWorkersView.as_view(), name="nearby-workers"),
     path("me/", WorkerProfileView.as_view(), name="worker-profile"),
+    path("customer/verified-profile/<int:booking_id>/", CustomerVerifiedWorkerProfileView.as_view(), name="customer-verified-worker-profile"),
     path("onboarding/", WorkerOnboardingView.as_view(), name="worker-onboarding"),
     path("apply/", WorkerOnboardingView.as_view(), name="worker-apply"),
     path("services/", WorkerServiceListView.as_view(), name="worker-services"),

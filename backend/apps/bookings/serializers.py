@@ -71,35 +71,38 @@ class BookingStatusHistorySerializer(serializers.ModelSerializer):
 
 class BookingAssignmentSerializer(serializers.ModelSerializer):
     worker_name = serializers.SerializerMethodField()
-    worker_phone = serializers.SerializerMethodField()
     worker_rating = serializers.SerializerMethodField()
     worker_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = BookingAssignment
         fields = [
-            "id", "worker", "worker_name", "worker_phone", "worker_rating", "worker_photo",
+            "id", "worker", "worker_name", "worker_rating", "worker_photo",
             "assigned_at", "accepted_at", "started_at", "completed_at"
         ]
 
     def get_worker_name(self, obj):
         user = obj.worker.user
-        if user.name:
-            return user.name
-        return user.phone
-
-    def get_worker_phone(self, obj):
-        return obj.worker.user.phone
+        return user.name or "AIRway Professional"
 
     def get_worker_rating(self, obj):
         return float(obj.worker.rating_avg) if obj.worker.rating_avg else None
 
     def get_worker_photo(self, obj):
-        if obj.worker.user.photo:
+        from apps.workers.models import WorkerDocument
+        if obj.worker.status != obj.worker.Status.APPROVED:
+            return None
+        photo = obj.worker.documents.filter(
+            doc_type=WorkerDocument.DocumentType.PHOTO,
+            status=WorkerDocument.Status.VERIFIED,
+        ).order_by("-created_at", "-id").first()
+        if not photo:
+            return None
+        try:
             request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(obj.worker.user.photo.url)
-        return None
+            return request.build_absolute_uri(photo.file.url) if request else photo.file.url
+        except Exception:
+            return None
 
 
 class BookingCreateSerializer(serializers.ModelSerializer):
