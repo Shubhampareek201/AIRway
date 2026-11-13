@@ -1718,12 +1718,21 @@ class WorkerAcceptancePaymentTest(TestCase):
         from apps.notifications.models import Notification
 
         booking, offer = self._create_booking_with_offer()
+        # This worker already had a pending offer which the first acceptance
+        # will system-withdraw. Reassignment must reuse that unique offer row.
+        other_offer = WorkerOffer.objects.create(
+            booking=booking,
+            worker=self.other_worker_profile,
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker_user)
         accepted = worker_client.post(
             f"/api/v1/workers/offers/{offer.id}/accept/", format="json"
         )
         self.assertEqual(accepted.status_code, 200, accepted.data)
+        other_offer.refresh_from_db()
+        self.assertEqual(other_offer.status, WorkerOffer.Status.WITHDRAWN)
 
         self.worker_profile.status = WorkerProfile.Status.SUSPENDED
         self.worker_profile.is_online = False
@@ -1734,10 +1743,15 @@ class WorkerAcceptancePaymentTest(TestCase):
         self.assertEqual(booking.status, Booking.Status.PENDING)
         self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
         self.assertEqual(result["reassigned"], 1)
-        self.assertTrue(WorkerOffer.objects.filter(
-            booking=booking, worker=self.other_worker_profile,
-            status=WorkerOffer.Status.PENDING,
-        ).exists())
+        other_offer.refresh_from_db()
+        self.assertEqual(other_offer.status, WorkerOffer.Status.PENDING)
+        self.assertEqual(
+            WorkerOffer.objects.filter(
+                booking=booking, worker=self.other_worker_profile,
+                status=WorkerOffer.Status.PENDING,
+            ).count(),
+            1,
+        )
         self.assertTrue(Notification.objects.filter(
             user=self.customer_user, title="Finding a replacement professional"
         ).exists())
