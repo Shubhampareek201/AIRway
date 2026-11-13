@@ -7,6 +7,7 @@ import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:airway/features/location/data/location_api.dart';
+import 'package:airway/features/worker/presentation/widgets/worker_service_picker.dart';
 
 enum WorkerApplicationStep { photo, services, zones, schedule, idDocument, review }
 
@@ -854,249 +855,27 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   }
 
   Widget _buildServicesSection() {
-    final query = _serviceSearchController.text.trim().toLowerCase();
-    final visibleServices = _services.where((service) {
-      if (query.isEmpty) return true;
-      return service.title.toLowerCase().contains(query) ||
-          service.categoryName.toLowerCase().contains(query) ||
-          service.categoryRootName.toLowerCase().contains(query);
-    }).toList();
-
-    final grouped = <String, Map<String, List<Service>>>{};
-    for (final service in visibleServices) {
-      final rootName = service.categoryRootName.trim().isEmpty
-          ? service.categoryName
-          : service.categoryRootName;
-      grouped.putIfAbsent(rootName, () => {});
-      grouped[rootName]!.putIfAbsent(service.categoryName, () => []).add(service);
+    if (_services.isEmpty) {
+      return const Text('No active launch services are available for worker registration. Please contact AIRway support.');
     }
-    final selectedServices = _services
-        .where((service) => _selectedServiceIds.contains(service.id))
-        .toList();
-
-    Widget serviceChips(List<Service> services) => Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: services.map((service) {
-        final selected = _selectedServiceIds.contains(service.id);
-        return FilterChip(
-          selected: selected,
-          label: Text(service.title),
-          onSelected: (_) => _toggleService(service.id),
-          selectedColor: AirwayColors.primary.withAlpha(30),
-        );
-      }).toList(),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Choose the services you can confidently provide',
-          key: _servicesKey,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: _fieldErrors.containsKey('services') ? Colors.red : AirwayColors.text,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Open a category, select individual services or select all in a group. You can change your list later from your profile.',
-          style: TextStyle(color: AirwayColors.textSecondary),
-        ),
-        if (_fieldErrors['services'] != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(_fieldErrors['services']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-          ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _serviceSearchController,
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search),
-            hintText: 'Search services or categories',
-            suffixIcon: _serviceSearchController.text.isEmpty
-                ? null
-                : IconButton(
-                    onPressed: () {
-                      _serviceSearchController.clear();
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.close),
-                  ),
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Row(children: [
-              Expanded(child: Text(
-                '${_selectedServiceIds.length} services selected',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              )),
-              TextButton(
-                onPressed: visibleServices.isEmpty
-                    ? null
-                    : () => setState(() {
-                        for (final service in visibleServices) {
-                          if (!_selectedServiceIds.contains(service.id)) {
-                            _selectedServiceIds.add(service.id);
-                          }
-                        }
-                      }),
-                child: const Text('Select all'),
-              ),
-              TextButton(
-                onPressed: _selectedServiceIds.isEmpty
-                    ? null
-                    : () => setState(() => _selectedServiceIds.clear()),
-                child: const Text('Clear all'),
-              ),
-            ]),
-          ),
-        ),
-        if (_services.isEmpty)
-          const Text('No active launch services are available for worker registration. Please contact AIRway support.')
-        else if (visibleServices.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(18),
-            child: Center(child: Text('No services match your search.')),
-          )
-        else
-          ...grouped.entries.map((rootEntry) {
-            final allServices = rootEntry.value.values.expand((items) => items).toList();
-            final selectedCount = allServices.where((service) => _selectedServiceIds.contains(service.id)).length;
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ExpansionTile(
-                title: Text(rootEntry.key, style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text('$selectedCount of ${allServices.length} selected'),
-                children: [
-                  for (final subcategory in rootEntry.value.entries)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Expanded(child: Text(
-                              subcategory.key,
-                              style: TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary),
-                            )),
-                            TextButton(
-                              onPressed: () => setState(() {
-                                final ids = subcategory.value.map((service) => service.id);
-                                if (ids.every(_selectedServiceIds.contains)) {
-                                  _selectedServiceIds.removeWhere(ids.contains);
-                                } else {
-                                  for (final id in ids) {
-                                    if (!_selectedServiceIds.contains(id)) _selectedServiceIds.add(id);
-                                  }
-                                }
-                              }),
-                              child: const Text('Select all'),
-                            ),
-                          ]),
-                          serviceChips(subcategory.value),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            );
-          }),
-        if (selectedServices.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Your selected services',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AirwayColors.text),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Optional: expand a service to review packages and choose the work you are trained to do.',
-            style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
-          ),
-          const SizedBox(height: 6),
-          ...selectedServices.map((service) {
-            final variants = service.variants.where((variant) => variant.isActive).toList();
-            final tasks = <String>{
-              ...service.variants.expand((variant) => variant.includedTasks),
-              ...service.addons.map((addon) => addon.title),
-            }.map((task) => task.trim()).where((task) => task.isNotEmpty).toList()..sort();
-            final selected = _selectedServiceCapabilities.putIfAbsent(service.id, () => <String>{});
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ExpansionTile(
-                title: Text(service.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(service.categoryName),
-                children: [
-                  if (service.categoryRootSlug == 'beauty')
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          service.audience == 'men'
-                              ? 'For male customers'
-                              : service.audience == 'women'
-                                  ? 'For female customers'
-                                  : 'For all customers (unisex)',
-                          style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
-                        ),
-                      ),
-                    ),
-                  if (variants.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: variants.map((variant) => Chip(
-                            label: Text(variant.title),
-                            visualDensity: VisualDensity.compact,
-                          )).toList(),
-                        ),
-                      ),
-                    ),
-                  if (tasks.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('Tasks you can perform', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: tasks.map((task) => FilterChip(
-                            label: Text(task),
-                            selected: selected.contains(task),
-                            onSelected: (value) => setState(() {
-                              if (value) { selected.add(task); } else { selected.remove(task); }
-                            }),
-                          )).toList(),
-                        ),
-                      ]),
-                    )
-                  else
-                    const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Text(
-                        'Task details are not configured yet. You can still select this service; AIRway may verify skills separately.',
-                        style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ],
+    return WorkerServicePicker(
+      services: _services,
+      selectedIds: _selectedServiceIds.toSet(),
+      capabilities: _selectedServiceCapabilities,
+      errorText: _fieldErrors['services'],
+      onServiceAdded: (id) => setState(() {
+        if (!_selectedServiceIds.contains(id)) _selectedServiceIds.add(id);
+        _selectedServiceCapabilities.putIfAbsent(id, () => <String>{});
+        _fieldErrors.remove('services');
+      }),
+      onServiceRemoved: (id) => setState(() {
+        _selectedServiceIds.remove(id);
+        _selectedServiceCapabilities.remove(id);
+      }),
+      onCapabilityChanged: (id, task, selected) => setState(() {
+        final values = _selectedServiceCapabilities.putIfAbsent(id, () => <String>{});
+        if (selected) { values.add(task); } else { values.remove(task); }
+      }),
     );
   }
 
