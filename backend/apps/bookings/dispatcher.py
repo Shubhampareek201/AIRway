@@ -90,7 +90,9 @@ class DispatcherService:
             priority_order=config.priority_order,
             required_tasks=(booking.variant.included_tasks if booking.variant_id else []),
         )
-        already_offered = set(existing.values_list("worker_id", flat=True))
+        already_offered = set(existing.filter(
+            status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
+        ).values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
         if not candidates:
             cls._notify_dispatch_exhausted(booking)
@@ -191,7 +193,9 @@ class DispatcherService:
             if batch_number > max(int(config.max_batches or 1), 1):
                 cls._notify_dispatch_exhausted(anchor, order=order)
                 return []
-            already_offered = set(existing.values_list("worker_id", flat=True))
+            already_offered = set(existing.filter(
+                status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
+            ).values_list("worker_id", flat=True))
             batch_size = max(int(config.batch_size or 1), 1)
             expiry_minutes = max(int(config.offer_expiry_minutes or 1), 1)
             workers = list(
@@ -284,10 +288,31 @@ class DispatcherService:
         created = []
         summary = ", ".join(service_titles)
         for worker in workers:
-            offer = WorkerOffer.objects.create(
-                booking=booking, order=order, worker=worker,
-                batch_number=batch_number, expires_at=expiry,
-            )
+            offer = WorkerOffer.objects.filter(
+                booking=booking, worker=worker
+            ).first()
+            if offer is not None and offer.status == WorkerOffer.Status.WITHDRAWN:
+                # Reuse the unique booking/worker offer row when a previous
+                # assignment was withdrawn before work started (for example,
+                # because the accepted worker was suspended).
+                offer.order = order
+                offer.batch_number = batch_number
+                offer.status = WorkerOffer.Status.PENDING
+                offer.offered_at = timezone.now()
+                offer.expires_at = expiry
+                offer.responded_at = None
+                offer.accepted_at = None
+                offer.save(update_fields=[
+                    "order", "batch_number", "status", "offered_at",
+                    "expires_at", "responded_at", "accepted_at", "updated_at",
+                ])
+            elif offer is None:
+                offer = WorkerOffer.objects.create(
+                    booking=booking, order=order, worker=worker,
+                    batch_number=batch_number, expires_at=expiry,
+                )
+            else:
+                continue
             created.append(offer)
             notification_title = "New Service Order" if order else "Job Offer"
             notification_body = (
