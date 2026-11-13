@@ -98,7 +98,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         MaterialPageRoute(
           builder: (_) => CategoryDecisionScreen(
             categoryTitle: selectedCategory.title,
-            steps: category.customerFlowSteps,
+            steps: selectedCategory.customerFlowSteps,
           ),
         ),
       );
@@ -106,9 +106,9 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       answers.addAll(selected);
     }
 
-    if (category.children.isNotEmpty) {
-      var children = category.children;
-      final filterStep = category.customerFlowSteps.where(
+    if (selectedCategory.children.isNotEmpty) {
+      var children = selectedCategory.children;
+      final filterStep = selectedCategory.customerFlowSteps.where(
         (step) => step['filter_children'] == true,
       ).toList();
       if (filterStep.isNotEmpty) {
@@ -129,7 +129,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           builder: (_) => ServiceCategoriesScreen(
             initialCategories: children,
             addressId: widget.addressId,
-            title: category.title,
+            title: selectedCategory.title,
             initialAnswers: answers,
           ),
         ),
@@ -141,8 +141,8 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ServiceListScreen(
-          categoryId: category.id,
-          categoryTitle: category.title,
+          categoryId: selectedCategory.id,
+          categoryTitle: selectedCategory.title,
           addressId: widget.addressId,
           initialAnswers: answers,
         ),
