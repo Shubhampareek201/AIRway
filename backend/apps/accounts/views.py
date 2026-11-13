@@ -202,7 +202,7 @@ class DeviceTokenView(APIView):
         if not isinstance(token, str) or not token.strip():
             return Response({"token": ["A valid device token is required."]}, status=status.HTTP_400_BAD_REQUEST)
         DeviceToken.objects.filter(user=request.user, token=token.strip()).delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response({"unregistered": True}, status=status.HTTP_200_OK)
 
 
 class CurrentUserView(APIView):
