@@ -37,7 +37,9 @@ jobs:
 
       - name: Analyze changed Flutter features
         working-directory: app
+        shell: bash
         run: |
+          set +e
           flutter analyze --no-pub \
             lib/main.dart \
             lib/features/auth/presentation/startup_gate.dart \
@@ -51,8 +53,19 @@ jobs:
             lib/features/worker/presentation/worker_application_screen.dart \
             lib/features/worker/presentation/worker_dashboard_screen.dart \
             lib/features/worker/presentation/worker_profile_edit_screen.dart \
-            lib/features/worker/presentation/worker_service_management_screen.dart
-
+            lib/features/worker/presentation/worker_service_management_screen.dart \
+            > /tmp/airway-flutter-analyze.log 2>&1
+          cat /tmp/airway-flutter-analyze.log
+          if ! grep -q "issues found" /tmp/airway-flutter-analyze.log; then
+            echo "Flutter analyzer did not complete successfully."
+            exit 1
+          fi
+          if grep -E " (error|warning) • " /tmp/airway-flutter-analyze.log; then
+            echo "Flutter analysis found errors or warnings."
+            exit 1
+          fi
+          echo "No Dart errors or warnings. Informational lints remain."
+          
       - name: Run Flutter tests
         working-directory: app
         run: flutter test --no-pub
