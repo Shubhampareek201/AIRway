@@ -69,6 +69,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   }
 
   Future<void> _openCategory(Category category) async {
+    var selectedCategory = category;
     var answers = Map<String, dynamic>.from(widget.initialAnswers);
     if (category.slug == 'beauty' && answers['beauty_audience'] == null) {
       final audience = await BeautyAudienceScreen.choose(
@@ -77,13 +78,26 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       );
       if (audience == null || !mounted) return;
       answers['beauty_audience'] = audience;
+
+      // Reload the tree for the selected audience so empty/opposite-audience
+      // subcategories are not left visible from the pre-selection tree.
+      final filteredRoots = await CatalogApi.listCategories(
+        addressId: widget.addressId,
+        audience: audience,
+      );
+      for (final root in filteredRoots) {
+        if (root.id == category.id) {
+          selectedCategory = root;
+          break;
+        }
+      }
     }
-    if (category.customerFlowSteps.isNotEmpty) {
+    if (selectedCategory.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
           builder: (_) => CategoryDecisionScreen(
-            categoryTitle: category.title,
+            categoryTitle: selectedCategory.title,
             steps: category.customerFlowSteps,
           ),
         ),
