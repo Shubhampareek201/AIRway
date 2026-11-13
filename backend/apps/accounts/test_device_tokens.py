@@ -46,7 +46,8 @@ class DeviceTokenAPITests(TestCase):
 
         response = self.client.delete(self.url, {"token": "my-device-token"}, format="json")
 
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['unregistered'])
         self.assertFalse(DeviceToken.objects.filter(pk=device.pk).exists())
         self.assertTrue(DeviceToken.objects.filter(pk=other_device.pk).exists())
 
