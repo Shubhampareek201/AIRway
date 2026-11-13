@@ -258,12 +258,15 @@ class DispatcherService:
                 data=notification_data,
             )
             from apps.notifications.service import send_push_notification
-            send_push_notification(
-                worker.user,
-                notification_title,
-                notification_body,
-                data=notification_data,
-                channel_id="airway_job_alerts",
+            transaction.on_commit(
+                lambda user=worker.user, title=notification_title, body=notification_body, payload=notification_data:
+                    send_push_notification(
+                        user,
+                        title,
+                        body,
+                        data=payload,
+                        channel_id="airway_job_alerts",
+                    )
             )
         logger.info("Dispatched %s offers for %s %s in batch %s", len(created), "order" if order else "booking", order.pk if order else booking.pk, batch_number)
         return created
