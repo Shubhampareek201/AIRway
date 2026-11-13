@@ -169,6 +169,10 @@ def _customer_priced_service_ids():
     )
 
 
+def _is_worker_catalogue_request(request):
+    return request.query_params.get("for_worker", "").lower() == "true"
+
+
 def _visible_category_ids(service_ids):
     category_ids = set(
         Service.objects.filter(
@@ -199,7 +203,7 @@ class CategoryListView(generics.ListAPIView):
         context = super().get_serializer_context()
         location = _location_from_address(self.request)
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
-        priced_ids = _customer_priced_service_ids()
+        priced_ids = None if _is_worker_catalogue_request(self.request) else _customer_priced_service_ids()
         service_ids = priced_ids
         if location is not None:
             service_ids &= _enrolled_service_ids(*location) & _city_service_ids(*location)
@@ -217,12 +221,14 @@ class CategoryListView(generics.ListAPIView):
         )
         location = _location_from_address(self.request)
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
-        service_ids = _customer_priced_service_ids()
+        service_ids = None if _is_worker_catalogue_request(self.request) else _customer_priced_service_ids()
         if location is not None:
-            service_ids &= _enrolled_service_ids(*location) & _city_service_ids(*location)
+            location_service_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
+            service_ids = location_service_ids if service_ids is None else service_ids & location_service_ids
         if audience_ids is not None:
-            service_ids &= audience_ids
-        queryset = queryset.filter(pk__in=_visible_category_ids(service_ids))
+            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
+        if service_ids is not None:
+            queryset = queryset.filter(pk__in=_visible_category_ids(service_ids))
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
         return queryset.prefetch_related("children", "audience_options", "children__audience_options")
@@ -249,13 +255,15 @@ class ServiceListView(generics.ListAPIView):
         return context
 
     def get_queryset(self):
-        queryset = Service.objects.filter(is_active=True, category__is_active=True, pk__in=_customer_priced_service_ids()).select_related(
+        queryset = Service.objects.filter(is_active=True, category__is_active=True).select_related(
             "category"
         ).prefetch_related(
             "images", "variants", "addons", "form_fields"
         )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = _launch_catalogue_filter(queryset)
+        if not _is_worker_catalogue_request(self.request):
+            queryset = queryset.filter(pk__in=_customer_priced_service_ids())
 
         location = _location_from_address(self.request)
         visible_service_ids = None
@@ -301,12 +309,14 @@ class ServiceDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         queryset = Service.objects.filter(
-            is_active=True, category__is_active=True, pk__in=_customer_priced_service_ids()
+            is_active=True, category__is_active=True
         ).select_related("category").prefetch_related(
             "images", "variants", "addons", "form_fields"
         )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = _launch_catalogue_filter(queryset)
+        if not _is_worker_catalogue_request(self.request):
+            queryset = queryset.filter(pk__in=_customer_priced_service_ids())
         location = _location_from_address(self.request)
         visible_service_ids = None
         if location is not None:
