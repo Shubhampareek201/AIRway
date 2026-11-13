@@ -74,7 +74,7 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
         photo = obj.documents.filter(
             doc_type=WorkerDocument.DocumentType.PHOTO,
             status=WorkerDocument.Status.VERIFIED,
-        ).first()
+        ).order_by("-created_at", "-id").first()
         if photo is None:
             return None
         try:
