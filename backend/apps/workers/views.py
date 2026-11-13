@@ -1212,6 +1212,17 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     else Order.Status.AWAITING_PAYMENT
                 )
                 order.save(update_fields=["status", "updated_at"])
+            else:
+                # A single-booking acceptance also invalidates other pending
+                # offers. If this assignment is later suspended before start,
+                # dispatch can safely reopen these system-withdrawn offers.
+                WorkerOffer.objects.filter(
+                    booking=bookings[0],
+                    order__isnull=True,
+                    status=WorkerOffer.Status.PENDING,
+                ).exclude(pk=offer.pk).update(
+                    status=WorkerOffer.Status.WITHDRAWN, responded_at=now
+                )
 
         response_data = {
             "status": "accepted",
