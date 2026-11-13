@@ -191,10 +191,10 @@ class BookingAssignmentAdmin(ModelAdmin):
 
 @admin.register(DispatchConfiguration)
 class DispatchConfigurationAdmin(ModelAdmin):
-    list_display = ("is_enabled", "batch_size", "max_batches", "offer_expiry_minutes", "priority_order")
+    list_display = ("is_enabled", "offer_expiry_minutes", "priority_order")
     fieldsets = (
         ("Dispatch control", {"fields": ("is_enabled",)}),
-        ("Priority batches", {"fields": ("batch_size", "max_batches", "offer_expiry_minutes", "priority_order")}),
+        ("Simultaneous worker offers", {"fields": ("offer_expiry_minutes", "priority_order")}),
         ("Audit", {"fields": ("created_at", "updated_at")}),
     )
     readonly_fields = ("created_at", "updated_at")
