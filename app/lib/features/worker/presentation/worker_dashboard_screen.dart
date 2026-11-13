@@ -131,6 +131,20 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(offer.serviceTitle ?? 'AIRway service', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
                 if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
+                if (offer.orderServices.length > 1) ...[
+                  const SizedBox(height: 10),
+                  const Text('Services in this order', style: TextStyle(fontWeight: FontWeight.w800)),
+                  for (final item in offer.orderServices)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Text(
+                        '• ${item['service_title'] ?? 'Service'}'
+                        '${item['variant_title'] == null ? '' : ' — ${item['variant_title']}'}'
+                        '${item['quantity'] == null ? '' : ' × ${item['quantity']}'}'
+                        '${item['scheduled_at'] == null ? '' : ' · ${_dateLabel(item['scheduled_at'])}'}',
+                      ),
+                    ),
+                ],
                 const SizedBox(height: 8),
                 if (offer.scheduledAt != null) Text('Requested time: ${_dateLabel(offer.scheduledAt)}'),
                 if (offer.serviceAddress?.isNotEmpty == true) Text('Address: ${offer.serviceAddress}'),
