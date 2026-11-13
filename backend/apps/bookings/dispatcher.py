@@ -217,7 +217,7 @@ class DispatcherService:
 
         customer = booking.customer
         notification_title = "We're still finding your professional"
-        identity = {"order_id": order.pk} if order else {"booking_id": booking.pk}
+        identity = {"booking_id": booking.pk, "order_id": order.pk if order else None}
         if Notification.objects.filter(
             user=customer,
             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
