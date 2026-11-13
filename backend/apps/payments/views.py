@@ -406,14 +406,49 @@ class CreateOrderView(APIView):
                 raw_wallet_amount = request.data.get("wallet_amount", "0.00")
                 requested_stage = request.data.get("stage")
                 if not requested_stage:
-                    requested_stage = Payment.Stage.ADVANCE
-                if requested_stage == Payment.Stage.LEGACY:
-                    return Response(
-                        {"detail": "Full upfront payment is no longer supported. AIRway requires a 30% advance before worker dispatch."},
-                        status=status.HTTP_400_BAD_REQUEST,
+                    # New checkout orders always start with the 30% advance.
+                    # Preserve the legacy full-settlement path only for orders
+                    # that were already assigned before staged checkout existed.
+                    legacy_assigned_order = (
+                        parent_order.status == Order.Status.AWAITING_PAYMENT
+                        and parent_order.items.exclude(
+                            booking__status=Booking.Status.CANCELLED
+                        ).exists()
+                        and not parent_order.items.exclude(
+                            booking__status__in=(
+                                Booking.Status.ASSIGNED,
+                                Booking.Status.CANCELLED,
+                            )
+                        ).exists()
+                        and not (parent_order.metadata or {}).get("payment_allocation_v1")
                     )
-                if requested_stage not in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
-                    return Response({"detail": "stage must be 'advance' or 'balance'."}, status=status.HTTP_400_BAD_REQUEST)
+                    requested_stage = (
+                        Payment.Stage.LEGACY if legacy_assigned_order
+                        else Payment.Stage.ADVANCE
+                    )
+                if requested_stage == Payment.Stage.LEGACY:
+                    legacy_assigned_order = (
+                        parent_order.status == Order.Status.AWAITING_PAYMENT
+                        and parent_order.items.exclude(
+                            booking__status=Booking.Status.CANCELLED
+                        ).exists()
+                        and not parent_order.items.exclude(
+                            booking__status__in=(
+                                Booking.Status.ASSIGNED,
+                                Booking.Status.CANCELLED,
+                            )
+                        ).exists()
+                        and not (parent_order.metadata or {}).get("payment_allocation_v1")
+                    )
+                    if not legacy_assigned_order:
+                        return Response(
+                            {"detail": "Full payment is available only to previously assigned legacy orders. New bookings require a 30% advance before worker dispatch."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                if requested_stage not in (
+                    Payment.Stage.LEGACY, Payment.Stage.ADVANCE, Payment.Stage.BALANCE
+                ):
+                    return Response({"detail": "stage must be 'legacy', 'advance' or 'balance'."}, status=status.HTTP_400_BAD_REQUEST)
                 payment, razorpay_order_id, already_existed = create_or_get_order_payment(
                     order=parent_order,
                     customer=request.user,

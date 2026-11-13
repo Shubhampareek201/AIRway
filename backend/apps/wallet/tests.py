@@ -490,13 +490,13 @@ class ParentOrderWalletPaymentTest(TestCase):
             address=self.address,
             service=service,
             scheduled_at=timezone.now() + timezone.timedelta(days=1),
-            status=Booking.Status.ASSIGNED,
+            status=Booking.Status.PENDING,
             pricing_snapshot={"total": "1000.00"},
         )
         self.order = Order.objects.create(
             customer=self.customer,
             address=self.address,
-            status=Order.Status.AWAITING_PAYMENT,
+            status=Order.Status.AWAITING_ASSIGNMENT,
             subtotal=Decimal("1000.00"),
             total_amount=Decimal("1000.00"),
         )
