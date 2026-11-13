@@ -17,7 +17,8 @@ from apps.workers.models import (
     WorkerZone,
     WorkerSchedule,
 )
-from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, CustomerCart, CartItem, Order, OrderItem
+from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem
+from django.contrib.auth.hashers import make_password
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
 from apps.bookings.serializers import CartItemSerializer
@@ -3297,6 +3298,66 @@ class CustomerOrderReadIntegrityTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.data[0]["status"], Order.Status.AWAITING_ASSIGNMENT)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+
+    def test_order_detail_shows_active_completion_code_only_to_owning_customer(self):
+        order = self._create_order(Order.Status.AWAITING_ASSIGNMENT)
+        booking = order.items.get().booking
+        booking.status = Booking.Status.IN_PROGRESS
+        booking.save(update_fields=["status", "updated_at"])
+        expires_at = timezone.now() + timedelta(minutes=10)
+        BookingCompletionOTP.objects.create(
+            booking=booking,
+            code_hash=make_password("123456"),
+            expires_at=expires_at,
+            last_sent_at=timezone.now(),
+        )
+        Notification.objects.create(
+            user=self.customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Share your service completion code",
+            body="Your AIRway completion code is 123456.",
+            channel=Notification.Channel.IN_APP,
+            data={
+                "booking_id": booking.id,
+                "purpose": "service_completion_otp",
+                "completion_code": "123456",
+                "expires_at": expires_at.isoformat(),
+            },
+        )
+
+        response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["items"][0]["completion_otp"]["code"], "123456")
+
+    def test_order_detail_hides_expired_completion_code(self):
+        order = self._create_order(Order.Status.AWAITING_ASSIGNMENT)
+        booking = order.items.get().booking
+        booking.status = Booking.Status.IN_PROGRESS
+        booking.save(update_fields=["status", "updated_at"])
+        BookingCompletionOTP.objects.create(
+            booking=booking,
+            code_hash=make_password("123456"),
+            expires_at=timezone.now() - timedelta(minutes=1),
+            last_sent_at=timezone.now() - timedelta(minutes=11),
+        )
+        Notification.objects.create(
+            user=self.customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Share your service completion code",
+            body="Your AIRway completion code is 123456.",
+            channel=Notification.Channel.IN_APP,
+            data={
+                "booking_id": booking.id,
+                "purpose": "service_completion_otp",
+                "completion_code": "123456",
+            },
+        )
+
+        response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["items"][0]["completion_otp"])
 
 
 class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
