@@ -64,6 +64,33 @@ def _city_service_ids(city, zone=None):
     )
     return active_ids - hidden_ids
 
+def _enrolled_service_ids(city, zone=None):
+    """
+    Services visible to customers are based on approved worker enrolments
+    in the selected zone, not on whether a worker happens to be online
+    or scheduled at the moment the catalogue is opened.
+    """
+    if city is None:
+        return None
+
+    links = WorkerService.objects.filter(
+        worker__status=WorkerProfile.Status.APPROVED,
+        worker__worker_zones__zone__city=city,
+        worker__worker_zones__zone__is_active=True,
+        worker__worker_zones__zone__city__is_active=True,
+        service__is_active=True,
+        service__category__is_active=True,
+    )
+    if zone is not None:
+        links = links.filter(worker__worker_zones__zone=zone)
+
+    links = links.filter(
+        Q(service__requires_female_worker=False)
+        | Q(worker__gender=WorkerProfile.Gender.FEMALE)
+    )
+    return set(links.values_list("service_id", flat=True).distinct())
+
+
 def _available_service_ids(city, zone=None):
     if city is None:
         return None
@@ -144,10 +171,12 @@ class CategoryListView(generics.ListAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Category discovery is catalogue-driven, not worker-driven. Customers
-        # can browse active categories even when no matching professional is
-        # currently available in their selected area.
-        context["visible_category_ids"] = None
+        location = _location_from_address(self.request)
+        if location is None:
+            context["visible_category_ids"] = None
+        else:
+            service_ids = _enrolled_service_ids(*location)
+            context["visible_category_ids"] = _visible_category_ids(service_ids)
         return context
 
     def get_queryset(self):
@@ -155,6 +184,10 @@ class CategoryListView(generics.ListAPIView):
             is_active=True,
             parent__isnull=True,
         )
+        location = _location_from_address(self.request)
+        if location is not None:
+            visible_ids = _visible_category_ids(_enrolled_service_ids(*location))
+            queryset = queryset.filter(pk__in=visible_ids)
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
         return queryset.prefetch_related("children", "audience_options", "children__audience_options")
@@ -187,8 +220,9 @@ class ServiceListView(generics.ListAPIView):
         location = _location_from_address(self.request)
         if location is not None:
             city, zone = location
-            queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
-
+            visible_service_ids = _enrolled_service_ids(city, zone=zone)
+            visible_service_ids &= _city_service_ids(city, zone=zone)
+            queryset = queryset.filter(pk__in=visible_service_ids)
 
         category_id = self.request.query_params.get("category")
         if category_id:
@@ -227,7 +261,9 @@ class ServiceDetailView(generics.RetrieveAPIView):
         location = _location_from_address(self.request)
         if location is not None:
             city, zone = location
-            queryset = queryset.filter(pk__in=_city_service_ids(city, zone=zone))
+            visible_service_ids = _enrolled_service_ids(city, zone=zone)
+            visible_service_ids &= _city_service_ids(city, zone=zone)
+            queryset = queryset.filter(pk__in=visible_service_ids)
 
         return queryset
 
