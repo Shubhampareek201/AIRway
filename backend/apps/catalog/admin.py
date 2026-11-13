@@ -1,6 +1,7 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
 
+from .pricing import service_pricing_ready
 from .models import (
     AddOn, Banner, Category, CategoryAudienceOption, CityService, FormField, Service,
     ServiceImage, ServiceVariant,
@@ -61,12 +62,22 @@ class CategoryAdmin(ModelAdmin):
 @admin.register(Service)
 class ServiceAdmin(ModelAdmin):
     list_display = ("title", "category", "booking_mode", "pricing_type", "audience",
-                    "is_popular", "is_active", "updated_at")
+                    "pricing_status", "is_popular", "is_active", "updated_at")
     list_editable = ("is_popular", "is_active")
     list_filter = ("category", "booking_mode", "pricing_type", "audience", "is_active")
     search_fields = ("title", "title_hi", "description", "category__title")
     inlines = [VariantInline, AddOnInline, FormFieldInline, ServiceImageInline]
     list_per_page = 30
+
+    @admin.display(description="Customer pricing")
+    def pricing_status(self, obj):
+        if service_pricing_ready(obj):
+            return "Ready"
+        if obj.pricing_type == "quote" and obj.booking_mode == "inspection":
+            return "Set inspection fee"
+        if obj.pricing_type == "per_unit":
+            return "Unit pricing not supported yet"
+        return "Add a priced active package"
     save_on_top = True
     fieldsets = (
         ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
