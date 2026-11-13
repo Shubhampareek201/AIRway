@@ -840,13 +840,17 @@ class WorkerDocumentUploadView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if profile.status != WorkerProfile.Status.PENDING:
+        doc_type = request.data.get("doc_type")
+        # Approved workers may submit a replacement profile photo for admin
+        # review. Their currently verified photo remains active until approval.
+        if profile.status != WorkerProfile.Status.PENDING and not (
+            profile.status == WorkerProfile.Status.APPROVED
+            and doc_type == WorkerDocument.DocumentType.PHOTO
+        ):
             return Response(
-                {"error": "Document upload is only allowed for pending worker profiles."},
+                {"error": "Only pending applications may upload identity documents. Approved workers may submit a new profile photo for review."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        doc_type = request.data.get("doc_type")
         if not doc_type:
             return Response(
                 {"doc_type": ["This field is required."]},
@@ -887,14 +891,21 @@ class WorkerDocumentUploadView(APIView):
 
         existing = WorkerDocument.objects.filter(
             worker=profile, doc_type=doc_type
-        ).first()
+        ).order_by("-created_at").first()
         if existing and existing.status == WorkerDocument.Status.VERIFIED:
-            return Response(
-                {"error": "This document has already been verified and cannot be replaced."},
-                status=status.HTTP_400_BAD_REQUEST,
+            if profile.status != WorkerProfile.Status.APPROVED or doc_type != WorkerDocument.DocumentType.PHOTO:
+                return Response(
+                    {"error": "This document has already been verified and cannot be replaced."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Preserve the approved image and create a separate review record.
+            doc = WorkerDocument.objects.create(
+                worker=profile,
+                doc_type=doc_type,
+                file=uploaded_file,
+                status=WorkerDocument.Status.PENDING,
             )
-
-        if existing:
+        elif existing:
             existing.file = uploaded_file
             existing.status = WorkerDocument.Status.PENDING
             existing.save()
