@@ -259,6 +259,13 @@ class JobOfferAPITest(TestCase):
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
         )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=self.booking, customer=self.customer_user,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("150.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_captured_advance", paid_at=timezone.now(),
+        )
         booking_local = timezone.localtime(self.booking.scheduled_at)
         WorkerSchedule.objects.create(
             worker=self.worker_profile,
@@ -743,6 +750,13 @@ class JobOfferConcurrencyTest(TestCase):
             booking_mode=Booking.BookingMode.SCHEDULED,
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
+        )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=self.booking, customer=self.customer_user,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_captured_advance", paid_at=timezone.now(),
         )
 
     def _schedule_for_booking(self, worker):
@@ -1441,6 +1455,13 @@ class WorkerAcceptancePaymentTest(TestCase):
             status=Booking.Status.CONFIRMED,
         )
 
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=self.customer_user,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("150.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_captured_advance", paid_at=timezone.now(),
+        )
         offer = WorkerOffer.objects.create(
             booking=booking,
             worker=self.worker_profile,
@@ -1474,10 +1495,10 @@ class WorkerAcceptancePaymentTest(TestCase):
 
         # Verify payment was created
         payment = Payment.objects.get(booking=booking)
-        self.assertEqual(payment.status, Payment.Status.PENDING)
-        self.assertEqual(payment.razorpay_order_id, "order_test_123")
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.razorpay_payment_id, "test_captured_advance")
+        self.assertEqual(payment.stage, Payment.Stage.ADVANCE)
         self.assertEqual(payment.method, Payment.Method.RAZORPAY)
-        self.assertEqual(float(payment.amount), float(booking.total_amount))
 
     def test_accept_offer_returns_payment_order_id(self):
         """Accept response should include payment_order_id for Flutter integration."""
@@ -1498,8 +1519,8 @@ class WorkerAcceptancePaymentTest(TestCase):
             response = worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("payment_order_id", response.data)
-        self.assertEqual(response.data["payment_order_id"], "order_test_456")
+        self.assertNotIn("payment_order_id", response.data)
+        self.assertEqual(Payment.objects.get(booking=booking).status, Payment.Status.PAID)
 
     def test_double_accept_does_not_create_duplicate_payment(self):
         """Repeated acceptance should be idempotent and not create duplicate payments."""
@@ -1682,12 +1703,13 @@ class WorkerAcceptancePaymentTest(TestCase):
 
         # Payment should be marked as FAILED
         payment.refresh_from_db()
-        self.assertEqual(payment.status, Payment.Status.FAILED)
-        self.assertIsNotNone(payment.failed_at)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertIsNone(payment.failed_at)
 
-        # Booking should be reverted to PENDING (worker released)
+        # The advance is already settled before dispatch, so accepting the offer
+        # must not create a second pending payment or release the assigned worker.
         booking.refresh_from_db()
-        self.assertEqual(booking.status, Booking.Status.PENDING)
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
 
         # Assignment should be deleted
         from apps.bookings.models import BookingAssignment
