@@ -1,7 +1,9 @@
 from django.contrib import admin
+from django.db import models
 from unfold.admin import ModelAdmin, TabularInline
 
 from .models import AppSetting, City, Zone
+from .widgets import CoveragePolygonWidget
 
 
 class ZoneInline(TabularInline):
@@ -19,6 +21,9 @@ class CityAdmin(ModelAdmin):
 
 @admin.register(Zone)
 class ZoneAdmin(ModelAdmin):
+    formfield_overrides = {
+        models.JSONField: {"widget": CoveragePolygonWidget},
+    }
     list_display = (
         "name",
         "city",
