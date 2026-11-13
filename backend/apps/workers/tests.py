@@ -97,6 +97,21 @@ class WorkerProfileAPITest(TestCase):
         self.assertEqual(self.worker_profile.qualification, "ITI")
         self.assertEqual(self.worker_profile.upi_id, "worker@upi")
 
+    def test_worker_can_add_service_without_preconfigured_task_list(self):
+        category = Category.objects.create(title="Home Care", slug="profile-home-care")
+        service = Service.objects.create(category=category, title="Basic Cleaning", is_active=True)
+
+        response = self.client.post(
+            "/api/v1/workers/services/",
+            {"service": service.id, "capabilities": []},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        assignment = WorkerService.objects.get(worker=self.worker_profile, service=service)
+        self.assertEqual(assignment.capabilities, [])
+        self.assertFalse(assignment.capabilities_verified)
+
 
 class NearbyWorkersAPITest(TestCase):
     """Test nearby workers endpoint."""
