@@ -58,6 +58,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       _startOfferPolling();
       final recentOffers = _offers.where((offer) =>
           offer.status == WorkerOffer.pending &&
+          (offer.expiresAt == null || offer.expiresAt!.isAfter(DateTime.now())) &&
           DateTime.now().difference(offer.offeredAt).abs() <= const Duration(minutes: 5)).toList();
       if (recentOffers.isNotEmpty) _showIncomingOffer(recentOffers.first);
     });
