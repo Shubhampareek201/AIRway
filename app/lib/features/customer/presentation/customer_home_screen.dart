@@ -10,6 +10,7 @@ import 'package:airway/features/location/presentation/location_selection_screen.
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
+import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/notification/presentation/notification_list_screen.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
@@ -73,6 +74,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
+    PushNotificationService.initializeForAuthenticatedUser().catchError((_) {});
     _pushOpenSubscription = FirebaseMessaging.onMessageOpenedApp.listen(_handlePushOpen);
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null) _handlePushOpen(message);
