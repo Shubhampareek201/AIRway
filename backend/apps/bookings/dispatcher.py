@@ -68,6 +68,7 @@ class DispatcherService:
         from django.db.models import Max
         batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
         if batch_number > max(int(config.max_batches or 1), 1):
+            cls._notify_dispatch_exhausted(booking)
             return []
         duration = (booking.variant.duration_minutes if booking.variant_id and booking.variant.duration_minutes else booking.service.duration_minutes) or 60
         quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
@@ -91,6 +92,9 @@ class DispatcherService:
         )
         already_offered = set(existing.values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
+        if not candidates:
+            cls._notify_dispatch_exhausted(booking)
+            return []
         return cls._create_offers(
             booking=booking, order=None, workers=candidates,
             batch_number=batch_number, expiry_minutes=expiry_minutes,
@@ -177,6 +181,7 @@ class DispatcherService:
                 line_ids = set(line_workers.values_list("pk", flat=True))
                 eligible_ids = line_ids if eligible_ids is None else eligible_ids.intersection(line_ids)
                 if not eligible_ids:
+                    cls._notify_dispatch_exhausted(anchor, order=order)
                     return []
 
             existing = WorkerOffer.objects.filter(order=order)
@@ -184,6 +189,7 @@ class DispatcherService:
                 return []
             batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
             if batch_number > max(int(config.max_batches or 1), 1):
+                cls._notify_dispatch_exhausted(anchor, order=order)
                 return []
             already_offered = set(existing.values_list("worker_id", flat=True))
             batch_size = max(int(config.batch_size or 1), 1)
@@ -194,10 +200,51 @@ class DispatcherService:
                 .select_related("user")
                 .order_by(*cls._priority_ordering(config.priority_order))[:batch_size]
             )
+            if not workers:
+                cls._notify_dispatch_exhausted(anchor, order=order)
+                return []
             return cls._create_offers(
                 booking=anchor, order=order, workers=workers,
                 batch_number=batch_number, expiry_minutes=expiry_minutes,
                 service_titles=[booking.service.title for booking in bookings],
+            )
+
+    @staticmethod
+    def _notify_dispatch_exhausted(booking, order=None):
+        """Notify the customer and operations once when no eligible worker remains."""
+        from apps.notifications.models import Notification
+        from django.contrib.auth import get_user_model
+
+        customer = booking.customer
+        notification_title = "We're still finding your professional"
+        identity = {"order_id": order.pk} if order else {"booking_id": booking.pk}
+        if Notification.objects.filter(
+            user=customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title=notification_title,
+            data__booking_id=booking.pk,
+        ).exists():
+            return
+        Notification.objects.create(
+            user=customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title=notification_title,
+            body="No available professional could accept this request yet. AIRway operations has been notified and will update you. Your booking remains safe; no extra payment is required.",
+            channel=Notification.Channel.IN_APP,
+            data={**identity, "dispatch_exhausted": True},
+        )
+        User = get_user_model()
+        for staff_user in User.objects.filter(is_staff=True, is_active=True).only("id"):
+            Notification.objects.get_or_create(
+                user=staff_user,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Worker dispatch needs attention",
+                data__booking_id=booking.pk,
+                defaults={
+                    "body": f"No eligible worker accepted booking #{booking.pk}. Please review coverage and dispatch.",
+                    "channel": Notification.Channel.IN_APP,
+                    "data": {**identity, "dispatch_exhausted": True},
+                },
             )
 
     @classmethod
