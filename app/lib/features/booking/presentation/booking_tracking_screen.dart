@@ -179,6 +179,14 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         const Text('Your professional', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
                         const SizedBox(height: 12),
+                        if (_tracking['worker_unavailable'] == true)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 10),
+                            child: Text(
+                              'This professional is temporarily unavailable. AIRway operations is reviewing your booking.',
+                              style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
+                            ),
+                          ),
                         Row(children: [
                           CircleAvatar(
                             radius: 28,

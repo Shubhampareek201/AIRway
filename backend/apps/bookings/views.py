@@ -319,6 +319,7 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         assignment = booking.assignment
         worker = assignment.worker
+        worker_is_approved = worker.status == worker.Status.APPROVED
 
         # Expose only admin-approved public professional information. Never return
         # personal phone, email, home address, ID documents or unverified photos.
@@ -326,7 +327,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         photo = worker.documents.filter(
             doc_type=WorkerDocument.DocumentType.PHOTO,
             status=WorkerDocument.Status.VERIFIED,
-        ).order_by("-created_at", "-id").first() if worker.status == worker.Status.APPROVED else None
+        ).order_by("-created_at", "-id").first() if worker_is_approved else None
         try:
             photo_url = request.build_absolute_uri(photo.file.url) if photo else None
         except Exception:
@@ -335,20 +336,21 @@ class BookingViewSet(viewsets.ModelViewSet):
             capabilities_verified=True,
             service__is_active=True,
             service__category__is_active=True,
-        ).select_related("service", "service__category").order_by("service__title")
+        ).select_related("service", "service__category").order_by("service__title") if worker_is_approved else worker.worker_services.none()
         return Response({
             "is_assigned": True,
             "worker_id": worker.id,
-            "worker_name": worker.user.name or "AIRway Professional",
+            "worker_name": (worker.user.name or "AIRway Professional") if worker_is_approved else "AIRway Professional",
             "worker_photo": photo_url,
-            "worker_bio": worker.bio,
-            "worker_experience_years": worker.experience_years,
-            "worker_qualification": worker.qualification,
-            "worker_rating": float(worker.rating_avg) if worker.rating_avg else None,
-            "worker_rating_count": worker.rating_count,
+            "worker_bio": worker.bio if worker_is_approved else None,
+            "worker_experience_years": worker.experience_years if worker_is_approved else None,
+            "worker_qualification": worker.qualification if worker_is_approved else None,
+            "worker_rating": (float(worker.rating_avg) if worker.rating_avg else None) if worker_is_approved else None,
+            "worker_rating_count": worker.rating_count if worker_is_approved else 0,
             "worker_completed_jobs": BookingAssignment.objects.filter(
                 worker=worker, booking__status=Booking.Status.COMPLETED
-            ).count(),
+            ).count() if worker_is_approved else 0,
+            "worker_unavailable": not worker_is_approved,
             "worker_verified_services": [{
                 "service": row.service.title,
                 "category": row.service.category.title,
