@@ -200,6 +200,21 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             address = Address.objects.select_related("zone__city").get(
                 pk=address_id, user=user, deleted_at__isnull=True
             )
+            if address.latitude is None or address.longitude is None:
+                raise serializers.ValidationError({
+                    "address_id": "This saved address has no confirmed map pin. Please edit the address and confirm its location."
+                })
+            from apps.core.coverage import resolve_active_zone
+            resolved_zone = resolve_active_zone(
+                latitude=address.latitude,
+                longitude=address.longitude,
+            )
+            if resolved_zone is None:
+                raise serializers.ValidationError({
+                    "address_id": "This address is outside AIRway's active service coverage. Choose an address inside the Rawatbhata service boundary."
+                })
+            address.zone = resolved_zone
+            attrs["_resolved_zone"] = resolved_zone
             try:
                 check_service_available(service=service, address=address, audience="all")
             except ServiceUnavailableError as e:
@@ -302,6 +317,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         category_answers = validated_data.pop("category_answers", {})
         quantity = validated_data.pop("quantity", 1)
         address = validated_data.pop("_address")
+        resolved_zone = validated_data.pop("_resolved_zone", None)
+        if resolved_zone is not None and address.zone_id != resolved_zone.pk:
+            address.zone = resolved_zone
+            address.save(update_fields=["zone", "updated_at"])
         user = self.context["request"].user
 
         variant = validated_data.get("variant")
