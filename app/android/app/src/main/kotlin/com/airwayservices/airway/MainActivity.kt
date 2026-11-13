@@ -1,5 +1,6 @@
 package com.airwayservices.airway
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -18,9 +19,9 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
             .build()
 
         val jobAlerts = NotificationChannel(
@@ -31,7 +32,7 @@ class MainActivity : FlutterActivity() {
             description = "Urgent new service requests that need a worker response"
             enableVibration(true)
             setSound(sound, audioAttributes)
-            lockscreenVisibility = NotificationManager.IMPORTANCE_HIGH
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
 
         val general = NotificationChannel(
