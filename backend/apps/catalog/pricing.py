@@ -6,7 +6,7 @@ def service_pricing_ready(service):
     if service.pricing_type == "fixed":
         return service.variants.filter(is_active=True, price__gt=Decimal("0.00")).exists()
     if service.pricing_type == "quote":
-        return service.booking_mode == "inspection"
+        return service.booking_mode == "inspection" and service.visit_fee > Decimal("0.00")
     # Per-unit pricing has no unit-rate model in the current checkout snapshot.
     return False
 
