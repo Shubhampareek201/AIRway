@@ -1,6 +1,4 @@
 """Geographic service-area resolution for customer addresses."""
-from decimal import Decimal
-
 from apps.core.models import Zone
 
 
@@ -17,6 +15,9 @@ def _point_in_ring(longitude, latitude, ring):
     j = len(points) - 1
     for i, (xi, yi) in enumerate(points):
         xj, yj = points[j]
+        cross = (x - xi) * (yj - yi) - (y - yi) * (xj - xi)
+        if abs(cross) <= 1e-10 and min(xi, xj) - 1e-10 <= x <= max(xi, xj) + 1e-10 and min(yi, yj) - 1e-10 <= y <= max(yi, yj) + 1e-10:
+            return True
         if ((yi > y) != (yj > y)):
             crossing_x = (xj - xi) * (y - yi) / ((yj - yi) or 1e-15) + xi
             if x < crossing_x:
