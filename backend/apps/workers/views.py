@@ -162,9 +162,9 @@ class WorkerServiceListView(APIView):
             service = Service.objects.get(pk=int(service_id), is_active=True)
         except (Service.DoesNotExist, ValueError, TypeError):
             return Response({"service": ["Invalid service."]}, status=status.HTTP_400_BAD_REQUEST)
-        capabilities = request.data.get("capabilities")
-        if not isinstance(capabilities, list) or not any(str(item).strip() for item in capabilities):
-            return Response({"capabilities": ["Provide specific task capabilities."]}, status=400)
+        capabilities = request.data.get("capabilities", [])
+        if not isinstance(capabilities, list):
+            return Response({"capabilities": ["Provide a list of task capabilities."]}, status=400)
         normalized = list(dict.fromkeys(str(item).strip() for item in capabilities if str(item).strip()))
         obj, created = WorkerService.objects.get_or_create(worker=profile, service=service, defaults={"capabilities": normalized})
         if not created and obj.capabilities != normalized:
