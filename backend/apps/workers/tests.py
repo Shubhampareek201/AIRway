@@ -77,6 +77,26 @@ class WorkerProfileAPITest(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    def test_worker_can_edit_permitted_profile_fields_and_name(self):
+        response = self.client.patch(
+            "/api/v1/workers/me/",
+            {
+                "name": "Updated Worker",
+                "bio": "Home service professional",
+                "qualification": "ITI",
+                "upi_id": "worker@upi",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.worker_user.refresh_from_db()
+        self.worker_profile.refresh_from_db()
+        self.assertEqual(self.worker_user.name, "Updated Worker")
+        self.assertEqual(self.worker_profile.bio, "Home service professional")
+        self.assertEqual(self.worker_profile.qualification, "ITI")
+        self.assertEqual(self.worker_profile.upi_id, "worker@upi")
+
 
 class NearbyWorkersAPITest(TestCase):
     """Test nearby workers endpoint."""
@@ -1166,6 +1186,35 @@ class WorkerProfilePhotoTest(TestCase):
         self.assertEqual(response.data["status"], "approved")
         # Photo URL should be present for VERIFIED status photo
         self.assertIsNotNone(response.data.get("photo_url"))
+
+    def test_approved_worker_can_submit_replacement_photo_without_replacing_verified_photo(self):
+        user = User.objects.create_user(phone="+919876543212", name="Approved Worker")
+        profile = WorkerProfile.objects.create(user=user, status=WorkerProfile.Status.APPROVED)
+        old_photo = WorkerDocument.objects.create(
+            worker=profile,
+            doc_type=WorkerDocument.DocumentType.PHOTO,
+            file="photos/approved-old.jpg",
+            status=WorkerDocument.Status.VERIFIED,
+        )
+        self.client.force_authenticate(user=user)
+
+        response = self.client.post(
+            "/api/v1/workers/documents/upload/",
+            {"doc_type": "photo", "file": self._create_test_image("new-photo.jpg")},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        old_photo.refresh_from_db()
+        self.assertEqual(old_photo.status, WorkerDocument.Status.VERIFIED)
+        self.assertTrue(WorkerDocument.objects.filter(
+            worker=profile,
+            doc_type=WorkerDocument.DocumentType.PHOTO,
+            status=WorkerDocument.Status.PENDING,
+        ).exists())
+        profile_response = self.client.get("/api/v1/workers/me/")
+        self.assertEqual(profile_response.status_code, 200)
+        self.assertIn("approved-old.jpg", profile_response.data["photo_url"])
 
     def test_worker_profile_no_photo_url_for_pending_status(self):
         """Should return None photo_url for PENDING status photos (not yet verified)."""
