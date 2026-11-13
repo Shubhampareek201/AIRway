@@ -48,7 +48,7 @@ class PushNotificationService {
     }
     _tokenRefreshSubscription ??= _messaging.onTokenRefresh.listen((value) {
       if (value.isNotEmpty) {
-        unawaited(NotificationApi.registerDeviceToken(value));
+        unawaited(NotificationApi.registerDeviceToken(value).catchError((Object _) {}));
       }
     });
     _initialized = true;
