@@ -8,6 +8,7 @@ from apps.workers.eligibility import eligible_worker_profiles
 from apps.workers.models import WorkerProfile, WorkerService
 from .models import Banner, Category, CityService, Service
 from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer
+from .pricing import priced_service_ids
 
 
 def _location_from_address(request):
@@ -161,6 +162,13 @@ def _launch_catalogue_filter(queryset):
     )
 
 
+def _customer_priced_service_ids():
+    """Exclude draft/zero-price fixed services and unsupported per-unit rates."""
+    return priced_service_ids(
+        Service.objects.filter(is_active=True, category__is_active=True)
+    )
+
+
 def _visible_category_ids(service_ids):
     category_ids = set(
         Service.objects.filter(
@@ -191,12 +199,12 @@ class CategoryListView(generics.ListAPIView):
         context = super().get_serializer_context()
         location = _location_from_address(self.request)
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
-        if location is None:
-            service_ids = None
-        else:
-            service_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
+        priced_ids = _customer_priced_service_ids()
+        service_ids = priced_ids
+        if location is not None:
+            service_ids &= _enrolled_service_ids(*location) & _city_service_ids(*location)
         if audience_ids is not None:
-            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
+            service_ids &= audience_ids
         context["visible_category_ids"] = (
             None if service_ids is None else _visible_category_ids(service_ids)
         )
@@ -242,7 +250,7 @@ class ServiceListView(generics.ListAPIView):
         return context
 
     def get_queryset(self):
-        queryset = Service.objects.filter(is_active=True, category__is_active=True).select_related(
+        queryset = Service.objects.filter(is_active=True, category__is_active=True, pk__in=_customer_priced_service_ids()).select_related(
             "category"
         ).prefetch_related(
             "images", "variants", "addons", "form_fields"
@@ -294,7 +302,7 @@ class ServiceDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         queryset = Service.objects.filter(
-            is_active=True, category__is_active=True
+            is_active=True, category__is_active=True, pk__in=_customer_priced_service_ids()
         ).select_related("category").prefetch_related(
             "images", "variants", "addons", "form_fields"
         )
