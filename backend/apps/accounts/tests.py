@@ -407,6 +407,23 @@ class WorkerApplicationTest(APITestCase):
             is_active=True,
         )
 
+    def _application_payload(self, photo):
+        import json
+
+        return {
+            "name": "Test Worker",
+            "email": "worker@example.com",
+            "gender": WorkerProfile.Gender.MALE,
+            "experience_years": "0",
+            "services": [self.service.id],
+            "service_capabilities": json.dumps({str(self.service.id): []}),
+            "service_experience_years": json.dumps({str(self.service.id): 0}),
+            "zones": [self.zone.id],
+            "residential_address": "12 Test Street, Rawatbhata",
+            "schedule": json.dumps({"0": {"start": "09:00", "end": "18:00"}}),
+            "profile_photo": photo,
+        }
+
     def test_worker_application_requires_photo(self):
         """Worker application should require a profile photo."""
         response = self.client.post(
@@ -446,13 +463,7 @@ class WorkerApplicationTest(APITestCase):
 
         response = self.client.post(
             "/api/v1/workers/apply/",
-            {
-                "services": [self.service.id],
-                "zones": [self.zone.id],
-                "residential_address": "12 Test Street, Rawatbhata",
-                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
-                "profile_photo": photo,
-            },
+            self._application_payload(photo),
             format="multipart",
         )
 
@@ -506,13 +517,7 @@ class WorkerApplicationTest(APITestCase):
 
         response = self.client.post(
             "/api/v1/workers/apply/",
-            {
-                "services": [self.service.id],
-                "zones": [self.zone.id],
-                "residential_address": "12 Test Street, Rawatbhata",
-                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
-                "profile_photo": worker_photo,
-            },
+            self._application_payload(worker_photo),
             format="multipart",
         )
 
@@ -544,13 +549,7 @@ class WorkerApplicationTest(APITestCase):
         photo = self._create_test_photo()
         response = self.client.post(
             "/api/v1/workers/apply/",
-            {
-                "services": [self.service.id],
-                "zones": [self.zone.id],
-                "residential_address": "12 Test Street, Rawatbhata",
-                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
-                "profile_photo": photo,
-            },
+            self._application_payload(photo),
             format="multipart",
         )
 
@@ -582,13 +581,7 @@ class WorkerApplicationTest(APITestCase):
         photo2 = self._create_test_photo()
         response = self.client.post(
             "/api/v1/workers/apply/",
-            {
-                "services": [self.service.id],
-                "zones": [self.zone.id],
-                "residential_address": "12 Test Street, Rawatbhata",
-                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
-                "profile_photo": photo2,
-            },
+            self._application_payload(photo2),
             format="multipart",
         )
         self.assertEqual(response.status_code, 409)
