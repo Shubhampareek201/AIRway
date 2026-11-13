@@ -312,6 +312,12 @@ class DispatcherService:
                 ).values_list("amount", flat=True).first() or "0")
                 remaining_balance = str(max(Decimal(customer_total) - Decimal(advance_received), Decimal("0")))
                 address_text = booking.address.full_address
+            duration_minutes = (
+                booking.variant.duration_minutes
+                if booking.variant_id and booking.variant.duration_minutes
+                else booking.service.duration_minutes
+            ) or 60
+            duration_minutes *= max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
@@ -320,11 +326,22 @@ class DispatcherService:
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "address": address_text,
+                "customer_instructions": booking.notes or "",
+                "expected_duration_minutes": duration_minutes,
                 "customer_total": customer_total,
                 "advance_received": advance_received,
                 "remaining_balance": remaining_balance,
                 "notification_kind": "worker_offer",
             }
+            # Put actionable facts in the visible push body as well as its data
+            # payload; workers should not need to open the app just to see the
+            # location, appointment, and payment split.
+            location_preview = (address_text or "").strip()[:90]
+            notification_body = (
+                f"{summary} • {booking.scheduled_at.strftime('%d %b, %I:%M %p')} "
+                f"• {location_preview} • Advance ₹{advance_received} "
+                f"• Balance ₹{remaining_balance}"
+            )
             Notification.objects.create(
                 user=worker.user,
                 type=Notification.Type.WORKER_OFFER,
