@@ -882,7 +882,7 @@ class CustomerOrderDetailView(APIView):
                         completion_code = (otp_notice.data or {}).get("completion_code")
                         if not completion_code:
                             import re
-                            match = re.search(r"\\bis (\\d{6})\\.", otp_notice.body)
+                            match = re.search(r"\bis (\d{6})\.", otp_notice.body)
                             completion_code = match.group(1) if match else None
                         completion_expires_at = otp_record.expires_at.isoformat()
             items.append({
