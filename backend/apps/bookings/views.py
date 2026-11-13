@@ -477,7 +477,12 @@ class BookingViewSet(viewsets.ModelViewSet):
                     title="Share your service completion code",
                     body=f"Your AIRway completion code for booking #{locked_booking.id} is {code}. Share it with your assigned professional only after the service is finished. It expires in 10 minutes.",
                     channel=Notification.Channel.IN_APP,
-                    data={"booking_id": locked_booking.id, "purpose": "service_completion_otp", "expires_at": expires_at.isoformat()},
+                    data={
+                        "booking_id": locked_booking.id,
+                        "purpose": "service_completion_otp",
+                        "completion_code": code,
+                        "expires_at": expires_at.isoformat(),
+                    },
                 )
                 return Response({
                     "detail": "Completion code sent to the customer in the AIRway app. Ask the customer to share it.",
@@ -857,6 +862,29 @@ class CustomerOrderDetailView(APIView):
         for row in order.items.all():
             booking = row.booking
             assignment = getattr(booking, "assignment", None)
+            completion_code = None
+            completion_expires_at = None
+            if booking.status == Booking.Status.IN_PROGRESS:
+                from apps.bookings.models import BookingCompletionOTP
+                from apps.notifications.models import Notification
+                otp_record = BookingCompletionOTP.objects.filter(
+                    booking=booking,
+                    verified_at__isnull=True,
+                    expires_at__gt=timezone.now(),
+                ).first()
+                if otp_record:
+                    otp_notice = Notification.objects.filter(
+                        user=request.user,
+                        data__booking_id=booking.id,
+                        data__purpose="service_completion_otp",
+                    ).order_by("-created_at").first()
+                    if otp_notice:
+                        completion_code = (otp_notice.data or {}).get("completion_code")
+                        if not completion_code:
+                            import re
+                            match = re.search(r"\\bis (\\d{6})\\.", otp_notice.body)
+                            completion_code = match.group(1) if match else None
+                        completion_expires_at = otp_record.expires_at.isoformat()
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
@@ -875,6 +903,13 @@ class CustomerOrderDetailView(APIView):
                 "advance_amount": advance_rows.get(row.id, {}).get("amount"),
                 "balance_amount": balance_rows.get(row.id, {}).get("amount"),
                 "completion_verified": booking.status == Booking.Status.COMPLETED,
+                "completion_otp": (
+                    {
+                        "code": completion_code,
+                        "expires_at": completion_expires_at,
+                    }
+                    if completion_code else None
+                ),
                 "refunds": [
                     {
                         "id": refund.pk,
