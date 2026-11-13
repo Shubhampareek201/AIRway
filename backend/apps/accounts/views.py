@@ -28,7 +28,7 @@ from apps.core.models import City, Zone
 from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
-from .models import Address
+from .models import Address, DeviceToken
 from .serializers import (
     AddressCreateSerializer,
     AddressSerializer,
@@ -178,6 +178,31 @@ class LoginView(APIView):
             },
             "profile_complete": bool(user.name and user.name.strip()),
         })
+
+
+class DeviceTokenView(APIView):
+    """Register or remove the authenticated user's Firebase device token."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get("token")
+        platform = request.data.get("platform", "android")
+        if not isinstance(token, str) or not token.strip() or len(token) > 512:
+            return Response({"token": ["A valid device token is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        if platform not in ("android", "ios", "web"):
+            return Response({"platform": ["Choose android, ios or web."]}, status=status.HTTP_400_BAD_REQUEST)
+        DeviceToken.objects.update_or_create(
+            token=token.strip(),
+            defaults={"user": request.user, "platform": platform},
+        )
+        return Response({"registered": True}, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        token = request.data.get("token")
+        if not isinstance(token, str) or not token.strip():
+            return Response({"token": ["A valid device token is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        DeviceToken.objects.filter(user=request.user, token=token.strip()).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CurrentUserView(APIView):
