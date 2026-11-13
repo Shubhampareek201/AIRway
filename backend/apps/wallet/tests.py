@@ -666,7 +666,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.order.refresh_from_db()
         self.wallet.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUNDED)
-        self.assertEqual(self.order.status, Order.Status.AWAITING_PAYMENT)
+        self.assertEqual(self.order.status, Order.Status.AWAITING_ASSIGNMENT)
         self.assertEqual(self.wallet.balance, Decimal("0.00"))
         gateway.payment.refund.assert_called_once()
         self.assertEqual(
