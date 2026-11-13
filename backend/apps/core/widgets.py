@@ -25,4 +25,5 @@ class CoveragePolygonWidget(forms.Textarea):
         attrs.setdefault("rows", 4)
         attrs.setdefault("cols", 80)
         attrs.setdefault("class", "vLargeTextField airway-coverage-json")
+        attrs.setdefault("hidden", "hidden")
         super().__init__(attrs)
