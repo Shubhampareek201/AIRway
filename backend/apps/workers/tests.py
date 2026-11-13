@@ -1600,8 +1600,10 @@ class WorkerAcceptancePaymentTest(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
-        # No payment should be created
-        self.assertFalse(Payment.objects.filter(booking=booking).exists())
+        # The advance was already settled before dispatch; an unauthorised
+        # worker must not create another payment or change that settlement.
+        self.assertEqual(Payment.objects.filter(booking=booking).count(), 1)
+        self.assertEqual(Payment.objects.get(booking=booking).status, Payment.Status.PAID)
 
     def test_worker_acceptance_succeeds_even_if_razorpay_fails(self):
         """Worker acceptance should succeed even if Razorpay order creation fails.

@@ -157,7 +157,7 @@ def create_or_get_order_payment(
             advance_rows.append({"order_item_id": item.id, "booking_id": item.booking_id, "amount": str(advance_line)})
             balance_rows.append({"order_item_id": item.id, "booking_id": item.booking_id, "amount": str(balance_line)})
         allocation = {
-            "percentage": str(settings.ORDER_ADVANCE_PERCENTAGE),
+            "percentage": str(advance_percentage),
             "advance_total": str(advance_total),
             "balance_total": str(balance_total),
             "advance": advance_rows,
