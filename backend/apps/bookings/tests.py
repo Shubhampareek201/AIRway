@@ -86,6 +86,71 @@ class BookingAPITestMixin:
             )
         return address
 
+    def _mark_advance_paid_and_dispatch(self, booking):
+        """Create a deterministic verified-advance fixture for dispatch tests."""
+        from decimal import Decimal, ROUND_HALF_UP
+        from apps.bookings.models import OrderItem
+        from apps.payments.models import Payment
+        from apps.bookings.dispatcher import DispatcherService
+
+        booking.refresh_from_db()
+        order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+        if order_item:
+            order = order_item.order
+            items = list(order.items.all())
+            advance_total = (Decimal(str(order.total_amount)) * Decimal("0.30")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            balance_total = Decimal(str(order.total_amount)) - advance_total
+            advance_rows, balance_rows = [], []
+            allocated_advance = Decimal("0.00")
+            allocated_balance = Decimal("0.00")
+            for index, item in enumerate(items):
+                if index == len(items) - 1:
+                    advance_line = advance_total - allocated_advance
+                    balance_line = balance_total - allocated_balance
+                else:
+                    advance_line = (advance_total * item.line_total / order.total_amount).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+                    balance_line = item.line_total - advance_line
+                    allocated_advance += advance_line
+                    allocated_balance += balance_line
+                advance_rows.append({
+                    "order_item_id": item.pk, "booking_id": item.booking_id,
+                    "amount": str(advance_line),
+                })
+                balance_rows.append({
+                    "order_item_id": item.pk, "booking_id": item.booking_id,
+                    "amount": str(balance_line),
+                })
+            order.metadata = {
+                **(order.metadata or {}),
+                "payment_allocation_v1": {
+                    "percentage": "30", "advance_total": str(advance_total),
+                    "balance_total": str(balance_total),
+                    "advance": advance_rows, "balance": balance_rows,
+                },
+            }
+            order.save(update_fields=["metadata", "updated_at"])
+            Payment.objects.create(
+                order=order, customer=order.customer, stage=Payment.Stage.ADVANCE,
+                amount=advance_total, status=Payment.Status.PAID,
+                method=Payment.Method.RAZORPAY, razorpay_payment_id="test_captured_advance",
+                paid_at=timezone.now(),
+            )
+            return DispatcherService.dispatch_order(order)
+
+        total = Decimal(str((booking.pricing_snapshot or {}).get("total", booking.total_amount)))
+        advance = (total * Decimal("0.30")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        Payment.objects.create(
+            booking=booking, customer=booking.customer, stage=Payment.Stage.ADVANCE,
+            amount=advance, status=Payment.Status.PAID,
+            method=Payment.Method.RAZORPAY, razorpay_payment_id="test_captured_advance",
+            paid_at=timezone.now(),
+        )
+        return DispatcherService.dispatch_offers(booking)
+
 
 class BookingCreateTest(BookingAPITestMixin, TestCase):
     """Test booking creation endpoint."""
