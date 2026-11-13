@@ -1,5 +1,5 @@
 """
-DispatcherService - Handles multi-worker offer dispatch for bookings.
+DispatcherService - Sends each booking to all currently eligible workers.
 """
 import logging
 from datetime import timedelta
@@ -8,10 +8,8 @@ from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
-# Configuration constants
-BATCH_SIZE = 5  # Max workers per batch
-MAX_BATCHES = 3  # Max batches (5 workers × 3 batches = 15 max total offers)
-OFFER_EXPIRY_MINUTES = 5  # Time window for workers to accept
+# Default time window for workers to accept an offer.
+OFFER_EXPIRY_MINUTES = 5
 
 
 class DispatcherService:
@@ -28,10 +26,10 @@ class DispatcherService:
     - Worker doesn't have overlapping bookings
 
     Dispatch Flow:
-    1. Find eligible workers sorted by rating (desc), then proximity
-    2. Split into batches of 5 workers max
-    3. Create WorkerOffer records with 5-minute expiry
-    4. Send notifications to each offered worker
+    1. Find every worker who passes service, zone, approval, online, schedule,
+       leave, gender, skill and booking-conflict checks.
+    2. Create an offer for every matching worker in one dispatch pass.
+    3. Notify all offered workers; the first valid acceptance wins atomically.
     """
 
     @classmethod
@@ -60,16 +58,12 @@ class DispatcherService:
             status=Payment.Status.PAID,
         ).exists():
             return []
-        batch_size = max(int(batch_size or config.batch_size), 1)
         expiry_minutes = max(int(expiry_minutes or config.offer_expiry_minutes), 1)
         existing = WorkerOffer.objects.filter(booking=booking, order__isnull=True)
         if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
             return []
         from django.db.models import Max
         batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
-        if batch_number > max(int(config.max_batches or 1), 1):
-            cls._notify_dispatch_exhausted(booking)
-            return []
         duration = (booking.variant.duration_minutes if booking.variant_id and booking.variant.duration_minutes else booking.service.duration_minutes) or 60
         quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
         from apps.workers.eligibility import required_worker_gender_for_booking
@@ -190,9 +184,6 @@ class DispatcherService:
             if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
                 return []
             batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
-            if batch_number > max(int(config.max_batches or 1), 1):
-                cls._notify_dispatch_exhausted(anchor, order=order)
-                return []
             already_offered = set(existing.filter(
                 status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
             ).values_list("worker_id", flat=True))
