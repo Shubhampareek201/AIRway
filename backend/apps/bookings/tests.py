@@ -1971,8 +1971,8 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
                 is_active=True,
             )
 
-    def test_offers_created_on_booking_creation(self):
-        """Offers should be created automatically when booking is created."""
+    def test_offers_wait_for_verified_advance_payment(self):
+        """Booking creation must not notify workers before the advance is captured."""
         from apps.bookings.models import WorkerOffer
 
         future_time = self._get_booking_time()
@@ -1989,9 +1989,8 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 201)
         booking_id = response.data["id"]
 
-        # Check offers were created automatically
-        offers = WorkerOffer.objects.filter(booking_id=booking_id, status=WorkerOffer.Status.PENDING)
-        self.assertEqual(offers.count(), 1)
+        offers = WorkerOffer.objects.filter(booking_id=booking_id)
+        self.assertEqual(offers.count(), 0)
 
     def test_booking_is_pending_after_creation(self):
         """Booking status should be PENDING after creation."""
@@ -2011,8 +2010,8 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
         booking = Booking.objects.get(id=response.data["id"])
         self.assertEqual(booking.status, Booking.Status.PENDING)
 
-    def test_no_duplicate_offers_on_confirmation(self):
-        """Confirming a booking with existing offers should not create duplicates."""
+    def test_advance_payment_dispatches_once(self):
+        """A verified advance dispatches once; repeated dispatch calls do not duplicate offers."""
         from apps.bookings.models import WorkerOffer
 
         future_time = self._get_booking_time()
@@ -2028,17 +2027,14 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
 
         booking_id = create_resp.data["id"]
 
-        # Check initial offers
+        # No offer exists before server-verified advance payment.
         initial_offers = WorkerOffer.objects.filter(booking_id=booking_id)
-        self.assertEqual(initial_offers.count(), 1)
-
-        # Confirm booking
-        confirm_resp = self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
-        self.assertEqual(confirm_resp.status_code, 200)
-
-        # Check no duplicate offers
-        final_offers = WorkerOffer.objects.filter(booking_id=booking_id)
-        self.assertEqual(final_offers.count(), 1)
+        self.assertEqual(initial_offers.count(), 0)
+        booking = Booking.objects.get(pk=booking_id)
+        self._mark_advance_paid_and_dispatch(booking)
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_offers(booking)
+        self.assertEqual(WorkerOffer.objects.filter(booking_id=booking_id).count(), 1)
 
     def test_offers_exclude_ineligible_workers(self):
         """Offers should only be created for eligible workers."""
@@ -2067,7 +2063,8 @@ class AutoDispatchOnBookingCreationTest(BookingAPITestMixin, TestCase):
 
         booking_id = response.data["id"]
 
-        # Check only eligible worker received offer
+        booking = Booking.objects.get(pk=booking_id)
+        self._mark_advance_paid_and_dispatch(booking)
         offers = WorkerOffer.objects.filter(booking_id=booking_id)
         self.assertEqual(offers.count(), 1)
         self.assertEqual(offers.first().worker, self.worker_profile)
