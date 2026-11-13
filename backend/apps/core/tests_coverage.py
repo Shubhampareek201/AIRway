@@ -43,3 +43,7 @@ class PolygonCoverageTests(SimpleTestCase):
         from apps.core.coverage import polygon_contains_point
         self.assertFalse(polygon_contains_point({"type": "MultiPolygon", "coordinates": []}, 75.6, 24.93))
         self.assertFalse(polygon_contains_point({"type": "Polygon", "coordinates": []}, 75.6, 24.93))
+
+    def test_point_on_outer_boundary_is_included(self):
+        from apps.core.coverage import polygon_contains_point
+        self.assertTrue(polygon_contains_point(self.polygon, 75.55, 24.93))
