@@ -149,6 +149,11 @@ class WorkerProfileAdmin(ModelAdmin):
             and obj.status == WorkerProfile.Status.APPROVED
             and previous_status == WorkerProfile.Status.PENDING
         )
+        suspension_or_rejection = (
+            change
+            and previous_status == WorkerProfile.Status.APPROVED
+            and obj.status in (WorkerProfile.Status.SUSPENDED, WorkerProfile.Status.REJECTED)
+        )
 
         if obj.status == WorkerProfile.Status.APPROVED and approval_requested:
             # Inline documents/services/zones/schedules are saved after save_model.
@@ -176,6 +181,9 @@ class WorkerProfileAdmin(ModelAdmin):
         if approval_requested:
             request._worker_approval_requested = True
             request._worker_approval_worker_id = obj.pk
+        if suspension_or_rejection:
+            from .dispatch_lifecycle import handle_worker_suspension
+            transaction.on_commit(lambda worker_id=obj.pk: handle_worker_suspension(worker_id))
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
@@ -263,6 +271,8 @@ class WorkerProfileAdmin(ModelAdmin):
             worker.status = WorkerProfile.Status.SUSPENDED
             worker.is_online = False
             worker.save()
+            from .dispatch_lifecycle import handle_worker_suspension
+            handle_worker_suspension(worker.pk)
             count += 1
 
         self.message_user(
