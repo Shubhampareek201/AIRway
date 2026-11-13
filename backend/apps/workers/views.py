@@ -159,7 +159,7 @@ class WorkerServiceListView(APIView):
         if not service_id:
             return Response({"service": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            service = Service.objects.get(pk=int(service_id), is_active=True)
+            service = Service.objects.get(pk=int(service_id), is_active=True, category__is_active=True)
         except (Service.DoesNotExist, ValueError, TypeError):
             return Response({"service": ["Invalid service."]}, status=status.HTTP_400_BAD_REQUEST)
         capabilities = request.data.get("capabilities", [])
