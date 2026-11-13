@@ -592,6 +592,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
+    booking_notes = serializers.CharField(source="booking.notes", read_only=True)
+    expected_duration_minutes = serializers.SerializerMethodField()
     customer_answers = serializers.SerializerMethodField()
     professional_preference = serializers.SerializerMethodField()
     form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
@@ -616,7 +618,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
             "worker_phone", "service_title", "variant_title", "scheduled_at",
-            "service_address", "customer_answers", "professional_preference",
+            "service_address", "booking_notes", "expected_duration_minutes",
+            "customer_answers", "professional_preference",
             "form_responses", "addons", "quantity", "can_accept", "can_decline",
             "can_withdraw",
         ]
@@ -664,6 +667,15 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "scheduled_at": item.booking.scheduled_at,
             "quantity": item.quantity,
         } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
+
+    def get_expected_duration_minutes(self, obj):
+        booking = obj.booking
+        duration = (
+            booking.variant.duration_minutes
+            if booking.variant_id and booking.variant.duration_minutes
+            else booking.service.duration_minutes
+        ) or 60
+        return duration * max(self.get_quantity(obj), 1)
 
     def get_customer_answers(self, obj):
         answers = dict(obj.booking.customer_answers or {})

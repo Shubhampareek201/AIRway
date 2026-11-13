@@ -406,13 +406,14 @@ class CreateOrderView(APIView):
                 raw_wallet_amount = request.data.get("wallet_amount", "0.00")
                 requested_stage = request.data.get("stage")
                 if not requested_stage:
-                    requested_stage = (
-                        Payment.Stage.ADVANCE
-                        if (parent_order.metadata or {}).get("payment_allocation_v1")
-                        else Payment.Stage.LEGACY
+                    requested_stage = Payment.Stage.ADVANCE
+                if requested_stage == Payment.Stage.LEGACY:
+                    return Response(
+                        {"detail": "Full upfront payment is no longer supported. AIRway requires a 30% advance before worker dispatch."},
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
-                if requested_stage not in (Payment.Stage.LEGACY, Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
-                    return Response({"detail": "stage must be 'legacy', 'advance' or 'balance'."}, status=status.HTTP_400_BAD_REQUEST)
+                if requested_stage not in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
+                    return Response({"detail": "stage must be 'advance' or 'balance'."}, status=status.HTTP_400_BAD_REQUEST)
                 payment, razorpay_order_id, already_existed = create_or_get_order_payment(
                     order=parent_order,
                     customer=request.user,

@@ -1171,13 +1171,29 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     to_status=Booking.Status.ASSIGNED, changed_by=worker.user,
                     note="Worker accepted complete order offer" if order else "Worker accepted job offer",
                 )
+                assignment_payload = {
+                    "booking_id": booking.pk,
+                    "order_id": order.pk if order else None,
+                    "worker_id": worker.pk,
+                }
                 Notification.objects.create(
                     user=booking.customer,
                     type=Notification.Type.BOOKING_ASSIGNED,
                     title="Worker Assigned",
                     body=f"Your service is now assigned to {worker.user.name or 'an AIRway professional'}.",
                     channel=Notification.Channel.IN_APP,
-                    data={"booking_id": booking.pk, "order_id": order.pk if order else None, "worker_id": worker.pk},
+                    data=assignment_payload,
+                )
+                from apps.notifications.service import send_push_notification
+                transaction.on_commit(
+                    lambda customer=booking.customer, payload=assignment_payload:
+                        send_push_notification(
+                            customer,
+                            "Worker Assigned",
+                            "Your AIRway professional has accepted the service.",
+                            data=payload,
+                            channel_id="airway_booking_updates",
+                        )
                 )
 
             offer.status = WorkerOffer.Status.ACCEPTED
