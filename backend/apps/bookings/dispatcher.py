@@ -235,18 +235,35 @@ class DispatcherService:
                 batch_number=batch_number, expires_at=expiry,
             )
             created.append(offer)
+            notification_title = "New Service Order" if order else "Job Offer"
+            notification_body = (
+                f"New order ({len(service_titles)} services): {summary}"
+                if order else
+                f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
+            )
+            notification_data = {
+                "offer_id": offer.pk,
+                "booking_id": booking.pk,
+                "order_id": order.pk if order else None,
+                "service_ids": list(order.items.values_list("booking__service_id", flat=True)) if order else [booking.service_id],
+                "scheduled_at": booking.scheduled_at.isoformat(),
+                "notification_kind": "worker_offer",
+            }
             Notification.objects.create(
                 user=worker.user,
                 type=Notification.Type.WORKER_OFFER,
-                title="New Service Order" if order else "Job Offer",
-                body=(f"New order ({len(service_titles)} services): {summary}" if order else f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"),
+                title=notification_title,
+                body=notification_body,
                 channel=Notification.Channel.IN_APP,
-                data={
-                    "offer_id": offer.pk, "booking_id": booking.pk,
-                    "order_id": order.pk if order else None,
-                    "service_ids": list(order.items.values_list("booking__service_id", flat=True)) if order else [booking.service_id],
-                    "scheduled_at": booking.scheduled_at.isoformat(),
-                },
+                data=notification_data,
+            )
+            from apps.notifications.service import send_push_notification
+            send_push_notification(
+                worker.user,
+                notification_title,
+                notification_body,
+                data=notification_data,
+                channel_id="airway_job_alerts",
             )
         logger.info("Dispatched %s offers for %s %s in batch %s", len(created), "order" if order else "booking", order.pk if order else booking.pk, batch_number)
         return created
