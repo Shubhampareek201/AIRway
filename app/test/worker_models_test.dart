@@ -50,5 +50,28 @@ void main() {
       expect(missing.ratingAvg, isNull);
       expect(invalid.ratingAvg, isNull);
     });
+
+    test('parses verified photo and structured worker service assignments', () {
+      final profile = WorkerProfile.fromMap({
+        'id': 17,
+        'status': 'approved',
+        'is_online': true,
+        'photo_url': '/media/worker_documents/profile.jpg',
+        'services': [
+          {
+            'id': 31,
+            'service': 8,
+            'service_title': 'Deep Cleaning',
+            'capabilities': ['Kitchen', 'Bathroom'],
+            'capabilities_verified': true,
+          },
+        ],
+      });
+
+      expect(profile.photoUrl, '/media/worker_documents/profile.jpg');
+      expect(profile.serviceItems, hasLength(1));
+      expect(profile.serviceItems.first['service'], 8);
+      expect(profile.services, ['Deep Cleaning']);
+    });
   });
 }
