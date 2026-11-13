@@ -220,7 +220,7 @@ class Command(BaseCommand):
         monthly = b.service(
             groups["Monthly Car Wash Plans"], "Monthly Car Wash Plan",
             "Choose a recurring wash frequency. The team will confirm the plan, vehicle count and service schedule.",
-            pricing_type="quote", duration=30,
+            booking_mode="inspection", pricing_type="quote", duration=30,
             fields=[
                 vehicle_field,
                 {"key": "vehicle_quantity", "label": "Number of vehicles", "field_type": "number", "required": True},
