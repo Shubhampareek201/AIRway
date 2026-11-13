@@ -94,11 +94,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void dispose() {
     _pushOpenSubscription?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void dispose() {
     _search.dispose();
     _searchFocus.dispose();
     _bannerController.dispose();
