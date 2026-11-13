@@ -181,7 +181,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final paymentId = response.paymentId;
     final signature = response.signature;
     if (orderId == null || paymentId == null || signature == null) {
-      if (mounted) setState(() => paying = false);
+      if (mounted) {
+        setState(() => paying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Payment could not be verified. Please check your order before retrying.')),
+        );
+        await loadOrder(showLoader: false);
+      }
       return;
     }
     try {
@@ -192,30 +198,51 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       );
       if (!mounted) return;
       setState(() => paying = false);
-      await loadOrder();
+      await loadOrder(showLoader: false);
       if (!mounted) return;
-      final refunded = verification['status'] == 'refunded';
+
+      // Razorpay's client callback only means the checkout flow returned.
+      // The backend's verified PAID state is the only success condition.
+      final paymentStatus = verification['status']?.toString().toLowerCase();
+      final paid = paymentStatus == 'paid';
+      final refunded = paymentStatus == 'refunded';
+      final title = paid
+          ? 'Payment successful'
+          : refunded
+              ? 'Payment refunded'
+              : 'Payment not confirmed';
+      final message = paid
+          ? 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : 'final 70% balance'} has been verified successfully.'
+          : refunded
+              ? 'The late payment was refunded because the wallet funds were no longer available. You can retry checkout.'
+              : 'Razorpay returned control, but AIRway has not confirmed this payment as paid. Do not pay again yet. Refresh your order or contact support if the status does not update.';
+
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           icon: Icon(
-            refunded ? Icons.currency_rupee_rounded : Icons.verified_rounded,
-            color: refunded ? sub : violet,
+            paid
+                ? Icons.verified_rounded
+                : refunded
+                    ? Icons.currency_rupee_rounded
+                    : Icons.hourglass_top_rounded,
+            color: paid ? violet : sub,
             size: 48,
           ),
-          title: Text(refunded ? 'Payment refunded' : 'Payment successful'),
-          content: Text(
-            refunded
-                ? 'The late payment was refunded because the wallet funds were no longer available. You can retry checkout.'
-                : 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : 'final 70% balance'} has been verified successfully.',
-          ),
+          title: Text(title),
+          content: Text(message),
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
         ),
       );
     } catch (e) {
       if (mounted) {
         setState(() => paying = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment verification failed: ' + e.toString())));
+        await loadOrder(showLoader: false);
+        await loadWalletBalance();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment verification is still unresolved: ' + e.toString())),
+        );
       }
     }
   }
@@ -224,6 +251,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (!mounted) return;
     setState(() => paying = false);
     loadWalletBalance();
+    loadOrder(showLoader: false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(response.message ?? 'Payment was not completed. You can try again.')),
     );
@@ -311,7 +339,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : balanceReady ? 'All services verified' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Your order is being arranged',
+              Text(paid ? 'Payment complete' : balanceReady ? 'All services verified' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Payment required',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
               Text(paid ? 'Your order is fully paid.' : balanceReady
