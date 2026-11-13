@@ -8,6 +8,7 @@ from .views import (
     ChangePasswordView,
     CityListView,
     CurrentUserView,
+    DeviceTokenView,
     FirebaseLoginView,
     ForgotPasswordView,
     GeoapifyAutocompleteView,
@@ -55,6 +56,11 @@ urlpatterns = [
         "me/",
         CurrentUserView.as_view(),
         name="current-user",
+    ),
+    path(
+        "devices/token/",
+        DeviceTokenView.as_view(),
+        name="device-token",
     ),
     path(
         "cities/",
