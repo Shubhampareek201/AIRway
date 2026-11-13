@@ -566,13 +566,7 @@ class WorkerApplicationTest(APITestCase):
         # First application
         response = self.client.post(
             "/api/v1/workers/apply/",
-            {
-                "services": [self.service.id],
-                "zones": [self.zone.id],
-                "residential_address": "12 Test Street, Rawatbhata",
-                "schedule": '{"0":{"start":"09:00","end":"18:00"}}',
-                "profile_photo": photo,
-            },
+            self._application_payload(photo),
             format="multipart",
         )
         self.assertEqual(response.status_code, 201)
