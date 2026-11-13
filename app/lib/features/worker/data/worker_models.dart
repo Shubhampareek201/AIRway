@@ -122,6 +122,7 @@ class WorkerOffer {
   final String? variantTitle;
   final DateTime? scheduledAt;
   final String? serviceAddress;
+  final List<Map<String, dynamic>> orderServices;
   final Map<String, dynamic> customerAnswers;
   final List<Map<String, dynamic>> formResponses;
   final List<Map<String, dynamic>> addons;
@@ -143,6 +144,7 @@ class WorkerOffer {
     this.variantTitle,
     this.scheduledAt,
     this.serviceAddress,
+    this.orderServices = const [],
     this.customerAnswers = const {},
     this.formResponses = const [],
     this.addons = const [],
@@ -166,6 +168,10 @@ class WorkerOffer {
       variantTitle: map['variant_title'] as String?,
       scheduledAt: map['scheduled_at'] != null ? DateTime.parse(map['scheduled_at'] as String) : null,
       serviceAddress: map['service_address'] as String?,
+      orderServices: (map['order_services'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
       customerAnswers: Map<String, dynamic>.from(map['customer_answers'] as Map? ?? {}),
       formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
