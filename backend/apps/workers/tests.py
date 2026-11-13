@@ -472,7 +472,7 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         offer.refresh_from_db()
-        self.assertEqual(offer.status, WorkerOffer.Status.WITHDRAWN)
+        self.assertEqual(offer.status, WorkerOffer.Status.DECLINED)
 
     def test_accept_already_accepted_offer_fails(self):
         """Should not allow accepting an already accepted offer."""

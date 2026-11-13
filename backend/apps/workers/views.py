@@ -1262,7 +1262,10 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     {"detail": f"Cannot withdraw offer in {offer.get_status_display().lower()} state."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            offer.status = WorkerOffer.Status.WITHDRAWN
+            # A worker-initiated withdrawal is a terminal decline for this
+            # booking. WITHDRAWN is reserved for system-driven cancellation
+            # and can be safely re-opened during an assignment replacement.
+            offer.status = WorkerOffer.Status.DECLINED
             offer.responded_at = timezone.now()
             offer.save(update_fields=["status", "responded_at", "updated_at"])
             order_id, booking_id = offer.order_id, offer.booking_id
