@@ -373,26 +373,28 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         booking = Booking.objects.create(**validated_data)
 
-        # Single-service bookings use the same staged parent-order lifecycle
-        # as cart checkout: advance first, dispatch only after verified capture.
-        total = Decimal(str(pricing["total"]))
-        subtotal_amount = Decimal(str(pricing["subtotal"]))
-        tax_amount = Decimal(str(pricing["tax"]))
-        order = Order.objects.create(
-            customer=user, address=address, subtotal=subtotal_amount,
-            tax_amount=tax_amount, total_amount=total,
-            metadata={"checkout_source": "single_booking"},
-        )
-        OrderItem.objects.create(
-            order=order, booking=booking, quantity=quantity,
-            service_snapshot={
-                "service_id": service.pk, "service_title": service.title,
-                "variant_id": variant.pk if variant else None,
-                "variant_title": variant.title if variant else "",
-            },
-            pricing_snapshot=pricing, line_subtotal=subtotal_amount,
-            tax_amount=tax_amount, line_total=total,
-        )
+        # Single-service bookings use the same staged parent-order lifecycle.
+        # Cart checkout defers this because it creates one parent order for all
+        # service lines after each booking has been saved.
+        if not self.context.get("defer_worker_dispatch"):
+            total = Decimal(str(pricing["total"]))
+            subtotal_amount = Decimal(str(pricing["subtotal"]))
+            tax_amount = Decimal(str(pricing["tax"]))
+            order = Order.objects.create(
+                customer=user, address=address, subtotal=subtotal_amount,
+                tax_amount=tax_amount, total_amount=total,
+                metadata={"checkout_source": "single_booking"},
+            )
+            OrderItem.objects.create(
+                order=order, booking=booking, quantity=quantity,
+                service_snapshot={
+                    "service_id": service.pk, "service_title": service.title,
+                    "variant_id": variant.pk if variant else None,
+                    "variant_title": variant.title if variant else "",
+                },
+                pricing_snapshot=pricing, line_subtotal=subtotal_amount,
+                tax_amount=tax_amount, line_total=total,
+            )
 
         # Create BookingAddOn entries
         for addon_id in addon_ids:
