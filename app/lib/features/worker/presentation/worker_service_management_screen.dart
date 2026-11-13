@@ -21,7 +21,6 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
       .whereType<int>()
       .toSet();
   final Map<int, Set<String>> _capabilities = {};
-  final _search = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -39,7 +38,6 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
   }
 
   @override
-  void dispose() { _search.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
@@ -52,15 +50,6 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
     }
   }
 
-  List<Service> get _visible {
-    final q = _search.text.trim().toLowerCase();
-    if (q.isEmpty) return _catalogue;
-    return _catalogue.where((s) =>
-      s.title.toLowerCase().contains(q) ||
-      s.categoryName.toLowerCase().contains(q) ||
-      s.categoryRootName.toLowerCase().contains(q)
-    ).toList();
-  }
 
   Future<void> _save() async {
     if (_saving) return;
