@@ -4,6 +4,7 @@ import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/features/worker/data/worker_app_api.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
+import 'package:airway/features/worker/presentation/widgets/worker_service_picker.dart';
 
 class WorkerServiceManagementScreen extends StatefulWidget {
   final WorkerProfile profile;
@@ -119,136 +120,73 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
 
   @override
   Widget build(BuildContext context) {
-    final grouped = <String, Map<String, List<Service>>>{};
-    for (final service in _visible) {
-      final root = service.categoryRootName.trim().isEmpty ? service.categoryName : service.categoryRootName;
-      grouped.putIfAbsent(root, () => {});
-      grouped[root]!.putIfAbsent(service.categoryName, () => []).add(service);
-    }
+    final inactiveRows = widget.profile.serviceItems.where((row) {
+      final id = int.tryParse(row['service']?.toString() ?? '');
+      return id != null && !_catalogue.any((service) => service.id == id);
+    }).toList();
     return Scaffold(
       appBar: AppBar(title: const Text('My services')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 12),
-                  FilledButton(onPressed: _load, child: const Text('Try again')),
-                ])))
+              ? Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(_error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    FilledButton(onPressed: _load, child: const Text('Try again')),
+                  ]),
+                ))
               : Column(children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                    child: TextField(
-                      controller: _search,
-                      onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search services or categories', border: OutlineInputBorder()),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(children: [
-                      Expanded(child: Text('${_selected.length} services selected', style: const TextStyle(fontWeight: FontWeight.w800))),
-                      TextButton(onPressed: _saving ? null : () => setState(() {
-                        final visibleIds = _visible.map((s) => s.id);
-                        if (visibleIds.every(_selected.contains)) { _selected.removeAll(visibleIds); } else { _selected.addAll(visibleIds); }
-                      }), child: const Text('Select all shown')),
-                    ]),
-                  ),
                   Expanded(child: ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
                     children: [
-                      ...widget.profile.serviceItems.where((row) {
-                        final id = int.tryParse(row['service']?.toString() ?? '');
-                        return id != null && !_catalogue.any((service) => service.id == id);
-                      }).map((row) {
-                        final id = int.tryParse(row['service']?.toString() ?? '');
-                        return Card(
-                          child: ListTile(
+                      const Text('Manage the services you can provide', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      const Text('Choose a category, select services, then review the skills you can perform.', style: TextStyle(color: AirwayColors.textSecondary)),
+                      const SizedBox(height: 16),
+                      WorkerServicePicker(
+                        services: _catalogue,
+                        selectedIds: _selected,
+                        capabilities: _capabilities,
+                        onServiceAdded: (id) => setState(() {
+                          _selected.add(id);
+                          _capabilities.putIfAbsent(id, () => <String>{});
+                        }),
+                        onServiceRemoved: (id) => setState(() {
+                          _selected.remove(id);
+                          _capabilities.remove(id);
+                        }),
+                        onCapabilityChanged: (id, task, selected) => setState(() {
+                          final values = _capabilities.putIfAbsent(id, () => <String>{});
+                          if (selected) { values.add(task); } else { values.remove(task); }
+                        }),
+                      ),
+                      if (inactiveRows.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        const Text('Unavailable services', style: TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 6),
+                        ...inactiveRows.map((row) {
+                          final id = int.tryParse(row['service']?.toString() ?? '');
+                          return Card(child: ListTile(
                             leading: const Icon(Icons.info_outline, color: Colors.orange),
                             title: Text(row['service_title']?.toString() ?? 'Inactive service'),
-                            subtitle: const Text('No longer available in the active catalogue. Remove it from your profile if you no longer provide it.'),
+                            subtitle: const Text('This service is no longer active. Remove it from your profile if you no longer provide it.'),
                             trailing: IconButton(
                               tooltip: 'Remove service',
-                              onPressed: _saving || id == null ? null : () => setState(() => _selected.remove(id)),
+                              onPressed: _saving || id == null ? null : () => setState(() { _selected.remove(id); }),
                               icon: const Icon(Icons.remove_circle_outline),
                             ),
-                          ),
-                        );
-                      }),
-                      ...grouped.entries.map((root) {
-                      final rootServices = root.value.values.expand((items) => items).toList();
-                      final count = rootServices.where((s) => _selected.contains(s.id)).length;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ExpansionTile(
-                          title: Text(root.key, style: const TextStyle(fontWeight: FontWeight.w800)),
-                          subtitle: Text('$count of ${rootServices.length} selected'),
-                          children: root.value.entries.map((category) {
-                            final ids = category.value.map((s) => s.id);
-                            return Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Row(children: [
-                                  Expanded(child: Text(category.key, style: TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary))),
-                                  TextButton(onPressed: _saving ? null : () => setState(() {
-                                    if (ids.every(_selected.contains)) { _selected.removeAll(ids); } else { _selected.addAll(ids); }
-                                  }), child: const Text('Select all')),
-                                ]),
-                                Wrap(spacing: 7, runSpacing: 4, children: category.value.map(_serviceChip).toList()),
-                              ]),
-                            );
-                          }).toList(),
-                        ),
-                      );
-                    }).toList(),
-                      ..._selected.where((id) => _catalogue.any((service) => service.id == id)).map((id) {
-                        final service = _catalogue.firstWhere((item) => item.id == id);
-                        final tasks = <String>{
-                          ...service.variants.expand((variant) => variant.includedTasks),
-                          ...service.addons.map((addon) => addon.title),
-                        }.map((value) => value.trim()).where((value) => value.isNotEmpty).toList()..sort();
-                        final selectedTasks = _capabilities.putIfAbsent(id, () => <String>{});
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ExpansionTile(
-                            title: Text(service.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text(tasks.isEmpty ? 'No task details configured' : '${selectedTasks.length} of ${tasks.length} work options selected'),
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.fromLTRB(14, 8, 14, 4),
-                                child: Text('Choose only the work you are trained to perform. Changed skills may need admin verification before matching.', style: TextStyle(fontSize: 11, color: AirwayColors.textSecondary)),
-                              ),
-                              if (tasks.isEmpty)
-                                const Padding(
-                                  padding: EdgeInsets.all(14),
-                                  child: Text('No task options have been configured for this service yet.'),
-                                )
-                              else
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-                                  child: Wrap(
-                                    spacing: 7,
-                                    runSpacing: 4,
-                                    children: tasks.map((task) => FilterChip(
-                                      label: Text(task),
-                                      selected: selectedTasks.contains(task),
-                                      onSelected: _saving ? null : (value) => setState(() {
-                                        if (value) { selectedTasks.add(task); } else { selectedTasks.remove(task); }
-                                      }),
-                                    )).toList(),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      }),
+                          ));
+                        }),
+                      ],
                     ],
                   )),
                   SafeArea(top: false, child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: SizedBox(width: double.infinity, child: FilledButton(
                       onPressed: _saving ? null : _save,
-                      child: _saving ? const CircularProgressIndicator() : const Text('Save service changes'),
+                      child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save service changes'),
                     )),
                   )),
                 ]),
