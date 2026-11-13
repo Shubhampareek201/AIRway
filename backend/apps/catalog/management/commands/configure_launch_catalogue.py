@@ -206,6 +206,13 @@ class Command(BaseCommand):
                 counts["city_services_created"] += 1
 
             root = _root_name(service.category)
+            if service.pricing_type == Service.PricingType.PER_UNIT:
+                # Checkout does not yet calculate quantity-based unit rates.
+                # Keep the service bookable as an inspection/quote with a clear visit fee.
+                service.pricing_type = Service.PricingType.QUOTE
+                service.booking_mode = Service.BookingMode.INSPECTION
+                service.save(update_fields=["pricing_type", "booking_mode", "updated_at"])
+
             if root == "Beauty":
                 audience = _beauty_audience(service)
                 if service.audience != audience:
@@ -256,11 +263,17 @@ class Command(BaseCommand):
                 addon.save(update_fields=["price", "mrp", "updated_at"])
                 counts["addons_priced"] += 1
 
-            if service.pricing_type == Service.PricingType.QUOTE and service.visit_fee <= 0:
-                service.visit_fee = _service_base_price(root, service)
-                service.booking_mode = Service.BookingMode.INSPECTION
-                service.save(update_fields=["visit_fee", "booking_mode", "updated_at"])
-                counts["services_priced"] += 1
+            if service.pricing_type == Service.PricingType.QUOTE:
+                changed = False
+                if service.visit_fee <= 0:
+                    service.visit_fee = _service_base_price(root, service)
+                    counts["services_priced"] += 1
+                    changed = True
+                if service.booking_mode != Service.BookingMode.INSPECTION:
+                    service.booking_mode = Service.BookingMode.INSPECTION
+                    changed = True
+                if changed:
+                    service.save(update_fields=["visit_fee", "booking_mode", "updated_at"])
 
         self.stdout.write(self.style.SUCCESS(
             f"Launch catalogue configured for {city.name}: " +
