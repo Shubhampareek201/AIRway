@@ -50,7 +50,10 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       _error = null;
     });
     try {
-      final categories = await CatalogApi.listCategories(addressId: widget.addressId);
+      final categories = await CatalogApi.listCategories(
+        addressId: widget.addressId,
+        audience: widget.initialAnswers['beauty_audience']?.toString(),
+      );
       if (!mounted) return;
       setState(() {
         _categories = categories;
