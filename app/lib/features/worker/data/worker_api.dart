@@ -79,6 +79,29 @@ class WorkerApi {
     return WorkerProfile.fromMap(result);
   }
 
+  static Future<WorkerProfile> updateMyProfile(Map<String, dynamic> data) async {
+    final result = await _request('/api/v1/workers/me/', method: 'PATCH', data: data);
+    return WorkerProfile.fromMap(Map<String, dynamic>.from(result as Map));
+  }
+
+  static Future<void> addService({
+    required int serviceId,
+    required List<String> capabilities,
+  }) async {
+    await _request(
+      '/api/v1/workers/services/',
+      method: 'POST',
+      data: {'service': serviceId, 'capabilities': capabilities},
+    );
+  }
+
+  static Future<void> removeService(int serviceId) async {
+    await _request(
+      '/api/v1/workers/services/$serviceId/',
+      method: 'DELETE',
+    );
+  }
+
   static Future<List<WorkerOffer>> getJobOffers() async {
     final result = await _request('/api/v1/workers/offers/');
     final list = (result as Map)['results'] as List;
