@@ -1712,6 +1712,67 @@ class WorkerAcceptancePaymentTest(TestCase):
         self.assertTrue(BookingAssignment.objects.filter(booking=booking).exists())
         self.assertEqual(count, 0)
 
+    def test_suspension_before_start_reassigns_booking(self):
+        """Suspending an assigned worker reopens and redispatches an unstarted paid job."""
+        from apps.workers.dispatch_lifecycle import handle_worker_suspension
+        from apps.notifications.models import Notification
+
+        booking, offer = self._create_booking_with_offer()
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=self.worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offer.id}/accept/", format="json"
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+
+        self.worker_profile.status = WorkerProfile.Status.SUSPENDED
+        self.worker_profile.is_online = False
+        self.worker_profile.save(update_fields=["status", "is_online", "updated_at"])
+        result = handle_worker_suspension(self.worker_profile.pk)
+
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.PENDING)
+        self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
+        self.assertEqual(result["reassigned"], 1)
+        self.assertTrue(WorkerOffer.objects.filter(
+            booking=booking, worker=self.other_worker_profile,
+            status=WorkerOffer.Status.PENDING,
+        ).exists())
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer_user, title="Finding a replacement professional"
+        ).exists())
+
+    def test_suspension_after_job_started_escalates_without_auto_reassignment(self):
+        """Started work is paused for operations review rather than silently reassigned."""
+        from apps.workers.dispatch_lifecycle import handle_worker_suspension
+        from apps.notifications.models import Notification
+
+        booking, offer = self._create_booking_with_offer()
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=self.worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offer.id}/accept/", format="json"
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        assignment = BookingAssignment.objects.get(booking=booking)
+        assignment.started_at = timezone.now()
+        assignment.save(update_fields=["started_at", "updated_at"])
+        booking.status = Booking.Status.IN_PROGRESS
+        booking.save(update_fields=["status", "updated_at"])
+
+        self.worker_profile.status = WorkerProfile.Status.SUSPENDED
+        self.worker_profile.is_online = False
+        self.worker_profile.save(update_fields=["status", "is_online", "updated_at"])
+        result = handle_worker_suspension(self.worker_profile.pk)
+
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.DISPUTED)
+        self.assertTrue(BookingAssignment.objects.filter(booking=booking).exists())
+        self.assertEqual(result["escalated"], 1)
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer_user, title="Your booking needs an update"
+        ).exists())
+
     def test_webhook_confirms_booking_idempotently(self):
         """Webhook should update booking from ASSIGNED to CONFIRMED on payment capture."""
         from apps.payments.models import Payment
