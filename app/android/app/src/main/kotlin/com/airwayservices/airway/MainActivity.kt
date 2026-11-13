@@ -19,9 +19,13 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-        val audioAttributes = AudioAttributes.Builder()
+        val ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val ringtoneAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+            .build()
+        val notificationSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val notificationAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .build()
 
         val jobAlerts = NotificationChannel(
@@ -31,7 +35,7 @@ class MainActivity : FlutterActivity() {
         ).apply {
             description = "Urgent new service requests that need a worker response"
             enableVibration(true)
-            setSound(sound, audioAttributes)
+            setSound(ringtone, ringtoneAttributes)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
 
@@ -41,7 +45,7 @@ class MainActivity : FlutterActivity() {
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
             description = "Booking, account and payment updates"
-            setSound(sound, audioAttributes)
+            setSound(notificationSound, notificationAttributes)
         }
 
         manager.createNotificationChannels(listOf(jobAlerts, general))
