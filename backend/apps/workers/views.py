@@ -1057,7 +1057,14 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             if worker.user_id != request.user.id:
                 return Response({"detail": "This offer does not belong to you."}, status=status.HTTP_404_NOT_FOUND)
             if offer.status != WorkerOffer.Status.PENDING:
-                return Response({"detail": f"Offer is already {offer.get_status_display().lower()}."}, status=status.HTTP_400_BAD_REQUEST)
+                if (
+                    offer.status == WorkerOffer.Status.WITHDRAWN
+                    and BookingAssignment.objects.filter(booking_id=offer.booking_id).exists()
+                ):
+                    detail = "This booking has already been assigned to another professional."
+                else:
+                    detail = f"Offer is already {offer.get_status_display().lower()}."
+                return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
             if offer.expires_at <= now:
                 offer.status = WorkerOffer.Status.EXPIRED
                 offer.responded_at = now
