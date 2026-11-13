@@ -10,6 +10,8 @@ from .models import (
     BookingFormResponse,
     BookingStatusHistory,
     BookingAssignment,
+    Order,
+    OrderItem,
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
@@ -371,6 +373,27 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         booking = Booking.objects.create(**validated_data)
 
+        # Single-service bookings use the same staged parent-order lifecycle
+        # as cart checkout: advance first, dispatch only after verified capture.
+        total = Decimal(str(pricing["total"]))
+        subtotal_amount = Decimal(str(pricing["subtotal"]))
+        tax_amount = Decimal(str(pricing["tax"]))
+        order = Order.objects.create(
+            customer=user, address=address, subtotal=subtotal_amount,
+            tax_amount=tax_amount, total_amount=total,
+            metadata={"checkout_source": "single_booking"},
+        )
+        OrderItem.objects.create(
+            order=order, booking=booking, quantity=quantity,
+            service_snapshot={
+                "service_id": service.pk, "service_title": service.title,
+                "variant_id": variant.pk if variant else None,
+                "variant_title": variant.title if variant else "",
+            },
+            pricing_snapshot=pricing, line_subtotal=subtotal_amount,
+            tax_amount=tax_amount, line_total=total,
+        )
+
         # Create BookingAddOn entries
         for addon_id in addon_ids:
             addon = AddOn.objects.get(pk=addon_id)
@@ -401,7 +424,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         )
 
         # Defer checkout dispatch until every order line has been persisted.
-        offers = [] if self.context.get("defer_worker_dispatch") else create_worker_offers_for_booking(booking)
+        # Dispatch is triggered only by the server-verified advance payment.
+        offers = []
 
         # Notify customer about offers
         if offers:
@@ -442,6 +466,7 @@ class BookingListSerializer(serializers.ModelSerializer):
 
 
 class BookingDetailSerializer(serializers.ModelSerializer):
+    order_id = serializers.IntegerField(source="order_item.order_id", read_only=True)
     service_title = serializers.CharField(source="service.title", read_only=True)
     service_title_hi = serializers.CharField(source="service.title_hi", read_only=True)
     service_image = serializers.SerializerMethodField()
@@ -460,7 +485,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            "id", "service", "service_title", "service_title_hi", "service_image",
+            "id", "order_id", "service", "service_title", "service_title_hi", "service_image",
             "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
             "scheduled_at", "drop_scheduled_at", "status", "status_display",
             "address_detail", "pricing_snapshot", "notes", "worker_notes",

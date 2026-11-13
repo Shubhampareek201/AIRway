@@ -453,33 +453,72 @@ class CreateOrderView(APIView):
 
         with transaction.atomic():
             try:
-                booking = Booking.objects.select_for_update().get(
-                    pk=booking_id,
-                    customer=request.user
-                )
+                booking = Booking.objects.select_for_update().select_related(
+                    "address", "service", "variant"
+                ).get(pk=booking_id, customer=request.user)
             except Booking.DoesNotExist:
                 return Response(
                     {"detail": "Booking not found or access denied."},
                     status=status.HTTP_404_NOT_FOUND
                 )
+            from apps.bookings.models import OrderItem
+            order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+            if order_item:
+                parent_order = order_item.order
+            else:
+                # Convert pre-existing legacy bookings once; all new attempts
+                # use the same 30% advance / 70% post-completion balance flow.
+                snapshot = booking.pricing_snapshot or {}
+                subtotal = Decimal(str(snapshot.get("subtotal", booking.total_amount)))
+                tax = Decimal(str(snapshot.get("tax", "0")))
+                parent_order = Order.objects.create(
+                    customer=request.user, address=booking.address,
+                    subtotal=subtotal, tax_amount=tax,
+                    total_amount=Decimal(str(booking.total_amount)),
+                    metadata={"checkout_source": "legacy_single_booking_migration"},
+                )
+                OrderItem.objects.create(
+                    order=parent_order, booking=booking,
+                    quantity=max(int(snapshot.get("quantity", 1) or 1), 1),
+                    service_snapshot={
+                        "service_id": booking.service_id,
+                        "service_title": booking.service.title,
+                        "variant_id": booking.variant_id,
+                        "variant_title": booking.variant.title if booking.variant_id else "",
+                    },
+                    pricing_snapshot=snapshot, line_subtotal=subtotal,
+                    tax_amount=tax, line_total=Decimal(str(booking.total_amount)),
+                )
 
         try:
-            payment, order_id, already_existed = create_or_get_payment(
-                booking=booking,
-                customer=request.user,
-                trigger_source="checkout"
+            payment, order_id, already_existed = create_or_get_order_payment(
+                order=parent_order, customer=request.user,
+                wallet_amount=request.data.get("wallet_amount", "0.00"),
+                trigger_source="single_booking_checkout",
+                stage=Payment.Stage.ADVANCE,
             )
-        except ValueError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
-            logger.exception("Single booking payment creation failed")
+            logger.exception("Single booking advance payment creation failed")
             return Response(
-                {"detail": "Failed to create payment order. Please try again."},
+                {"detail": "Failed to create advance payment order. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        amount_paise = int(float(booking.total_amount) * 100)
-        response_data = {"order_id": order_id, "amount": amount_paise, "key_id": settings.RAZORPAY_KEY_ID}
-        if already_existed:
-            response_data["payment_exists"] = True
+        response_data = {
+            "order_id": order_id, "amount": int(payment.amount * 100),
+            "total_amount": str(parent_order.total_amount),
+            "payment_stage": payment.stage,
+            "stage_amount": str(payment.amount + payment.wallet_amount),
+            "wallet_amount": str(payment.wallet_amount),
+            "currency": parent_order.currency,
+            "payment_exists": already_existed,
+            "fully_paid_by_wallet": payment.status == Payment.Status.PAID and payment.method == Payment.Method.WALLET,
+            "already_paid": payment.status == Payment.Status.PAID,
+            "payment_status": payment.status,
+            "airway_order_id": parent_order.pk, "payment_id": payment.pk,
+        }
+        if order_id:
+            response_data["key_id"] = settings.RAZORPAY_KEY_ID
         return Response(response_data)

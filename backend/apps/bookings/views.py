@@ -942,7 +942,7 @@ class CustomerOrderDetailView(APIView):
                 "worker": (
                     {
                         "id": assignment.worker_id,
-                        "name": assignment.worker.user.name or assignment.worker.user.phone,
+                        "name": assignment.worker.user.name or "AIRway Professional",
                     }
                     if assignment else None
                 ),

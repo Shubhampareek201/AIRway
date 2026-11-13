@@ -1197,16 +1197,6 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
                 order.save(update_fields=["status", "updated_at"])
 
-        if not order:
-            try:
-                from apps.payments.views import create_or_get_payment
-                _, payment_order_id, _ = create_or_get_payment(
-                    booking=bookings[0], customer=bookings[0].customer,
-                    trigger_source="worker_accept",
-                )
-            except Exception as exc:
-                logger.warning("Payment creation failed for booking %s after worker accept: %s", bookings[0].pk, exc)
-
         response_data = {
             "status": "accepted",
             "detail": "Complete order accepted successfully." if order else "Offer accepted successfully.",
