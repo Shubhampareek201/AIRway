@@ -1,0 +1,16 @@
+{% load static %}
+<div class="airway-coverage-widget">
+  <div class="airway-coverage-toolbar">
+    <input type="search" class="airway-coverage-search" placeholder="Search Rawatbhata or a nearby landmark" aria-label="Search map location">
+    <button type="button" class="button airway-coverage-search-button">Find on map</button>
+    <button type="button" class="button airway-coverage-fit-button">Fit boundary</button>
+    <span class="airway-coverage-status" role="status">Search for Rawatbhata, then draw the service boundary.</span>
+  </div>
+  <div id="{{ widget.attrs.id }}_map" class="airway-coverage-map" data-map-lat="24.93" data-map-lng="75.59"></div>
+  <p class="help airway-coverage-help">
+    Draw one polygon around the area AIRway will serve. You can edit or delete it using the map toolbar.
+    The initial map position is only a starting view; it is not a suggested service boundary.
+    Map data © OpenStreetMap contributors.
+  </p>
+  <textarea name="{{ widget.name }}" id="{{ widget.attrs.id }}" {% include "django/forms/widgets/attrs.html" %} class="airway-coverage-json" hidden>{{ widget.value|default_if_none:"" }}</textarea>
+</div>
