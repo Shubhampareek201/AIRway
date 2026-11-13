@@ -320,19 +320,44 @@ class BookingViewSet(viewsets.ModelViewSet):
         assignment = booking.assignment
         worker = assignment.worker
 
-        # Check if worker is online and return tracking info
+        # Expose only admin-approved public professional information. Never return
+        # personal phone, email, home address, ID documents or unverified photos.
+        from apps.workers.models import WorkerDocument
+        photo = worker.documents.filter(
+            doc_type=WorkerDocument.DocumentType.PHOTO,
+            status=WorkerDocument.Status.VERIFIED,
+        ).order_by("-created_at", "-id").first() if worker.status == worker.Status.APPROVED else None
+        try:
+            photo_url = request.build_absolute_uri(photo.file.url) if photo else None
+        except Exception:
+            photo_url = None
+        verified_services = worker.worker_services.filter(
+            capabilities_verified=True,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service", "service__category").order_by("service__title")
         return Response({
             "is_assigned": True,
             "worker_id": worker.id,
-            "worker_name": worker.user.name or worker.user.phone,
-            "worker_phone": worker.user.phone,
+            "worker_name": worker.user.name or "AIRway Professional",
+            "worker_photo": photo_url,
+            "worker_bio": worker.bio,
+            "worker_experience_years": worker.experience_years,
+            "worker_qualification": worker.qualification,
             "worker_rating": float(worker.rating_avg) if worker.rating_avg else None,
+            "worker_rating_count": worker.rating_count,
+            "worker_completed_jobs": BookingAssignment.objects.filter(
+                worker=worker, booking__status=Booking.Status.COMPLETED
+            ).count(),
+            "worker_verified_services": [{
+                "service": row.service.title,
+                "category": row.service.category.title,
+                "experience_years": row.experience_years,
+                "verified_skills": row.capabilities or [],
+            } for row in verified_services],
             "status": booking.status,
             "assigned_at": assignment.assigned_at,
             "started_at": assignment.started_at,
-            # Live worker GPS is not stored by the current WorkerProfile model.
-            # Never fabricate a position from the customer's address; clients should
-            # show "location unavailable" until a verified worker GPS source is added.
             "worker_latitude": None,
             "worker_longitude": None,
         })

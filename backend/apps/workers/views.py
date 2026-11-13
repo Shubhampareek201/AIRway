@@ -1175,7 +1175,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     user=booking.customer,
                     type=Notification.Type.BOOKING_ASSIGNED,
                     title="Worker Assigned",
-                    body=f"Your service is now assigned to {worker.user.name or worker.user.phone}.",
+                    body=f"Your service is now assigned to {worker.user.name or 'an AIRway professional'}.",
                     channel=Notification.Channel.IN_APP,
                     data={"booking_id": booking.pk, "order_id": order.pk if order else None, "worker_id": worker.pk},
                 )
