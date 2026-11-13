@@ -30,6 +30,8 @@ class WorkerProfile {
   final String? residentialAddress;
   final String? landmark;
   final String? bio;
+  final String? photoUrl;
+  final List<Map<String, dynamic>> serviceItems;
   final List<String> services;
   final List<String> zones;
   final List<Map<String, dynamic>> schedules;
@@ -50,6 +52,8 @@ class WorkerProfile {
     this.residentialAddress,
     this.landmark,
     this.bio,
+    this.photoUrl,
+    this.serviceItems = const [],
     this.services = const [],
     this.zones = const [],
     this.schedules = const [],
@@ -72,6 +76,11 @@ class WorkerProfile {
       residentialAddress: map['residential_address'] as String?,
       landmark: map['landmark'] as String?,
       bio: map['bio'] as String?,
+      photoUrl: map['photo_url']?.toString(),
+      serviceItems: (map['services'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
       services: (map['services'] as List? ?? [])
           .whereType<Map>()
           .map((item) => item['service_title']?.toString() ?? '')
