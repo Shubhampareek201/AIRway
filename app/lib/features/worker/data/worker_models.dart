@@ -139,6 +139,9 @@ class WorkerOffer {
   final List<Map<String, dynamic>> formResponses;
   final List<Map<String, dynamic>> addons;
   final int quantity;
+  final double customerTotal;
+  final double advanceReceived;
+  final double remainingBalance;
   final bool canAccept;
   final bool canDecline;
   final bool canWithdraw;
@@ -161,6 +164,9 @@ class WorkerOffer {
     this.formResponses = const [],
     this.addons = const [],
     this.quantity = 1,
+    this.customerTotal = 0,
+    this.advanceReceived = 0,
+    this.remainingBalance = 0,
     required this.canAccept,
     required this.canDecline,
     required this.canWithdraw,
@@ -188,6 +194,9 @@ class WorkerOffer {
       formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
+      customerTotal: double.tryParse(map['customer_total']?.toString() ?? '') ?? 0,
+      advanceReceived: double.tryParse(map['advance_received']?.toString() ?? '') ?? 0,
+      remainingBalance: double.tryParse(map['remaining_balance']?.toString() ?? '') ?? 0,
       canAccept: map['can_accept'] as bool? ?? false,
       canDecline: map['can_decline'] as bool? ?? false,
       canWithdraw: map['can_withdraw'] as bool? ?? false,

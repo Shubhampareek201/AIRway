@@ -574,6 +574,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     quantity = serializers.SerializerMethodField()
     order_services = serializers.SerializerMethodField()
     order_id = serializers.IntegerField(read_only=True)
+    customer_total = serializers.SerializerMethodField()
+    advance_received = serializers.SerializerMethodField()
+    remaining_balance = serializers.SerializerMethodField()
     offered_at = serializers.DateTimeField(read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     can_accept = serializers.SerializerMethodField()
@@ -584,6 +587,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         model = __import__("apps.bookings.models", fromlist=["WorkerOffer"]).WorkerOffer
         fields = [
             "id", "booking", "order", "order_id", "order_services", "batch_number",
+            "customer_total", "advance_received", "remaining_balance",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
             "worker_phone", "service_title", "variant_title", "scheduled_at",
@@ -592,6 +596,31 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_customer_total(self, obj):
+        if obj.order_id:
+            return str(obj.order.total_amount)
+        return str((obj.booking.pricing_snapshot or {}).get("total", obj.booking.total_amount))
+
+    def get_advance_received(self, obj):
+        from apps.payments.models import Payment
+        if obj.order_id:
+            payment = Payment.objects.filter(
+                order=obj.order, stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).first()
+        else:
+            payment = Payment.objects.filter(
+                booking=obj.booking, stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).first()
+        return str(payment.amount + payment.wallet_amount) if payment else "0.00"
+
+    def get_remaining_balance(self, obj):
+        from decimal import Decimal
+        total = Decimal(self.get_customer_total(obj))
+        advance = Decimal(self.get_advance_received(obj))
+        return str(max(total - advance, Decimal("0.00")))
 
     def get_order_services(self, obj):
         if not obj.order_id:

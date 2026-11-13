@@ -234,6 +234,13 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
               Text('Requested: ${_formatDateTime(offer.scheduledAt!)}'),
             if (offer.serviceAddress?.isNotEmpty == true)
               Text('Area: ${offer.serviceAddress}', maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (offer.customerTotal > 0)
+              Text('Customer total: ₹${offer.customerTotal.toStringAsFixed(2)}'),
+            if (offer.advanceReceived > 0)
+              Text('Advance received: ₹${offer.advanceReceived.toStringAsFixed(2)}',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+            if (offer.remainingBalance > 0)
+              Text('Customer balance: ₹${offer.remainingBalance.toStringAsFixed(2)}'),
             for (final entry in offer.customerAnswers.entries)
               Text(
                 workerCustomerAnswerLabel(entry.key, entry.value),
