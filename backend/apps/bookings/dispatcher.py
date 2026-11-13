@@ -37,7 +37,7 @@ class DispatcherService:
     @classmethod
     @transaction.atomic
     def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None):
-        """Dispatch a standalone booking through configured priority batches."""
+        """Dispatch a standalone booking to every eligible worker simultaneously."""
         from apps.bookings.models import Booking, OrderItem, WorkerOffer, DispatchConfiguration
         # Resolve the parent before taking a booking lock. Order acceptance
         # consistently locks order first, then bookings.
@@ -93,7 +93,7 @@ class DispatcherService:
         already_offered = set(existing.filter(
             status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
         ).values_list("worker_id", flat=True))
-        candidates = [worker for worker in candidates if worker.pk not in already_offered][:batch_size]
+        candidates = [worker for worker in candidates if worker.pk not in already_offered]
         if not candidates:
             cls._notify_dispatch_exhausted(booking)
             return []
@@ -105,7 +105,7 @@ class DispatcherService:
 
     @classmethod
     def dispatch_order(cls, order):
-        """Offer a parent order only to workers eligible for every service line."""
+        """Offer a parent order to all workers eligible for every service line."""
         from apps.bookings.models import Booking, BookingAssignment, WorkerOffer, DispatchConfiguration, Order
         from apps.workers.models import WorkerProfile
         from django.db.models import Max
@@ -196,13 +196,13 @@ class DispatcherService:
             already_offered = set(existing.filter(
                 status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
             ).values_list("worker_id", flat=True))
-            batch_size = max(int(config.batch_size or 1), 1)
+            # AIRway launch policy: offer every eligible worker simultaneously.
             expiry_minutes = max(int(config.offer_expiry_minutes or 1), 1)
             workers = list(
                 WorkerProfile.objects.filter(pk__in=eligible_ids)
                 .exclude(pk__in=already_offered)
                 .select_related("user")
-                .order_by(*cls._priority_ordering(config.priority_order))[:batch_size]
+                .order_by(*cls._priority_ordering(config.priority_order))
             )
             if not workers:
                 cls._notify_dispatch_exhausted(anchor, order=order)
