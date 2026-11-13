@@ -12,5 +12,5 @@
     The initial map position is only a starting view; it is not a suggested service boundary.
     Map data © OpenStreetMap contributors.
   </p>
-  <textarea name="{{ widget.name }}" id="{{ widget.attrs.id }}" {% include "django/forms/widgets/attrs.html" %} class="airway-coverage-json" hidden>{{ widget.value|default_if_none:"" }}</textarea>
+  <textarea name="{{ widget.name }}" {% include "django/forms/widgets/attrs.html" %}>{{ widget.value|default_if_none:"" }}</textarea>
 </div>
