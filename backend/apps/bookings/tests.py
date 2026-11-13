@@ -237,6 +237,7 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 201, response.data)
         booking = Booking.objects.get(pk=response.data["id"])
+        self._mark_advance_paid_and_dispatch(booking)
         offers = list(WorkerOffer.objects.filter(booking=booking))
         self.assertEqual([offer.worker_id for offer in offers], [female.id])
         from apps.bookings.serializers import WorkerOfferSerializer
@@ -1602,11 +1603,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
 
         # Confirm booking
-        confirm_resp = self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
-        self.assertEqual(confirm_resp.status_code, 200)
-        self.assertEqual(confirm_resp.data["status"], "confirmed")
+        # Advance settlement is the only dispatch trigger for this parent order.
 
         # Check that offers were created for eligible workers
         offers = WorkerOffer.objects.filter(booking_id=booking_id, status=WorkerOffer.Status.PENDING)
@@ -1631,7 +1631,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Get the offer for worker1
         offer = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
@@ -1671,7 +1673,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Worker1 accepts
         offer1 = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
@@ -1703,7 +1707,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Worker accepts
         offer = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
@@ -1736,7 +1742,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Verify offers created
         self.assertEqual(WorkerOffer.objects.filter(booking_id=booking_id).count(), 2)
@@ -1771,7 +1779,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Worker accepts
         offer = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
@@ -1799,7 +1809,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Worker accepts and starts
         offer = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
@@ -1847,7 +1859,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Worker accepts and completes
         offer = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
@@ -1898,7 +1912,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         }, format="json")
 
         booking_id = create_resp.data["id"]
-        self.client.post(f"/api/v1/bookings/{booking_id}/confirm/", format="json")
+        self._mark_advance_paid_and_dispatch(Booking.objects.get(pk=booking_id))
+        # The verified-advance fixture above is the dispatch trigger; individual
+        # confirmation is intentionally not available for parent-order bookings.
 
         # Worker accepts
         offer = WorkerOffer.objects.get(booking_id=booking_id, worker=self.worker1_profile)
