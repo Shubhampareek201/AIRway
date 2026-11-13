@@ -1,4 +1,5 @@
 import io
+from decimal import Decimal
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
