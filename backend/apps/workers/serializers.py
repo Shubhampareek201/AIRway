@@ -84,9 +84,12 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
 
 
 class WorkerProfileUpdateSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="user.name", required=False, allow_blank=False, max_length=150)
+
     class Meta:
         model = WorkerProfile
         fields = [
+            "name",
             "experience_years",
             "bio",
             "qualification",
@@ -97,6 +100,13 @@ class WorkerProfileUpdateSerializer(serializers.ModelSerializer):
             "landmark",
             "upi_id",
         ]
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop("user", {})
+        if "name" in user_data:
+            instance.user.name = user_data["name"].strip()
+            instance.user.save(update_fields=["name", "updated_at"])
+        return super().update(instance, validated_data)
 
 
 class WorkerDocumentSerializer(serializers.ModelSerializer):
