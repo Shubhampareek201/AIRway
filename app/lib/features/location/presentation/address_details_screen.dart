@@ -26,12 +26,8 @@ class _AddressDetailsScreenState extends State<AddressDetailsScreen> {
   late final TextEditingController _landmark;
   late final TextEditingController _fullAddress;
 
-  List<Map<String, dynamic>> _cities = [];
-  List<Map<String, dynamic>> _zones = [];
-  int? _cityId;
-  int? _zoneId;
   String _label = 'home';
-  bool _loading = true;
+  bool _loading = false;
   bool _saving = false;
   String? _error;
 
@@ -52,82 +48,11 @@ class _AddressDetailsScreenState extends State<AddressDetailsScreen> {
     _label = const ['home', 'work', 'other'].contains(storedLabel)
         ? storedLabel
         : 'other';
-    _zoneId = _toInt(existing['zone']);
-    _cityId = _toInt(existing['city']);
-    _loadCitiesAndZones();
-  }
-
-  List<Map<String, dynamic>> _records(dynamic response) {
-    final list = response is List
-        ? response
-        : response is Map
-            ? response['results']
-            : null;
-    if (list is! List) throw const FormatException('Invalid service area list.');
-    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-  }
-
-  Future<void> _loadCitiesAndZones() async {
-    try {
-      final cities = _records(await LocationApi.cities());
-      if (!mounted) return;
-      // When editing, infer the city from the saved zone if city is not
-      // directly present in the response. Users can still change it.
-      setState(() {
-        _cities = cities;
-        if (_cityId != null && !cities.any((c) => _toInt(c['id']) == _cityId)) {
-          _cityId = null;
-        }
-      });
-      if (_cityId != null) {
-        final zones = _records(await LocationApi.zones(_cityId!));
-        if (!mounted) return;
-        setState(() => _zones = zones);
-      } else if (_editing && _zoneId != null) {
-        for (final city in cities) {
-          final id = _toInt(city['id']);
-          if (id == null) continue;
-          final zones = _records(await LocationApi.zones(id));
-          if (!mounted) return;
-          if (zones.any((z) => _toInt(z['id']) == _zoneId)) {
-            setState(() { _cityId = id; _zones = zones; });
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = 'Could not load service areas: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _selectCity(int? cityId) async {
-    setState(() {
-      _cityId = cityId;
-      _zoneId = null;
-      _zones = [];
-      _error = null;
-      _loading = cityId != null;
-    });
-    if (cityId == null) return;
-    try {
-      final zones = _records(await LocationApi.zones(cityId));
-      if (!mounted || _cityId != cityId) return;
-      setState(() => _zones = zones);
-    } catch (e) {
-      if (mounted) setState(() => _error = 'Could not load service areas: $e');
-    } finally {
-      if (mounted && _cityId == cityId) setState(() => _loading = false);
-    }
+    // Zone is resolved by the backend from the confirmed map coordinates.
   }
 
   Future<void> _save() async {
     if (_saving || _loading || !_formKey.currentState!.validate()) return;
-    if (_zoneId == null) {
-      setState(() => _error = 'Select your service area.');
-      return;
-    }
     setState(() { _saving = true; _error = null; });
     try {
       final data = <String, dynamic>{
@@ -135,7 +60,6 @@ class _AddressDetailsScreenState extends State<AddressDetailsScreen> {
         'house_details': _house.text.trim(),
         'landmark': _landmark.text.trim(),
         'full_address': _fullAddress.text.trim(),
-        'zone': _zoneId,
       };
       Map<String, dynamic>? newAddress;
       if (_editing) {
@@ -213,30 +137,9 @@ class _AddressDetailsScreenState extends State<AddressDetailsScreen> {
                     ? 'Landmark is required' : null,
               ),
               const SizedBox(height: 14),
-              DropdownButtonFormField<int>(
-                key: ValueKey('city-$_cityId'),
-                initialValue: _cityId,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'City'),
-                items: _cities.map((city) => DropdownMenuItem<int>(
-                  value: _toInt(city['id']),
-                  child: Text('${city['name'] ?? ''}', overflow: TextOverflow.ellipsis),
-                )).toList(),
-                onChanged: _loading || _saving ? null : _selectCity,
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<int>(
-                key: ValueKey('zone-$_cityId-$_zoneId'),
-                initialValue: _zoneId != null &&
-                        _zones.any((z) => _toInt(z['id']) == _zoneId)
-                    ? _zoneId : null,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Service area / Colony'),
-                items: _zones.map((zone) => DropdownMenuItem<int>(
-                  value: _toInt(zone['id']),
-                  child: Text('${zone['name'] ?? ''}', overflow: TextOverflow.ellipsis),
-                )).toList(),
-                onChanged: _loading || _saving ? null : (v) => setState(() => _zoneId = v),
+              const Text(
+                'AIRway checks service availability automatically from your selected map location.',
+                style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 18),
               const Text('Save as', style: TextStyle(fontWeight: FontWeight.w600)),
