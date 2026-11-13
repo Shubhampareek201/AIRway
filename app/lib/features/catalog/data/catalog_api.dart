@@ -138,9 +138,11 @@ class CatalogApi {
 
   static Future<List<Category>> listCategories({
     int? addressId,
+    String? audience,
   }) async {
     final query = <String, String>{'launch_only': 'true'};
     if (addressId != null) query['address_id'] = addressId.toString();
+    if (audience != null) query['audience'] = audience;
     final uri = Uri(
       path: '/api/v1/catalog/categories/',
       queryParameters: query.isEmpty ? null : query,
@@ -153,11 +155,13 @@ class CatalogApi {
     int? category,
     bool? popular,
     int? addressId,
+    String? audience,
   }) async {
     final query = <String, String>{'launch_only': 'true'};
     if (category != null) query['category'] = category.toString();
     if (popular == true) query['is_popular'] = 'true';
     if (addressId != null) query['address_id'] = addressId.toString();
+    if (audience != null) query['audience'] = audience;
     final uri = Uri(
       path: '/api/v1/catalog/services/',
       queryParameters: query.isEmpty ? null : query,
@@ -169,10 +173,11 @@ class CatalogApi {
   static Future<Service> getService(
     int id, {
     int? addressId,
+    String? audience,
   }) async {
     final uri = Uri(
       path: '/api/v1/catalog/services/$id/',
-      queryParameters: {'launch_only': 'true', if (addressId != null) 'address_id': addressId.toString()},
+      queryParameters: {'launch_only': 'true', if (addressId != null) 'address_id': addressId.toString(), if (audience != null) 'audience': audience},
     );
     final result = await request(uri.toString());
     if (result is! Map<String, dynamic>) {
