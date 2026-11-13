@@ -2198,8 +2198,11 @@ class WorkerCapabilityEligibilityRegressionTests(TestCase):
         )
 
     def test_task_specific_work_requires_verified_matching_capability(self):
+        from django.db import connection
         from apps.workers.eligibility import eligible_workers_for_service
 
+        if connection.vendor != "postgresql":
+            self.skipTest("JSONField contains matching is supported by the production PostgreSQL backend, not SQLite.")
         self.assertFalse(
             eligible_workers_for_service(
                 self.service, zone=self.zone, required_tasks=["Wiring replacement"],
