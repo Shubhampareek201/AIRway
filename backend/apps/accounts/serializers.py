@@ -38,13 +38,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         if attrs.get('password') != attrs.get('confirm_password'):
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
         validate_password(attrs.get('password'))
-        from apps.core.coverage import resolve_active_zone
-        zone = resolve_active_zone(latitude=latitude, longitude=longitude)
-        if zone is None:
-            raise serializers.ValidationError({
-                "full_address": "AIRway is not serving this location yet. Please choose an address inside the Rawatbhata service area."
-            })
-        attrs["zone"] = zone
         return attrs
 
     def create(self, validated_data):
@@ -258,4 +251,11 @@ class AddressCreateSerializer(serializers.ModelSerializer):
                 "longitude": "Longitude must be between -180 and 180."
             })
 
+        from apps.core.coverage import resolve_active_zone
+        zone = resolve_active_zone(latitude=latitude, longitude=longitude)
+        if zone is None:
+            raise serializers.ValidationError({
+                "full_address": "AIRway is not serving this location yet. Please choose an address inside the Rawatbhata service area."
+            })
+        attrs["zone"] = zone
         return attrs
