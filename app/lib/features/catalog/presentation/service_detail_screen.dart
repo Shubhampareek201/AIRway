@@ -51,6 +51,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       final service = await CatalogApi.getService(
         widget.serviceId,
         addressId: widget.addressId,
+        audience: widget.initialAnswers['beauty_audience']?.toString(),
       );
       if (mounted) setState(() => _service = service);
     } catch (e) {
