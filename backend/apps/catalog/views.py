@@ -91,6 +91,24 @@ def _enrolled_service_ids(city, zone=None):
     return set(links.values_list("service_id", flat=True).distinct())
 
 
+def _audience_service_ids(audience):
+    """Return services appropriate to the selected customer catalogue audience."""
+    if not audience:
+        return None
+    audience = audience.strip().lower()
+    if audience not in ("men", "women", "both"):
+        raise ValidationError({"audience": "Choose men, women or both."})
+    if audience == "both":
+        allowed = [Service.Audience.ALL]
+    else:
+        allowed = [Service.Audience.ALL, audience]
+    return set(Service.objects.filter(
+        is_active=True,
+        category__is_active=True,
+        audience__in=allowed,
+    ).values_list("id", flat=True))
+
+
 def _available_service_ids(city, zone=None):
     if city is None:
         return None
@@ -172,11 +190,16 @@ class CategoryListView(generics.ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         location = _location_from_address(self.request)
+        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
         if location is None:
-            context["visible_category_ids"] = None
+            service_ids = None
         else:
-            service_ids = _enrolled_service_ids(*location)
-            context["visible_category_ids"] = _visible_category_ids(service_ids)
+            service_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
+        if audience_ids is not None:
+            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
+        context["visible_category_ids"] = (
+            None if service_ids is None else _visible_category_ids(service_ids)
+        )
         return context
 
     def get_queryset(self):
@@ -185,9 +208,14 @@ class CategoryListView(generics.ListAPIView):
             parent__isnull=True,
         )
         location = _location_from_address(self.request)
+        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
+        service_ids = None
         if location is not None:
-            visible_ids = _visible_category_ids(_enrolled_service_ids(*location))
-            queryset = queryset.filter(pk__in=visible_ids)
+            service_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
+        if audience_ids is not None:
+            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
+        if service_ids is not None:
+            queryset = queryset.filter(pk__in=_visible_category_ids(service_ids))
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = queryset.filter(slug__in=LAUNCH_CATEGORY_SLUGS)
         return queryset.prefetch_related("children", "audience_options", "children__audience_options")
@@ -223,10 +251,14 @@ class ServiceListView(generics.ListAPIView):
             queryset = _launch_catalogue_filter(queryset)
 
         location = _location_from_address(self.request)
+        visible_service_ids = None
         if location is not None:
             city, zone = location
-            visible_service_ids = _enrolled_service_ids(city, zone=zone)
-            visible_service_ids &= _city_service_ids(city, zone=zone)
+            visible_service_ids = _enrolled_service_ids(city, zone=zone) & _city_service_ids(city, zone=zone)
+        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
+        if audience_ids is not None:
+            visible_service_ids = audience_ids if visible_service_ids is None else visible_service_ids & audience_ids
+        if visible_service_ids is not None:
             queryset = queryset.filter(pk__in=visible_service_ids)
 
         category_id = self.request.query_params.get("category")
@@ -269,10 +301,14 @@ class ServiceDetailView(generics.RetrieveAPIView):
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = _launch_catalogue_filter(queryset)
         location = _location_from_address(self.request)
+        visible_service_ids = None
         if location is not None:
             city, zone = location
-            visible_service_ids = _enrolled_service_ids(city, zone=zone)
-            visible_service_ids &= _city_service_ids(city, zone=zone)
+            visible_service_ids = _enrolled_service_ids(city, zone=zone) & _city_service_ids(city, zone=zone)
+        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
+        if audience_ids is not None:
+            visible_service_ids = audience_ids if visible_service_ids is None else visible_service_ids & audience_ids
+        if visible_service_ids is not None:
             queryset = queryset.filter(pk__in=visible_service_ids)
 
         return queryset
