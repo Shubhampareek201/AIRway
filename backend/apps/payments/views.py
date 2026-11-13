@@ -526,12 +526,25 @@ class CreateOrderView(APIView):
                     tax_amount=tax, line_total=Decimal(str(booking.total_amount)),
                 )
 
+        payment_stage = Payment.Stage.ADVANCE
+        if (
+            not order_item
+            and booking.status == Booking.Status.ASSIGNED
+            and getattr(booking, "assignment", None) is not None
+        ):
+            # Preserve settlement for an already assigned booking from the
+            # pre-staged-payment release. This exception is never used for new
+            # pending bookings.
+            parent_order.status = Order.Status.AWAITING_PAYMENT
+            parent_order.save(update_fields=["status", "updated_at"])
+            payment_stage = Payment.Stage.LEGACY
+
         try:
             payment, order_id, already_existed = create_or_get_order_payment(
                 order=parent_order, customer=request.user,
                 wallet_amount=request.data.get("wallet_amount", "0.00"),
                 trigger_source="single_booking_checkout",
-                stage=Payment.Stage.ADVANCE,
+                stage=payment_stage,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
