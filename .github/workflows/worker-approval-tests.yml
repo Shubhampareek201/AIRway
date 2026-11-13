@@ -4,12 +4,14 @@ on:
   pull_request:
     branches:
       - feat/worker-onboarding-service-availability
+      - feat/airway-30-70-payment-lifecycle
     paths:
       - "backend/**"
       - ".github/workflows/worker-approval-tests.yml"
   push:
     branches:
       - feat/worker-approval-completion
+      - feat/airway-30-70-payment-lifecycle
   workflow_dispatch:
 
 permissions:
