@@ -72,9 +72,22 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     if (state == AppLifecycleState.resumed) _pollNewOffers();
   }
 
-  void _handlePushOpen(RemoteMessage message) {
-    if (message.data['notification_kind'] == 'worker_offer' && mounted) {
-      _openOffers();
+  Future<void> _handlePushOpen(RemoteMessage message) async {
+    if (message.data['notification_kind'] != 'worker_offer' || !mounted) return;
+    final offerId = int.tryParse(message.data['offer_id']?.toString() ?? '');
+    try {
+      final latest = await WorkerApi.getJobOffers();
+      if (!mounted) return;
+      setState(() => _offers = latest);
+      final offer = latest.where((item) =>
+          item.id == offerId && item.status == WorkerOffer.pending).firstOrNull;
+      if (offer != null) {
+        await _showIncomingOffer(offer);
+      } else {
+        _openOffers();
+      }
+    } catch (_) {
+      if (mounted) _openOffers();
     }
   }
 
