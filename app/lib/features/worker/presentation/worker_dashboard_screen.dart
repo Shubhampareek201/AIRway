@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/network/auth_api.dart';
 
@@ -39,6 +40,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   Timer? _offerPollTimer;
   final Set<int> _knownOfferIds = {};
   bool _incomingOfferDialogOpen = false;
+  StreamSubscription<RemoteMessage>? _pushOpenSubscription;
 
   static const _tabTitles = ['Home', 'Jobs', 'Earnings', 'Profile'];
 
@@ -46,6 +48,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pushOpenSubscription = FirebaseMessaging.onMessageOpenedApp.listen(_handlePushOpen);
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null) _handlePushOpen(message);
+    });
     _loadDashboard().then((_) {
       _knownOfferIds.addAll(_offers.map((offer) => offer.id));
       _startOfferPolling();
@@ -56,12 +62,19 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _offerPollTimer?.cancel();
+    _pushOpenSubscription?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _pollNewOffers();
+  }
+
+  void _handlePushOpen(RemoteMessage message) {
+    if (message.data['notification_kind'] == 'worker_offer' && mounted) {
+      _openOffers();
+    }
   }
 
   void _startOfferPolling() {
