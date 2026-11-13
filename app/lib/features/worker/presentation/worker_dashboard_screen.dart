@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/network/auth_api.dart';
 
@@ -21,7 +23,7 @@ class WorkerDashboardScreen extends StatefulWidget {
   State<WorkerDashboardScreen> createState() => _WorkerDashboardScreenState();
 }
 
-class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
+class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with WidgetsBindingObserver {
   WorkerProfile? _profile;
   List<Map<String, dynamic>> _assignedJobs = [];
   List<WorkerOffer> _offers = [];
@@ -33,13 +35,133 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   String? _jobsError;
   String? _earningsError;
   int _selectedTab = 0;
+  Timer? _offerPollTimer;
+  final Set<int> _knownOfferIds = {};
+  bool _incomingOfferDialogOpen = false;
 
   static const _tabTitles = ['Home', 'Jobs', 'Earnings', 'Profile'];
 
   @override
   void initState() {
     super.initState();
-    _loadDashboard();
+    WidgetsBinding.instance.addObserver(this);
+    _loadDashboard().then((_) {
+      _knownOfferIds.addAll(_offers.map((offer) => offer.id));
+      _startOfferPolling();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _offerPollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _pollNewOffers();
+  }
+
+  void _startOfferPolling() {
+    _offerPollTimer?.cancel();
+    _offerPollTimer = Timer.periodic(const Duration(seconds: 15), (_) => _pollNewOffers());
+  }
+
+  Future<void> _pollNewOffers() async {
+    if (!mounted || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    try {
+      final latest = await WorkerApi.getJobOffers();
+      if (!mounted) return;
+      final incoming = latest.where((offer) =>
+          offer.status == WorkerOffer.pending && !_knownOfferIds.contains(offer.id)).toList();
+      _knownOfferIds.addAll(latest.map((offer) => offer.id));
+      setState(() => _offers = latest);
+      if (incoming.isNotEmpty && !_incomingOfferDialogOpen) {
+        _showIncomingOffer(incoming.first);
+      }
+    } catch (_) {
+      // Keep the dashboard usable if a background refresh temporarily fails.
+    }
+  }
+
+  Future<void> _showIncomingOffer(WorkerOffer offer) async {
+    if (!mounted || _incomingOfferDialogOpen) return;
+    _incomingOfferDialogOpen = true;
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.vibrate();
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.notifications_active_rounded, size: 34, color: AirwayColors.primary),
+          title: const Text('New service request'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(offer.serviceTitle ?? 'AIRway service', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
+                const SizedBox(height: 8),
+                if (offer.scheduledAt != null) Text('Requested time: ${_dateLabel(offer.scheduledAt)}'),
+                if (offer.serviceAddress?.isNotEmpty == true) Text('Address: ${offer.serviceAddress}'),
+                Text('Quantity: ${offer.quantity}'),
+                for (final entry in offer.customerAnswers.entries)
+                  Text(workerCustomerAnswerLabel(entry.key, entry.value)),
+                for (final answer in offer.formResponses)
+                  Text('${answer['label'] ?? answer['key']}: ${answer['value']}'),
+                if (offer.addons.isNotEmpty)
+                  Text('Add-ons: ${offer.addons.map((item) => item['title']).join(', ')}'),
+                if (offer.expiresAt != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('Respond before ${_dateLabel(offer.expiresAt)}', style: const TextStyle(color: AirwayColors.error, fontWeight: FontWeight.w700)),
+                  ),
+                const SizedBox(height: 8),
+                const Text('Review the details before accepting. AIRway will confirm the assignment with the server.', style: TextStyle(fontSize: 12)),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                try {
+                  await WorkerApi.declineOffer(offer.id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request declined.')));
+                    await _refresh();
+                  }
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not decline request: $e')));
+                }
+              },
+              child: const Text('Reject'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                try {
+                  await WorkerApi.acceptOffer(offer.id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request accepted. Assignment confirmed.')));
+                    await _refresh();
+                    _openAssignedJobs();
+                  }
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Request could not be accepted: $e')));
+                  await _refresh();
+                }
+              },
+              child: const Text('Accept service'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _incomingOfferDialogOpen = false;
+    }
   }
 
   Future<T?> _loadSection<T>(
