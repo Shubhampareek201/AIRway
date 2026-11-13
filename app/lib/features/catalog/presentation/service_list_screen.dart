@@ -59,8 +59,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         CatalogApi.listServices(
           category: widget.includeDescendants ? null : widget.categoryId,
           addressId: widget.addressId,
+          audience: widget.initialAnswers['beauty_audience']?.toString(),
         ),
-        CatalogApi.listCategories(addressId: widget.addressId),
+        CatalogApi.listCategories(
+          addressId: widget.addressId,
+          audience: widget.initialAnswers['beauty_audience']?.toString(),
+        ),
       ]);
       var services = results[0] as List<Service>;
       final categories = results[1] as List<Category>;
