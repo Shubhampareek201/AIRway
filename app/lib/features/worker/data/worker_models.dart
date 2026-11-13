@@ -1,5 +1,17 @@
 // Standalone model file - no part directive
 
+bool _workerBool(dynamic value, {bool fallback = false}) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    switch (value.trim().toLowerCase()) {
+      case 'true': case '1': case 'yes': return true;
+      case 'false': case '0': case 'no': return false;
+    }
+  }
+  return fallback;
+}
+
 double? _parseWorkerRating(dynamic value) {
   if (value == null) return null;
   final parsed = value is num ? value.toDouble() : double.tryParse(value.toString().trim());
@@ -67,7 +79,7 @@ class WorkerProfile {
       name: map['name'] as String?,
       phone: map['phone'] as String?,
       upiId: map['upi_id'] as String?,
-      isOnline: map['is_online'] as bool? ?? false,
+      isOnline: _workerBool(map['is_online']),
       ratingAvg: _parseWorkerRating(map['rating_avg']),
       experienceYears: map['experience_years'] as int?,
       rejectionReason: map['rejection_reason'] as String?,
