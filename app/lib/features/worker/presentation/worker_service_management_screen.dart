@@ -60,7 +60,7 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
           .whereType<int>().toSet();
       final add = _selected.difference(current);
       final remove = current.difference(_selected);
-      for (final serviceId in remove) { await WorkerApi.removeService(serviceId); }
+      // Add first so a failed new selection never removes existing work.
       for (final serviceId in add) {
         final service = _catalogue.firstWhere((item) => item.id == serviceId);
         final tasks = <String>{
@@ -69,6 +69,7 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
         }.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
         await WorkerApi.addService(serviceId: serviceId, capabilities: tasks);
       }
+      for (final serviceId in remove) { await WorkerApi.removeService(serviceId); }
       if (!mounted) return;
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Your service list has been updated.')));
@@ -131,7 +132,26 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                   ),
                   Expanded(child: ListView(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                    children: grouped.entries.map((root) {
+                    children: [
+                      ...widget.profile.serviceItems.where((row) {
+                        final id = int.tryParse(row['service']?.toString() ?? '');
+                        return id != null && !_catalogue.any((service) => service.id == id);
+                      }).map((row) {
+                        final id = int.tryParse(row['service']?.toString() ?? '');
+                        return Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.info_outline, color: Colors.orange),
+                            title: Text(row['service_title']?.toString() ?? 'Inactive service'),
+                            subtitle: const Text('No longer available in the active catalogue. Remove it from your profile if you no longer provide it.'),
+                            trailing: IconButton(
+                              tooltip: 'Remove service',
+                              onPressed: _saving || id == null ? null : () => setState(() => _selected.remove(id)),
+                              icon: const Icon(Icons.remove_circle_outline),
+                            ),
+                          ),
+                        );
+                      }),
+                      ...grouped.entries.map((root) {
                       final rootServices = root.value.values.expand((items) => items).toList();
                       final count = rootServices.where((s) => _selected.contains(s.id)).length;
                       return Card(
@@ -157,6 +177,7 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                         ),
                       );
                     }).toList(),
+                    ],
                   )),
                   SafeArea(top: false, child: Padding(
                     padding: const EdgeInsets.all(16),
