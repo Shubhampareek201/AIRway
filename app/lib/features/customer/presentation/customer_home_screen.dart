@@ -498,6 +498,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
     );
     if (ok != true) return;
+    try {
+      await PushNotificationService.unregisterCurrentDevice();
+    } catch (_) {
+      // Continue logout even if the push service is temporarily unavailable.
+    }
     await SecureSessionStorage.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
