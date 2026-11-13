@@ -57,6 +57,47 @@ class ServicePricingReadinessTests(TestCase):
         ids = {row["id"] for row in rows}
         self.assertEqual(ids, {self.fixed_priced.id, self.quote_with_fee.id})
 
+
+    def test_worker_catalogue_can_still_see_unpriced_services_for_enrolment(self):
+        response = APIClient().get(
+            "/api/v1/catalog/services/?launch_only=true&for_worker=true"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        ids = {row["id"] for row in rows}
+        self.assertIn(self.fixed_unpriced.id, ids)
+
+    def test_customer_audience_filter_keeps_men_and_women_services_separate(self):
+        mens = Service.objects.create(
+            category=self.beauty, title="Men's grooming",
+            audience=Service.Audience.MEN,
+        )
+        womens = Service.objects.create(
+            category=self.beauty, title="Women's styling",
+            audience=Service.Audience.WOMEN,
+        )
+        for service in (mens, womens):
+            ServiceVariant.objects.create(
+                service=service, title="Standard",
+                mrp=Decimal("300.00"), price=Decimal("250.00"),
+            )
+
+        men_response = APIClient().get(
+            "/api/v1/catalog/services/?launch_only=true&audience=men"
+        )
+        men_rows = men_response.data if isinstance(men_response.data, list) else men_response.data.get("results", [])
+        men_ids = {row["id"] for row in men_rows}
+        self.assertIn(mens.id, men_ids)
+        self.assertNotIn(womens.id, men_ids)
+
+        women_response = APIClient().get(
+            "/api/v1/catalog/services/?launch_only=true&audience=women"
+        )
+        women_rows = women_response.data if isinstance(women_response.data, list) else women_response.data.get("results", [])
+        women_ids = {row["id"] for row in women_rows}
+        self.assertIn(womens.id, women_ids)
+        self.assertNotIn(mens.id, women_ids)
+
     def test_customer_categories_hide_roots_without_priced_services(self):
         response = APIClient().get("/api/v1/catalog/categories/?launch_only=true")
         self.assertEqual(response.status_code, 200, response.data)
