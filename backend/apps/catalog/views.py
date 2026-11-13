@@ -200,9 +200,14 @@ class ServiceListView(generics.ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         location = _location_from_address(self.request)
-        context["available_service_ids"] = (
-            None if location is None else _available_service_ids(*location)
-        )
+        if location is None:
+            context["available_service_ids"] = None
+        else:
+            city, zone = location
+            context["available_service_ids"] = (
+                _enrolled_service_ids(city, zone=zone)
+                & _city_service_ids(city, zone=zone)
+            )
         context["available_variant_ids"] = (
             None if location is None else _available_variant_ids(*location)
         )
@@ -242,9 +247,14 @@ class ServiceDetailView(generics.RetrieveAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         location = _location_from_address(self.request)
-        context["available_service_ids"] = (
-            None if location is None else _available_service_ids(*location)
-        )
+        if location is None:
+            context["available_service_ids"] = None
+        else:
+            city, zone = location
+            context["available_service_ids"] = (
+                _enrolled_service_ids(city, zone=zone)
+                & _city_service_ids(city, zone=zone)
+            )
         context["available_variant_ids"] = (
             None if location is None else _available_variant_ids(*location)
         )
