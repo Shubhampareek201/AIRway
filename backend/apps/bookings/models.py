@@ -374,7 +374,7 @@ class CartItem(TimeStampedModel):
 
 
 class DispatchConfiguration(TimeStampedModel):
-    """Singleton Admin-controlled settings for worker priority-batch dispatch."""
+    """Singleton Admin-controlled settings for simultaneous worker-offer dispatch."""
 
     PRIORITY_RATING = "rating_desc"
     PRIORITY_ACCEPTANCE = "acceptance_desc"
