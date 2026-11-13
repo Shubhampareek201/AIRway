@@ -38,6 +38,13 @@ class RegisterSerializer(serializers.ModelSerializer):
         if attrs.get('password') != attrs.get('confirm_password'):
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
         validate_password(attrs.get('password'))
+        from apps.core.coverage import resolve_active_zone
+        zone = resolve_active_zone(latitude=latitude, longitude=longitude)
+        if zone is None:
+            raise serializers.ValidationError({
+                "full_address": "AIRway is not serving this location yet. Please choose an address inside the Rawatbhata service area."
+            })
+        attrs["zone"] = zone
         return attrs
 
     def create(self, validated_data):
@@ -190,14 +197,6 @@ class AddressSerializer(serializers.ModelSerializer):
 class AddressCreateSerializer(serializers.ModelSerializer):
     """Validate new addresses and edits to existing addresses."""
 
-    zone = serializers.PrimaryKeyRelatedField(
-        queryset=Zone.objects.filter(
-            is_active=True,
-            city__is_active=True,
-        ),
-        required=True,
-        allow_null=False,
-    )
 
     class Meta:
         model = Address
@@ -211,7 +210,7 @@ class AddressCreateSerializer(serializers.ModelSerializer):
             "longitude",
             "zone",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "zone"]
 
     def validate(self, attrs):
         existing = self.instance
@@ -233,20 +232,6 @@ class AddressCreateSerializer(serializers.ModelSerializer):
 
             if field in attrs:
                 attrs[field] = value.strip()
-
-        zone = attrs.get(
-            "zone",
-            existing.zone if existing else None,
-        )
-
-        if (
-            zone is None
-            or not zone.is_active
-            or not zone.city.is_active
-        ):
-            raise serializers.ValidationError({
-                "zone": "Please select an active service area."
-            })
 
         latitude = attrs.get(
             "latitude",
