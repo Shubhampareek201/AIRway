@@ -1,8 +1,6 @@
 from collections import Counter
 
 from django.core.management.base import BaseCommand
-from django.db.models import Count
-
 from apps.catalog.models import Category, Service
 from apps.catalog.pricing import service_pricing_ready
 
@@ -20,9 +18,16 @@ class Command(BaseCommand):
         ready = 0
         for root in roots:
             self.stdout.write(self.style.MIGRATE_HEADING(f"\n{root.title}"))
-            categories = [root, *root.children.filter(is_active=True).order_by("sort_order", "title")]
+            category_ids = {root.id}
+            frontier = [root.id]
+            while frontier:
+                child_ids = list(Category.objects.filter(
+                    parent_id__in=frontier, is_active=True
+                ).values_list("id", flat=True))
+                category_ids.update(child_ids)
+                frontier = child_ids
             services = Service.objects.filter(
-                category__in=categories,
+                category_id__in=category_ids,
             ).select_related("category").prefetch_related("variants")
             duplicate_titles = Counter(s.title.strip().casefold() for s in services)
             for service in services.order_by("category__sort_order", "category__title", "sort_order", "title"):
