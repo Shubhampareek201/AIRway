@@ -24,10 +24,11 @@ class _WorkerServicePickerState extends State<WorkerServicePicker> {
   String _rootName(Service s) => s.categoryRootName.trim().isEmpty ? s.categoryName : s.categoryRootName;
   List<String> get _roots => widget.services.map(_rootName).toSet().toList()..sort();
   List<Service> get _rootServices => widget.services.where((s) => _rootName(s) == _root).toList();
+  bool get _isBeauty => _rootServices.any((s) => s.categoryRootSlug == 'beauty');
   List<Service> get _visibleServices {
     final q = _query.trim().toLowerCase();
     return _rootServices.where((s) {
-      final audienceOk = _root?.toLowerCase() != 'beauty' || _audience == 'all' || s.audience.toLowerCase() == _audience;
+      final audienceOk = !_isBeauty || _audience == 'all' || s.audience.toLowerCase() == _audience;
       return audienceOk && (q.isEmpty || s.title.toLowerCase().contains(q) || s.categoryName.toLowerCase().contains(q));
     }).toList();
   }
@@ -67,7 +68,7 @@ class _WorkerServicePickerState extends State<WorkerServicePicker> {
       ] else if (_step == 1) ...[
         Row(children: [IconButton(onPressed: () => setState(() => _step = 0), icon: const Icon(Icons.arrow_back)), Expanded(child: Text(_root ?? 'Services', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))), Text(widget.selectedIds.length.toString() + ' selected', style: const TextStyle(color: AirwayColors.primary, fontWeight: FontWeight.w700))]),
         TextField(onChanged: (v) => setState(() => _query = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Find a service', border: OutlineInputBorder(), isDense: true)),
-        if (_root?.toLowerCase() == 'beauty') ...[
+        if (_isBeauty) ...[
           const SizedBox(height: 10),
           SegmentedButton<String>(segments: const [ButtonSegment(value: 'all', label: Text('All')), ButtonSegment(value: 'women', label: Text('Women')), ButtonSegment(value: 'men', label: Text('Men')), ButtonSegment(value: 'unisex', label: Text('Unisex'))], selected: {_audience}, showSelectedIcon: false, onSelectionChanged: (v) => setState(() => _audience = v.first)),
         ],
