@@ -1662,16 +1662,9 @@ class WorkerAcceptancePaymentTest(TestCase):
         self.assertIsNotNone(assignment)
         self.assertEqual(assignment.worker, self.worker_profile)
 
-    def test_payment_timeout_task_marks_past_timeout_as_failed(self):
-        """Payment timeout should mark PENDING payments past timeout as FAILED.
+    def test_payment_timeout_does_not_release_worker_after_paid_advance(self):
+        """A settled advance is not timed out after the worker accepts."""
 
-        For ASSIGNED bookings with timed out payment:
-        1. Mark payment as FAILED
-        2. Withdraw the accepted offer
-        3. Delete the BookingAssignment
-        4. Revert booking to PENDING
-        5. Notify customer
-        """
         from apps.payments.models import Payment
         from apps.bookings.tasks import timeout_pending_payments
         from unittest.mock import patch
@@ -1712,9 +1705,10 @@ class WorkerAcceptancePaymentTest(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.ASSIGNED)
 
-        # Assignment should be deleted
+        # The accepted assignment remains in place because the advance is settled.
         from apps.bookings.models import BookingAssignment
-        self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
+        self.assertTrue(BookingAssignment.objects.filter(booking=booking).exists())
+        self.assertEqual(count, 0)
 
     def test_webhook_confirms_booking_idempotently(self):
         """Webhook should update booking from ASSIGNED to CONFIRMED on payment capture."""
