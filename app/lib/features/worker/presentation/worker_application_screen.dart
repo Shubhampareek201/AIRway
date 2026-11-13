@@ -941,6 +941,18 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                 style: const TextStyle(fontWeight: FontWeight.w800),
               )),
               TextButton(
+                onPressed: visibleServices.isEmpty
+                    ? null
+                    : () => setState(() {
+                        for (final service in visibleServices) {
+                          if (!_selectedServiceIds.contains(service.id)) {
+                            _selectedServiceIds.add(service.id);
+                          }
+                        }
+                      }),
+                child: const Text('Select all'),
+              ),
+              TextButton(
                 onPressed: _selectedServiceIds.isEmpty
                     ? null
                     : () => setState(() => _selectedServiceIds.clear()),
