@@ -180,18 +180,62 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         const Text('Your professional', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
                         const SizedBox(height: 12),
                         Row(children: [
-                          const CircleAvatar(backgroundColor: Color(0xFFEAF1EA), child: Icon(Icons.person_rounded, color: _green)),
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: const Color(0xFFEAF1EA),
+                            backgroundImage: (_tracking['worker_photo']?.toString().isNotEmpty ?? false)
+                                ? NetworkImage(_tracking['worker_photo'].toString())
+                                : null,
+                            child: (_tracking['worker_photo']?.toString().isNotEmpty ?? false)
+                                ? null
+                                : const Icon(Icons.person_rounded, color: _green),
+                          ),
                           const SizedBox(width: 12),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(_tracking['worker_name']?.toString() ?? 'Assigned professional',
                                 style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
                             if (_tracking['worker_rating'] != null)
-                              Text('Rating: ${_tracking['worker_rating']}', style: const TextStyle(color: _muted, fontSize: 12)),
+                              Text('★ ${_tracking['worker_rating']} (${_tracking['worker_rating_count'] ?? 0} ratings)',
+                                  style: const TextStyle(color: _muted, fontSize: 12)),
+                            if ((_tracking['worker_experience_years'] ?? 0) > 0)
+                              Text('${_tracking['worker_experience_years']} years experience',
+                                  style: const TextStyle(color: _muted, fontSize: 12)),
                           ])),
-
                         ]),
-                        if ((_tracking['worker_phone']?.toString() ?? '').isNotEmpty)
-                          SelectableText(_tracking['worker_phone'].toString(), style: const TextStyle(color: _muted)),
+                        if ((_tracking['worker_qualification']?.toString() ?? '').isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text('Qualification: ${_tracking['worker_qualification']}',
+                                style: const TextStyle(color: _muted, fontSize: 12)),
+                          ),
+                        if ((_tracking['worker_bio']?.toString() ?? '').isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(_tracking['worker_bio'].toString(),
+                                style: const TextStyle(color: _muted, fontSize: 12, height: 1.4)),
+                          ),
+                        if ((_tracking['worker_completed_jobs'] ?? 0) > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text('${_tracking['worker_completed_jobs']} completed AIRway jobs',
+                                style: const TextStyle(color: _muted, fontSize: 12)),
+                          ),
+                        for (final service in (_tracking['worker_verified_services'] as List? ?? const []))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(service['service']?.toString() ?? '',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, color: _ink)),
+                              if ((service['verified_skills'] as List? ?? const []).isNotEmpty)
+                                Text('Verified skills: ${(service['verified_skills'] as List).join(', ')}',
+                                    style: const TextStyle(color: _muted, fontSize: 12)),
+                            ]),
+                          ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: Text('Your contact details stay private. Contact AIRway Support if you need help.',
+                              style: TextStyle(color: _muted, fontSize: 11, height: 1.4)),
+                        ),
                       ]),
                     ),
                   const SizedBox(height: 16),
