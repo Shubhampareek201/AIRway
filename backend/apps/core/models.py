@@ -41,7 +41,12 @@ class Zone(TimeStampedModel):
     )
     coverage_radius_meters = models.PositiveIntegerField(
         default=5000,
-        help_text="Maximum GPS distance from this zone centre for automatic worker zone assignment.",
+        help_text="Legacy radius fallback. Polygon coverage takes precedence when configured.",
+    )
+    coverage_polygon = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="GeoJSON Polygon geometry: {\"type\": \"Polygon\", \"coordinates\": [[[longitude, latitude], ...]]}.",
     )
     is_active = models.BooleanField(default=True)
 
