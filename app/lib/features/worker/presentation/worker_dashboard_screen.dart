@@ -652,6 +652,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           if (services.isNotEmpty) const Divider(height: 1),
           if (services.isNotEmpty)
             ExpansionTile(
+              key: const PageStorageKey<String>('worker_dashboard_selected_services_expansion'),
               leading: const Icon(Icons.visibility_outlined),
               title: const Text('View selected services'),
               subtitle: const Text('Expand only when you need the full list'),
