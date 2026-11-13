@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:airway/core/storage/secure_session_storage.dart';
@@ -7,6 +9,7 @@ import 'package:airway/features/location/presentation/address_picker_screen.dart
 import 'package:airway/features/location/presentation/location_selection_screen.dart';
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/notification/presentation/notification_list_screen.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
@@ -43,6 +46,7 @@ class CustomerHomeScreen extends StatefulWidget {
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  StreamSubscription<RemoteMessage>? _pushOpenSubscription;
   List<Map<String, dynamic>> _addresses = [];
   List<Category> _catalogCategories = [];
   List<Service> _popularCatalogServices = [];
@@ -69,7 +73,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _pushOpenSubscription = FirebaseMessaging.onMessageOpenedApp.listen(_handlePushOpen);
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null) _handlePushOpen(message);
+    });
     _refresh();
+  }
+
+  void _handlePushOpen(RemoteMessage message) {
+    if (!mounted || message.data['notification_kind'] != 'customer_completion_otp') return;
+    final orderId = int.tryParse(message.data['order_id']?.toString() ?? '');
+    if (orderId == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CustomerOrderScreen(orderId: orderId),
+    ));
+  }
+
+  @override
+  void dispose() {
+    _pushOpenSubscription?.cancel();
+    super.dispose();
   }
 
   @override
