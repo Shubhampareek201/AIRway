@@ -1,5 +1,23 @@
 import 'package:airway/core/network/auth_api.dart';
 
+bool _catalogBool(dynamic value, {bool fallback = false}) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    switch (value.trim().toLowerCase()) {
+      case 'true':
+      case '1':
+      case 'yes':
+        return true;
+      case 'false':
+      case '0':
+      case 'no':
+        return false;
+    }
+  }
+  return fallback;
+}
+
 /// Resolve media paths returned by Django and repair loopback hosts that are
 /// unusable from a physical Android device.
 String? _resolveMediaUrl(dynamic value) {
@@ -142,7 +160,7 @@ class Category {
           .whereType<Map>()
           .map((step) => Map<String, dynamic>.from(step))
           .toList(),
-      isActive: map['is_active'] ?? false,
+      isActive: _catalogBool(map['is_active']),
       children: (map['children'] as List? ?? [])
           .whereType<Map>()
           .map((e) => Category.fromMap(Map<String, dynamic>.from(e)))
@@ -216,7 +234,7 @@ class ServiceVariant {
       discountPercent: map['discount_percent'] ?? 0,
       durationMinutes: map['duration_minutes'],
       sortOrder: map['sort_order'] ?? 0,
-      isActive: map['is_active'] ?? false,
+      isActive: _catalogBool(map['is_active']),
     );
   }
 }
@@ -257,7 +275,7 @@ class AddOn {
       price: double.tryParse(map['price'].toString()) ?? 0,
       discountPercent: map['discount_percent'] ?? 0,
       sortOrder: map['sort_order'] ?? 0,
-      isActive: map['is_active'] ?? false,
+      isActive: _catalogBool(map['is_active']),
     );
   }
 }
@@ -325,7 +343,7 @@ class CatalogFormField {
       fieldType: map['field_type'] ?? '',
       fieldTypeDisplay: map['field_type_display'] ?? '',
       options: List<dynamic>.from(map['options'] ?? []),
-      isRequired: map['is_required'] ?? false,
+      isRequired: _catalogBool(map['is_required']),
       visibilityRules: (map['visibility_rules'] as List? ?? [])
           .whereType<Map>()
           .map((rule) => Map<String, dynamic>.from(rule))
@@ -426,13 +444,13 @@ class Service {
       bufferMinutes: map['buffer_minutes'] ?? 0,
       audience: map['audience'] ?? '',
       audienceDisplay: map['audience_display'] ?? '',
-      requiresFemaleWorker: map['requires_female_worker'] ?? false,
+      requiresFemaleWorker: _catalogBool(map['requires_female_worker']),
       supportsProfessionalPreference:
-          map['supports_professional_preference'] ?? false,
-      isPopular: map['is_popular'] ?? false,
+          _catalogBool(map['supports_professional_preference']),
+      isPopular: _catalogBool(map['is_popular']),
       sortOrder: map['sort_order'] ?? 0,
-      isActive: map['is_active'] ?? false,
-      isAvailable: map['is_available'] ?? true,
+      isActive: _catalogBool(map['is_active']),
+      isAvailable: _catalogBool(map['is_available'], fallback: true),
       images: (map['images'] as List? ?? [])
           .map((e) => ServiceImage.fromMap(Map<String, dynamic>.from(e)))
           .toList(),
