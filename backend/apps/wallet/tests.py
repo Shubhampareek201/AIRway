@@ -518,11 +518,11 @@ class ParentOrderWalletPaymentTest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["amount"], 100000)
+        self.assertEqual(response.data["amount"], 30000)
         self.assertEqual(response.data["wallet_amount"], "0.00")
         self.assertFalse(response.data["fully_paid_by_wallet"])
         payment = Payment.objects.get(order=self.order)
-        self.assertEqual(payment.amount, Decimal("1000.00"))
+        self.assertEqual(payment.amount, Decimal("300.00"))
         self.assertEqual(payment.wallet_amount, Decimal("0.00"))
         self.assertFalse(WalletReservation.objects.filter(payment=payment).exists())
         create_order.assert_called_once()
@@ -534,28 +534,28 @@ class ParentOrderWalletPaymentTest(TestCase):
 
         response = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            {"order_id": self.order.id, "wallet_amount": "100.00"},
             format="json",
         )
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["amount"], 70000)
-        self.assertEqual(response.data["wallet_amount"], "300.00")
+        self.assertEqual(response.data["amount"], 20000)
+        self.assertEqual(response.data["wallet_amount"], "100.00")
         self.assertFalse(response.data["fully_paid_by_wallet"])
         create_order.assert_called_once()
         self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance, Decimal("100.00"))
-        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("100.00"))
         reservation = WalletReservation.objects.get(payment__order=self.order)
         self.assertEqual(reservation.status, WalletReservation.Status.RESERVED)
-        self.assertEqual(reservation.amount, Decimal("300.00"))
+        self.assertEqual(reservation.amount, Decimal("100.00"))
 
     @patch("apps.payments.views.client.order.create")
     def test_insufficient_wallet_balance_rejects_without_creating_payment(self, create_order):
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
         response = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "500.00"},
+            {"order_id": self.order.id, "wallet_amount": "250.00"},
             format="json",
         )
 
@@ -571,7 +571,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.deposit(Decimal("1000.00"), description="Test top-up")
         response = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "1000.00"},
+            {"order_id": self.order.id, "wallet_amount": "300.00"},
             format="json",
         )
 
@@ -585,22 +585,22 @@ class ParentOrderWalletPaymentTest(TestCase):
         payment = Payment.objects.get(order=self.order)
         reservation = WalletReservation.objects.get(payment=payment)
         self.assertEqual(payment.status, Payment.Status.PAID)
-        self.assertEqual(self.order.status, Order.Status.PAID)
-        self.assertEqual(self.booking.status, Booking.Status.CONFIRMED)
+        self.assertEqual(self.order.status, Order.Status.AWAITING_ASSIGNMENT)
+        self.assertEqual(self.booking.status, Booking.Status.PENDING)
         self.assertEqual(reservation.status, WalletReservation.Status.CAPTURED)
-        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.assertEqual(self.wallet.balance, Decimal("700.00"))
         self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
 
 
         duplicate = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "1000.00"},
+            {"order_id": self.order.id, "wallet_amount": "300.00"},
             format="json",
         )
         self.assertEqual(duplicate.status_code, 200, duplicate.data)
         self.assertTrue(duplicate.data["already_paid"])
         self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.assertEqual(self.wallet.balance, Decimal("700.00"))
 
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
@@ -619,7 +619,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
         started = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            {"order_id": self.order.id, "wallet_amount": "100.00"},
             format="json",
         )
         self.assertEqual(started.status_code, 200, started.data)
@@ -638,7 +638,7 @@ class ParentOrderWalletPaymentTest(TestCase):
             "payload": {"payment": {"entity": {
                 "id": "pay_order_wallet_refund_late",
                 "order_id": "order_wallet_refund_late",
-                "amount": 70000,
+                "amount": 20000,
                 "currency": "INR",
                 "status": "captured",
             }}},
@@ -667,11 +667,11 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUNDED)
         self.assertEqual(self.order.status, Order.Status.AWAITING_PAYMENT)
-        self.assertEqual(self.wallet.balance, Decimal("0.00"))
+        self.assertEqual(self.wallet.balance, Decimal("700.00"))
         gateway.payment.refund.assert_called_once()
         self.assertEqual(
             gateway.payment.refund.call_args.args[1]["amount"],
-            70000,
+            20000,
         )
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
@@ -684,7 +684,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
         started = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            {"order_id": self.order.id, "wallet_amount": "100.00"},
             format="json",
         )
         self.assertEqual(started.status_code, 200, started.data)
@@ -700,7 +700,7 @@ class ParentOrderWalletPaymentTest(TestCase):
             "payload": {"payment": {"entity": {
                 "id": "pay_order_wallet_late",
                 "order_id": "order_wallet_late_capture",
-                "amount": 70000,
+                "amount": 20000,
                 "currency": "INR",
                 "status": "captured",
             }}},
@@ -724,7 +724,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         ).order_by("-created_at").first()
         self.assertEqual(payment.status, Payment.Status.PAID)
         self.assertEqual(latest_reservation.status, WalletReservation.Status.CAPTURED)
-        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.balance, Decimal("300.00"))
         self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
@@ -737,7 +737,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
         response = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            {"order_id": self.order.id, "wallet_amount": "100.00"},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
@@ -747,7 +747,7 @@ class ParentOrderWalletPaymentTest(TestCase):
             "payload": {"payment": {"entity": {
                 "id": "pay_order_wallet_failed",
                 "order_id": "order_wallet_failed_attempt",
-                "amount": 70000,
+                "amount": 20000,
                 "currency": "INR",
                 "status": "failed",
             }}},
@@ -769,8 +769,8 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PENDING)
         self.assertEqual(reservation.status, WalletReservation.Status.RESERVED)
-        self.assertEqual(self.wallet.balance, Decimal("100.00"))
-        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("100.00"))
 
     @override_settings(RAZORPAY_WEBHOOK_SECRET="order-wallet-webhook-secret")
     @patch("apps.payments.views.client.order.create")
@@ -782,7 +782,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
         response = self.client.post(
             "/api/v1/payments/create-order/",
-            {"order_id": self.order.id, "wallet_amount": "300.00"},
+            {"order_id": self.order.id, "wallet_amount": "100.00"},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
@@ -792,7 +792,7 @@ class ParentOrderWalletPaymentTest(TestCase):
             "payload": {"payment": {"entity": {
                 "id": "pay_order_wallet_capture",
                 "order_id": "order_wallet_capture",
-                "amount": 70000,
+                "amount": 20000,
                 "currency": "INR",
                 "status": "captured",
             }}},
@@ -814,14 +814,14 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PAID)
         self.assertEqual(reservation.status, WalletReservation.Status.CAPTURED)
-        self.assertEqual(self.wallet.balance, Decimal("100.00"))
+        self.assertEqual(self.wallet.balance, Decimal("300.00"))
         self.assertEqual(self.wallet.pending_balance, Decimal("0.00"))
 
     @patch("apps.payments.views.client.order.create")
     def test_timeout_releases_reservation_and_retry_reserves_again(self, create_order):
         create_order.return_value = {"id": "order_wallet_timeout"}
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
-        payload = {"order_id": self.order.id, "wallet_amount": "300.00"}
+        payload = {"order_id": self.order.id, "wallet_amount": "100.00"}
         started = self.client.post("/api/v1/payments/create-order/", payload, format="json")
         self.assertEqual(started.status_code, 200, started.data)
 
@@ -845,8 +845,8 @@ class ParentOrderWalletPaymentTest(TestCase):
         payment.refresh_from_db()
         self.wallet.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PENDING)
-        self.assertEqual(self.wallet.balance, Decimal("100.00"))
-        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("100.00"))
         self.assertEqual(
             WalletReservation.objects.filter(
                 payment=payment,
@@ -859,7 +859,7 @@ class ParentOrderWalletPaymentTest(TestCase):
     def test_duplicate_checkout_does_not_reserve_wallet_twice(self, create_order):
         create_order.return_value = {"id": "order_wallet_duplicate"}
         self.wallet.deposit(Decimal("400.00"), description="Test top-up")
-        payload = {"order_id": self.order.id, "wallet_amount": "300.00"}
+        payload = {"order_id": self.order.id, "wallet_amount": "100.00"}
 
         first = self.client.post("/api/v1/payments/create-order/", payload, format="json")
         second = self.client.post("/api/v1/payments/create-order/", payload, format="json")
@@ -867,7 +867,7 @@ class ParentOrderWalletPaymentTest(TestCase):
         self.assertEqual(first.status_code, 200, first.data)
         self.assertEqual(second.status_code, 200, second.data)
         self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance, Decimal("100.00"))
-        self.assertEqual(self.wallet.pending_balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.balance, Decimal("300.00"))
+        self.assertEqual(self.wallet.pending_balance, Decimal("100.00"))
         self.assertEqual(WalletReservation.objects.filter(payment__order=self.order).count(), 1)
         create_order.assert_called_once()
