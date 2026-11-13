@@ -36,7 +36,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   final _scheduleKey = GlobalKey();
   final _idDocumentKey = GlobalKey();
   final List<int> _selectedZoneIds = [];
-  String? _bio;
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -112,7 +111,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       // Mark that profile exists to show "Continue Application" in UI
       setState(() {
         _existingBio = workerProfile['bio'];
-        _bio = _existingBio;
         _selectedIdType = idType ?? 'aadhaar';
         final savedGender = workerProfile['gender']?.toString();
         if (savedGender == 'male' || savedGender == 'female' || savedGender == 'other') {
