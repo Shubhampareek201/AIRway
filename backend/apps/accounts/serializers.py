@@ -166,6 +166,14 @@ class AddressSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True,
     )
+    is_serviceable = serializers.SerializerMethodField()
+
+    def get_is_serviceable(self, obj):
+        return bool(
+            obj.zone_id
+            and obj.zone.is_active
+            and obj.zone.city.is_active
+        )
 
     class Meta:
         model = Address
@@ -180,6 +188,7 @@ class AddressSerializer(serializers.ModelSerializer):
             "zone",
             "zone_name",
             "city_name",
+            "is_serviceable",
             "is_default",
             "created_at",
             "updated_at",
@@ -251,11 +260,13 @@ class AddressCreateSerializer(serializers.ModelSerializer):
                 "longitude": "Longitude must be between -180 and 180."
             })
 
+        # Saving a customer address must not depend on current service coverage.
+        # Login and address-book access are available to everyone; serviceability
+        # is evaluated separately when the customer browses/books a service.
+        # Never trust a client-supplied zone ID: derive it only from the pin.
         from apps.core.coverage import resolve_active_zone
-        zone = resolve_active_zone(latitude=latitude, longitude=longitude)
-        if zone is None:
-            raise serializers.ValidationError({
-                "full_address": "AIRway is not serving this location yet. Please choose an address inside the Rawatbhata service area."
-            })
-        attrs["zone"] = zone
+        attrs["zone"] = resolve_active_zone(
+            latitude=latitude,
+            longitude=longitude,
+        )
         return attrs
