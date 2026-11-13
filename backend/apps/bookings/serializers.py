@@ -15,6 +15,7 @@ from .models import (
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
+from apps.catalog.pricing import service_pricing_ready
 from apps.catalog.form_rules import visible_form_fields
 from apps.catalog.audience import validate_beauty_audience
 from apps.accounts.models import Address
@@ -156,6 +157,14 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "variant": "This package does not match the selected service details."
                 })
+
+        if not service_pricing_ready(service):
+            raise serializers.ValidationError({
+                "service": "This service is not ready for booking yet. AIRway is confirming its price."
+            })
+        if service.pricing_type == Service.PricingType.FIXED:
+            if variant is None or variant.price <= 0:
+                raise serializers.ValidationError({"variant": "Choose a package with a confirmed price."})
 
         # Validate booking mode matches service
         if booking_mode != service.booking_mode:
@@ -771,6 +780,14 @@ class CartItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"quantity": "Quantity must be between 1 and 20."})
         if not service.is_active:
             raise serializers.ValidationError({"service": "This service is not available."})
+        if not service_pricing_ready(service):
+            raise serializers.ValidationError({
+                "service": "This service is not ready for the cart yet. AIRway is confirming its price."
+            })
+        if service.pricing_type == Service.PricingType.FIXED and (
+            variant is None or variant.price <= 0
+        ):
+            raise serializers.ValidationError({"variant": "Choose a package with a confirmed price."})
         if not isinstance(addons, list) or not isinstance(answers, dict) or not isinstance(category_answers, dict):
             raise serializers.ValidationError("Add-ons must be a list and answers must be objects.")
         if variant and (variant.service_id != service.id or not variant.is_active):
