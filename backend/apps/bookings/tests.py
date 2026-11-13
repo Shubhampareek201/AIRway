@@ -2342,6 +2342,13 @@ class FailedDispatchRetryTaskTest(TestCase):
             scheduled_at=scheduled_at_utc,
             status=Booking.Status.CONFIRMED,
         )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_advance_captured", paid_at=timezone.now(),
+        )
 
         # Run the task
         batch_count = retry_failed_dispatches()
@@ -2758,6 +2765,13 @@ class DispatcherServiceTest(TestCase):
         )
 
         # Dispatch offers
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_advance_captured", paid_at=timezone.now(),
+        )
         offers = DispatcherService.dispatch_offers(booking)
 
         # Should create exactly 5 offers (batch_size)
@@ -2781,6 +2795,13 @@ class DispatcherServiceTest(TestCase):
         )
 
         # Dispatch with batch_size=2
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_advance_captured", paid_at=timezone.now(),
+        )
         offers = DispatcherService.dispatch_offers(booking, batch_size=2)
 
         # Should create only 2 offers
@@ -2844,6 +2865,13 @@ class DispatcherServiceTest(TestCase):
         )
 
         # Dispatch offers
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_advance_captured", paid_at=timezone.now(),
+        )
         offers = DispatcherService.dispatch_offers(booking)
 
         # Only the online approved worker should receive an offer
@@ -2869,6 +2897,13 @@ class DispatcherServiceTest(TestCase):
         )
 
         # Dispatch offers
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_advance_captured", paid_at=timezone.now(),
+        )
         offers = DispatcherService.dispatch_offers(booking)
 
         # Offers should be sorted by rating (descending): 5.0, 4.5, 4.0, 3.0, 2.0
@@ -2895,6 +2930,13 @@ class DispatcherServiceTest(TestCase):
             status=Booking.Status.PENDING,
         )
 
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_advance_captured", paid_at=timezone.now(),
+        )
         offers = DispatcherService.dispatch_offers(booking)
 
         self.assertEqual([offer.worker_id for offer in offers], [other_worker.id])
