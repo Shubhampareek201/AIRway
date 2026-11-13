@@ -138,7 +138,7 @@ def create_or_get_order_payment(
     allocation = order.metadata.get(allocation_key) if isinstance(order.metadata, dict) else None
     if stage != Payment.Stage.LEGACY and not allocation:
         from decimal import ROUND_HALF_UP
-        advance_percentage = Decimal(str(settings.ORDER_ADVANCE_PERCENTAGE))
+        advance_percentage = Decimal(str(getattr(settings, "ORDER_ADVANCE_PERCENTAGE", 30)))
         advance_total = (order.total_amount * advance_percentage / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         balance_total = order.total_amount - advance_total
         advance_rows, balance_rows = [], []
