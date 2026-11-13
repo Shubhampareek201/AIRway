@@ -8,6 +8,7 @@ import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/auth/presentation/profile_completion_screen.dart';
 import 'package:airway/features/worker/presentation/worker_application_screen.dart';
 import 'package:airway/features/worker/presentation/worker_dashboard_screen.dart';
+import 'package:airway/features/notification/data/push_notification_service.dart';
 
 /// Determines whether the customer needs authentication, profile completion,
 /// an address, or can continue into the app. It never treats network errors as logout.
@@ -58,6 +59,12 @@ class _StartupGateState extends State<StartupGate> {
         accessToken: refreshed['access'] as String,
         refreshToken: refreshed['refresh'] as String? ?? session.refreshToken,
       );
+    }
+
+    try {
+      await PushNotificationService.initializeForAuthenticatedUser();
+    } catch (_) {
+      // Push permission or token registration must never block app startup.
     }
 
     // Check if profile is complete via /me/ endpoint
