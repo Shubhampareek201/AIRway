@@ -634,6 +634,11 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Go back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _goBack,
+        ),
         title: const Text('Become a Worker'),
         backgroundColor: AirwayColors.primary,
       ),
