@@ -15,6 +15,7 @@ import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
 import 'package:airway/features/worker/presentation/job_offers_screen.dart';
 import 'package:airway/features/worker/presentation/worker_profile_edit_screen.dart';
 import 'package:airway/features/worker/presentation/worker_service_management_screen.dart';
+import 'package:airway/features/notification/data/push_notification_service.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -352,6 +353,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       ),
     );
     if (confirmed != true) return;
+    try {
+      await PushNotificationService.unregisterCurrentDevice();
+    } catch (_) {
+      // Session cleanup must still complete if the push service is unavailable.
+    }
     await SecureSessionStorage.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
