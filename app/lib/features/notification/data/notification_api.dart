@@ -83,6 +83,14 @@ class NotificationApi {
     );
   }
 
+  static Future<void> unregisterDeviceToken(String token) async {
+    await _request(
+      '/api/v1/auth/devices/token/',
+      method: 'DELETE',
+      data: {'token': token},
+    );
+  }
+
   static Future<List<Notification>> listNotifications() async {
     final result = await _request('/api/v1/notifications/');
     final list = result['results'] as List;
