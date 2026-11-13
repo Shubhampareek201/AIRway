@@ -23,6 +23,17 @@ class PushNotificationService {
     FirebaseMessaging.onBackgroundMessage(airwayFirebaseBackgroundHandler);
   }
 
+  static Future<void> unregisterCurrentDevice() async {
+    final token = await _messaging.getToken();
+    if (token != null && token.isNotEmpty) {
+      await NotificationApi.unregisterDeviceToken(token);
+    }
+    await _messaging.deleteToken();
+    await _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = null;
+    _initialized = false;
+  }
+
   static Future<void> initializeForAuthenticatedUser() async {
     if (_initialized) return;
     final settings = await _messaging.requestPermission(
