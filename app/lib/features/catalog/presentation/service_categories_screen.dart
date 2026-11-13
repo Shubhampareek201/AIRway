@@ -85,16 +85,12 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         addressId: widget.addressId,
         audience: audience,
       );
-      final matchingRoots = filteredRoots.where((root) => root.id == category.id);
-      if (matchingRoots.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No priced services are currently available for this Beauty audience in your area.')),
-          );
+      for (final root in filteredRoots) {
+        if (root.id == category.id) {
+          selectedCategory = root;
+          break;
         }
-        return;
       }
-      selectedCategory = matchingRoots.first;
     }
     if (selectedCategory.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
