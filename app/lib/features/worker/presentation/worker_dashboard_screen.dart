@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:airway/core/network/auth_api.dart';
 
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
@@ -10,6 +11,8 @@ import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
 import 'package:airway/features/worker/presentation/job_offers_screen.dart';
+import 'package:airway/features/worker/presentation/worker_profile_edit_screen.dart';
+import 'package:airway/features/worker/presentation/worker_service_management_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -148,6 +151,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
             residentialAddress: _profile!.residentialAddress,
             landmark: _profile!.landmark,
             bio: _profile!.bio,
+            photoUrl: _profile!.photoUrl,
+            serviceItems: _profile!.serviceItems,
             services: _profile!.services,
             zones: _profile!.zones,
             schedules: _profile!.schedules,
@@ -167,6 +172,26 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
     } finally {
       if (mounted) setState(() => _availabilitySaving = false);
     }
+  }
+
+  Future<void> _editProfile() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => WorkerProfileEditScreen(profile: _profile!)),
+    );
+    if (changed == true) await _refresh();
+  }
+
+  Future<void> _manageServices() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => WorkerServiceManagementScreen(profile: _profile!)),
+    );
+    if (changed == true) await _refresh();
+  }
+
+  String? _photoUrl(WorkerProfile profile) {
+    final raw = profile.photoUrl;
+    if (raw == null || raw.trim().isEmpty) return null;
+    return Uri.parse(AuthApi.baseUrl).resolve(raw).toString();
   }
 
   Future<void> _switchToCustomerMode() async {
@@ -411,32 +436,63 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
   }
 
   Widget _buildProfileTab(WorkerProfile profile) {
+    final photo = _photoUrl(profile);
+    final services = profile.serviceItems;
     return _page([
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              CircleAvatar(
-                radius: 38,
-                backgroundColor: AirwayColors.primary.withValues(alpha: 0.12),
-                child: Icon(Icons.person_rounded, size: 42, color: AirwayColors.primary),
-              ),
-              const SizedBox(height: 12),
+          padding: const EdgeInsets.all(18),
+          child: Row(children: [
+            CircleAvatar(
+              radius: 34,
+              backgroundColor: AirwayColors.primary.withValues(alpha: 0.12),
+              backgroundImage: photo == null ? null : NetworkImage(photo),
+              child: photo == null ? Icon(Icons.person_rounded, size: 38, color: AirwayColors.primary) : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(profile.name?.trim().isNotEmpty == true ? profile.name! : 'AIRway Worker',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
               Text(profile.phone ?? 'Phone not available', style: TextStyle(color: AirwayColors.textSecondary)),
-              const SizedBox(height: 12),
-              Chip(
-                avatar: const Icon(Icons.verified_rounded, size: 18, color: Colors.green),
-                label: const Text('Verified worker'),
-                backgroundColor: Colors.green.shade50,
-              ),
-            ],
-          ),
+              const SizedBox(height: 5),
+              const Row(children: [
+                Icon(Icons.verified_rounded, size: 16, color: Colors.green),
+                SizedBox(width: 4),
+                Text('Verified worker', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 12)),
+              ]),
+            ])),
+            IconButton(tooltip: 'Edit profile', onPressed: _editProfile, icon: const Icon(Icons.edit_outlined)),
+          ]),
         ),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
+      Card(
+        child: Column(children: [
+          ListTile(
+            leading: const Icon(Icons.category_outlined),
+            title: const Text('My services', style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('${services.length} services selected'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: _manageServices,
+          ),
+          if (services.isNotEmpty) const Divider(height: 1),
+          if (services.isNotEmpty)
+            ExpansionTile(
+              leading: const Icon(Icons.visibility_outlined),
+              title: const Text('View selected services'),
+              subtitle: const Text('Expand only when you need the full list'),
+              children: services.map((item) => ListTile(
+                dense: true,
+                leading: const Icon(Icons.check_circle_outline, size: 18),
+                title: Text(item['service_title']?.toString() ?? 'Service'),
+                subtitle: item['capabilities'] is List && (item['capabilities'] as List).isNotEmpty
+                    ? Text((item['capabilities'] as List).join(', '), maxLines: 2, overflow: TextOverflow.ellipsis)
+                    : null,
+              )).toList(),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 14),
       _sectionHeading('Your details'),
       const SizedBox(height: 8),
       _detailTile(Icons.star_outline_rounded, 'Rating', profile.ratingAvg == null ? 'Not rated yet' : profile.ratingAvg!.toStringAsFixed(1)),
@@ -445,7 +501,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       _detailTile(Icons.home_outlined, 'Residential address', profile.residentialAddress?.isNotEmpty == true ? profile.residentialAddress! : 'Not added'),
       _detailTile(Icons.location_on_outlined, 'Landmark', profile.landmark?.isNotEmpty == true ? profile.landmark! : 'Not added'),
       _detailTile(Icons.handyman_outlined, 'Tools / equipment', profile.equipmentDetails?.isNotEmpty == true ? profile.equipmentDetails! : 'Not added'),
-      _detailTile(Icons.payments_outlined, 'UPI ID', (profile.upiId?.isNotEmpty == true) ? profile.upiId! : 'Not added'),
+      _detailTile(Icons.payments_outlined, 'Payout UPI ID', profile.upiId?.isNotEmpty == true ? profile.upiId! : 'Not added'),
       _detailTile(Icons.verified_user_outlined, 'Application', 'Approved'),
       if (profile.bio?.isNotEmpty == true) _detailTile(Icons.person_outline_rounded, 'About your work', profile.bio!),
       if (profile.documents.isNotEmpty) _detailTile(
@@ -457,7 +513,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
           return '$type: $status';
         }).join(', '),
       ),
-      if (profile.services.isNotEmpty) _detailTile(Icons.category_outlined, 'Services', profile.services.join(', ')),
       if (profile.zones.isNotEmpty) _detailTile(Icons.map_outlined, 'Service areas', profile.zones.join(', ')),
       if (profile.schedules.isNotEmpty) _detailTile(
         Icons.schedule_outlined,
@@ -472,12 +527,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
           return [day, range].where((value) => value.isNotEmpty).join(' ');
         }).join(', '),
       ),
+      const SizedBox(height: 14),
+      OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined), label: const Text('Edit profile details')),
       const SizedBox(height: 16),
-      OutlinedButton.icon(onPressed: _refresh, icon: const Icon(Icons.sync), label: const Text('Refresh profile')),
-      const SizedBox(height: 20),
       _sectionHeading('Account'),
       Card(
         child: Column(children: [
+          ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Earnings & payouts'), subtitle: const Text('View credited job earnings in the Earnings tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => setState(() => _selectedTab = 2)),
+          const Divider(height: 1),
+          ListTile(leading: const Icon(Icons.notifications_active_outlined), title: const Text('Job alerts'), subtitle: const Text('New service offers appear in the Jobs tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _openOffers),
+          const Divider(height: 1),
           ListTile(leading: const Icon(Icons.storefront_outlined), title: const Text('Switch to Customer'), subtitle: const Text('Return to Customer Home with this account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _switchToCustomerMode),
           const Divider(height: 1),
           ListTile(leading: const Icon(Icons.switch_account_outlined), title: const Text('Switch Account'), subtitle: const Text('Sign out and use another account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _endSession(switchAccount: true)),
