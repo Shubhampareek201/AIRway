@@ -471,11 +471,17 @@ class BookingViewSet(viewsets.ModelViewSet):
                 else:
                     otp_record = BookingCompletionOTP.objects.create(booking=locked_booking, **values)
 
+                notification_title = "Your service completion code is ready"
+                notification_body = (
+                    f"Your AIRway completion code for booking #{locked_booking.id} is {code}. "
+                    "Share it with your assigned professional only after the service is finished. "
+                    "It expires in 10 minutes."
+                )
                 Notification.objects.create(
                     user=locked_booking.customer,
                     type=Notification.Type.SYSTEM_ANNOUNCEMENT,
                     title="Share your service completion code",
-                    body=f"Your AIRway completion code for booking #{locked_booking.id} is {code}. Share it with your assigned professional only after the service is finished. It expires in 10 minutes.",
+                    body=notification_body,
                     channel=Notification.Channel.IN_APP,
                     data={
                         "booking_id": locked_booking.id,
@@ -483,6 +489,23 @@ class BookingViewSet(viewsets.ModelViewSet):
                         "completion_code": code,
                         "expires_at": expires_at.isoformat(),
                     },
+                )
+                order_item = getattr(locked_booking, "order_item", None)
+                push_data = {
+                    "notification_kind": "customer_completion_otp",
+                    "booking_id": locked_booking.id,
+                    "order_id": order_item.order_id if order_item else "",
+                }
+                from apps.notifications.service import send_push_notification
+                transaction.on_commit(
+                    lambda customer=locked_booking.customer, title=notification_title, payload=push_data:
+                        send_push_notification(
+                            customer,
+                            title,
+                            "Your professional requested the completion code. Open your AIRway order to view it.",
+                            data=payload,
+                            channel_id="airway_general",
+                        )
                 )
                 return Response({
                     "detail": "Completion code sent to the customer in the AIRway app. Ask the customer to share it.",
