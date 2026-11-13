@@ -1690,7 +1690,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         accept_resp = worker2_client.post(f"/api/v1/workers/offers/{offer2.id}/accept/", format="json")
 
         self.assertEqual(accept_resp.status_code, 400)
-        self.assertIn("already been assigned", accept_resp.data["detail"].lower())
+        self.assertIn("already withdrawn", accept_resp.data["detail"].lower())
 
     def test_5_customer_sees_assigned_worker(self):
         """Customer can see the assigned worker in booking details."""
@@ -1760,9 +1760,9 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         booking = Booking.objects.get(id=booking_id)
         self.assertEqual(booking.status, Booking.Status.CANCELLED)
 
-        # Verify all offers are expired (not acceptable)
+        # Cancellation withdraws all pending offers immediately.
         for offer in WorkerOffer.objects.filter(booking_id=booking_id):
-            self.assertEqual(offer.status, WorkerOffer.Status.EXPIRED)
+            self.assertEqual(offer.status, WorkerOffer.Status.WITHDRAWN)
 
     def test_7_worker_starts_assigned_job(self):
         """Assigned worker can start the job."""
