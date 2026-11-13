@@ -56,6 +56,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     _loadDashboard().then((_) {
       _knownOfferIds.addAll(_offers.map((offer) => offer.id));
       _startOfferPolling();
+      final recentOffers = _offers.where((offer) =>
+          offer.status == WorkerOffer.pending &&
+          DateTime.now().difference(offer.offeredAt).abs() <= const Duration(minutes: 5)).toList();
+      if (recentOffers.isNotEmpty) _showIncomingOffer(recentOffers.first);
     });
   }
 
