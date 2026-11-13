@@ -25,6 +25,7 @@ class ZoneAdmin(ModelAdmin):
         "latitude",
         "longitude",
         "coverage_radius_meters",
+        "coverage_polygon",
         "is_active",
     )
     list_filter = ("city", "is_active")
