@@ -48,6 +48,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PushNotificationService.initializeForAuthenticatedUser().catchError((_) {});
     _pushOpenSubscription = FirebaseMessaging.onMessageOpenedApp.listen(_handlePushOpen);
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null) _handlePushOpen(message);
