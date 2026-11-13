@@ -19,13 +19,23 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
       .map((row) => int.tryParse(row['service']?.toString() ?? ''))
       .whereType<int>()
       .toSet();
+  final Map<int, Set<String>> _capabilities = {};
   final _search = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    for (final row in widget.profile.serviceItems) {
+      final id = int.tryParse(row['service']?.toString() ?? '');
+      if (id == null) continue;
+      final tasks = row['capabilities'] as List? ?? const [];
+      _capabilities[id] = tasks.map((value) => value.toString()).toSet();
+    }
+    _load();
+  }
 
   @override
   void dispose() { _search.dispose(); super.dispose(); }
@@ -60,14 +70,22 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
           .whereType<int>().toSet();
       final add = _selected.difference(current);
       final remove = current.difference(_selected);
-      // Add first so a failed new selection never removes existing work.
-      for (final serviceId in add) {
-        final service = _catalogue.firstWhere((item) => item.id == serviceId);
-        final tasks = <String>{
-          ...service.variants.expand((variant) => variant.includedTasks),
-          ...service.addons.map((addon) => addon.title),
-        }.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-        await WorkerApi.addService(serviceId: serviceId, capabilities: tasks);
+      // Add/update first so a failed selection never removes existing work.
+      final existingRows = {
+        for (final row in widget.profile.serviceItems)
+          int.tryParse(row['service']?.toString() ?? ''): row,
+      };
+      for (final serviceId in _selected) {
+        final matches = _catalogue.where((item) => item.id == serviceId).toList();
+        final service = matches.isEmpty ? null : matches.first;
+        if (service == null) continue;
+        final tasks = (_capabilities[serviceId] ?? <String>{}).toList()..sort();
+        final previous = existingRows[serviceId];
+        final previousTasks = (previous?['capabilities'] as List? ?? const [])
+            .map((value) => value.toString()).toList()..sort();
+        if (add.contains(serviceId) || previousTasks.join('|') != tasks.join('|')) {
+          await WorkerApi.addService(serviceId: serviceId, capabilities: tasks);
+        }
       }
       for (final serviceId in remove) { await WorkerApi.removeService(serviceId); }
       if (!mounted) return;
@@ -88,7 +106,13 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
       selectedColor: AirwayColors.primary.withAlpha(28),
       label: Text(service.title),
       onSelected: _saving ? null : (value) => setState(() {
-        if (value) { _selected.add(service.id); } else { _selected.remove(service.id); }
+        if (value) {
+          _selected.add(service.id);
+          _capabilities.putIfAbsent(service.id, () => <String>{});
+        } else {
+          _selected.remove(service.id);
+          _capabilities.remove(service.id);
+        }
       }),
     );
   }
@@ -177,6 +201,43 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                         ),
                       );
                     }).toList(),
+                      ..._selected.where((id) => _catalogue.any((service) => service.id == id)).map((id) {
+                        final service = _catalogue.firstWhere((item) => item.id == id);
+                        final tasks = <String>{
+                          ...service.variants.expand((variant) => variant.includedTasks),
+                          ...service.addons.map((addon) => addon.title),
+                        }.map((value) => value.trim()).where((value) => value.isNotEmpty).toList()..sort();
+                        final selectedTasks = _capabilities.putIfAbsent(id, () => <String>{});
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ExpansionTile(
+                            title: Text(service.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: Text(tasks.isEmpty ? 'No task details configured' : '${selectedTasks.length} of ${tasks.length} work options selected'),
+                            children: [
+                              if (tasks.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(14),
+                                  child: Text('No task options have been configured for this service yet.'),
+                                )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                                  child: Wrap(
+                                    spacing: 7,
+                                    runSpacing: 4,
+                                    children: tasks.map((task) => FilterChip(
+                                      label: Text(task),
+                                      selected: selectedTasks.contains(task),
+                                      onSelected: _saving ? null : (value) => setState(() {
+                                        if (value) { selectedTasks.add(task); } else { selectedTasks.remove(task); }
+                                      }),
+                                    )).toList(),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
                   )),
                   SafeArea(top: false, child: Padding(
