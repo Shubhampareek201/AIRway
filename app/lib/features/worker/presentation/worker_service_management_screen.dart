@@ -214,6 +214,10 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                             title: Text(service.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                             subtitle: Text(tasks.isEmpty ? 'No task details configured' : '${selectedTasks.length} of ${tasks.length} work options selected'),
                             children: [
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(14, 8, 14, 4),
+                                child: Text('Choose only the work you are trained to perform. Changed skills may need admin verification before matching.', style: TextStyle(fontSize: 11, color: AirwayColors.textSecondary)),
+                              ),
                               if (tasks.isEmpty)
                                 const Padding(
                                   padding: EdgeInsets.all(14),
