@@ -72,6 +72,17 @@ class NotificationApi {
     return Map<String, dynamic>.from(result.body as Map);
   }
 
+  static Future<void> registerDeviceToken(String token) async {
+    await _request(
+      '/api/v1/auth/devices/token/',
+      method: 'POST',
+      data: {
+        'token': token,
+        'platform': Platform.isAndroid ? 'android' : Platform.isIOS ? 'ios' : 'web',
+      },
+    );
+  }
+
   static Future<List<Notification>> listNotifications() async {
     final result = await _request('/api/v1/notifications/');
     final list = result['results'] as List;
