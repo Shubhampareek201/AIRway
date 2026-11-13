@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
@@ -337,7 +338,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(13)),
               child: const Text(
-                'When your service is finished, check AIRway Notifications for the completion code and share it with your professional.',
+                'When your professional requests completion verification, the secure code will appear inside that service below. Share it only after the work is finished.',
                 style: TextStyle(color: sub, height: 1.4),
               ),
             ),
@@ -515,6 +516,39 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         if (snapshot['variant_title'] != null) Text(snapshot['variant_title'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 6),
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
+        if (row['completion_otp'] is Map &&
+            (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF1EA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFB9D4C0)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.lock_clock_outlined, color: violet),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Service completion code', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12)),
+                const SizedBox(height: 3),
+                SelectableText(
+                  row['completion_otp']['code'].toString(),
+                  style: const TextStyle(fontSize: 24, letterSpacing: 5, fontWeight: FontWeight.w900, color: violet),
+                ),
+                const Text('Share with your assigned professional after the service is finished.', style: TextStyle(fontSize: 11, color: sub)),
+              ])),
+              IconButton(
+                tooltip: 'Copy code',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: row['completion_otp']['code'].toString()));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completion code copied.')));
+                },
+                icon: const Icon(Icons.copy_rounded),
+              ),
+            ]),
+          ),
+        ],
         if (scheduled.isNotEmpty) Text(scheduled, style: const TextStyle(color: sub, fontSize: 12)),
         if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
         if (row['advance_amount'] != null && row['balance_amount'] != null) ...[
