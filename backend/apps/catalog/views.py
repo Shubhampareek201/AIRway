@@ -389,6 +389,9 @@ class ServiceDetailView(generics.RetrieveAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
+        context["priced_only"] = (
+            self.request.query_params.get("priced_only", "").lower() == "true"
+        )
         location = _location_from_address(self.request)
         if location is None:
             context["available_service_ids"] = None
