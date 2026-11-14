@@ -119,17 +119,17 @@ class BeautyAudienceScreen extends StatelessWidget {
             children: [
               if (value == BeautyAudience.both && image.isNotEmpty && secondaryImage.isNotEmpty)
                 SizedBox(
-                  height: 57,
+                  height: 95,
                   child: Row(
                     children: [
-                      Expanded(child: Image.network(image, height: 57, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
-                      Expanded(child: Image.network(secondaryImage, height: 57, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
+                      Expanded(child: Image.network(image, height: 95, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
+                      Expanded(child: Image.network(secondaryImage, height: 95, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
                     ],
                   ),
                 )
               else if (image.isNotEmpty)
                 SizedBox(
-                  height: 57,
+                  height: 95,
                   width: double.infinity,
                   child: Image.network(
                     image,
@@ -138,7 +138,7 @@ class BeautyAudienceScreen extends StatelessWidget {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 9),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Row(
                   children: [
                     Expanded(
