@@ -264,7 +264,10 @@ class AddressAPITests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    def test_inactive_zone_rejected(self):
+    def test_address_can_be_saved_when_zone_is_inactive(self):
+        # Address-book storage is independent of service coverage. The address
+        # remains available to the customer, but its zone is unresolved so the
+        # booking flow can correctly report that service is not available there.
         self.zone.is_active = False
         self.zone.save()
 
@@ -274,7 +277,8 @@ class AddressAPITests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIsNone(response.data.get("zone"))
 
     def test_unauthenticated_address_access_denied(self):
         self.client.force_authenticate(user=None)
