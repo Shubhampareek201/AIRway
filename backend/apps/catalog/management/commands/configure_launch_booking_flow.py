@@ -261,6 +261,10 @@ class Command(BaseCommand):
             "type": "select",
             "required": True,
             "filter_children": True,
+            "child_slugs": {
+                "Car": ["car"],
+                "Bike": ["bike"],
+            },
             "options": [
                 {"label": "Car", "value": "Car", "image": "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=600&auto=format&fit=crop"},
                 {"label": "Bike / Scooter", "value": "Bike", "image": "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&auto=format&fit=crop"},
@@ -339,6 +343,11 @@ class Command(BaseCommand):
             "type": "select",
             "required": True,
             "filter_children": True,
+            "child_slugs": {
+                "Full Home": ["full-home"],
+                "Specific Area": ["specific-area"],
+                "Specific Item": ["specific-item"],
+            },
             "options": [
                 {"label": "Full Home", "value": "Full Home", "image": "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop"},
                 {"label": "Specific Area", "value": "Specific Area", "image": "https://images.unsplash.com/photo-1600489000022-c2086d79f9d4?w=600&auto=format&fit=crop"},

@@ -132,15 +132,26 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         (step) => step['filter_children'] == true,
       ).toList();
       if (filterStep.isNotEmpty) {
-        final key = filterStep.first['key']?.toString();
+        final step = filterStep.first;
+        final key = step['key']?.toString();
         final selected = key == null ? null : answers[key]?.toString();
         if (selected != null && selected.isNotEmpty) {
-          final normalized = selected.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-          final matches = children.where((child) {
-            final title = child.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-            return title.contains(normalized) || normalized.contains(title);
-          }).toList();
-          if (matches.isNotEmpty) children = matches;
+          final configuredMap = step['child_slugs'];
+          final configuredSlugs = configuredMap is Map
+              ? configuredMap[selected]
+              : null;
+          if (configuredSlugs is List && configuredSlugs.isNotEmpty) {
+            final allowedSlugs = configuredSlugs.map((slug) => slug.toString()).toSet();
+            children = children.where((child) => allowedSlugs.contains(child.slug)).toList();
+          } else {
+            // Compatibility fallback for older Admin-authored flow steps.
+            final normalized = selected.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+            final matches = children.where((child) {
+              final title = child.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+              return title.contains(normalized) || normalized.contains(title);
+            }).toList();
+            if (matches.isNotEmpty) children = matches;
+          }
         }
       }
       if (children.isEmpty) {
