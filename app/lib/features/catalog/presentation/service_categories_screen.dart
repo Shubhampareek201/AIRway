@@ -227,10 +227,8 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       child: Container(
         decoration: BoxDecoration(
           color: AirwayColors.surface,
-          border: Border(
-            top: BorderSide(color: AirwayColors.border),
-            bottom: BorderSide(color: AirwayColors.border),
-          ),
+          border: Border.all(color: AirwayColors.border),
+          borderRadius: BorderRadius.circular(16),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -307,12 +305,19 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     );
   }
 
-  List<Widget> _buildCategoryGrid() => [
-        for (var index = 0; index < _categories.length; index++) ...[
-          _categoryCard(_categories[index]),
-          if (index != _categories.length - 1) const SizedBox(height: 14),
-        ],
-      ];
+  Widget _buildCategoryGrid() => GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _categories.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 14,
+          mainAxisExtent: 174,
+        ),
+        itemBuilder: (context, index) => _categoryCard(_categories[index]),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -346,7 +351,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        ..._buildCategoryGrid(),
+                        _buildCategoryGrid(),
                       ],
                     ),
     );
