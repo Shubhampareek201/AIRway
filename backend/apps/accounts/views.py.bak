@@ -1,0 +1,322 @@
+
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Q
+from .serializers import AddressCreateSerializer
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import Address
+from .serializers import AddressSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.hashers import make_password
+from firebase_admin import auth
+from apps.core.models import City, Zone
+from .firebase_service import verify_firebase_token
+from django.db import transaction
+from django.utils import timezone
+
+from .models import Address
+from .serializers import AddressSerializer, AddressCreateSerializer
+User = get_user_model()
+
+
+class FirebaseLoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        id_token = request.data.get("id_token")
+
+        if not isinstance(id_token, str) or not id_token:
+            return Response(
+                {"error": "Firebase ID token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            decoded = verify_firebase_token(id_token)
+        except (ValueError, auth.InvalidIdTokenError,
+                auth.ExpiredIdTokenError, auth.RevokedIdTokenError,
+                auth.UserDisabledError):
+            return Response(
+                {"error": "Invalid or expired authentication token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "AIRway Firebase authentication failed"
+            )
+
+            return Response(
+                {"error": "Authentication service unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        firebase_data = decoded.get("firebase", {})
+        phone = decoded.get("phone_number")
+
+        if (
+            not isinstance(firebase_data, dict)
+            or firebase_data.get("sign_in_provider") != "phone"
+            or not isinstance(phone, str)
+            or not phone.startswith("+91")
+        ):
+            return Response(
+                {"error": "Verified Indian phone login required."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        with transaction.atomic():
+            user, created = User.objects.get_or_create(
+                phone=phone,
+                defaults={"password": make_password(None)},
+            )
+
+        if not user.is_active:
+            return Response(
+                {"error": "Account disabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": {
+                "id": user.id,
+                "phone": user.phone,
+                "name": user.name,
+                "active_mode": user.active_mode,
+            },
+            "is_new_user": created,
+        })
+class CurrentUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        return Response({
+            "id": user.id,
+            "phone": user.phone,
+            "name": user.name,
+            "active_mode": user.active_mode,
+        })
+
+
+class AddressListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        addresses = (
+            Address.objects
+            .filter(
+                user=request.user,
+                deleted_at__isnull=True,
+            )
+            .select_related("zone", "zone__city")
+            .order_by("-is_default", "-created_at")
+        )
+
+        serializer = AddressSerializer(addresses, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = AddressCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=request.user.pk)
+
+            has_address = Address.objects.filter(
+                user=request.user,
+                deleted_at__isnull=True,
+            ).exists()
+
+            address = serializer.save(
+                user=request.user,
+                is_default=not has_address,
+            )
+
+        return Response(
+            AddressSerializer(address).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+class CityListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        cities = City.objects.filter(
+            is_active=True
+        ).order_by("name")
+
+        return Response([
+            {
+                "id": city.id,
+                "name": city.name,
+                "state": city.state,
+            }
+            for city in cities
+        ])
+
+
+class ZoneListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        city_id = request.query_params.get("city_id")
+
+        if not city_id or not city_id.isdecimal():
+            return Response(
+                {"error": "A valid city_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        zones = Zone.objects.filter(
+            city_id=int(city_id),
+            city__is_active=True,
+            is_active=True,
+        ).order_by("name")
+
+        return Response([
+            {
+                "id": zone.id,
+                "name": zone.name,
+                "city_id": zone.city_id,
+            }
+            for zone in zones
+        ])
+
+class AddressDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, address_id):
+        with transaction.atomic():
+            User.objects.select_for_update().get(
+                pk=request.user.pk
+            )
+
+            address = Address.objects.filter(
+                pk=address_id,
+                user=request.user,
+                deleted_at__isnull=True,
+            ).first()
+
+            if address is None:
+                return Response(
+                    {"error": "Address not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            serializer = AddressCreateSerializer(
+                address,
+                data=request.data,
+                partial=True,
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+        return Response(
+            AddressSerializer(address).data
+        )
+
+    def delete(self, request, address_id):
+        with transaction.atomic():
+            User.objects.select_for_update().get(
+                pk=request.user.pk
+            )
+
+            address = Address.objects.filter(
+                pk=address_id,
+                user=request.user,
+                deleted_at__isnull=True,
+            ).first()
+
+            if address is None:
+                return Response(
+                    {"error": "Address not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            was_default = address.is_default
+
+            address.deleted_at = timezone.now()
+            address.is_default = False
+            address.save(
+                update_fields=[
+                    "deleted_at",
+                    "is_default",
+                    "updated_at",
+                ]
+            )
+
+            if was_default:
+                next_address = (
+                    Address.objects.filter(
+                        user=request.user,
+                        deleted_at__isnull=True,
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+
+                if next_address is not None:
+                    next_address.is_default = True
+                    next_address.save(
+                        update_fields=[
+                            "is_default",
+                            "updated_at",
+                        ]
+                    )
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+class SetDefaultAddressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, address_id):
+        with transaction.atomic():
+            User.objects.select_for_update().get(
+                pk=request.user.pk
+            )
+
+            address = Address.objects.filter(
+                pk=address_id,
+                user=request.user,
+                deleted_at__isnull=True,
+            ).first()
+
+            if address is None:
+                return Response(
+                    {"error": "Address not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            Address.objects.filter(
+                user=request.user,
+                deleted_at__isnull=True,
+                is_default=True,
+            ).exclude(pk=address.pk).update(
+                is_default=False
+            )
+
+            if not address.is_default:
+                address.is_default = True
+                address.save(
+                    update_fields=[
+                        "is_default",
+                        "updated_at",
+                    ]
+                )
+
+        return Response(
+            AddressSerializer(address).data
+        )

@@ -1,0 +1,69 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="container">
+    <h1 class="admin-heading">Confirm worker rejection</h1>
+
+    {% if count > 0 %}
+    <p>Are you sure you want to reject {{ count }} worker{{ count|pluralize }}?</p>
+
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reject_workers" />
+        <input type="hidden" name="_confirm_action" value="1" />
+
+        {% for obj in objects %}
+        <input type="hidden" name="id" value="{{ obj.pk }}" />
+        {% endfor %}
+
+        <div class="form-row">
+            <label for="id_rejection_reason">Rejection Reason <span class="required">*</span>:</label>
+            <textarea name="rejection_reason" id="id_rejection_reason" rows="3" cols="40" required
+                      placeholder="Enter the reason for rejection..."></textarea>
+        </div>
+
+        <div class="submit-row">
+            <input type="submit" name="do_reject_workers" value="Reject Workers" class="default">
+            <a href="{% url 'admin:workers_workerprofile_changelist' %}" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+    {% else %}
+    <p>No workers selected.</p>
+    <a href="{% url 'admin:workers_workerprofile_changelist' %}" class="button">Return to worker list</a>
+    {% endif %}
+</div>
+
+<style>
+.container {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 0 20px;
+}
+.admin-heading {
+    color: #333;
+    margin-bottom: 20px;
+}
+.form-row {
+    margin-bottom: 15px;
+}
+.form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+.form-row textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: monospace;
+}
+.submit-row {
+    margin-top: 20px;
+}
+.submit-row input {
+    margin-right: 10px;
+}
+</style>
+{% endblock %}

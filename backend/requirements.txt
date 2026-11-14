@@ -1,0 +1,23 @@
+# AIRway Backend Dependencies
+# Generated from direct code inspection — not from pip freeze.
+# Only dependencies actually imported by the project are listed.
+
+django==6.0.10
+djangorestframework==3.18.3
+djangorestframework-simplejwt==5.5.1
+drf-spectacular==0.30.0
+django-simple-history==3.13.0
+django-unfold==0.110.0
+django-cors-headers==4.9.0
+django-environ==0.14.0
+python-dotenv>=1.0.0
+firebase-admin==7.7.0
+psycopg[binary]==3.3.6
+pillow==13.0.0
+razorpay==2.0.1
+pytz==2024.1
+
+# Celery (background task processing)
+celery[redis]==5.6.3
+redis==8.1.0
+django-celery-beat>=2.7.0

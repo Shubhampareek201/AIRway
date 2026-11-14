@@ -1,0 +1,981 @@
+from rest_framework import serializers
+from decimal import Decimal
+from datetime import date
+import re
+from django.utils import timezone
+
+from .models import (
+    Booking,
+    BookingAddOn,
+    BookingFormResponse,
+    BookingStatusHistory,
+    BookingAssignment,
+    Order,
+    OrderItem,
+)
+from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
+from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
+from apps.catalog.pricing import service_pricing_ready
+from apps.catalog.form_rules import visible_form_fields
+from apps.catalog.audience import validate_beauty_audience
+from apps.accounts.models import Address
+from apps.workers.eligibility import required_worker_gender_for_booking
+from apps.notifications.models import Notification
+
+ 
+def _is_valid_iso_date(value):
+    """Accept only real calendar dates in YYYY-MM-DD format."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+
+class BookingAddOnSerializer(serializers.ModelSerializer):
+    addon_title = serializers.CharField(source="addon.title", read_only=True)
+    addon_title_hi = serializers.CharField(source="addon.title_hi", read_only=True)
+
+    class Meta:
+        model = BookingAddOn
+        fields = ["id", "addon", "addon_title", "addon_title_hi", "quantity", "unit_price", "total_price"]
+        read_only_fields = ["unit_price", "total_price"]
+
+
+class BookingFormResponseSerializer(serializers.ModelSerializer):
+    field_key = serializers.CharField(source="form_field.key", read_only=True)
+    field_label = serializers.CharField(source="form_field.label", read_only=True)
+    field_label_hi = serializers.CharField(source="form_field.label_hi", read_only=True)
+    field_type = serializers.CharField(source="form_field.field_type", read_only=True)
+    field_options = serializers.JSONField(source="form_field.options", read_only=True)
+
+    class Meta:
+        model = BookingFormResponse
+        fields = ["id", "form_field", "field_key", "field_label", "field_label_hi", "field_type", "field_options", "value"]
+        read_only_fields = ["form_field"]
+
+
+class BookingStatusHistorySerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookingStatusHistory
+        fields = ["id", "from_status", "to_status", "changed_by", "changed_by_name", "note", "created_at"]
+
+    def get_changed_by_name(self, obj):
+        if obj.changed_by:
+            if obj.changed_by.name:
+                return obj.changed_by.name
+            return obj.changed_by.phone
+        return "System"
+
+
+class BookingAssignmentSerializer(serializers.ModelSerializer):
+    worker_name = serializers.SerializerMethodField()
+    worker_rating = serializers.SerializerMethodField()
+    worker_photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookingAssignment
+        fields = [
+            "id", "worker", "worker_name", "worker_rating", "worker_photo",
+            "assigned_at", "accepted_at", "started_at", "completed_at"
+        ]
+
+    def get_worker_name(self, obj):
+        user = obj.worker.user
+        return user.name or "AIRway Professional"
+
+    def get_worker_rating(self, obj):
+        return float(obj.worker.rating_avg) if obj.worker.rating_avg else None
+
+    def get_worker_photo(self, obj):
+        from apps.workers.models import WorkerDocument
+        if obj.worker.status != obj.worker.Status.APPROVED:
+            return None
+        photo = obj.worker.documents.filter(
+            doc_type=WorkerDocument.DocumentType.PHOTO,
+            status=WorkerDocument.Status.VERIFIED,
+        ).order_by("-created_at", "-id").first()
+        if not photo:
+            return None
+        try:
+            request = self.context.get("request")
+            return request.build_absolute_uri(photo.file.url) if request else photo.file.url
+        except Exception:
+            return None
+
+
+class BookingCreateSerializer(serializers.ModelSerializer):
+    addon_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text="List of AddOn IDs to include"
+    )
+    form_responses = serializers.DictField(
+        child=serializers.JSONField(),
+        write_only=True,
+        required=False,
+        help_text="Dict of form_field_key -> value"
+    )
+    address_id = serializers.IntegerField(write_only=True)
+    category_answers = serializers.DictField(required=False, write_only=True)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10000, write_only=True, default=1)
+
+    class Meta:
+        model = Booking
+        fields = [
+            "id", "service", "variant", "booking_mode", "scheduled_at", "drop_scheduled_at",
+            "address_id", "addon_ids", "form_responses", "category_answers", "quantity", "notes"
+        ]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        service = attrs["service"]
+        variant = attrs.get("variant")
+        booking_mode = attrs.get("booking_mode", Booking.BookingMode.SCHEDULED)
+        quantity = attrs.get("quantity", 1)
+        scheduled_at = attrs.get("scheduled_at")
+        drop_scheduled_at = attrs.get("drop_scheduled_at")
+        address_id = attrs["address_id"]
+
+        # Validate variant belongs to service
+        if variant and variant.service != service:
+            raise serializers.ValidationError({"variant": "Variant does not belong to this service."})
+        category_answers = attrs.get("category_answers", {})
+        if not isinstance(category_answers, dict):
+            raise serializers.ValidationError({"category_answers": "Answers must be an object."})
+        try:
+            validate_beauty_audience(service, category_answers)
+            required_gender = required_worker_gender_for_booking(service, category_answers)
+        except ValueError as exc:
+            raise serializers.ValidationError({"category_answers": str(exc)})
+        if variant and isinstance(category_answers, dict):
+            required_attributes = variant.attributes or {}
+            if any(category_answers.get(key) != value for key, value in required_attributes.items()):
+                raise serializers.ValidationError({
+                    "variant": "This package does not match the selected service details."
+                })
+
+        if not service_pricing_ready(service):
+            raise serializers.ValidationError({
+                "service": "This service is not ready for booking yet. AIRway is confirming its price."
+            })
+        if service.pricing_type in (Service.PricingType.FIXED, Service.PricingType.PER_UNIT):
+            if variant is None or variant.price <= 0:
+                raise serializers.ValidationError({"variant": "Choose a package or unit rate with a confirmed price."})
+        quantity_limit = 10000 if service.pricing_type == Service.PricingType.PER_UNIT else 20
+        if quantity > quantity_limit:
+            label = service.unit_label or "units"
+            raise serializers.ValidationError({
+                "quantity": f"Quantity must be between 1 and {quantity_limit} {label}."
+            })
+
+        # Validate booking mode matches service
+        if booking_mode != service.booking_mode:
+            raise serializers.ValidationError({"booking_mode": f"This service only supports {service.get_booking_mode_display()} booking."})
+
+        # Validate scheduled_at is in future
+        if scheduled_at and scheduled_at <= timezone.now():
+            raise serializers.ValidationError({"scheduled_at": "Scheduled time must be in the future."})
+
+        # Mode-specific validations
+        if booking_mode == Booking.BookingMode.PICKUP_DROP:
+            if not drop_scheduled_at:
+                raise serializers.ValidationError({"drop_scheduled_at": "Drop time is required for Pickup & Drop booking."})
+            if drop_scheduled_at <= scheduled_at:
+                raise serializers.ValidationError({"drop_scheduled_at": "Drop time must be after pickup time."})
+        else:
+            if drop_scheduled_at:
+                raise serializers.ValidationError({"drop_scheduled_at": "Drop time only allowed for Pickup & Drop booking."})
+
+        # Check service availability
+        try:
+            check_service_available(service=service, address=None, audience="all")
+        except ServiceUnavailableError as e:
+            raise serializers.ValidationError({"service": str(e)})
+
+        # Validate slot availability
+        try:
+            duration = variant.duration_minutes if variant else service.duration_minutes
+            check_slot_availability(
+                service=service,
+                scheduled_at=scheduled_at,
+                duration_minutes=(duration or 60) * (
+                    1 if service.pricing_type == Service.PricingType.PER_UNIT else quantity
+                ),
+                booking_mode=booking_mode,
+                drop_scheduled_at=drop_scheduled_at,
+            )
+        except SlotConflictError as e:
+            raise serializers.ValidationError({"detail": str(e)})
+
+        # Validate address belongs to user and is active
+        user = self.context["request"].user
+        try:
+            address = Address.objects.select_related("zone__city").get(
+                pk=address_id, user=user, deleted_at__isnull=True
+            )
+            if address.latitude is None or address.longitude is None:
+                raise serializers.ValidationError({
+                    "address_id": "This saved address has no confirmed map pin. Please edit the address and confirm its location."
+                })
+            from apps.core.coverage import resolve_active_zone
+            resolved_zone = resolve_active_zone(
+                latitude=address.latitude,
+                longitude=address.longitude,
+            )
+            if resolved_zone is None:
+                raise serializers.ValidationError({
+                    "address_id": "This address is outside AIRway's active service coverage. Choose an address inside the Rawatbhata service boundary."
+                })
+            address.zone = resolved_zone
+            attrs["_resolved_zone"] = resolved_zone
+            try:
+                check_service_available(service=service, address=address, audience="all")
+            except ServiceUnavailableError as e:
+                raise serializers.ValidationError({"service": str(e)})
+            attrs["_address"] = address
+            if required_gender:
+                from apps.bookings.services import has_eligible_worker_for_slot
+                duration = variant.duration_minutes if variant else service.duration_minutes
+                if not has_eligible_worker_for_slot(
+                    service=service,
+                    address=address,
+                    scheduled_at=scheduled_at,
+                    duration_minutes=(duration or 60) * (
+                        1 if service.pricing_type == Service.PricingType.PER_UNIT else quantity
+                    ),
+                    required_gender=required_gender,
+                    drop_scheduled_at=drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
+                    exclude_customer_id=user.id,
+                ):
+                    preference_can_change = (
+                        category_answers.get("professional_preference") == "female"
+                        and not service.requires_female_worker
+                    )
+                    message = (
+                        "No female professional is available for this time slot. "
+                        "Please choose another time or change the preference to No preference."
+                        if preference_can_change
+                        else "No female professional is available for this service at the selected time. Please choose another time."
+                    )
+                    raise serializers.ValidationError({"category_answers": message})
+        except Address.DoesNotExist:
+            raise serializers.ValidationError({"address_id": "Invalid address."})
+
+        # Validate addons belong to service
+        addon_ids = attrs.get("addon_ids", [])
+        if addon_ids:
+            valid_addon_ids = set(AddOn.objects.filter(service=service).values_list("id", flat=True))
+            invalid = set(addon_ids) - valid_addon_ids
+            if invalid:
+                raise serializers.ValidationError({"addon_ids": f"Invalid addon IDs: {invalid}"})
+
+        # Category-level choices are already answered before service selection.
+        # Validate overlapping select values against DB options, then avoid asking twice.
+        service_fields = list(service.form_fields.filter(is_active=True))
+        for key, answer in category_answers.items():
+            matching_field = next((field for field in service_fields if field.key == key), None)
+            if matching_field is None:
+                continue
+            if matching_field.field_type == FormField.FieldType.SELECT:
+                allowed_values = set()
+                for option in matching_field.options or []:
+                    option_value = (
+                        option.get("value", option.get("label"))
+                        if isinstance(option, dict) else option
+                    )
+                    if option_value is not None:
+                        allowed_values.add(str(option_value))
+                if str(answer) not in allowed_values:
+                    raise serializers.ValidationError({
+                        "category_answers": f"Choose a valid {matching_field.label.lower()} for this service."
+                    })
+
+        # Validate every active configured field, including required answers
+        # omitted by the client. Never trust client-side form validation alone.
+        form_responses = attrs.get("form_responses", {})
+        if not isinstance(form_responses, dict):
+            raise serializers.ValidationError({"form_responses": "Answers must be an object."})
+        field_map = {field.key: field for field in service_fields}
+        if set(form_responses) - set(field_map):
+            raise serializers.ValidationError({"form_responses": "Unknown form field supplied."})
+        try:
+            visible_fields = visible_form_fields(
+                [field for field in service_fields if field.key not in category_answers],
+                category_answers=category_answers, form_answers=form_responses
+            )
+        except ValueError:
+            raise serializers.ValidationError({
+                "form_responses": "This service has an invalid question configuration. Please contact support."
+            })
+        visible_keys = {field.key for field in visible_fields}
+        if set(form_responses) - visible_keys:
+            raise serializers.ValidationError({
+                "form_responses": "An answer was supplied for a question that is not applicable."
+            })
+        for field in visible_fields:
+            value = form_responses.get(field.key)
+            if field.is_required and value in (None, ""):
+                raise serializers.ValidationError({
+                    "form_responses": f"Field '{field.label}' is required."
+                })
+            if value in (None, ""):
+                continue
+            if field.field_type == FormField.FieldType.DATE and not _is_valid_iso_date(value):
+                raise serializers.ValidationError({
+                    "form_responses": f"Enter a valid date (YYYY-MM-DD) for {field.label}."
+                })
+            if field.field_type == FormField.FieldType.SELECT:
+                allowed_values = set()
+                for option in (field.options or []):
+                    option_value = (
+                        option.get("value", option.get("label"))
+                        if isinstance(option, dict) else option
+                    )
+                    if option_value is not None:
+                        allowed_values.add(str(option_value))
+                if str(value) not in allowed_values:
+                    raise serializers.ValidationError({
+                        "form_responses": f"Choose a valid option for {field.label}."
+                    })
+            if field.field_type == FormField.FieldType.NUMBER:
+                try:
+                    Decimal(str(value))
+                except (ArithmeticError, TypeError, ValueError):
+                    raise serializers.ValidationError({
+                        "form_responses": f"Enter a valid number for {field.label}."
+                    })
+
+        return attrs
+
+    def create(self, validated_data):
+        addon_ids = validated_data.pop("addon_ids", [])
+        form_responses = validated_data.pop("form_responses", {})
+        category_answers = validated_data.pop("category_answers", {})
+        quantity = validated_data.pop("quantity", 1)
+        address = validated_data.pop("_address")
+        resolved_zone = validated_data.pop("_resolved_zone", None)
+        if resolved_zone is not None and address.zone_id != resolved_zone.pk:
+            address.zone = resolved_zone
+            address.save(update_fields=["zone", "updated_at"])
+        user = self.context["request"].user
+
+        variant = validated_data.get("variant")
+        service = validated_data["service"]
+        booking_mode = validated_data["booking_mode"]
+
+        # Build pricing snapshot
+        pricing = {}
+
+        # Variant price
+        variant_price = 0
+        if variant:
+            variant_price = variant.price
+            pricing["variant"] = {
+                "id": variant.id,
+                "title": variant.title,
+                "title_hi": variant.title_hi,
+                "price": str(variant.price),
+                "mrp": str(variant.mrp),
+                "discount_percent": variant.discount_percent,
+            }
+        elif service.pricing_type == Service.PricingType.FIXED:
+            # For fixed price services without variant, use a base price (could be from a default variant)
+            # For now, we'll require a variant for fixed price services
+            pass
+
+        pricing["variant_price"] = str(variant_price)
+
+        # Addon prices
+        addon_prices = []
+        addon_total = 0
+        for addon_id in addon_ids:
+            addon = AddOn.objects.get(pk=addon_id)
+            addon_prices.append({
+                "id": addon.id,
+                "title": addon.title,
+                "title_hi": addon.title_hi,
+                "price": str(addon.price),
+                "mrp": str(addon.mrp),
+                "discount_percent": addon.discount_percent,
+            })
+            addon_total += addon.price
+
+        pricing["addons"] = addon_prices
+        pricing["addon_total"] = str(addon_total)
+
+        # Visit fee for inspection
+        visit_fee = service.visit_fee if booking_mode == Booking.BookingMode.INSPECTION else 0
+        pricing["visit_fee"] = str(visit_fee)
+
+        # Calculate totals
+        from decimal import Decimal
+        unit_subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total)) + Decimal(str(visit_fee))
+        subtotal = unit_subtotal * quantity
+        tax = subtotal * Decimal("0.18")  # 18% GST
+        total = subtotal + tax
+
+        pricing["quantity"] = quantity
+        pricing["unit_subtotal"] = str(unit_subtotal)
+        pricing["subtotal"] = str(subtotal)
+        pricing["tax"] = str(tax)
+        pricing["total"] = str(total)
+        pricing["currency"] = "INR"
+
+        validated_data["customer"] = user
+        validated_data["address"] = address
+        validated_data["pricing_snapshot"] = pricing
+        validated_data["customer_answers"] = category_answers
+
+        booking = Booking.objects.create(**validated_data)
+
+        # Single-service bookings use the same staged parent-order lifecycle.
+        # Cart checkout defers this because it creates one parent order for all
+        # service lines after each booking has been saved.
+        if not self.context.get("defer_worker_dispatch"):
+            total = Decimal(str(pricing["total"]))
+            subtotal_amount = Decimal(str(pricing["subtotal"]))
+            tax_amount = Decimal(str(pricing["tax"]))
+            order = Order.objects.create(
+                customer=user, address=address, subtotal=subtotal_amount,
+                tax_amount=tax_amount, total_amount=total,
+                metadata={"checkout_source": "single_booking"},
+            )
+            OrderItem.objects.create(
+                order=order, booking=booking, quantity=quantity,
+                service_snapshot={
+                    "service_id": service.pk, "service_title": service.title,
+                    "variant_id": variant.pk if variant else None,
+                    "variant_title": variant.title if variant else "",
+                },
+                pricing_snapshot=pricing, line_subtotal=subtotal_amount,
+                tax_amount=tax_amount, line_total=total,
+            )
+
+        # Create BookingAddOn entries
+        for addon_id in addon_ids:
+            addon = AddOn.objects.get(pk=addon_id)
+            BookingAddOn.objects.create(
+                booking=booking,
+                addon=addon,
+                quantity=1,
+                unit_price=addon.price,
+                total_price=addon.price,
+            )
+
+        # Create BookingFormResponse entries
+        for key, value in form_responses.items():
+            field = FormField.objects.get(service=service, key=key)
+            BookingFormResponse.objects.create(
+                booking=booking,
+                form_field=field,
+                value=value,
+            )
+
+        # Create initial status history
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status="",
+            to_status=Booking.Status.PENDING,
+            changed_by=user,
+            note="Booking created",
+        )
+
+        # Defer checkout dispatch until every order line has been persisted.
+        # Dispatch is triggered only by the server-verified advance payment.
+        offers = []
+
+        # Notify customer about offers
+        if offers:
+            Notification.objects.create(
+                user=user,
+                type=Notification.Type.BOOKING_CONFIRMED,
+                title="Booking Request Submitted",
+                body=f"Your booking for {service.title} has been submitted. We're finding a worker.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id, "offers_sent": len(offers)},
+            )
+
+        return booking
+
+
+class BookingListSerializer(serializers.ModelSerializer):
+    service_title = serializers.CharField(source="service.title", read_only=True)
+    service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
+    service_image = serializers.SerializerMethodField()
+    variant_title = serializers.CharField(source="variant.title", read_only=True)
+    address_label = serializers.CharField(source="address.label", read_only=True)
+    address_full = serializers.CharField(source="address.full_address", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Booking
+        fields = [
+            "id", "service", "service_title", "service_unit_label", "service_image", "variant_title",
+            "booking_mode", "scheduled_at", "status", "status_display",
+            "address_label", "address_full", "pricing_snapshot", "created_at"
+        ]
+
+    def get_service_image(self, obj):
+        if obj.service.image:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.service.image.url)
+        return None
+
+
+class BookingDetailSerializer(serializers.ModelSerializer):
+    order_id = serializers.IntegerField(source="order_item.order_id", read_only=True)
+    service_title = serializers.CharField(source="service.title", read_only=True)
+    service_title_hi = serializers.CharField(source="service.title_hi", read_only=True)
+    service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
+    service_image = serializers.SerializerMethodField()
+    variant_title = serializers.CharField(source="variant.title", read_only=True)
+    variant_title_hi = serializers.CharField(source="variant.title_hi", read_only=True)
+    address_detail = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    booking_mode_display = serializers.CharField(source="get_booking_mode_display", read_only=True)
+    addons = BookingAddOnSerializer(many=True, read_only=True, source="booking_addons")
+    form_responses = BookingFormResponseSerializer(many=True, read_only=True)
+    status_history = BookingStatusHistorySerializer(many=True, read_only=True)
+    assignment = BookingAssignmentSerializer(read_only=True)
+    can_cancel = serializers.BooleanField(read_only=True)
+    refunds = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Booking
+        fields = [
+            "id", "order_id", "service", "service_title", "service_title_hi", "service_unit_label", "service_image",
+            "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
+            "scheduled_at", "drop_scheduled_at", "status", "status_display",
+            "address_detail", "pricing_snapshot", "notes", "worker_notes",
+            "cancelled_at", "cancellation_reason", "completed_at",
+            "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
+            "refunds", "created_at", "updated_at"
+        ]
+
+    def get_service_image(self, obj):
+        if obj.service.image:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.service.image.url)
+        return None
+
+    def get_refunds(self, obj):
+        from apps.payments.models import PaymentRefund
+
+        return [
+            {
+                "id": refund.pk,
+                "amount": str(refund.amount),
+                "wallet_amount": str(refund.wallet_amount),
+                "gateway_amount": str(refund.gateway_amount),
+                "status": refund.status,
+                "reason": refund.reason,
+                "failure_reason": refund.failure_reason,
+                "created_at": refund.created_at,
+                "processed_at": refund.processed_at,
+            }
+            for refund in PaymentRefund.objects.filter(booking=obj).order_by("created_at")
+        ]
+
+    def get_address_detail(self, obj):
+        addr = obj.address
+        return {
+            "id": addr.id,
+            "label": addr.label,
+            "house_details": addr.house_details,
+            "landmark": addr.landmark,
+            "full_address": addr.full_address,
+            "latitude": str(addr.latitude) if addr.latitude else None,
+            "longitude": str(addr.longitude) if addr.longitude else None,
+        }
+
+
+class BookingAvailabilitySerializer(serializers.Serializer):
+    """Serializer for checking booking slot availability."""
+    service = serializers.IntegerField()
+    scheduled_at = serializers.DateTimeField()
+    drop_scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+    variant_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    booking_mode = serializers.CharField(required=False, default="scheduled")
+    audience = serializers.CharField(required=False, default="all")
+    address_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10000, default=1)
+    category_answers = serializers.DictField(required=False, default=dict)
+
+    def validate_scheduled_at(self, value):
+        from django.utils import timezone
+        if value <= timezone.now():
+            raise serializers.ValidationError("Scheduled time must be in the future.")
+        return value
+
+    def validate(self, attrs):
+        from apps.catalog.models import Service, ServiceVariant
+
+        service = Service.objects.filter(pk=attrs.get("service")).first()
+        if not service:
+            raise serializers.ValidationError({"service": "Invalid service ID."})
+
+        attrs["service_obj"] = service
+        quantity = attrs.get("quantity", 1)
+        quantity_limit = 10000 if service.pricing_type == Service.PricingType.PER_UNIT else 20
+        if quantity > quantity_limit:
+            raise serializers.ValidationError({"quantity": f"Quantity must not exceed {quantity_limit}."})
+        variant = ServiceVariant.objects.filter(pk=attrs.get("variant_id"), is_active=True).first() if attrs.get("variant_id") else None
+        if attrs.get("variant_id") and (variant is None or variant.service_id != service.id):
+            raise serializers.ValidationError({"variant_id": "Choose an active package for this service."})
+        if service.pricing_type == Service.PricingType.PER_UNIT and (
+            variant is None or variant.price <= 0
+        ):
+            raise serializers.ValidationError({"variant_id": "Choose a priced unit rate for this service."})
+        attrs["variant"] = variant
+
+        booking_mode = attrs.get("booking_mode", "scheduled")
+        if booking_mode != service.booking_mode:
+            raise serializers.ValidationError({"booking_mode": "This service does not support the selected booking mode."})
+
+        # Validate drop_scheduled_at is provided for pickup_drop mode
+        if booking_mode == "pickup_drop" and not attrs.get("drop_scheduled_at"):
+            raise serializers.ValidationError({"drop_scheduled_at": "Drop time is required for Pickup & Drop booking."})
+
+        return attrs
+
+
+class BookingCancelSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        booking = self.context["booking"]
+        if not booking.can_cancel:
+            raise serializers.ValidationError("This booking cannot be cancelled at its current status.")
+        return attrs
+
+
+class WorkerOfferSerializer(serializers.ModelSerializer):
+    booking_status = serializers.CharField(source="booking.status", read_only=True)
+    worker_name = serializers.CharField(source="worker.user.name", read_only=True)
+    worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
+    service_title = serializers.CharField(source="booking.service.title", read_only=True)
+    service_unit_label = serializers.CharField(source="booking.service.unit_label", read_only=True)
+    variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
+    scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
+    service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
+    booking_notes = serializers.CharField(source="booking.notes", read_only=True)
+    expected_duration_minutes = serializers.SerializerMethodField()
+    customer_answers = serializers.SerializerMethodField()
+    professional_preference = serializers.SerializerMethodField()
+    form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
+    addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
+    quantity = serializers.SerializerMethodField()
+    order_services = serializers.SerializerMethodField()
+    order_id = serializers.IntegerField(read_only=True)
+    customer_total = serializers.SerializerMethodField()
+    advance_received = serializers.SerializerMethodField()
+    remaining_balance = serializers.SerializerMethodField()
+    offered_at = serializers.DateTimeField(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    can_accept = serializers.SerializerMethodField()
+    can_decline = serializers.SerializerMethodField()
+    can_withdraw = serializers.SerializerMethodField()
+
+    class Meta:
+        model = __import__("apps.bookings.models", fromlist=["WorkerOffer"]).WorkerOffer
+        fields = [
+            "id", "booking", "order", "order_id", "order_services", "batch_number",
+            "customer_total", "advance_received", "remaining_balance",
+            "worker", "status", "status_display", "offered_at", "expires_at",
+            "accepted_at", "responded_at", "booking_status", "worker_name",
+            "worker_phone", "service_title", "service_unit_label", "variant_title", "scheduled_at",
+            "service_address", "booking_notes", "expected_duration_minutes",
+            "customer_answers", "professional_preference",
+            "form_responses", "addons", "quantity", "can_accept", "can_decline",
+            "can_withdraw",
+        ]
+        read_only_fields = fields
+
+    def get_customer_total(self, obj):
+        if obj.order_id:
+            return str(obj.order.total_amount)
+        return str((obj.booking.pricing_snapshot or {}).get("total", obj.booking.total_amount))
+
+    def get_advance_received(self, obj):
+        from apps.payments.models import Payment
+        if obj.order_id:
+            payment = Payment.objects.filter(
+                order=obj.order, stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).first()
+        else:
+            payment = Payment.objects.filter(
+                booking=obj.booking, stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).first()
+        return str(payment.amount + payment.wallet_amount) if payment else "0.00"
+
+    def get_remaining_balance(self, obj):
+        from decimal import Decimal
+        total = Decimal(self.get_customer_total(obj))
+        advance = Decimal(self.get_advance_received(obj))
+        return str(max(total - advance, Decimal("0.00")))
+
+    def get_order_services(self, obj):
+        if not obj.order_id:
+            return [{
+                "booking_id": obj.booking_id,
+                "service_id": obj.booking.service_id,
+                "service_title": obj.booking.service.title,
+                "service_unit_label": obj.booking.service.unit_label,
+                "variant_title": obj.booking.variant.title if obj.booking.variant_id else None,
+                "scheduled_at": obj.booking.scheduled_at,
+            }]
+        return [{
+            "booking_id": item.booking_id,
+            "service_id": item.booking.service_id,
+            "service_title": item.booking.service.title,
+            "service_unit_label": item.booking.service.unit_label,
+            "variant_title": item.booking.variant.title if item.booking.variant_id else None,
+            "scheduled_at": item.booking.scheduled_at,
+            "quantity": item.quantity,
+        } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
+
+    def get_expected_duration_minutes(self, obj):
+        booking = obj.booking
+        duration = (
+            booking.variant.duration_minutes
+            if booking.variant_id and booking.variant.duration_minutes
+            else booking.service.duration_minutes
+        ) or 60
+        multiplier = 1 if booking.service.pricing_type == "per_unit" else max(self.get_quantity(obj), 1)
+        return duration * multiplier
+
+    def get_customer_answers(self, obj):
+        answers = dict(obj.booking.customer_answers or {})
+        if obj.booking.service.requires_female_worker:
+            answers["professional_preference"] = "female"
+        return answers
+
+    def get_professional_preference(self, obj):
+        if obj.booking.service.requires_female_worker:
+            return "female"
+        return (obj.booking.customer_answers or {}).get("professional_preference", "any")
+
+    def get_quantity(self, obj):
+        order_item = getattr(obj.booking, "order_item", None)
+        return order_item.quantity if order_item else int((obj.booking.pricing_snapshot or {}).get("quantity", 1))
+
+    def get_can_accept(self, obj):
+        from django.utils import timezone
+        return (
+            obj.status == obj.Status.PENDING
+            and obj.expires_at > timezone.now()
+            and obj.booking.status in ("pending", "confirmed")
+            and obj.worker.status == "approved"
+            and obj.worker.is_online
+        )
+
+    def get_can_decline(self, obj):
+        return obj.status == obj.Status.PENDING
+
+    def get_can_withdraw(self, obj):
+        return obj.status in (obj.Status.PENDING, obj.Status.ACCEPTED)
+
+
+from decimal import Decimal
+from .models import CustomerCart, CartItem
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    service_title = serializers.CharField(source="service.title", read_only=True)
+    variant_title = serializers.CharField(source="variant.title", read_only=True)
+    booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
+    service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
+    line_total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CartItem
+        fields = [
+            "id", "service", "service_title", "variant", "variant_title", "booking_mode",
+            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "notes",
+            "pricing_snapshot", "line_total",
+        ]
+        read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
+
+    def get_line_total(self, obj):
+        return str(obj.line_total)
+
+    def validate(self, attrs):
+        instance = self.instance
+        service = attrs.get("service", instance.service if instance else None)
+        variant = attrs.get("variant", instance.variant if instance else None)
+        quantity = attrs.get("quantity", instance.quantity if instance else 1)
+        addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
+        answers = attrs.get("form_answers", instance.form_answers if instance else {})
+        category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
+
+        try:
+            validate_beauty_audience(service, category_answers)
+            required_worker_gender_for_booking(service, category_answers)
+        except ValueError as exc:
+            raise serializers.ValidationError({"category_answers": str(exc)})
+
+        quantity_limit = 10000 if service.pricing_type == Service.PricingType.PER_UNIT else 20
+        if quantity < 1 or quantity > quantity_limit:
+            label = service.unit_label or "units"
+            raise serializers.ValidationError({
+                "quantity": f"Quantity must be between 1 and {quantity_limit} {label}."
+            })
+        if not service.is_active:
+            raise serializers.ValidationError({"service": "This service is not available."})
+        if not service_pricing_ready(service):
+            raise serializers.ValidationError({
+                "service": "This service is not ready for the cart yet. AIRway is confirming its price."
+            })
+        if service.pricing_type == Service.PricingType.FIXED and (
+            variant is None or variant.price <= 0
+        ):
+            raise serializers.ValidationError({"variant": "Choose a package with a confirmed price."})
+        if not isinstance(addons, list) or not isinstance(answers, dict) or not isinstance(category_answers, dict):
+            raise serializers.ValidationError("Add-ons must be a list and answers must be objects.")
+        if variant and (variant.service_id != service.id or not variant.is_active):
+            raise serializers.ValidationError({"variant": "Choose an active package for this service."})
+        if variant and any(
+            category_answers.get(key) != value
+            for key, value in (variant.attributes or {}).items()
+        ):
+            raise serializers.ValidationError({"variant": "This package does not match the selected service details."})
+
+        addon_ids = []
+        for row in addons:
+            if not isinstance(row, dict) or "id" not in row:
+                raise serializers.ValidationError({"addon_selections": "Each add-on needs an id."})
+            addon_ids.append(row["id"])
+        if len(addon_ids) != len(set(addon_ids)):
+            raise serializers.ValidationError({"addon_selections": "Duplicate add-ons are not allowed."})
+        addon_map = {
+            obj.id: obj for obj in AddOn.objects.filter(
+                service=service, is_active=True, id__in=addon_ids
+            )
+        }
+        if set(addon_ids) != set(addon_map):
+            raise serializers.ValidationError({"addon_selections": "An add-on does not belong to this service."})
+
+        service_fields = list(service.form_fields.filter(is_active=True))
+        field_map = {obj.key: obj for obj in service_fields}
+        if set(answers) - set(field_map):
+            raise serializers.ValidationError({"form_answers": "An unknown question was supplied."})
+        try:
+            visible_fields = visible_form_fields(
+                service_fields, category_answers=category_answers, form_answers=answers
+            )
+        except ValueError:
+            raise serializers.ValidationError({
+                "form_answers": "This service has an invalid question configuration. Please contact support."
+            })
+        visible_keys = {field.key for field in visible_fields}
+        if set(answers) - visible_keys:
+            raise serializers.ValidationError({
+                "form_answers": "An answer was supplied for a question that is not applicable."
+            })
+        for field in visible_fields:
+            value = answers.get(field.key)
+            if field.is_required and value in (None, ""):
+                raise serializers.ValidationError({"form_answers": f"{field.label} is required."})
+            if value in (None, ""):
+                continue
+
+            # Choice answers must match the live catalogue options. Accept both
+            # legacy string options and structured {label, value} options.
+            if field.field_type == "date" and not _is_valid_iso_date(value):
+                raise serializers.ValidationError({
+                    "form_answers": f"Enter a valid date (YYYY-MM-DD) for {field.label}."
+                })
+
+            if field.field_type in ("select", "choice"):
+                allowed_values = set()
+                for option in (field.options or []):
+                    if isinstance(option, dict):
+                        option_value = option.get("value", option.get("label"))
+                    else:
+                        option_value = option
+                    if option_value is not None:
+                        allowed_values.add(str(option_value))
+                if str(value) not in allowed_values:
+                    raise serializers.ValidationError({
+                        "form_answers": f"Choose a valid option for {field.label}."
+                    })
+
+            if field.field_type == "number":
+                try:
+                    Decimal(str(value))
+                except (ArithmeticError, TypeError, ValueError):
+                    raise serializers.ValidationError({
+                        "form_answers": f"Enter a valid number for {field.label}."
+                    })
+
+        if variant:
+            base = Decimal(variant.price)
+            base_title = variant.title
+        elif service.variants.filter(is_active=True).exists():
+            raise serializers.ValidationError({"variant": "Please select a package."})
+        else:
+            base = Decimal(service.visit_fee)
+            base_title = service.title
+
+        addon_rows = []
+        addon_total = Decimal("0")
+        for row in addons:
+            addon = addon_map[row["id"]]
+            count = int(row.get("quantity", 1))
+            if count < 1 or count > 20:
+                raise serializers.ValidationError({"addon_selections": "Add-on quantity must be 1–20."})
+            total = Decimal(addon.price) * count
+            addon_total += total
+            addon_rows.append({
+                "id": addon.id, "title": addon.title,
+                "unit_price": str(addon.price), "quantity": count, "total": str(total),
+            })
+
+        attrs["_cart_snapshot"] = {
+            "base_title": base_title,
+            "base_price": str(base),
+            "addons": addon_rows,
+            "addons_total": str(addon_total),
+            "unit_total": str(base + addon_total),
+            "line_total": str((base + addon_total) * quantity),
+        }
+        return attrs
+
+    def create(self, validated_data):
+        snapshot = validated_data.pop("_cart_snapshot")
+        return CartItem.objects.create(pricing_snapshot=snapshot, **validated_data)
+
+    def update(self, instance, validated_data):
+        snapshot = validated_data.pop("_cart_snapshot")
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.pricing_snapshot = snapshot
+        instance.save()
+        return instance
+
+
+class CustomerCartSerializer(serializers.ModelSerializer):
+    items = CartItemSerializer(many=True, read_only=True)
+    subtotal = serializers.SerializerMethodField()
+    item_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomerCart
+        fields = ["id", "address", "items", "item_count", "subtotal", "updated_at"]
+        read_only_fields = fields
+
+    def get_subtotal(self, obj):
+        return str(obj.subtotal)
+
+    def get_item_count(self, obj):
+        return sum(item.quantity for item in obj.items.all())
