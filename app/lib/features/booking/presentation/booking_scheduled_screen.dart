@@ -311,7 +311,9 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     final quantityLimit = service.pricingType == 'per_unit' ? 10000 : 20;
     final quantityLabel = service.pricingType == 'per_unit' && service.unitLabel.isNotEmpty
         ? service.unitLabel
-        : 'services';
+        : service.categoryRootSlug == 'electrical'
+            ? 'items'
+            : 'services';
     final slivers = <Widget>[
       if (serviceImage?.isNotEmpty == true) _imageSliver(serviceImage),
       SliverToBoxAdapter(

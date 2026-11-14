@@ -448,4 +448,20 @@ class Command(BaseCommand):
         changes["electrical_work_type_fields_configured"] = configured_count
         changes["electrical_work_type_fields_preserved"] = work_type_fields.count()
 
+        # The shared booking quantity control is the single source of truth for
+        # electrical item count and is included in the server-side price snapshot.
+        # Disable the duplicate legacy form prompt so customers are not asked twice.
+        electrical_quantity_fields = FormField.objects.filter(
+            service__category__parent=electrical,
+            key="quantity",
+            is_active=True,
+        )
+        deactivated_quantity_fields = 0
+        for field in electrical_quantity_fields:
+            field.is_active = False
+            field.is_required = False
+            field.save(update_fields=["is_active", "is_required", "updated_at"])
+            deactivated_quantity_fields += 1
+        changes["electrical_quantity_fields_deactivated"] = deactivated_quantity_fields
+
         return changes
