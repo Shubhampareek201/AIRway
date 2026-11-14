@@ -20,6 +20,11 @@ class RefundRetrySafetyTests(TestCase):
             phone="+919876543298",
             password="test-password",
         )
+        self.staff_user = User.objects.create_user(
+            phone="+919876543297",
+            password="test-password",
+            is_staff=True,
+        )
         city = City.objects.create(name="Refund City", state="Rajasthan")
         zone = Zone.objects.create(name="Refund Zone", city=city, is_active=True)
         address = Address.objects.create(
@@ -80,6 +85,14 @@ class RefundRetrySafetyTests(TestCase):
             Notification.objects.filter(
                 user=self.customer,
                 title="Refund needs attention",
+                data__refund_id=self.refund.pk,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Notification.objects.filter(
+                user=self.staff_user,
+                title="Refund requires reconciliation",
                 data__refund_id=self.refund.pk,
             ).count(),
             1,

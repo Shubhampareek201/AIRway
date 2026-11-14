@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 import razorpay
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
@@ -210,16 +211,9 @@ def process_payment_refund(refund_id):
         refund = PaymentRefund.objects.select_related(
             "payment", "booking", "payment__customer"
         ).get(pk=refund_id)
-        Notification.objects.get_or_create(
-            user=refund.payment.customer,
-            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-            title="Refund needs attention",
-            data__refund_id=refund.pk,
-            defaults={
-                "body": "Razorpay did not return a conclusive refund result. AIRway support must reconcile it before another refund attempt.",
-                "channel": Notification.Channel.IN_APP,
-                "data": {"refund_id": refund.pk, "booking_id": refund.booking_id},
-            },
+        _notify_refund_attention(
+            refund,
+            "Razorpay did not return a conclusive refund result. AIRway support must reconcile it before another refund attempt.",
         )
         return refund
 
@@ -262,13 +256,9 @@ def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amou
         if refund.status == PaymentRefund.Status.PROCESSED:
             _notify_refund(refund)
         else:
-            Notification.objects.create(
-                user=refund.payment.customer,
-                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                title="Refund needs attention",
-                body="Razorpay could not complete a refund. AIRway support has been alerted to reconcile it.",
-                channel=Notification.Channel.IN_APP,
-                data={"refund_id": refund.pk, "booking_id": refund.booking_id},
+            _notify_refund_attention(
+                refund,
+                "Razorpay could not complete a refund. AIRway support has been alerted to reconcile it.",
             )
         return refund
 
@@ -282,3 +272,36 @@ def _notify_refund(refund):
         channel=Notification.Channel.IN_APP,
         data={"refund_id": refund.pk, "booking_id": refund.booking_id},
     )
+
+
+def _notify_refund_attention(refund, customer_message):
+    payload = {"refund_id": refund.pk, "booking_id": refund.booking_id}
+    Notification.objects.get_or_create(
+        user=refund.payment.customer,
+        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+        title="Refund needs attention",
+        data__refund_id=refund.pk,
+        defaults={
+            "body": customer_message,
+            "channel": Notification.Channel.IN_APP,
+            "data": payload,
+        },
+    )
+
+    User = get_user_model()
+    staff_message = (
+        f"Refund #{refund.pk} for booking #{refund.booking_id} has an unresolved "
+        "gateway result. Verify the Razorpay refund status before any retry."
+    )
+    for staff_user in User.objects.filter(is_staff=True, is_active=True).only("id"):
+        Notification.objects.get_or_create(
+            user=staff_user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Refund requires reconciliation",
+            data__refund_id=refund.pk,
+            defaults={
+                "body": staff_message,
+                "channel": Notification.Channel.IN_APP,
+                "data": payload,
+            },
+        )
