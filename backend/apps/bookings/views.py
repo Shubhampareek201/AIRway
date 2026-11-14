@@ -1123,7 +1123,7 @@ class CustomerCartView(APIView):
 
     def post(self, request):
         cart = self.get_cart(request.user)
-        serializer = CartItemSerializer(data=request.data, context={"request": request})
+        serializer = CartItemSerializer(data=request.data, context={"request": request, "allow_incomplete": True})
         serializer.is_valid(raise_exception=True)
 
         # Once an address is selected, only allow services available in that
@@ -1190,7 +1190,7 @@ class CustomerCartItemView(APIView):
     def patch(self, request, item_id):
         item = self.get_item(request, item_id)
         serializer = CartItemSerializer(
-            item, data=request.data, partial=True, context={"request": request}
+            item, data=request.data, partial=True, context={"request": request, "allow_incomplete": True}
         )
         serializer.is_valid(raise_exception=True)
         if item.cart.address:
