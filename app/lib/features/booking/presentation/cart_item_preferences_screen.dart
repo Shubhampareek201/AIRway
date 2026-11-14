@@ -34,12 +34,14 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
   bool saving = false;
   String? error;
   final Map<String, dynamic> answers = {};
+  final Map<String, dynamic> categoryAnswers = {};
   final Map<String, TextEditingController> controllers = {};
 
   @override
   void initState() {
     super.initState();
     answers.addAll(widget.initialAnswers);
+    categoryAnswers.addAll(widget.categoryAnswers);
     _load();
   }
 
@@ -55,7 +57,7 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
     try {
       final value = await CatalogApi.getService(
         widget.serviceId,
-        categoryAnswers: widget.categoryAnswers,
+        categoryAnswers: categoryAnswers,
       );
       if (!mounted) return;
       setState(() {
@@ -68,9 +70,9 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
   }
 
   List<CatalogFormField> get visibleFields {
-    final combined = <String, dynamic>{...widget.categoryAnswers, ...answers};
+    final combined = <String, dynamic>{...categoryAnswers, ...answers};
     return (service?.formFields ?? const <CatalogFormField>[])
-        .where((field) => !widget.categoryAnswers.containsKey(field.key))
+        .where((field) => !categoryAnswers.containsKey(field.key))
         .where((field) => field.isVisibleFor(combined))
         .toList();
   }
@@ -112,7 +114,7 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
     try {
       await BookingApi.updateCartItem(
         itemId: widget.cartItemId,
-        data: {'form_answers': visibleAnswers, 'category_answers': widget.categoryAnswers},
+        data: {'form_answers': visibleAnswers, 'category_answers': categoryAnswers},
       );
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -154,6 +156,32 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
                         style: TextStyle(color: muted, fontSize: 13),
                       ),
                       const SizedBox(height: 22),
+                      if (service?.supportsProfessionalPreference == true) ...[
+                        const Text('Professional preference', style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w800, color: ink,
+                        )),
+                        const SizedBox(height: 8),
+                        if (service?.requiresFemaleWorker == true)
+                          const Text('This service requires a female professional.',
+                            style: TextStyle(color: muted, fontSize: 13))
+                        else ...[
+                          RadioListTile<String>(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('No preference'),
+                            value: 'any',
+                            groupValue: categoryAnswers['professional_preference']?.toString() ?? 'any',
+                            onChanged: (value) => setState(() => categoryAnswers['professional_preference'] = value),
+                          ),
+                          RadioListTile<String>(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Female professional'),
+                            value: 'female',
+                            groupValue: categoryAnswers['professional_preference']?.toString() ?? 'any',
+                            onChanged: (value) => setState(() => categoryAnswers['professional_preference'] = value),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
                       for (final field in visibleFields) ...[
                         _field(field),
                         const SizedBox(height: 14),
