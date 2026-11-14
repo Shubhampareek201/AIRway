@@ -26,7 +26,16 @@ class CatalogImageResolver {
     }
 
     // Exact/high-specificity jobs must be tested before broad terms.
-    if (_has(t, ['balcony'])) return _photo('1600607687939-ce8a6c25118c');
+    if (_has(t, ['balcony', 'terrace'])) return _photo('1600607687939-ce8a6c25118c');
+    if (_has(t, ['bike', 'scooter', 'motorcycle', 'two wheeler'])) {
+      return _photo('1558981806-ec527fa84c39');
+    }
+    if (_has(t, ['living room', 'dining room', 'tv unit', 'furniture cleaning'])) {
+      return _photo('1600210492486-724fe5c67fb0');
+    }
+    if (_has(t, ['floor cleaning', 'floor scrubbing', 'mopping'])) {
+      return _photo('1581578731548-c64695cc6952');
+    }
     if (_has(t, ['interior car', 'car interior'])) return _photo('1607860108855-64acf2078ed9');
 
     // Electrical titles are resolved before broad home-cleaning terms (for

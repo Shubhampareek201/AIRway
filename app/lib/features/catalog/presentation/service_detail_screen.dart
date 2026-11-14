@@ -371,7 +371,20 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
   );
 
-  Widget _variantCard(ServiceVariant v, String categoryName, String audience, String unitLabel) => Container(
+  Widget _variantCard(ServiceVariant v, String categoryName, String audience, String unitLabel) {
+    final variantImage = v.image?.isNotEmpty == true
+        ? v.image!
+        : CatalogImageResolver.forService(
+              title: v.title,
+              categoryName: categoryName,
+              audience: audience,
+            ) ??
+            CatalogImageResolver.forService(
+              title: categoryName,
+              categoryName: categoryName,
+              audience: audience,
+            );
+    return Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
@@ -383,21 +396,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         if (v.title.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: (v.image?.isNotEmpty == true ||
-                    CatalogImageResolver.forService(
-                          title: v.title,
-                          categoryName: categoryName,
-                          audience: audience,
-                        ) !=
-                        null)
+            child: variantImage != null
                 ? Image.network(
-                    v.image?.isNotEmpty == true
-                        ? v.image!
-                        : CatalogImageResolver.forService(
-                            title: v.title,
-                            categoryName: categoryName,
-                            audience: audience,
-                          )!,
+                    variantImage,
                     width: 76,
                     height: 76,
                     fit: BoxFit.cover,
@@ -468,6 +469,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       ],
     ),
   );
+  }
 
   Widget _addonCard(AddOn a, String categoryName) => Container(
     padding: const EdgeInsets.all(14),
