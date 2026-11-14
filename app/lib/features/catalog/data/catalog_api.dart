@@ -156,12 +156,16 @@ class CatalogApi {
     bool? popular,
     int? addressId,
     String? audience,
+    Map<String, dynamic>? categoryAnswers,
   }) async {
     final query = <String, String>{'launch_only': 'true'};
     if (category != null) query['category'] = category.toString();
     if (popular == true) query['is_popular'] = 'true';
     if (addressId != null) query['address_id'] = addressId.toString();
     if (audience != null) query['audience'] = audience;
+    if (categoryAnswers != null && categoryAnswers.isNotEmpty) {
+      query['category_answers'] = jsonEncode(categoryAnswers);
+    }
     final uri = Uri(
       path: '/api/v1/catalog/services/',
       queryParameters: query.isEmpty ? null : query,
@@ -174,10 +178,18 @@ class CatalogApi {
     int id, {
     int? addressId,
     String? audience,
+    Map<String, dynamic>? categoryAnswers,
   }) async {
+    final query = <String, String>{
+      'launch_only': 'true',
+      if (addressId != null) 'address_id': addressId.toString(),
+      if (audience != null) 'audience': audience,
+      if (categoryAnswers != null && categoryAnswers.isNotEmpty)
+        'category_answers': jsonEncode(categoryAnswers),
+    };
     final uri = Uri(
       path: '/api/v1/catalog/services/$id/',
-      queryParameters: {'launch_only': 'true', if (addressId != null) 'address_id': addressId.toString(), if (audience != null) 'audience': audience},
+      queryParameters: query,
     );
     final result = await request(uri.toString());
     if (result is! Map<String, dynamic>) {

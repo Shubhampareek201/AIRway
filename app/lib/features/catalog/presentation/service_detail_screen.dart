@@ -52,6 +52,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         widget.serviceId,
         addressId: widget.addressId,
         audience: widget.initialAnswers['beauty_audience']?.toString(),
+        categoryAnswers: widget.initialAnswers,
       );
       if (mounted) setState(() => _service = service);
     } catch (e) {

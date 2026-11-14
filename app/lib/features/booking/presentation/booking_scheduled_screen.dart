@@ -91,6 +91,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       final service = await CatalogApi.getService(
         widget.serviceId,
         addressId: selectedAddressId,
+        audience: widget.initialCategoryAnswers['beauty_audience']?.toString(),
+        categoryAnswers: widget.initialCategoryAnswers,
       );
 
       if (!mounted) return;
@@ -126,6 +128,8 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       final service = await CatalogApi.getService(
         widget.serviceId,
         addressId: addressId,
+        audience: widget.initialCategoryAnswers['beauty_audience']?.toString(),
+        categoryAnswers: widget.initialCategoryAnswers,
       );
       if (!mounted) return;
       final professionalPreference = _categoryAnswers['professional_preference'];
@@ -199,6 +203,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       ..._formAnswers,
     };
     return _service?.formFields
+            .where((field) => !_categoryAnswers.containsKey(field.key))
             .where((field) => field.isVisibleFor(answers))
             .toList() ??
         const <CatalogFormField>[];

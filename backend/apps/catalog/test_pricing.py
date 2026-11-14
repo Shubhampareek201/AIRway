@@ -1,9 +1,11 @@
 from decimal import Decimal
+import json
+from urllib.parse import urlencode
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Category, Service, ServiceVariant
+from apps.catalog.models import Category, FormField, Service, ServiceVariant
 from apps.catalog.pricing import service_pricing_ready
 
 
@@ -97,6 +99,42 @@ class ServicePricingReadinessTests(TestCase):
         women_ids = {row["id"] for row in women_rows}
         self.assertIn(womens.id, women_ids)
         self.assertNotIn(mens.id, women_ids)
+
+    def test_electrical_work_type_filters_services_using_database_options(self):
+        electrical = Category.objects.create(title="Electrical", slug="electrical")
+        fans = Category.objects.create(title="Fan Services", slug="fan-services", parent=electrical)
+        lighting = Category.objects.create(title="Lighting Services", slug="lighting-services", parent=electrical)
+        repair = Service.objects.create(category=fans, title="Ceiling Fan Repair")
+        install = Service.objects.create(category=lighting, title="LED Light Installation")
+        for service in (repair, install):
+            ServiceVariant.objects.create(
+                service=service, title="Standard",
+                mrp=Decimal("300.00"), price=Decimal("250.00"),
+            )
+        FormField.objects.create(
+            service=repair, key="work_type", label="Work type",
+            field_type=FormField.FieldType.SELECT, options=["Repair"],
+            is_required=True,
+        )
+        FormField.objects.create(
+            service=install, key="work_type", label="Work type",
+            field_type=FormField.FieldType.SELECT, options=["Installation"],
+            is_required=True,
+        )
+
+        answers = urlencode({"category_answers": json.dumps({"work_type": "Repair"})})
+        response = APIClient().get(
+            f"/api/v1/catalog/services/?launch_only=true&category={fans.id}&{answers}"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        self.assertEqual({row["id"] for row in rows}, {repair.id})
+
+    def test_electrical_work_type_rejects_malformed_category_answers(self):
+        response = APIClient().get(
+            "/api/v1/catalog/services/?launch_only=true&category_answers=not-json"
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_customer_categories_hide_roots_without_priced_services(self):
         response = APIClient().get("/api/v1/catalog/categories/?launch_only=true")

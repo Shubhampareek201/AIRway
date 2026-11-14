@@ -146,6 +146,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         if variant and variant.service != service:
             raise serializers.ValidationError({"variant": "Variant does not belong to this service."})
         category_answers = attrs.get("category_answers", {})
+        if not isinstance(category_answers, dict):
+            raise serializers.ValidationError({"category_answers": "Answers must be an object."})
         try:
             validate_beauty_audience(service, category_answers)
             required_gender = required_worker_gender_for_booking(service, category_answers)
@@ -263,10 +265,30 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             if invalid:
                 raise serializers.ValidationError({"addon_ids": f"Invalid addon IDs: {invalid}"})
 
+        # Category-level choices are already answered before service selection.
+        # Validate overlapping select values against DB options, then avoid asking twice.
+        service_fields = list(service.form_fields.filter(is_active=True))
+        for key, answer in category_answers.items():
+            matching_field = next((field for field in service_fields if field.key == key), None)
+            if matching_field is None:
+                continue
+            if matching_field.field_type == FormField.FieldType.SELECT:
+                allowed_values = set()
+                for option in matching_field.options or []:
+                    option_value = (
+                        option.get("value", option.get("label"))
+                        if isinstance(option, dict) else option
+                    )
+                    if option_value is not None:
+                        allowed_values.add(str(option_value))
+                if str(answer) not in allowed_values:
+                    raise serializers.ValidationError({
+                        "category_answers": f"Choose a valid {matching_field.label.lower()} for this service."
+                    })
+
         # Validate every active configured field, including required answers
         # omitted by the client. Never trust client-side form validation alone.
         form_responses = attrs.get("form_responses", {})
-        service_fields = list(service.form_fields.filter(is_active=True))
         if not isinstance(form_responses, dict):
             raise serializers.ValidationError({"form_responses": "Answers must be an object."})
         field_map = {field.key: field for field in service_fields}
@@ -274,7 +296,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"form_responses": "Unknown form field supplied."})
         try:
             visible_fields = visible_form_fields(
-                service_fields, category_answers=category_answers, form_answers=form_responses
+                [field for field in service_fields if field.key not in category_answers],
+                category_answers=category_answers, form_answers=form_responses
             )
         except ValueError:
             raise serializers.ValidationError({

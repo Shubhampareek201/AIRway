@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import generics, permissions
 from rest_framework.exceptions import ValidationError
 from django.db.models import Q
@@ -6,7 +8,7 @@ from django.utils import timezone
 from apps.accounts.models import Address
 from apps.workers.eligibility import eligible_worker_profiles
 from apps.workers.models import WorkerProfile, WorkerService
-from .models import Banner, Category, CityService, Service
+from .models import Banner, Category, CityService, FormField, Service
 from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer
 from .pricing import priced_service_ids
 
@@ -188,6 +190,67 @@ def _is_worker_catalogue_request(request):
     return request.query_params.get("for_worker", "").lower() == "true"
 
 
+def _category_answers_from_request(request):
+    raw = request.query_params.get("category_answers")
+    if not raw:
+        return {}
+    try:
+        answers = json.loads(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({"category_answers": "Provide valid JSON answers."})
+    if not isinstance(answers, dict):
+        raise ValidationError({"category_answers": "Answers must be a JSON object."})
+    return answers
+
+
+def _category_answer_service_ids(answers):
+    """Filter electrical services by the DB-configured work_type options."""
+    work_type = answers.get("work_type") if isinstance(answers, dict) else None
+    if work_type in (None, ""):
+        return None
+
+    roots = set(Category.objects.filter(
+        slug="electrical", parent__isnull=True, is_active=True
+    ).values_list("id", flat=True))
+    if not roots:
+        return None
+
+    children = {}
+    for row in Category.objects.filter(is_active=True).values("id", "parent_id"):
+        if row["parent_id"] is not None:
+            children.setdefault(row["parent_id"], []).append(row["id"])
+    category_ids = set(roots)
+    pending = list(roots)
+    while pending:
+        parent_id = pending.pop()
+        for child_id in children.get(parent_id, []):
+            if child_id not in category_ids:
+                category_ids.add(child_id)
+                pending.append(child_id)
+
+    electrical_service_ids = set(Service.objects.filter(
+        is_active=True, category_id__in=category_ids
+    ).values_list("id", flat=True))
+    allowed_service_ids = set()
+    fields = FormField.objects.filter(
+        service_id__in=electrical_service_ids,
+        key="work_type",
+        is_active=True,
+    ).values_list("service_id", "options")
+    selected = str(work_type).strip().casefold()
+    for service_id, options in fields:
+        for option in options or []:
+            value = option.get("value", option.get("label")) if isinstance(option, dict) else option
+            if value is not None and str(value).strip().casefold() == selected:
+                allowed_service_ids.add(service_id)
+                break
+
+    non_electrical_ids = set(Service.objects.filter(
+        is_active=True, category__is_active=True
+    ).exclude(category_id__in=category_ids).values_list("id", flat=True))
+    return non_electrical_ids | allowed_service_ids
+
+
 def _visible_category_ids(service_ids):
     category_ids = set(
         Service.objects.filter(
@@ -291,6 +354,11 @@ class ServiceListView(generics.ListAPIView):
         if visible_service_ids is not None:
             queryset = queryset.filter(pk__in=visible_service_ids)
 
+        category_answers = _category_answers_from_request(self.request)
+        answer_service_ids = _category_answer_service_ids(category_answers)
+        if answer_service_ids is not None:
+            queryset = queryset.filter(pk__in=answer_service_ids)
+
         category_id = self.request.query_params.get("category")
         if category_id:
             queryset = queryset.filter(category_id=category_id)
@@ -342,6 +410,11 @@ class ServiceDetailView(generics.RetrieveAPIView):
             visible_service_ids = audience_ids if visible_service_ids is None else visible_service_ids & audience_ids
         if visible_service_ids is not None:
             queryset = queryset.filter(pk__in=visible_service_ids)
+
+        category_answers = _category_answers_from_request(self.request)
+        answer_service_ids = _category_answer_service_ids(category_answers)
+        if answer_service_ids is not None:
+            queryset = queryset.filter(pk__in=answer_service_ids)
 
         return queryset
 

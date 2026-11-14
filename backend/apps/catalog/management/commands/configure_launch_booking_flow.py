@@ -147,7 +147,7 @@ class Command(BaseCommand):
             "bike_services_created_or_found": 0,
             "bike_packages_created_or_found": 0,
             "beauty_audience_options_created_or_found": 0,
-            "electrical_work_type_fields_deactivated": 0,
+            "electrical_work_type_fields_preserved": 0,
         }
 
         # Beauty audience selection remains an explicit first step. "Both"
@@ -371,6 +371,9 @@ class Command(BaseCommand):
             key="work_type",
             is_active=True,
         )
-        changes["electrical_work_type_fields_deactivated"] = work_type_fields.update(is_active=False)
+        # Keep these fields active: their DB options filter the service list
+        # and validate the category-level answer at booking time. The customer UI
+        # suppresses the duplicate service-level prompt when already answered.
+        changes["electrical_work_type_fields_preserved"] = work_type_fields.count()
 
         return changes

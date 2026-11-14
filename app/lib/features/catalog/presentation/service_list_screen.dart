@@ -60,6 +60,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           category: widget.includeDescendants ? null : widget.categoryId,
           addressId: widget.addressId,
           audience: widget.initialAnswers['beauty_audience']?.toString(),
+          categoryAnswers: widget.initialAnswers,
         ),
         CatalogApi.listCategories(
           addressId: widget.addressId,
