@@ -574,7 +574,7 @@ class WorkerJobListView(APIView):
 class WorkerJobDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, pk):
+    def get(self, request, job_id):
         try:
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
@@ -582,7 +582,7 @@ class WorkerJobDetailView(APIView):
         try:
             assign = BookingAssignment.objects.select_related(
                 "booking__service", "booking__customer", "booking__address",
-            ).get(pk=pk, worker=profile)
+            ).get(pk=job_id, worker=profile)
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
