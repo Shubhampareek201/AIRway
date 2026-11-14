@@ -139,10 +139,14 @@ class CatalogApi {
   static Future<List<Category>> listCategories({
     int? addressId,
     String? audience,
+    Map<String, dynamic>? categoryAnswers,
   }) async {
     final query = <String, String>{'launch_only': 'true'};
     if (addressId != null) query['address_id'] = addressId.toString();
     if (audience != null) query['audience'] = audience;
+    if (categoryAnswers != null && categoryAnswers.isNotEmpty) {
+      query['category_answers'] = jsonEncode(categoryAnswers);
+    }
     final uri = Uri(
       path: '/api/v1/catalog/categories/',
       queryParameters: query.isEmpty ? null : query,

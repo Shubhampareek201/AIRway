@@ -277,34 +277,37 @@ class CategoryListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = CategoryTreeSerializer
 
+    def _visible_service_ids(self):
+        location = _location_from_address(self.request)
+        service_ids = (
+            None if _is_worker_catalogue_request(self.request)
+            else _customer_priced_service_ids()
+        )
+        if location is not None:
+            location_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
+            service_ids = location_ids if service_ids is None else service_ids & location_ids
+
+        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
+        if audience_ids is not None:
+            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
+
+        category_answers = _category_answers_from_request(self.request)
+        answer_ids = _category_answer_service_ids(category_answers)
+        if answer_ids is not None:
+            service_ids = answer_ids if service_ids is None else service_ids & answer_ids
+        return service_ids
+
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        location = _location_from_address(self.request)
-        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
-        priced_ids = None if _is_worker_catalogue_request(self.request) else _customer_priced_service_ids()
-        service_ids = priced_ids
-        if location is not None:
-            service_ids &= _enrolled_service_ids(*location) & _city_service_ids(*location)
-        if audience_ids is not None:
-            service_ids &= audience_ids
+        service_ids = self._visible_service_ids()
         context["visible_category_ids"] = (
             None if service_ids is None else _visible_category_ids(service_ids)
         )
         return context
 
     def get_queryset(self):
-        queryset = Category.objects.filter(
-            is_active=True,
-            parent__isnull=True,
-        )
-        location = _location_from_address(self.request)
-        audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
-        service_ids = None if _is_worker_catalogue_request(self.request) else _customer_priced_service_ids()
-        if location is not None:
-            location_service_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
-            service_ids = location_service_ids if service_ids is None else service_ids & location_service_ids
-        if audience_ids is not None:
-            service_ids = audience_ids if service_ids is None else service_ids & audience_ids
+        queryset = Category.objects.filter(is_active=True, parent__isnull=True)
+        service_ids = self._visible_service_ids()
         if service_ids is not None:
             queryset = queryset.filter(pk__in=_visible_category_ids(service_ids))
         if self.request.query_params.get("launch_only", "").lower() == "true":

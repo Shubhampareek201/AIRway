@@ -149,6 +149,37 @@ class ServicePricingReadinessTests(TestCase):
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         self.assertEqual({row["id"] for row in rows}, {repair.id})
 
+    def test_electrical_work_type_filters_category_tree_before_service_selection(self):
+        electrical = Category.objects.create(title="Electrical", slug="electrical")
+        fans = Category.objects.create(title="Fan Services", slug="fan-services", parent=electrical)
+        lighting = Category.objects.create(title="Lighting Services", slug="lighting-services", parent=electrical)
+        repair = Service.objects.create(category=fans, title="Ceiling Fan Repair")
+        install = Service.objects.create(category=lighting, title="LED Light Installation")
+        for service in (repair, install):
+            ServiceVariant.objects.create(
+                service=service, title="Standard",
+                mrp=Decimal("300.00"), price=Decimal("250.00"),
+            )
+        FormField.objects.create(
+            service=repair, key="work_type", label="Work type",
+            field_type=FormField.FieldType.SELECT, options=["Repair"],
+            is_required=True,
+        )
+        FormField.objects.create(
+            service=install, key="work_type", label="Work type",
+            field_type=FormField.FieldType.SELECT, options=["Installation"],
+            is_required=True,
+        )
+
+        answers = urlencode({"category_answers": json.dumps({"work_type": "Repair"})})
+        response = APIClient().get(f"/api/v1/catalog/categories/?launch_only=true&{answers}")
+        self.assertEqual(response.status_code, 200, response.data)
+        roots = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        electrical_row = next(row for row in roots if row["slug"] == "electrical")
+        child_slugs = {row["slug"] for row in electrical_row["children"]}
+        self.assertIn("fan-services", child_slugs)
+        self.assertNotIn("lighting-services", child_slugs)
+
     def test_electrical_work_type_rejects_malformed_category_answers(self):
         response = APIClient().get(
             "/api/v1/catalog/services/?launch_only=true&category_answers=not-json"

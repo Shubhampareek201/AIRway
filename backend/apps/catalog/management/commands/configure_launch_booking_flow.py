@@ -231,14 +231,14 @@ class Command(BaseCommand):
             "type": "select",
             "required": True,
             "options": [
-                {"label": "Hatchback", "value": "Hatchback"},
-                {"label": "Sedan", "value": "Sedan"},
-                {"label": "Compact SUV", "value": "Compact SUV"},
-                {"label": "SUV – 5 Seater", "value": "SUV – 5 Seater"},
-                {"label": "SUV – 7 Seater", "value": "SUV – 7 Seater"},
-                {"label": "MUV / MPV", "value": "MUV / MPV"},
-                {"label": "Luxury Car", "value": "Luxury Car"},
-                {"label": "Luxury SUV", "value": "Luxury SUV"},
+                {"label": "Hatchback", "value": "Hatchback", "image": "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=600&auto=format&fit=crop"},
+                {"label": "Sedan", "value": "Sedan", "image": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop"},
+                {"label": "Compact SUV", "value": "Compact SUV", "image": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&auto=format&fit=crop"},
+                {"label": "SUV – 5 Seater", "value": "SUV – 5 Seater", "image": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&auto=format&fit=crop"},
+                {"label": "SUV – 7 Seater", "value": "SUV – 7 Seater", "image": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&auto=format&fit=crop"},
+                {"label": "MUV / MPV", "value": "MUV / MPV", "image": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&auto=format&fit=crop"},
+                {"label": "Luxury Car", "value": "Luxury Car", "image": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop"},
+                {"label": "Luxury SUV", "value": "Luxury SUV", "image": "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=600&auto=format&fit=crop"},
             ],
         }]
         car.save(update_fields=["flow_steps", "updated_at"])
@@ -248,8 +248,8 @@ class Command(BaseCommand):
             "type": "select",
             "required": True,
             "options": [
-                {"label": "Scooter", "value": "Scooter"},
-                {"label": "Motorcycle", "value": "Motorcycle"},
+                {"label": "Scooter", "value": "Scooter", "image": "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&auto=format&fit=crop"},
+                {"label": "Motorcycle", "value": "Motorcycle", "image": "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&auto=format&fit=crop"},
             ],
         }]
         bike.save(update_fields=["flow_steps", "updated_at"])
@@ -262,8 +262,8 @@ class Command(BaseCommand):
             "required": True,
             "filter_children": True,
             "options": [
-                {"label": "Car", "value": "Car"},
-                {"label": "Bike / Scooter", "value": "Bike"},
+                {"label": "Car", "value": "Car", "image": "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=600&auto=format&fit=crop"},
+                {"label": "Bike / Scooter", "value": "Bike", "image": "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&auto=format&fit=crop"},
             ],
         }]
         car_wash.save(update_fields=["flow_steps", "updated_at"])
@@ -340,9 +340,9 @@ class Command(BaseCommand):
             "required": True,
             "filter_children": True,
             "options": [
-                {"label": "Full Home", "value": "Full Home"},
-                {"label": "Specific Area", "value": "Specific Area"},
-                {"label": "Specific Item", "value": "Specific Item"},
+                {"label": "Full Home", "value": "Full Home", "image": "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop"},
+                {"label": "Specific Area", "value": "Specific Area", "image": "https://images.unsplash.com/photo-1600489000022-c2086d79f9d4?w=600&auto=format&fit=crop"},
+                {"label": "Specific Item", "value": "Specific Item", "image": "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&auto=format&fit=crop"},
             ],
         }]
         home.save(update_fields=["flow_steps", "updated_at"])
@@ -359,10 +359,10 @@ class Command(BaseCommand):
             "type": "select",
             "required": True,
             "options": [
-                {"label": "Repair", "value": "Repair"},
-                {"label": "Installation", "value": "Installation"},
-                {"label": "Maintenance", "value": "Maintenance"},
-                {"label": "Inspection", "value": "Inspection"},
+                {"label": "Repair", "value": "Repair", "image": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=600&auto=format&fit=crop"},
+                {"label": "Installation", "value": "Installation", "image": "https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=600&auto=format&fit=crop"},
+                {"label": "Maintenance", "value": "Maintenance", "image": "https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=600&auto=format&fit=crop"},
+                {"label": "Inspection", "value": "Inspection", "image": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=600&auto=format&fit=crop"},
             ],
         }]
         electrical.save(update_fields=["flow_steps", "updated_at"])

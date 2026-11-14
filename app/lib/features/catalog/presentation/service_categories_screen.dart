@@ -68,9 +68,19 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     }
   }
 
+  Category? _findCategoryById(List<Category> categories, int id) {
+    for (final category in categories) {
+      if (category.id == id) return category;
+      final nested = _findCategoryById(category.children, id);
+      if (nested != null) return nested;
+    }
+    return null;
+  }
+
   Future<void> _openCategory(Category category) async {
     var selectedCategory = category;
-    var answers = Map<String, dynamic>.from(widget.initialAnswers);
+    final answers = Map<String, dynamic>.from(widget.initialAnswers);
+
     if (category.slug == 'beauty' && answers['beauty_audience'] == null) {
       final audience = await BeautyAudienceScreen.choose(
         context,
@@ -78,20 +88,8 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       );
       if (audience == null || !mounted) return;
       answers['beauty_audience'] = audience;
-
-      // Reload the tree for the selected audience so empty/opposite-audience
-      // subcategories are not left visible from the pre-selection tree.
-      final filteredRoots = await CatalogApi.listCategories(
-        addressId: widget.addressId,
-        audience: audience,
-      );
-      for (final root in filteredRoots) {
-        if (root.id == category.id) {
-          selectedCategory = root;
-          break;
-        }
-      }
     }
+
     if (selectedCategory.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
@@ -106,6 +104,28 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       answers.addAll(selected);
     }
 
+    // The backend owns the category/service relationship. Reload its filtered
+    // tree after each decision so choices such as Electrical > Repair only show
+    // relevant subcategories instead of relying on title matching in Flutter.
+    if (answers.isNotEmpty) {
+      try {
+        final filteredRoots = await CatalogApi.listCategories(
+          addressId: widget.addressId,
+          audience: answers['beauty_audience']?.toString(),
+          categoryAnswers: answers,
+        );
+        final refreshed = _findCategoryById(filteredRoots, selectedCategory.id);
+        if (refreshed != null) selectedCategory = refreshed;
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load matching categories: $e')),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
     if (selectedCategory.children.isNotEmpty) {
       var children = selectedCategory.children;
       final filterStep = selectedCategory.customerFlowSteps.where(
@@ -122,6 +142,12 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           }).toList();
           if (matches.isNotEmpty) children = matches;
         }
+      }
+      if (children.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No matching service categories are configured yet.')),
+        );
+        return;
       }
       Navigator.push<void>(
         context,
@@ -196,7 +222,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
               borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
               child: SizedBox(
                 width: double.infinity,
-                height: 112,
+                height: 138,
                 child: imageUrl == null
                     ? Container(
                         color: AirwayColors.primarySoft,
