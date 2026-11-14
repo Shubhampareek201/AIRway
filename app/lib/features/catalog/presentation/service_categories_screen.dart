@@ -261,7 +261,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                     ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
+              padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
               child: Row(
                 children: [
                   Expanded(
@@ -270,8 +270,12 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       children: [
                         Text(
                           category.title,
+                          maxLines: 3,
+                          softWrap: true,
+                          overflow: TextOverflow.visible,
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
+                            height: 1.15,
                             fontWeight: FontWeight.w900,
                             color: AirwayColors.text,
                           ),
@@ -281,7 +285,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                           Text(
                             '${category.children.length} subcategories',
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 10,
                               color: AirwayColors.textSecondary,
                             ),
                           ),
@@ -289,7 +293,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   const Icon(
                     Icons.arrow_forward_rounded,
                     color: AirwayColors.primary,
@@ -312,7 +316,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           crossAxisCount: 2,
           crossAxisSpacing: 12,
           mainAxisSpacing: 14,
-          mainAxisExtent: 210,
+          mainAxisExtent: 174,
         ),
         itemBuilder: (context, index) => _categoryCard(_categories[index]),
       );
