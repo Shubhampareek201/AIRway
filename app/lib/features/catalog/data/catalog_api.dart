@@ -165,7 +165,10 @@ class CatalogApi {
     String? audience,
     Map<String, dynamic>? categoryAnswers,
   }) async {
-    final query = <String, String>{'launch_only': 'true'};
+    final query = <String, String>{
+      'launch_only': 'true',
+      'priced_only': 'true',
+    };
     if (category != null) query['category'] = category.toString();
     if (popular == true) query['is_popular'] = 'true';
     if (addressId != null) query['address_id'] = addressId.toString();
