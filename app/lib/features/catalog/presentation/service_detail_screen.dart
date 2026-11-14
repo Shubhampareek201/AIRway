@@ -4,7 +4,6 @@ import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
-import 'package:airway/features/catalog/data/beauty_audience.dart';
 
 class _Ui {
   static const violet = Color(0xFF315C46);
