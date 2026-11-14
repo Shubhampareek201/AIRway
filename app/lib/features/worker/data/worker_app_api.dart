@@ -13,7 +13,7 @@ class WorkerAppApi {
     Map<String, dynamic>? data,
     File? file,
     String? fileFieldName,
-    bool _retried = false,
+    bool retried = false,
   }) async {
     final session = await SecureSessionStorage.readSession();
     if (session == null) throw Exception('Please sign in again.');
@@ -92,7 +92,7 @@ class WorkerAppApi {
       client.close(force: true);
     }
 
-    if (result['status'] == 401 && !_retried) {
+    if (result['status'] == 401 && !retried) {
       final refreshed = await AuthApi.refreshSession(
         refreshToken: session.refreshToken,
       );
@@ -111,7 +111,7 @@ class WorkerAppApi {
         data: data,
         file: file,
         fileFieldName: fileFieldName,
-        _retried: true,
+        retried: true,
       );
     }
 
@@ -354,3 +354,4 @@ class WorkerAppApi {
       return null;
     }
   }
+}
