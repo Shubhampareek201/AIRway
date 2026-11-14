@@ -1,29 +1,31 @@
-"""Audience validation shared by catalogue, cart and booking flows."""
+"""Audience validation shared by catalogue and booking flows."""
 
 
 def validate_beauty_audience(service, category_answers):
-    """Require an explicit, exact Beauty audience for customer transactions."""
+    """Reject a Beauty service outside the audience explicitly selected by customer."""
     if not isinstance(category_answers, dict):
-        category_answers = {}
-
+        return
     category = service.category
-    while category.parent_id and category.parent is not None:
+    while category.parent_id:
         category = category.parent
     if category.slug != "beauty":
         return
 
-    selected = str(category_answers.get("beauty_audience") or "").strip().lower()
+    selected = category_answers.get("beauty_audience")
+    if selected is None:
+        # Keep older API clients compatible; the AIRway customer UI always sends it.
+        return
     if selected not in {"men", "women", "both"}:
-        raise ValueError("Choose Men, Women or Unisex before continuing.")
+        raise ValueError("Choose Men, Women or Both for Beauty services.")
 
-    # 'all' is the database value for Unisex. It is not a fallback for Men/Women.
+    service_audience = service.audience
     allowed = {
-        "men": "men",
-        "women": "women",
-        "both": "all",
+        "men": {"men", "all"},
+        "women": {"women", "all"},
+        "both": {"all"},
     }[selected]
-    if service.audience != allowed:
+    if service_audience not in allowed:
         raise ValueError(
-            "This service belongs to a different Beauty audience. "
-            "Return to Beauty and choose the matching section."
+            "This service is not listed for the selected Beauty audience. "
+            "Go back and choose the correct audience."
         )

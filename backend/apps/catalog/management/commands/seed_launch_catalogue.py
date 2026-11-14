@@ -244,7 +244,7 @@ class Command(BaseCommand):
         hair_services = [
             ("Men's Haircut", "men", ["Regular Haircut", "Premium Haircut"]),
             ("Men's Hair Styling", "men", ["Simple Styling", "Special Occasion Styling"]),
-            ("Men's Hair Wash", "men", ["Basic Hair Wash", "Hair Wash + Blow Dry"]),
+            ("Men's Hair Wash", "all", ["Basic Hair Wash", "Hair Wash + Blow Dry"]),
             ("Men's Haircut + Hair Wash", "men", []),
             ("Men's Hair Colour", "men", ["Root Touch-up", "Global Colour"]),
             ("Grey Hair Coverage", "men", ["Root Coverage", "Full Coverage"]),
@@ -285,7 +285,7 @@ class Command(BaseCommand):
         for area in ["Half Arms", "Full Arms", "Half Legs", "Full Legs", "Underarms", "Full Face",
                      "Bikini Line", "Bikini Wax", "Brazilian Wax", "Full Body Wax", "Chest Wax", "Back Wax"]:
             b.service(waxing, area, f"{area} waxing. Available wax type depends on provider capability and hygiene requirements.",
-                      audience="women" if area not in ["Chest Wax", "Back Wax"] else "men",
+                      audience="women" if area not in ["Chest Wax", "Back Wax"] else "all",
                       duration=45, packages=pkg(["Regular Wax", "Rica Wax", "Premium Wax"]))
 
         nails = groups["Manicure & Pedicure"]

@@ -99,13 +99,10 @@ def _audience_service_ids(audience):
     audience = audience.strip().lower()
     if audience not in ("men", "women", "both"):
         raise ValidationError({"audience": "Choose men, women or both."})
-    # The three customer sections are mutually exclusive. 'all' means
-    # Unisex only; it must never leak into Men or Women.
-    allowed = {
-        "men": [Service.Audience.MEN],
-        "women": [Service.Audience.WOMEN],
-        "both": [Service.Audience.ALL],
-    }[audience]
+    if audience == "both":
+        allowed = [Service.Audience.ALL]
+    else:
+        allowed = [Service.Audience.ALL, audience]
     return set(Service.objects.filter(
         is_active=True,
         category__is_active=True,
@@ -128,32 +125,22 @@ def _available_service_ids(city, zone=None):
     return set(service_links.values_list("service_id", flat=True).distinct())
 
 
-def _enrolled_variant_ids(city, zone=None):
-    """
-    Variants shown in the catalogue must match an approved worker's exact
-    service enrolment and verified capabilities. Online status and schedules
-    are checked later for dispatch, not while browsing the catalogue.
-    """
+def _available_variant_ids(city, zone=None):
     if city is None:
         return None
+    eligible_workers = eligible_worker_profiles(city=city, zone=zone)
     links = WorkerService.objects.filter(
-        worker__status=WorkerProfile.Status.APPROVED,
-        worker__worker_zones__zone__city=city,
-        worker__worker_zones__zone__is_active=True,
-        worker__worker_zones__zone__city__is_active=True,
+        worker__in=eligible_workers,
         service__is_active=True,
         service__category__is_active=True,
     ).filter(
         Q(service__requires_female_worker=False)
         | Q(worker__gender=WorkerProfile.Gender.FEMALE)
     ).select_related("service").prefetch_related("service__variants")
-    if zone is not None:
-        links = links.filter(worker__worker_zones__zone=zone)
-
     available = set()
     for link in links:
         skills = {str(task).strip() for task in (link.capabilities or []) if str(task).strip()}
-        for variant in link.service.variants.filter(is_active=True, price__gt=0):
+        for variant in link.service.variants.filter(is_active=True):
             required = {str(task).strip() for task in (variant.included_tasks or []) if str(task).strip()}
             if required and (
                 not link.capabilities_verified or not required.issubset(skills)
@@ -263,7 +250,7 @@ class ServiceListView(generics.ListAPIView):
                 & _city_service_ids(city, zone=zone)
             )
         context["available_variant_ids"] = (
-            None if location is None else _enrolled_variant_ids(*location)
+            None if location is None else _available_variant_ids(*location)
         )
         return context
 
@@ -316,7 +303,7 @@ class ServiceDetailView(generics.RetrieveAPIView):
                 & _city_service_ids(city, zone=zone)
             )
         context["available_variant_ids"] = (
-            None if location is None else _enrolled_variant_ids(*location)
+            None if location is None else _available_variant_ids(*location)
         )
         return context
 
