@@ -350,7 +350,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       child: ListTile(
         leading: const Icon(Icons.person),
         title: Text(job.customerName),
-        subtitle: Text(job.customerPhone ?? 'No phone'),
+        subtitle: const Text('Customer contact details are protected by AIRway.'),
         trailing: Text(
           '₹${job.amount.toStringAsFixed(0)}',
           style: const TextStyle(fontWeight: FontWeight.bold),

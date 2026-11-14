@@ -552,6 +552,34 @@ class WorkerJobLifecycleTest(TestCase):
 
         self.client.force_authenticate(user=self.customer_user)
 
+    def test_worker_job_endpoints_do_not_expose_customer_contact_details(self):
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.worker_user)
+        list_response = self.client.get("/api/v1/workers/jobs/")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.data[0]["customer_name"], "Customer")
+        self.assertNotIn("customer_phone", list_response.data[0])
+        self.assertNotIn(self.customer_user.phone, str(list_response.data[0]))
+
+        detail_response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.data["customer_name"], "Customer")
+        self.assertNotIn("customer_phone", detail_response.data)
+        self.assertNotIn(self.customer_user.phone, str(detail_response.data))
+
     def test_worker_can_start_assigned_job(self):
         """Worker can mark a job as in progress after accepting offer."""
         booking = Booking.objects.create(
