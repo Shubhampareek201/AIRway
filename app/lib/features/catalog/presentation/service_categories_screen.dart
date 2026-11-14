@@ -270,8 +270,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       children: [
                         Text(
                           category.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
@@ -305,18 +303,24 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     );
   }
 
-  Widget _buildCategoryGrid() => GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _categories.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 14,
-          mainAxisExtent: 174,
-        ),
-        itemBuilder: (context, index) => _categoryCard(_categories[index]),
+  Widget _buildCategoryGrid() => LayoutBuilder(
+        builder: (context, constraints) {
+          final cardWidth = (constraints.maxWidth - 12) / 2;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 14,
+              children: [
+                for (final category in _categories)
+                  SizedBox(
+                    width: cardWidth,
+                    child: _categoryCard(category),
+                  ),
+              ],
+            ),
+          );
+        },
       );
 
   @override
