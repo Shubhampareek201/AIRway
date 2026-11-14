@@ -900,6 +900,7 @@ class CustomerOrderDetailView(APIView):
         from apps.payments.models import Payment
 
         from apps.payments.models import PaymentRefund
+        from apps.ratings.models import BookingRating
 
         order = get_object_or_404(
             Order.objects.prefetch_related(
@@ -913,8 +914,13 @@ class CustomerOrderDetailView(APIView):
         allocation = (order.metadata or {}).get("payment_allocation_v1", {})
         advance_rows = {row["order_item_id"]: row for row in allocation.get("advance", [])}
         balance_rows = {row["order_item_id"]: row for row in allocation.get("balance", [])}
+        order_items = list(order.items.all())
+        rated_booking_ids = set(BookingRating.objects.filter(
+            booking_id__in=[row.booking_id for row in order_items],
+            rater=request.user,
+        ).values_list("booking_id", flat=True))
         items = []
-        for row in order.items.all():
+        for row in order_items:
             booking = row.booking
             assignment = getattr(booking, "assignment", None)
             completion_code = None
@@ -960,6 +966,7 @@ class CustomerOrderDetailView(APIView):
                 "advance_amount": advance_rows.get(row.id, {}).get("amount"),
                 "balance_amount": balance_rows.get(row.id, {}).get("amount"),
                 "completion_verified": booking.status == Booking.Status.COMPLETED,
+                "customer_has_rated": booking.id in rated_booking_ids,
                 "completion_otp": (
                     {
                         "code": completion_code,

@@ -101,13 +101,11 @@ class RatingApi {
 
   static Future<RatingModel> submitRating({
     required int bookingId,
-    required int ratedId,
     required int rating,
     required String ratingType,
     String comment = '',
   }) async {
     final request = RateBookingRequest(
-      ratedId: ratedId,
       ratingType: ratingType,
       rating: rating,
       comment: comment,

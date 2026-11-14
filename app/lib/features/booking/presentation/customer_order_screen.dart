@@ -6,6 +6,7 @@ import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/booking_tracking_screen.dart';
 import 'package:airway/features/payment/data/payment_api.dart';
+import 'package:airway/features/ratings/data/rating_api.dart';
 
 class CustomerOrderScreen extends StatefulWidget {
   final int orderId;
@@ -600,8 +601,96 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           icon: const Icon(Icons.location_searching_rounded, size: 17),
           label: const Text('Track this service'),
         )),
+        if (status == 'completed' && worker != null) ...[
+          const SizedBox(height: 8),
+          if (row['customer_has_rated'] == true)
+            const Row(children: [
+              Icon(Icons.verified_rounded, size: 17, color: Color(0xFF2E7D52)),
+              SizedBox(width: 7),
+              Text('Thank you for rating this professional.',
+                  style: TextStyle(color: Color(0xFF2E7D52), fontSize: 12, fontWeight: FontWeight.w700)),
+            ])
+          else
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              onPressed: () => rateProfessional(row),
+              icon: const Icon(Icons.star_rounded, size: 18),
+              label: const Text('Rate professional'),
+            )),
+        ],
       ]),
     );
+  }
+
+  Future<void> rateProfessional(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    var selectedRating = 5;
+    final commentController = TextEditingController();
+    final result = await showDialog<({int rating, String comment})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Rate your professional'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('How was your service experience?'),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (index) => IconButton(
+                  onPressed: () => setDialogState(() => selectedRating = index + 1),
+                  icon: Icon(
+                    index < selectedRating ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: const Color(0xFFFFB020),
+                    size: 30,
+                  ),
+                )),
+              ),
+              TextField(
+                controller: commentController,
+                maxLength: 500,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Comment (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not now')),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                (rating: selectedRating, comment: commentController.text.trim()),
+              ),
+              child: const Text('Submit rating'),
+            ),
+          ],
+        ),
+      ),
+    );
+    commentController.dispose();
+    if (result == null || !mounted) return;
+    try {
+      await RatingApi.submitRating(
+        bookingId: bookingId,
+        rating: result.rating,
+        ratingType: 'customer',
+        comment: result.comment,
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Thank you. Your rating has been submitted.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit rating: $e')),
+      );
+    }
   }
 
   Widget refundSection(List<Map<String, dynamic>> refunds) {

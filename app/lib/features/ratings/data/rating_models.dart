@@ -79,13 +79,11 @@ class RatingSummaryModel {
 }
 
 class RateBookingRequest {
-  final int ratedId;
   final String ratingType;
   final int rating;
   final String comment;
 
   RateBookingRequest({
-    required this.ratedId,
     required this.ratingType,
     required this.rating,
     required this.comment,
@@ -93,7 +91,6 @@ class RateBookingRequest {
 
   Map<String, dynamic> toMap() {
     return {
-      'rated_id': ratedId,
       'rating_type': ratingType,
       'rating': rating,
       'comment': comment,

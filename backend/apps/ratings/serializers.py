@@ -26,7 +26,6 @@ class RatingSummarySerializer(serializers.ModelSerializer):
 
 
 class RateBookingSerializer(serializers.Serializer):
-    rated_id = serializers.IntegerField(min_value=1)
     rating_type = serializers.ChoiceField(choices=BookingRating._meta.get_field("rating_type").choices)
     rating = serializers.IntegerField(min_value=1, max_value=5)
     comment = serializers.CharField(max_length=500, required=False, allow_blank=True)
