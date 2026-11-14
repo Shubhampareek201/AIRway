@@ -248,7 +248,7 @@ class Command(BaseCommand):
             "standard_variants_created": 0,
             "inspection_fees_set": 0,
             "addons_priced": 0,
-            "per_unit_services_left_unpriced_for_proper_quantity_support": 0,
+            "per_unit_services_priced": 0,
             "fixed_services_still_unpriced": 0,
             "existing_nonzero_prices_preserved": 0,
         }
@@ -307,6 +307,8 @@ class Command(BaseCommand):
                         variant.price = unit_rate
                         variant.mrp = _mrp(unit_rate)
                         variant.save(update_fields=["price", "mrp", "updated_at"])
+                if service.variants.filter(is_active=True, price__gt=0).exists():
+                    counts["per_unit_services_priced"] += 1
                         counts["variants_priced"] += 1
             else:
                 variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))

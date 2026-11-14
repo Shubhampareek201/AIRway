@@ -698,7 +698,9 @@ class CustomerCheckoutView(APIView):
             quantity = attrs.get("quantity", 1)
             intervals = _booking_intervals(
                 attrs["scheduled_at"],
-                duration * quantity,
+                duration * (
+                    1 if service.pricing_type == "per_unit" else quantity
+                ),
                 service.buffer_minutes,
                 attrs.get("drop_scheduled_at")
                 if attrs.get("booking_mode") == Booking.BookingMode.PICKUP_DROP

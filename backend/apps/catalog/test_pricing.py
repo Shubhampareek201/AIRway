@@ -87,6 +87,16 @@ class ServicePricingReadinessTests(TestCase):
         self.assertEqual(ids, {self.fixed_priced.id, self.quote_with_fee.id})
 
 
+    def test_customer_catalogue_exposes_per_unit_service_after_unit_rate_is_configured(self):
+        ServiceVariant.objects.create(
+            service=self.per_unit, title="Rate per sq ft",
+            mrp=Decimal("18.00"), price=Decimal("15.00"),
+        )
+        response = APIClient().get("/api/v1/catalog/services/?launch_only=true")
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        self.assertIn(self.per_unit.id, {row["id"] for row in rows})
+
     def test_worker_catalogue_can_still_see_unpriced_services_for_enrolment(self):
         response = APIClient().get(
             "/api/v1/catalog/services/?launch_only=true&for_worker=true"

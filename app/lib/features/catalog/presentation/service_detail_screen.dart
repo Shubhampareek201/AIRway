@@ -245,7 +245,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final v = _matchingVariants(service)[index];
-                return _variantCard(v, service.categoryName, service.audience, service.unitLabel);
+                return _variantCard(
+                  v,
+                  service.categoryName,
+                  service.audience,
+                  service.pricingType == 'per_unit' ? service.unitLabel : '',
+                );
               },
             ),
           ),
