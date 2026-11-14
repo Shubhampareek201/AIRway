@@ -43,21 +43,21 @@ class WorkerAppApi {
           final fieldValue = value is List || value is Map
               ? jsonEncode(value)
               : value.toString();
-          body.add(utf8.encode('--$boundary\\r\\n'));
+          body.add(utf8.encode('--$boundary\r\n'));
           body.add(utf8.encode(
-            'Content-Disposition: form-data; name="$key"\\r\\n\\r\\n',
+            'Content-Disposition: form-data; name="$key"\r\n\r\n',
           ));
-          body.add(utf8.encode('$fieldValue\\r\\n'));
+          body.add(utf8.encode('$fieldValue\r\n'));
         }
 
         data?.forEach(addField);
-        body.add(utf8.encode('--$boundary\\r\\n'));
+        body.add(utf8.encode('--$boundary\r\n'));
         body.add(utf8.encode(
-          'Content-Disposition: form-data; name="$fileFieldName"; filename="photo.jpg"\\r\\n',
+          'Content-Disposition: form-data; name="$fileFieldName"; filename="photo.jpg"\r\n',
         ));
-        body.add(utf8.encode('Content-Type: image/jpeg\\r\\n\\r\\n'));
+        body.add(utf8.encode('Content-Type: image/jpeg\r\n\r\n'));
         body.add(bytes);
-        body.add(utf8.encode('\\r\\n--$boundary--\\r\\n'));
+        body.add(utf8.encode('\r\n--$boundary--\r\n'));
 
         request.headers.set(
           HttpHeaders.contentTypeHeader,
