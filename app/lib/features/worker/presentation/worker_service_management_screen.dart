@@ -37,8 +37,6 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
     _load();
   }
 
-  @override
-
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
@@ -86,25 +84,6 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  Widget _serviceChip(Service service) {
-    final selected = _selected.contains(service.id);
-    return FilterChip(
-      selected: selected,
-      showCheckmark: true,
-      selectedColor: AirwayColors.primary.withAlpha(28),
-      label: Text(service.title),
-      onSelected: _saving ? null : (value) => setState(() {
-        if (value) {
-          _selected.add(service.id);
-          _capabilities.putIfAbsent(service.id, () => <String>{});
-        } else {
-          _selected.remove(service.id);
-          _capabilities.remove(service.id);
-        }
-      }),
-    );
   }
 
   @override
