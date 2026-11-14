@@ -207,6 +207,7 @@ def process_payment_refund(refund_id):
         PaymentRefund.objects.filter(pk=refund_id).update(
             status=PaymentRefund.Status.PROCESSING,
             failure_reason=failure_reason,
+            updated_at=timezone.now(),
         )
         refund = PaymentRefund.objects.select_related(
             "payment", "booking", "payment__customer"
