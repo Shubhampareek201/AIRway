@@ -195,12 +195,33 @@ def process_payment_refund(refund_id):
                 _notify_refund(locked)
             return locked
     except Exception as exc:
-        logger.exception("Razorpay refund request failed for refund %s", refund_id)
+        logger.exception("Razorpay refund request outcome is uncertain for refund %s", refund_id)
+        # A timeout can occur after Razorpay accepted the refund but before AIRway
+        # received its response. Keep the ledger non-retryable until reconciliation;
+        # blindly issuing another refund could pay the customer twice.
+        failure_reason = (
+            "Gateway outcome is unconfirmed. Manual reconciliation is required "
+            "before retrying. " + str(exc)
+        )[:500]
         PaymentRefund.objects.filter(pk=refund_id).update(
-            status=PaymentRefund.Status.FAILED,
-            failure_reason=str(exc)[:500],
+            status=PaymentRefund.Status.PROCESSING,
+            failure_reason=failure_reason,
         )
-        return PaymentRefund.objects.get(pk=refund_id)
+        refund = PaymentRefund.objects.select_related(
+            "payment", "booking", "payment__customer"
+        ).get(pk=refund_id)
+        Notification.objects.get_or_create(
+            user=refund.payment.customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Refund needs attention",
+            data__refund_id=refund.pk,
+            defaults={
+                "body": "Razorpay did not return a conclusive refund result. AIRway support must reconcile it before another refund attempt.",
+                "channel": Notification.Channel.IN_APP,
+                "data": {"refund_id": refund.pk, "booking_id": refund.booking_id},
+            },
+        )
+        return refund
 
 
 def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amount=None, refund_pk=None):
