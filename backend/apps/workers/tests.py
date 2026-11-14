@@ -552,6 +552,32 @@ class WorkerJobLifecycleTest(TestCase):
 
         self.client.force_authenticate(user=self.customer_user)
 
+    def test_booking_history_never_exposes_worker_phone_as_display_name(self):
+        from apps.bookings.models import BookingStatusHistory
+        from apps.bookings.serializers import BookingStatusHistorySerializer
+
+        self.worker_user.name = ""
+        self.worker_user.save(update_fields=["name"])
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.IN_PROGRESS,
+        )
+        history = BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=Booking.Status.ASSIGNED,
+            to_status=Booking.Status.IN_PROGRESS,
+            changed_by=self.worker_user,
+            note="Worker started the job.",
+        )
+
+        serialized = BookingStatusHistorySerializer(history).data
+        self.assertEqual(serialized["changed_by_name"], "AIRway Professional")
+        self.assertNotIn(self.worker_user.phone, str(serialized))
+
     def test_worker_job_endpoints_do_not_expose_customer_contact_details(self):
         booking = Booking.objects.create(
             customer=self.customer_user,

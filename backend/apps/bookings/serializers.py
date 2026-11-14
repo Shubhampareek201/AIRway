@@ -65,11 +65,20 @@ class BookingStatusHistorySerializer(serializers.ModelSerializer):
         fields = ["id", "from_status", "to_status", "changed_by", "changed_by_name", "note", "created_at"]
 
     def get_changed_by_name(self, obj):
-        if obj.changed_by:
-            if obj.changed_by.name:
-                return obj.changed_by.name
-            return obj.changed_by.phone
-        return "System"
+        user = obj.changed_by
+        if user is None:
+            return "System"
+        if user.name and user.name.strip():
+            return user.name
+        if user.is_staff:
+            return "AIRway Support"
+        if user.pk == obj.booking.customer_id:
+            return "You"
+        try:
+            user.worker_profile
+            return "AIRway Professional"
+        except Exception:
+            return "AIRway User"
 
 
 class BookingAssignmentSerializer(serializers.ModelSerializer):
