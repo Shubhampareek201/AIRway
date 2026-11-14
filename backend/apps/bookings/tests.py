@@ -3430,6 +3430,41 @@ class CustomerOrderReadIntegrityTest(BookingAPITestMixin, TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
 
+    def test_order_detail_reports_customer_rating_state_for_completed_service(self):
+        from apps.bookings.models import BookingAssignment
+        from apps.ratings.models import BookingRating
+        from apps.workers.models import WorkerProfile
+
+        order = self._create_order(Order.Status.AWAITING_ASSIGNMENT)
+        booking = order.items.get().booking
+        booking.status = Booking.Status.COMPLETED
+        booking.save(update_fields=["status", "updated_at"])
+        worker_user = self._create_user("+919876543276")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+        )
+        BookingAssignment.objects.create(
+            booking=booking,
+            worker=worker,
+            accepted_at=timezone.now() - timedelta(hours=1),
+            completed_at=timezone.now(),
+        )
+
+        response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["items"][0]["customer_has_rated"])
+
+        BookingRating.objects.create(
+            booking=booking,
+            rater=self.customer,
+            rated=worker_user,
+            rating_type="customer",
+            rating=5,
+        )
+        response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+        self.assertTrue(response.data["items"][0]["customer_has_rated"])
+
     def test_order_detail_shows_active_completion_code_only_to_owning_customer(self):
         order = self._create_order(Order.Status.AWAITING_ASSIGNMENT)
         booking = order.items.get().booking
