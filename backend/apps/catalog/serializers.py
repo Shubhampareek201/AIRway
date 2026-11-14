@@ -137,7 +137,9 @@ class ServiceSerializer(serializers.ModelSerializer):
         return self._root_category(obj).slug
 
     def get_variants(self, obj):
-        queryset = obj.variants.filter(is_active=True, price__gt=0)
+        queryset = obj.variants.filter(is_active=True)
+        if self.context.get("priced_only", False):
+            queryset = queryset.filter(price__gt=0)
         available_ids = self.context.get("available_variant_ids")
         if available_ids is not None:
             queryset = queryset.filter(pk__in=available_ids)
@@ -148,7 +150,9 @@ class ServiceSerializer(serializers.ModelSerializer):
         return FormFieldSerializer(queryset, many=True, context=self.context).data
 
     def get_addons(self, obj):
-        queryset = obj.addons.filter(is_active=True, price__gt=0)
+        queryset = obj.addons.filter(is_active=True)
+        if self.context.get("priced_only", False):
+            queryset = queryset.filter(price__gt=0)
         return AddOnSerializer(queryset, many=True, context=self.context).data
 
     def get_is_available(self, obj):
