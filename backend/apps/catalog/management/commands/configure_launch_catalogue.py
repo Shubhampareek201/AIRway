@@ -260,10 +260,54 @@ class Command(BaseCommand):
                     service.save(update_fields=["visit_fee", "updated_at"])
                     counts["inspection_fees_set"] += 1
             elif service.pricing_type == Service.PricingType.PER_UNIT:
-                # The current booking snapshot does not yet multiply by a measured
-                # unit (sq ft, seat, etc.). Keep these out of customer booking until
-                # the dedicated unit-quantity flow is implemented.
-                counts["per_unit_services_left_unpriced_for_proper_quantity_support"] += 1
+                # The existing booking/cart quantity is already multiplied into
+                # pricing snapshots. For per-unit services it represents the
+                # measured unit count (sq ft, seat, piece, etc.).
+                unit_label = (service.unit_label or "").strip().lower()
+                if "sq" in unit_label or "square" in unit_label:
+                    unit_rate = Decimal("15.00")
+                elif "seat" in unit_label:
+                    unit_rate = Decimal("199.00")
+                elif "room" in unit_label:
+                    unit_rate = Decimal("499.00")
+                elif "piece" in unit_label or "item" in unit_label:
+                    unit_rate = Decimal("199.00")
+                else:
+                    unit_rate = _service_base_price(root, service)
+
+                variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
+                if not variants:
+                    variant, created = ServiceVariant.objects.get_or_create(
+                        service=service,
+                        title=f"Standard rate per {service.unit_label or 'unit'}",
+                        defaults={
+                            "description": f"Indicative starting rate per {service.unit_label or 'unit'}. Enter the required quantity when booking.",
+                            "mrp": _mrp(unit_rate),
+                            "price": unit_rate,
+                            "duration_minutes": service.duration_minutes,
+                            "included_tasks": [],
+                            "attributes": {},
+                            "is_active": True,
+                        },
+                    )
+                    if created:
+                        counts["standard_variants_created"] += 1
+                    elif variant.price <= 0:
+                        variant.price = unit_rate
+                        variant.mrp = _mrp(unit_rate)
+                        variant.save(update_fields=["price", "mrp", "updated_at"])
+                        counts["variants_priced"] += 1
+                    else:
+                        counts["existing_nonzero_prices_preserved"] += 1
+                else:
+                    for variant in variants:
+                        if variant.price > 0:
+                            counts["existing_nonzero_prices_preserved"] += 1
+                            continue
+                        variant.price = unit_rate
+                        variant.mrp = _mrp(unit_rate)
+                        variant.save(update_fields=["price", "mrp", "updated_at"])
+                        counts["variants_priced"] += 1
             else:
                 variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
                 if not variants:

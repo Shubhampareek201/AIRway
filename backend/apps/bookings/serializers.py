@@ -123,7 +123,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     )
     address_id = serializers.IntegerField(write_only=True)
     category_answers = serializers.DictField(required=False, write_only=True)
-    quantity = serializers.IntegerField(required=False, min_value=1, max_value=20, write_only=True, default=1)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10000, write_only=True, default=1)
 
     class Meta:
         model = Booking
@@ -164,9 +164,15 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "service": "This service is not ready for booking yet. AIRway is confirming its price."
             })
-        if service.pricing_type == Service.PricingType.FIXED:
+        if service.pricing_type in (Service.PricingType.FIXED, Service.PricingType.PER_UNIT):
             if variant is None or variant.price <= 0:
-                raise serializers.ValidationError({"variant": "Choose a package with a confirmed price."})
+                raise serializers.ValidationError({"variant": "Choose a package or unit rate with a confirmed price."})
+        quantity_limit = 10000 if service.pricing_type == Service.PricingType.PER_UNIT else 20
+        if quantity > quantity_limit:
+            label = service.unit_label or "units"
+            raise serializers.ValidationError({
+                "quantity": f"Quantity must be between 1 and {quantity_limit} {label}."
+            })
 
         # Validate booking mode matches service
         if booking_mode != service.booking_mode:
@@ -198,7 +204,9 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             check_slot_availability(
                 service=service,
                 scheduled_at=scheduled_at,
-                duration_minutes=(duration or 60) * quantity,
+                duration_minutes=(duration or 60) * (
+                    1 if service.pricing_type == Service.PricingType.PER_UNIT else quantity
+                ),
                 booking_mode=booking_mode,
                 drop_scheduled_at=drop_scheduled_at,
             )
@@ -770,13 +778,14 @@ class CartItemSerializer(serializers.ModelSerializer):
     service_title = serializers.CharField(source="service.title", read_only=True)
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
+    service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     line_total = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
-            "quantity", "addon_selections", "form_answers", "category_answers", "notes",
+            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "notes",
             "pricing_snapshot", "line_total",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
@@ -799,8 +808,12 @@ class CartItemSerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError({"category_answers": str(exc)})
 
-        if quantity < 1 or quantity > 20:
-            raise serializers.ValidationError({"quantity": "Quantity must be between 1 and 20."})
+        quantity_limit = 10000 if service.pricing_type == Service.PricingType.PER_UNIT else 20
+        if quantity < 1 or quantity > quantity_limit:
+            label = service.unit_label or "units"
+            raise serializers.ValidationError({
+                "quantity": f"Quantity must be between 1 and {quantity_limit} {label}."
+            })
         if not service.is_active:
             raise serializers.ValidationError({"service": "This service is not available."})
         if not service_pricing_ready(service):

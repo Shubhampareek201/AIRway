@@ -418,7 +418,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     Text(
                       service.pricingType == 'quote'
                           ? (service.visitFee > 0 ? 'Visit fee ₹${service.visitFee.toStringAsFixed(0)}' : 'Inspection & quote')
-                          : price > 0 ? 'From ₹${price.toStringAsFixed(0)}' : 'Price on request',
+                          : price > 0
+                              ? service.pricingType == 'per_unit' && service.unitLabel.isNotEmpty
+                                  ? 'From ₹${price.toStringAsFixed(0)} / ${service.unitLabel}'
+                                  : 'From ₹${price.toStringAsFixed(0)}'
+                              : 'Price on request',
                       style: const TextStyle(
                         color: AirwayColors.text,
                         fontSize: 13,

@@ -71,6 +71,14 @@ class ServicePricingReadinessTests(TestCase):
         self.assertTrue(service_pricing_ready(self.quote_with_fee))
         self.assertFalse(service_pricing_ready(self.per_unit))
 
+    def test_per_unit_service_becomes_bookable_when_a_unit_rate_variant_exists(self):
+        self.assertFalse(service_pricing_ready(self.per_unit))
+        ServiceVariant.objects.create(
+            service=self.per_unit, title="Rate per sq ft",
+            mrp=Decimal("18.00"), price=Decimal("15.00"),
+        )
+        self.assertTrue(service_pricing_ready(self.per_unit))
+
     def test_customer_service_api_hides_unpriced_and_unsupported_services(self):
         response = APIClient().get("/api/v1/catalog/services/?launch_only=true")
         self.assertEqual(response.status_code, 200, response.data)

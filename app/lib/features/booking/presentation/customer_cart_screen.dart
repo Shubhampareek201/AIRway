@@ -342,7 +342,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                   '${entry.key.toString().replaceAll('_', ' ')}: ${entry.value}',
                   style: const TextStyle(fontSize: 11, color: sub),
                 ),
-            Text('Qty ' + item['quantity'].toString() + ' • ₹' + number(item['line_total']).toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w800, color: violet, fontSize: 12)),
+            Text(
+              (item['service_unit_label']?.toString().isNotEmpty == true
+                  ? item['quantity'].toString() + ' ' + item['service_unit_label'].toString()
+                  : 'Qty ' + item['quantity'].toString()) +
+              ' • ₹' + number(item['line_total']).toStringAsFixed(0),
+              style: const TextStyle(fontWeight: FontWeight.w800, color: violet, fontSize: 12),
+            ),
           ])),
           IconButton(onPressed: busy ? null : () => removeItem(id), icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
         ]),

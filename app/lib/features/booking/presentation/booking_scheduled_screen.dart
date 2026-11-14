@@ -308,6 +308,10 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     if (_flowStep >= steps.length) _flowStep = steps.length - 1;
     final step = steps[_flowStep];
     final isLast = _flowStep == steps.length - 1;
+    final quantityLimit = service.pricingType == 'per_unit' ? 10000 : 20;
+    final quantityLabel = service.pricingType == 'per_unit' && service.unitLabel.isNotEmpty
+        ? service.unitLabel
+        : 'services';
     final slivers = <Widget>[
       if (serviceImage?.isNotEmpty == true) _imageSliver(serviceImage),
       SliverToBoxAdapter(
@@ -413,15 +417,15 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
                         : null,
                     icon: const Icon(Icons.remove_circle_outline),
                   ),
-                  Text('$_quantity', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  Text('$_quantity $quantityLabel', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                   IconButton(
-                    onPressed: _quantity < 20
+                    onPressed: _quantity < quantityLimit
                         ? () => setState(() => _quantity++)
                         : null,
                     icon: const Icon(Icons.add_circle_outline),
                   ),
                   const Spacer(),
-                  const Text('Maximum 20', style: TextStyle(color: _Ui.sub, fontSize: 11)),
+                  Text('Maximum $quantityLimit', style: const TextStyle(color: _Ui.sub, fontSize: 11)),
                 ],
               ),
             ),

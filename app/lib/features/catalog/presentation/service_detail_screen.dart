@@ -245,7 +245,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final v = _matchingVariants(service)[index];
-                return _variantCard(v, service.categoryName, service.audience);
+                return _variantCard(v, service.categoryName, service.audience, service.unitLabel);
               },
             ),
           ),
@@ -366,7 +366,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
   );
 
-  Widget _variantCard(ServiceVariant v, String categoryName, String audience) => Container(
+  Widget _variantCard(ServiceVariant v, String categoryName, String audience, String unitLabel) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
@@ -450,7 +450,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 style: const TextStyle(fontSize: 12, decoration: TextDecoration.lineThrough, color: _Ui.sub),
               ),
             Text(
-              v.price > 0 ? '₹${v.price.toStringAsFixed(0)}' : 'Price on request',
+              v.price > 0
+                  ? unitLabel.isNotEmpty ? '₹${v.price.toStringAsFixed(0)} / $unitLabel' : '₹${v.price.toStringAsFixed(0)}'
+                  : 'Price on request',
               textAlign: TextAlign.end,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _Ui.violet),
             ),
