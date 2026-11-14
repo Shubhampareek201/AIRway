@@ -261,7 +261,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                     ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+              padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
               child: Row(
                 children: [
                   Expanded(
