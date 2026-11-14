@@ -108,16 +108,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   List<Service> get _filteredServices {
     final lower = _query.trim().toLowerCase();
     final beautyAudience = widget.initialAnswers['beauty_audience']?.toString();
-    final electricalGroup = widget.initialAnswers['electrical_group']?.toString();
     return _services.where((service) {
       if (beautyAudience != null &&
           !BeautyAudience.includes(
             selected: beautyAudience,
             serviceAudience: service.audience,
           )) return false;
-      if (electricalGroup != null && service.categoryName != electricalGroup) {
-        return false;
-      }
       if (lower.isEmpty) return true;
       return service.title.toLowerCase().contains(lower) ||
           service.description?.toLowerCase().contains(lower) == true ||
@@ -131,8 +127,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       return variant.attributes.entries.every((entry) =>
           widget.initialAnswers[entry.key]?.toString() == entry.value.toString());
     }).toList();
-    if (matchingVariants.isNotEmpty) return matchingVariants.first.price;
-    if (service.variants.isEmpty) return service.visitFee;
+    if (matchingVariants.isNotEmpty) {
+      return matchingVariants.map((variant) => variant.price).reduce((a, b) => a < b ? a : b);
+    }
+    if (service.pricingType == "quote") return 0;
+    if (service.variants.isEmpty) return 0;
     return 0;
   }
 
@@ -416,7 +415,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      price > 0 ? '₹${price.toStringAsFixed(0)}' : 'Price on request',
+                      service.pricingType == 'quote'
+                          ? (service.visitFee > 0 ? 'Visit fee ₹${service.visitFee.toStringAsFixed(0)}' : 'Inspection & quote')
+                          : price > 0 ? 'From ₹${price.toStringAsFixed(0)}' : 'Price on request',
                       style: const TextStyle(
                         color: AirwayColors.text,
                         fontSize: 13,

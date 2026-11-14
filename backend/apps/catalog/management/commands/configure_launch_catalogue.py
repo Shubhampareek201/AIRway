@@ -1,9 +1,9 @@
 from decimal import Decimal, ROUND_UP
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
+from django.db import transaction
 
-from apps.accounts.models import Address
-from apps.catalog.models import CityService, Service, ServiceVariant, AddOn
+from apps.catalog.models import AddOn, Category, Service, ServiceVariant
 
 
 ROOT_CATEGORIES = {"Beauty", "Car Wash", "Electrical", "Home Cleaning"}
@@ -28,59 +28,87 @@ def _package_price(root, service_title, package_title, attributes):
     service = service_title.lower()
     package = package_title.lower()
     if root == "Car Wash":
+        vehicle = str((attributes or {}).get("vehicle_type", "")).lower()
+        factor = Decimal("1.00")
+        if "sedan" in vehicle:
+            factor = Decimal("1.33")
+        elif "compact suv" in vehicle:
+            factor = Decimal("1.50")
+        elif "suv" in vehicle or "muv" in vehicle or "mpv" in vehicle:
+            factor = Decimal("1.67")
+        elif "luxury" in vehicle:
+            factor = Decimal("2.00")
         if "monthly" in service or "plan" in service:
-            base = 999 if "7-day" in package or "weekly" in package else 1999
+            base = 999
         elif "complete" in service:
-            base = 599 if "basic" in package else 999 if "deep" in package else 1499
+            base = 699 if "basic" in package else 999 if "deep" in package else 1499
         elif "interior" in service:
             base = 399 if "basic" in package else 799 if "deep" in package else 1199
         elif "exterior" in service:
-            base = 249 if "basic" in package else 399 if "deep" in package else 599
+            base = 299 if "basic" in package else 399 if "deep" in package else 599
         else:
             base = 999 if "basic" in package else 1999 if "premium" in package else 1499
-        vehicle = str((attributes or {}).get("vehicle_type", "")).lower()
-        factor = Decimal("1.0")
-        if "suv" in vehicle or "muv" in vehicle or "mpv" in vehicle:
-            factor = Decimal("1.20")
-        if "luxury" in vehicle:
-            factor = Decimal("1.50")
         return _money(Decimal(base) * factor)
 
     if root == "Beauty":
-        if any(word in service for word in ("bridal", "engagement", "party makeup", "hd makeup")):
-            base = 999 if "basic" in package or "party" in package else 2499 if "engagement" in package else 4999
-        elif any(word in service for word in ("facial", "cleanup", "bleach")):
-            base = 499 if "basic" in package else 899 if "deep" in package else 1299
-        elif "wax" in service:
-            base = 199 if "regular" in package else 399 if "rica" in package else 699
-        elif any(word in service for word in ("colour", "color", "keratin", "rebond", "smoothening", "highlight")):
-            base = 899 if "root" in package or "basic" in package else 1499 if "global" in package or "deep" in package else 2499
-        elif "spa" in service:
-            base = 499 if "basic" in package else 799 if "deep" in package else 1199
-        elif "haircut" in service or "trimming" in service:
-            base = 199 if "regular" in package else 349
-        else:
-            base = 299 if "basic" in package else 499 if "premium" not in package else 799
-        return _money(base)
+        exact = {
+            "face cleanup": Decimal("349"),
+            "fruit facial": Decimal("499"),
+            "de-tan facial": Decimal("599"),
+            "gold facial": Decimal("699"),
+            "diamond facial": Decimal("899"),
+            "brightening facial": Decimal("1299"),
+            "hydra facial": Decimal("1899"),
+            "face bleaching": Decimal("249"),
+            "full arms": Decimal("249"),
+            "full legs": Decimal("299"),
+            "underarms": Decimal("79"),
+            "full body wax": Decimal("899"),
+            "eyebrow threading": Decimal("39"),
+            "upper lip threading": Decimal("30"),
+            "full face threading": Decimal("149"),
+            "manicure": Decimal("349"),
+            "pedicure": Decimal("449"),
+            "women's haircut": Decimal("299"),
+            "hd makeup": Decimal("1499"),
+        }
+        for key, price in exact.items():
+            if key in service:
+                return price
+        if "bridal" in service:
+            return Decimal("6999")
+        if "keratin" in service:
+            return Decimal("3499")
+        if "smoothening" in service or "straightening" in service:
+            return Decimal("2999")
+        if "global hair colour" in service or "global colour" in service:
+            return Decimal("1499")
+        if "hair spa" in service:
+            return Decimal("649") if "short" in package or "shoulder" in package else Decimal("899")
+        if "wax" in service:
+            return Decimal("299") if "leg" in service else Decimal("249")
+        if "haircut" in service or "trimming" in service:
+            return Decimal("299") if "women" in service else Decimal("199")
+        if "threading" in service:
+            return Decimal("39")
+        return Decimal("299") if "basic" in package else Decimal("499") if "deep" in package else Decimal("799")
 
     if root == "Home Cleaning":
+        if "full home" in service:
+            return Decimal("0.00")  # BHK-specific variants are configured by the booking-flow command.
         if "bathroom" in service:
-            base = 399 if "basic" in package else 599 if "deep" in package else 799
-        elif "kitchen" in service:
-            base = 799 if "basic" in package else 1299 if "deep" in package else 1799
-        elif "full home" in service:
-            base = 1499 if "basic" in package else 2499 if "deep" in package else 3499
-        elif "sofa" in service or "upholstery" in service:
-            base = 299 if "basic" in package else 499 if "deep" in package else 699
-        elif "mattress" in service:
-            base = 299 if "basic" in package else 499 if "deep" in package else 699
-        elif "carpet" in service or "rug" in service:
-            base = 199 if "basic" in package else 349 if "deep" in package else 499
-        elif "window" in service or "glass" in service or "balcony" in service or "terrace" in service:
-            base = 399 if "basic" in package else 699 if "deep" in package else 999
-        else:
-            base = 499 if "basic" in package else 799 if "deep" in package else 1199
-        return _money(base)
+            return Decimal("499") if "basic" in package else Decimal("599") if "deep" in package else Decimal("799")
+        if "kitchen" in service:
+            return Decimal("799") if "basic" in package else Decimal("999") if "deep" in package else Decimal("1799")
+        if "sofa" in service or "upholstery" in service:
+            return Decimal("0.00")  # Per-seat calculation is not supported by the current booking snapshot.
+        if "mattress" in service:
+            return Decimal("499") if "basic" in package else Decimal("599") if "deep" in package else Decimal("799")
+        if "carpet" in service or "rug" in service:
+            return Decimal("0.00")  # Per-square-foot calculation is not supported by the current booking snapshot.
+        if "window" in service or "glass" in service or "balcony" in service or "terrace" in service:
+            return Decimal("399") if "basic" in package else Decimal("699") if "deep" in package else Decimal("999")
+        return Decimal("499") if "basic" in package else Decimal("799") if "deep" in package else Decimal("1199")
 
     return Decimal("0.00")
 
@@ -89,117 +117,195 @@ def _service_base_price(root, service):
     title = service.title.lower()
     if root == "Electrical":
         if service.pricing_type == Service.PricingType.QUOTE or service.booking_mode == Service.BookingMode.INSPECTION:
-            return Decimal("199.00")
-        if any(word in title for word in ("fan", "light", "bulb", "led", "tube", "switch", "socket", "doorbell")):
-            return Decimal("249.00")
-        if any(word in title for word in ("geyser", "inverter", "ups", "pump", "motor")):
-            return Decimal("349.00")
+            return Decimal("149.00")
+        if "fan" in title and "repair" in title:
+            return Decimal("299.00")
+        if any(word in title for word in ("fan", "light", "bulb", "led", "tube", "switch", "socket", "doorbell", "fuse")):
+            return Decimal("149.00") if any(word in title for word in ("switch", "socket", "fuse")) else Decimal("249.00")
+        if any(word in title for word in ("geyser", "inverter", "ups", "pump", "motor", "mcb")):
+            return Decimal("299.00") if "mcb" in title else Decimal("499.00")
         return Decimal("299.00")
     if root == "Beauty":
-        if any(word in title for word in ("threading", "eyebrow", "upper lip", "chin")):
-            return Decimal("79.00")
-        if any(word in title for word in ("haircut", "hair wash", "beard", "shave", "trim")):
-            return Decimal("199.00")
-        if "massage" in title:
-            return Decimal("399.00")
-        if "manicure" in title or "pedicure" in title or "nail" in title:
-            return Decimal("299.00")
+        exact = {
+            "eyebrow threading": Decimal("39"), "upper lip threading": Decimal("30"),
+            "full face threading": Decimal("149"), "face bleaching": Decimal("249"),
+            "face cleanup": Decimal("349"), "fruit facial": Decimal("499"),
+            "de-tan facial": Decimal("599"), "gold facial": Decimal("699"),
+            "diamond facial": Decimal("899"), "brightening facial": Decimal("1299"),
+            "hydra facial": Decimal("1899"), "full arms": Decimal("249"),
+            "full legs": Decimal("299"), "underarms": Decimal("79"),
+            "full body wax": Decimal("899"), "manicure": Decimal("349"),
+            "pedicure": Decimal("449"), "women's haircut": Decimal("299"),
+            "hd makeup": Decimal("1499"),
+        }
+        for key, price in exact.items():
+            if key in title:
+                return price
+        if "bridal" in title:
+            return Decimal("6999")
+        if "keratin" in title:
+            return Decimal("3499")
+        if "smoothening" in title or "straightening" in title:
+            return Decimal("2999")
+        if "haircut" in title or "trim" in title:
+            return Decimal("299")
         if "wax" in title:
-            return Decimal("199.00")
-        if "makeup" in title or "bridal" in title:
-            return Decimal("999.00")
-        return Decimal("499.00")
+            return Decimal("249")
+        if "threading" in title:
+            return Decimal("39")
+        if "manicure" in title:
+            return Decimal("349")
+        if "pedicure" in title:
+            return Decimal("449")
+        return Decimal("499")
     if root == "Car Wash":
         return Decimal("299.00")
     if root == "Home Cleaning":
-        return Decimal("499.00")
+        if "bathroom" in title:
+            return Decimal("499")
+        if "kitchen" in title:
+            return Decimal("999")
+        if "sofa" in title:
+            return Decimal("0.00")
+        if "mattress" in title:
+            return Decimal("499")
+        if "carpet" in title or "rug" in title:
+            return Decimal("0.00")
+        if "full home" in title:
+            return Decimal("0.00")
+        return Decimal("499")
     return Decimal("0.00")
 
 
 def _addon_price(root, title):
     name = title.lower()
-    if any(word in name for word in ("polish", "conditioning", "stain", "hard water")):
-        return Decimal("199.00")
-    if any(word in name for word in ("shampoo", "deep", "removal", "cleaning")):
-        return Decimal("249.00")
-    if any(word in name for word in ("engine", "ceramic", "graphene", "coating")):
-        return Decimal("499.00")
     if root == "Beauty":
-        return Decimal("149.00")
-    return Decimal("99.00")
+        if "thread" in name or "eyebrow" in name:
+            return Decimal("39")
+        if "wax" in name:
+            return Decimal("149")
+        return Decimal("149")
+    if root == "Car Wash":
+        if any(word in name for word in ("ceramic", "graphene", "engine")):
+            return Decimal("499")
+        return Decimal("149")
+    if root == "Home Cleaning":
+        return Decimal("199") if any(word in name for word in ("sofa", "seat", "stain")) else Decimal("149")
+    return Decimal("99")
 
 
 class Command(BaseCommand):
     help = (
-        "Set indicative launch prices without overwriting non-zero admin prices, "
-        "and enable the launch catalogue for the city of a selected customer address."
+        "Configure indicative Jaipur-benchmarked launch prices. Preview only by default; "
+        "pass --apply to write prices. Existing non-zero prices are never overwritten."
     )
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--address-id",
-            type=int,
-            required=True,
-            help="Existing customer Address ID; its active city receives the launch catalogue.",
+            "--apply",
+            action="store_true",
+            help="Persist price configuration. Without this flag, all writes roll back.",
         )
 
     def handle(self, *args, **options):
-        address_id = options["address_id"]
+        summary = {}
         try:
-            address = Address.objects.select_related("zone__city").get(
-                pk=address_id, deleted_at__isnull=True
-            )
-        except Address.DoesNotExist as exc:
-            raise CommandError(f"Active address {address_id} was not found.") from exc
+            with transaction.atomic():
+                summary = self._configure()
+                if not options["apply"]:
+                    raise RuntimeError("AIRWAY_CATALOGUE_DRY_RUN")
+        except RuntimeError as exc:
+            if str(exc) != "AIRWAY_CATALOGUE_DRY_RUN":
+                raise
+            self.stdout.write(self.style.WARNING("DRY RUN ONLY — no database changes were saved."))
+        self.stdout.write("Indicative launch price plan (INR):")
+        for key, value in summary.items():
+            self.stdout.write(f"  {key}: {value}")
+        if options["apply"]:
+            self.stdout.write(self.style.SUCCESS("Price configuration applied. Existing non-zero prices were preserved."))
 
-        if not address.zone_id or not address.zone.is_active:
-            raise CommandError(
-                f"Address {address_id} has no active service zone. Fix its zone before enabling services."
-            )
-        city = address.zone.city
-        if not city.is_active:
-            raise CommandError(f"{city.name} is inactive. Activate the city before enabling services.")
-
+    def _configure(self):
         services = [
-            service for service in Service.objects.select_related("category__parent").filter(
+            service for service in Service.objects.select_related("category").filter(
                 is_active=True, category__is_active=True
             )
             if _root_name(service.category) in ROOT_CATEGORIES
         ]
         if not services:
-            raise CommandError("No active launch-catalogue services were found. Run seed_launch_catalogue first.")
+            raise RuntimeError("No active launch catalogue services found.")
 
-        counts = {"city_services_created": 0, "packages_priced": 0, "addons_priced": 0, "services_priced": 0}
+        counts = {
+            "existing_services_reviewed": len(services),
+            "variants_priced": 0,
+            "standard_variants_created": 0,
+            "inspection_fees_set": 0,
+            "addons_priced": 0,
+            "per_unit_services_left_unpriced_for_proper_quantity_support": 0,
+            "existing_nonzero_prices_preserved": 0,
+        }
         for service in services:
-            _, created = CityService.objects.update_or_create(
-                city=city, service=service, defaults={"is_active": True}
-            )
-            if created:
-                counts["city_services_created"] += 1
-
             root = _root_name(service.category)
-            variants = list(service.variants.filter(is_active=True))
-            for variant in variants:
-                if variant.price > 0:
-                    if variant.mrp <= 0:
-                        variant.mrp = variant.price
-                        variant.save(update_fields=["mrp", "updated_at"])
-                    continue
-                price = _package_price(root, service.title, variant.title, variant.attributes)
-                if price <= 0:
-                    price = _service_base_price(root, service)
-                if price <= 0:
-                    continue
-                variant.price = price
-                variant.mrp = _mrp(price)
-                variant.save(update_fields=["price", "mrp", "updated_at"])
-                counts["packages_priced"] += 1
+            if service.pricing_type == Service.PricingType.QUOTE:
+                if service.booking_mode == Service.BookingMode.INSPECTION and service.visit_fee <= 0:
+                    service.visit_fee = Decimal("149.00")
+                    service.save(update_fields=["visit_fee", "updated_at"])
+                    counts["inspection_fees_set"] += 1
+                # Quote services remain quotes; never convert quote variants into fixed packages.
+                continue
+
+            if service.pricing_type == Service.PricingType.PER_UNIT:
+                counts["per_unit_services_left_unpriced_for_proper_quantity_support"] += 1
+                continue
+
+            variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
+            if not variants:
+                price = _service_base_price(root, service)
+                if price > 0:
+                    variant, created = ServiceVariant.objects.get_or_create(
+                        service=service,
+                        title="Standard",
+                        defaults={
+                            "description": "Standard service labour/package. Confirm any materials or scope exclusions before booking.",
+                            "mrp": _mrp(price),
+                            "price": price,
+                            "duration_minutes": service.duration_minutes,
+                            "included_tasks": [],
+                            "attributes": {},
+                            "is_active": True,
+                        },
+                    )
+                    if created:
+                        counts["standard_variants_created"] += 1
+                    elif variant.price <= 0:
+                        variant.price = price
+                        variant.mrp = _mrp(price)
+                        variant.save(update_fields=["price", "mrp", "updated_at"])
+                        counts["variants_priced"] += 1
+                    else:
+                        counts["existing_nonzero_prices_preserved"] += 1
+            else:
+                for variant in variants:
+                    if variant.price > 0:
+                        counts["existing_nonzero_prices_preserved"] += 1
+                        continue
+                    price = _package_price(root, service.title, variant.title, variant.attributes)
+                    if price <= 0 and not (
+                        root == "Home Cleaning"
+                        and any(token in service.title.lower() for token in (
+                            "full home", "sofa", "upholstery", "carpet", "rug"
+                        ))
+                    ):
+                        price = _service_base_price(root, service)
+                    if price <= 0:
+                        continue
+                    variant.price = price
+                    variant.mrp = _mrp(price)
+                    variant.save(update_fields=["price", "mrp", "updated_at"])
+                    counts["variants_priced"] += 1
 
             for addon in service.addons.filter(is_active=True):
                 if addon.price > 0:
-                    if addon.mrp <= 0:
-                        addon.mrp = addon.price
-                        addon.save(update_fields=["mrp", "updated_at"])
+                    counts["existing_nonzero_prices_preserved"] += 1
                     continue
                 price = _addon_price(root, addon.title)
                 addon.price = price
@@ -207,16 +313,4 @@ class Command(BaseCommand):
                 addon.save(update_fields=["price", "mrp", "updated_at"])
                 counts["addons_priced"] += 1
 
-            if not variants and service.visit_fee <= 0:
-                service.visit_fee = _service_base_price(root, service)
-                service.save(update_fields=["visit_fee", "updated_at"])
-                counts["services_priced"] += 1
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Launch catalogue configured for {city.name}: " +
-            ", ".join(f"{key}={value}" for key, value in counts.items())
-        ))
-        self.stdout.write(
-            "Rates are indicative test prices in INR, not guaranteed market quotes. "
-            "Non-zero package/add-on prices are preserved; inspection and quote jobs use visit fees."
-        )
+        return counts

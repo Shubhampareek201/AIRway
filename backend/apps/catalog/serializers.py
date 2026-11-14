@@ -117,7 +117,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     images = ServiceImageSerializer(many=True, read_only=True)
     variants = serializers.SerializerMethodField()
     addons = serializers.SerializerMethodField()
-    form_fields = FormFieldSerializer(many=True, read_only=True)
+    form_fields = serializers.SerializerMethodField()
     category_name = serializers.CharField(source="category.title", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
     category_root_name = serializers.SerializerMethodField()
@@ -142,6 +142,10 @@ class ServiceSerializer(serializers.ModelSerializer):
         if available_ids is not None:
             queryset = queryset.filter(pk__in=available_ids)
         return ServiceVariantSerializer(queryset, many=True, context=self.context).data
+
+    def get_form_fields(self, obj):
+        queryset = obj.form_fields.filter(is_active=True).order_by("sort_order", "id")
+        return FormFieldSerializer(queryset, many=True, context=self.context).data
 
     def get_addons(self, obj):
         queryset = obj.addons.filter(is_active=True, price__gt=0)

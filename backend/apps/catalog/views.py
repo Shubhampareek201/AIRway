@@ -154,12 +154,27 @@ LAUNCH_CATEGORY_SLUGS = ("car-wash", "beauty", "electrical", "home-cleaning")
 
 
 def _launch_catalogue_filter(queryset):
-    """Keep the mobile launch catalogue inside its four approved root trees."""
-    return queryset.filter(
-        Q(category__slug__in=LAUNCH_CATEGORY_SLUGS, category__parent__isnull=True)
-        | Q(category__parent__slug__in=LAUNCH_CATEGORY_SLUGS,
-            category__parent__parent__isnull=True)
+    """Keep launch services inside the four approved trees at any nesting depth."""
+    categories = list(
+        Category.objects.filter(is_active=True).values("id", "parent_id", "slug")
     )
+    children_by_parent = {}
+    roots = set()
+    for row in categories:
+        if row["parent_id"] is None and row["slug"] in LAUNCH_CATEGORY_SLUGS:
+            roots.add(row["id"])
+        if row["parent_id"] is not None:
+            children_by_parent.setdefault(row["parent_id"], []).append(row["id"])
+
+    visible_ids = set(roots)
+    pending = list(roots)
+    while pending:
+        parent_id = pending.pop()
+        for child_id in children_by_parent.get(parent_id, []):
+            if child_id not in visible_ids:
+                visible_ids.add(child_id)
+                pending.append(child_id)
+    return queryset.filter(category_id__in=visible_ids)
 
 
 def _customer_priced_service_ids():

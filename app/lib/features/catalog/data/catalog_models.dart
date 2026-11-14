@@ -91,53 +91,8 @@ class Category {
     this.children = const [],
   });
 
-  /// Admin configuration wins. These initial AIRway journeys are defaults
-  /// for the four launch categories and can be replaced from the Admin panel.
-  List<Map<String, dynamic>> get customerFlowSteps {
-    if (flowSteps.isNotEmpty) return flowSteps;
-    if (parentId != null) return const [];
-    final identity = '${slug.toLowerCase()} ${title.toLowerCase()}';
-    if (identity.contains('car') || identity.contains('vehicle')) {
-      return [
-        {
-          'key': 'vehicle_type',
-          'title': 'Select vehicle type',
-          'type': 'select',
-          'required': true,
-          'options': [
-            {'label': 'Hatchback', 'value': 'Hatchback', 'image': 'https://images.pexels.com/photos/31042170/pexels-photo-31042170.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'Sedan', 'value': 'Sedan', 'image': 'https://images.pexels.com/photos/4797547/pexels-photo-4797547.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'Compact SUV', 'value': 'Compact SUV', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'SUV – 5 Seater', 'value': 'SUV – 5 Seater', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'SUV – 7 Seater', 'value': 'SUV – 7 Seater', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'MUV / MPV', 'value': 'MUV / MPV', 'image': 'https://images.pexels.com/photos/5093241/pexels-photo-5093241.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'Mini Bus / Traveller', 'value': 'Mini Bus / Traveller', 'image': 'https://images.pexels.com/photos/5093241/pexels-photo-5093241.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'Luxury Car', 'value': 'Luxury Car', 'image': 'https://images.pexels.com/photos/9452235/pexels-photo-9452235.jpeg?auto=compress&cs=tinysrgb&w=900'},
-            {'label': 'Luxury SUV / Premium 7-Seater', 'value': 'Luxury SUV / Premium 7-Seater', 'image': 'https://images.pexels.com/photos/27918358/pexels-photo-27918358.jpeg?auto=compress&cs=tinysrgb&w=900'},
-          ],
-        },
-        {'key': 'vehicle_make', 'title': 'Car manufacturer (optional)', 'type': 'text', 'required': false},
-        {'key': 'vehicle_model', 'title': 'Car model (optional)', 'type': 'text', 'required': false},
-      ];
-    }
-    if (identity.contains('electrical') || identity.contains('electrician')) {
-      return [
-        {
-          'key': 'electrical_group',
-          'title': 'Choose electrical service group',
-          'type': 'select',
-          'required': true,
-          'options': [
-            'Fan Services', 'Lighting Services', 'Switch & Socket Services',
-            'Wiring & Electrical Repairs', 'Inverter & UPS',
-            'Geyser & Electrical Connections', 'Electrical Inspection & Setup',
-          ],
-          'filter_children': true,
-        },
-      ];
-    }
-    return const [];
-  }
+  /// Customer decision steps are database-owned; no client-side catalogue defaults.
+  List<Map<String, dynamic>> get customerFlowSteps => flowSteps;
 
   factory Category.fromMap(Map<String, dynamic> map) {
     return Category(
