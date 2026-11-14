@@ -85,11 +85,6 @@ class BookingRatingViewSet(viewsets.ModelViewSet):
                 {"detail": "You can rate only the other participant in this booking."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if serializer.validated_data["rated_id"] != expected_rated_id:
-            return Response(
-                {"detail": "You can rate only the other participant in this booking."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         try:
             with transaction.atomic():
