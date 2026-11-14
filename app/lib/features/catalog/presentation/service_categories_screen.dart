@@ -214,69 +214,92 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     return Ingram(
       onTap: () => _openCategory(category),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AirwayColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AirwayColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AirwaySpacing.imageRadius),
-              child: SizedBox(
-                width: double.infinity,
-                height: 138,
-                child: imageUrl == null
-                    ? Container(
+            SizedBox(
+              height: 168,
+              child: imageUrl == null
+                  ? Container(
+                      color: AirwayColors.primarySoft,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        _categoryIcon(category.title),
+                        color: AirwayColors.primary,
+                        size: 48,
+                      ),
+                    )
+                  : Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
                         color: AirwayColors.primarySoft,
                         alignment: Alignment.center,
-                        child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
-                      )
-                    : Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AirwayColors.primarySoft,
-                          alignment: Alignment.center,
-                          child: Icon(_categoryIcon(category.title), color: AirwayColors.primary, size: 44),
+                        child: Icon(
+                          _categoryIcon(category.title),
+                          color: AirwayColors.primary,
+                          size: 48,
                         ),
                       ),
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 15),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          category.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: AirwayColors.text,
+                          ),
+                        ),
+                        if (category.children.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '${category.children.length} subcategories',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AirwayColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: AirwayColors.primary,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              category.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AirwayColors.text),
-            ),
-            if (category.children.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                '${category.children.length} subcategories',
-                style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  List<Widget> _buildCategoryGrid() {
-    final rows = <Widget>[];
-    for (var i = 0; i < _categories.length; i += 2) {
-      final pair = _categories.sublist(i, (i + 2).clamp(0, _categories.length));
-      rows.add(Row(
-        children: [
-          for (final category in pair) ...[
-            Expanded(child: _categoryCard(category)),
-            if (pair.length == 2 && category != pair.last) const SizedBox(width: 12),
-          ],
-          if (pair.length < 2) const Expanded(child: SizedBox()),
+  List<Widget> _buildCategoryGrid() => [
+        for (var index = 0; index < _categories.length; index++) ...[
+          _categoryCard(_categories[index]),
+          if (index != _categories.length - 1) const SizedBox(height: 14),
         ],
-      ));
-      if (i + 2 < _categories.length) rows.add(const SizedBox(height: 12));
-    }
-    return rows;
-  }
+      ];
 
   @override
   Widget build(BuildContext context) {
