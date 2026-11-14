@@ -889,7 +889,11 @@ class CartItemSerializer(serializers.ModelSerializer):
             })
         for field in visible_fields:
             value = answers.get(field.key)
-            if field.is_required and value in (None, ""):
+            if (
+                field.is_required
+                and value in (None, "")
+                and not self.context.get("allow_incomplete", False)
+            ):
                 raise serializers.ValidationError({"form_answers": f"{field.label} is required."})
             if value in (None, ""):
                 continue
