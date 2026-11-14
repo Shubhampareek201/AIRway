@@ -235,7 +235,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              height: 112,
+              height: 93,
               child: imageUrl == null
                   ? Container(
                       color: AirwayColors.primarySoft,
