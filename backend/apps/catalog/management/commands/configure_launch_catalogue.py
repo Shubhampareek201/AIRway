@@ -382,7 +382,8 @@ class Command(BaseCommand):
                         counts["fixed_services_still_unpriced"] += 1
 
                 if (
-                    root == "Home Cleaning"
+                    variants
+                    and root == "Home Cleaning"
                     and "full home" in service.title.lower()
                     and not service.variants.filter(is_active=True, price__gt=0).exists()
                 ):
