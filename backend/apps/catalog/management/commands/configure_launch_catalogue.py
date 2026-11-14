@@ -250,6 +250,7 @@ class Command(BaseCommand):
             "quote_services_configured_for_inspection": 0,
             "addons_priced": 0,
             "per_unit_services_priced": 0,
+            "per_unit_services_still_unpriced": 0,
             "fixed_services_still_unpriced": 0,
             "existing_nonzero_prices_preserved": 0,
         }
@@ -324,6 +325,8 @@ class Command(BaseCommand):
                         counts["variants_priced"] += 1
                 if service.variants.filter(is_active=True, price__gt=0).exists():
                     counts["per_unit_services_priced"] += 1
+                else:
+                    counts["per_unit_services_still_unpriced"] += 1
             else:
                 variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
                 if not variants:
@@ -377,6 +380,13 @@ class Command(BaseCommand):
                         root == "Home Cleaning" and "full home" in service.title.lower()
                     ):
                         counts["fixed_services_still_unpriced"] += 1
+
+                if (
+                    root == "Home Cleaning"
+                    and "full home" in service.title.lower()
+                    and not service.variants.filter(is_active=True, price__gt=0).exists()
+                ):
+                    counts["fixed_services_still_unpriced"] += 1
 
             # Add-ons can still be selected on quote/inspection services; price
             # them independently of the service's base pricing model.
