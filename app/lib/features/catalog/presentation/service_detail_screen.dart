@@ -471,7 +471,18 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   );
   }
 
-  Widget _addonCard(AddOn a, String categoryName) => Container(
+  Widget _addonCard(AddOn a, String categoryName) {
+    final addonImage = a.image?.isNotEmpty == true
+        ? a.image!
+        : CatalogImageResolver.forService(
+              title: a.title,
+              categoryName: categoryName,
+            ) ??
+            CatalogImageResolver.forService(
+              title: categoryName,
+              categoryName: categoryName,
+            );
+    return Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
@@ -483,19 +494,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         if (a.title.isNotEmpty)
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: (a.image?.isNotEmpty == true ||
-                    CatalogImageResolver.forService(
-                          title: a.title,
-                          categoryName: categoryName,
-                        ) !=
-                        null)
+            child: addonImage != null
                 ? Image.network(
-                    a.image?.isNotEmpty == true
-                        ? a.image!
-                        : CatalogImageResolver.forService(
-                            title: a.title,
-                            categoryName: categoryName,
-                          )!,
+                    addonImage,
                     width: 58,
                     height: 58,
                     fit: BoxFit.cover,
@@ -539,6 +540,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       ],
     ),
   );
+  }
 
   Widget _optionImagePlaceholder({double size = 76}) => Container(
     width: size,
