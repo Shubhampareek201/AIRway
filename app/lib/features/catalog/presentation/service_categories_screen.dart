@@ -281,7 +281,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                           ),
                         ),
                         if (category.children.isNotEmpty) ...[
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 2),
                           Text(
                             '${category.children.length} subcategories',
                             style: const TextStyle(
