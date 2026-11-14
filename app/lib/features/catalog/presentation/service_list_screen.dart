@@ -5,9 +5,9 @@ import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/catalog/data/beauty_audience.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
-import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
+import 'package:airway/features/booking/data/booking_api.dart';
 
 /// Backend-driven service listing. Service photography uses the same canonical
 /// resolver as Home and service details; admin-uploaded images take priority.
@@ -151,30 +151,92 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _startAddFlow(Service service) async {
-    final added = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BookingScheduledScreen(
-          serviceId: service.id,
-          serviceTitle: service.title,
-          addressId: widget.addressId,
-          initialCategoryAnswers: widget.initialAnswers,
-        ),
-      ),
-    );
-    if (!mounted || added != true) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${service.title} added to cart'),
-        action: SnackBarAction(
-          label: 'VIEW CART',
-          onPressed: () => Navigator.push<void>(
-            context,
-            MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+    ServiceVariant? selectedVariant;
+    if (service.variants.isNotEmpty) {
+      selectedVariant = await showModalBottomSheet<ServiceVariant>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => SafeArea(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 38, height: 4, decoration: BoxDecoration(
+                  color: AirwayColors.border, borderRadius: BorderRadius.circular(4),
+                ))),
+                const SizedBox(height: 18),
+                Text(service.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AirwayColors.text)),
+                const SizedBox(height: 5),
+                const Text('Choose a package to add this service to your cart.', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                const SizedBox(height: 14),
+                for (final variant in service.variants)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(13),
+                      onTap: () => Navigator.pop(sheetContext, variant),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AirwayColors.border),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Row(children: [
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(variant.title, style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text)),
+                            if (variant.durationMinutes > 0)
+                              Text('${variant.durationMinutes} min', style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary)),
+                          ])),
+                          Text('₹${variant.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AirwayColors.primary)),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.add_circle_outline, color: AirwayColors.primary),
+                        ]),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+      if (selectedVariant == null || !mounted) return;
+    }
+
+    try {
+      final updatedCart = await BookingApi.addCartItem(
+        serviceId: service.id,
+        variantId: selectedVariant?.id,
+        addonSelections: const [],
+        formAnswers: const {},
+        categoryAnswers: widget.initialAnswers,
+      );
+      CustomerCartState.updateFromCart(updatedCart);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${service.title} added to cart'),
+          action: SnackBarAction(
+            label: 'VIEW CART',
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not add service: $e')),
+      );
+    }
   }
 
   @override
