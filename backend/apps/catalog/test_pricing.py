@@ -87,6 +87,21 @@ class ServicePricingReadinessTests(TestCase):
         self.assertEqual(ids, {self.fixed_priced.id, self.quote_with_fee.id})
 
 
+    def test_priced_customer_detail_hides_unpriced_fixed_variants(self):
+        unpriced_variant = ServiceVariant.objects.create(
+            service=self.fixed,
+            title="Legacy unpriced option",
+            mrp=Decimal("0.00"),
+            price=Decimal("0.00"),
+        )
+        response = APIClient().get(
+            f"/api/v1/catalog/services/{self.fixed.id}/?launch_only=true&priced_only=true"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        visible_ids = {row["id"] for row in response.data["variants"]}
+        self.assertIn(self.fixed_variant.id, visible_ids)
+        self.assertNotIn(unpriced_variant.id, visible_ids)
+
     def test_priced_customer_catalogue_keeps_quote_package_choices_visible(self):
         quote_variant = ServiceVariant.objects.create(
             service=self.quote_with_fee,
