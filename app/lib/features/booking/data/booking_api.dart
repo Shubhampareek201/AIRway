@@ -103,6 +103,7 @@ class BookingApi {
     required List<Map<String, dynamic>> addonSelections,
     required Map<String, dynamic> formAnswers,
     Map<String, dynamic> categoryAnswers = const {},
+    String notes = '',
   }) async {
     final data = <String, dynamic>{
       'service': serviceId,
@@ -110,6 +111,7 @@ class BookingApi {
       'addon_selections': addonSelections,
       'form_answers': formAnswers,
       'category_answers': categoryAnswers,
+      'notes': notes,
     };
     if (variantId != null) data['variant'] = variantId;
     final result = await request(
