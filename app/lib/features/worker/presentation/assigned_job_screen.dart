@@ -262,7 +262,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             if (job.variantTitle?.isNotEmpty == true || job.quantity > 1) ...[
               const SizedBox(height: 8),
               Text(
-                [if (job.variantTitle?.isNotEmpty == true) job.variantTitle!, 'Qty ${job.quantity}'].join(' • '),
+                [
+                  if (job.variantTitle?.isNotEmpty == true) job.variantTitle!,
+                  job.serviceUnitLabel?.isNotEmpty == true
+                      ? '${job.quantity} ${job.serviceUnitLabel}'
+                      : 'Qty ${job.quantity}',
+                ].join(' • '),
                 style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
               ),
             ],

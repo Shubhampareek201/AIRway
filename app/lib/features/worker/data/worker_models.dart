@@ -132,6 +132,7 @@ class WorkerOffer {
   final String? workerPhone;
   final String? serviceTitle;
   final String? variantTitle;
+  final String? serviceUnitLabel;
   final DateTime? scheduledAt;
   final String? serviceAddress;
   final String? bookingNotes;
@@ -159,6 +160,7 @@ class WorkerOffer {
     this.workerPhone,
     this.serviceTitle,
     this.variantTitle,
+    this.serviceUnitLabel,
     this.scheduledAt,
     this.serviceAddress,
     this.bookingNotes,
@@ -188,6 +190,7 @@ class WorkerOffer {
       workerPhone: map['worker_phone'] as String?,
       serviceTitle: map['service_title'] as String?,
       variantTitle: map['variant_title'] as String?,
+      serviceUnitLabel: map['service_unit_label']?.toString(),
       scheduledAt: map['scheduled_at'] != null ? DateTime.parse(map['scheduled_at'] as String) : null,
       serviceAddress: map['service_address'] as String?,
       bookingNotes: map['booking_notes'] as String?,
@@ -272,6 +275,7 @@ class WorkerAssignmentDetail {
   final List<Map<String, dynamic>> formResponses;
   final Map<String, dynamic> customerAnswers;
   final String? variantTitle;
+  final String? serviceUnitLabel;
   final int quantity;
   final List<Map<String, dynamic>> addons;
   final WorkerAssignmentInfo assignment;
@@ -294,6 +298,7 @@ class WorkerAssignmentDetail {
     required this.formResponses,
     this.customerAnswers = const {},
     this.variantTitle,
+    this.serviceUnitLabel,
     this.quantity = 1,
     this.addons = const [],
     required this.assignment,
@@ -318,6 +323,7 @@ class WorkerAssignmentDetail {
       formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       customerAnswers: Map<String, dynamic>.from(map['customer_answers'] as Map? ?? {}),
       variantTitle: map['variant_title']?.toString(),
+      serviceUnitLabel: map['service_unit_label']?.toString(),
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),

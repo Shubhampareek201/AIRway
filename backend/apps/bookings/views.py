@@ -794,6 +794,7 @@ class CustomerCheckoutView(APIView):
                 service_snapshot={
                     "service_id": item.service_id,
                     "service_title": item.service.title,
+                    "unit_label": item.service.unit_label,
                     "variant_id": item.variant_id,
                     "variant_title": item.variant.title if item.variant else None,
                     "cart_item_id": item.id,
@@ -939,10 +940,12 @@ class CustomerOrderDetailView(APIView):
                             match = re.search(r"\bis (\d{6})\.", otp_notice.body)
                             completion_code = match.group(1) if match else None
                         completion_expires_at = otp_record.expires_at.isoformat()
+            service_snapshot = dict(row.service_snapshot or {})
+            service_snapshot.setdefault("unit_label", booking.service.unit_label)
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
-                "service": row.service_snapshot,
+                "service": service_snapshot,
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
                 "worker": (

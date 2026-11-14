@@ -227,7 +227,12 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
               Text(offer.serviceTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
             if (offer.variantTitle?.isNotEmpty == true || offer.quantity > 1)
               Text(
-                [if (offer.variantTitle?.isNotEmpty == true) offer.variantTitle!, 'Qty ${offer.quantity}'].join(' • '),
+                [
+                  if (offer.variantTitle?.isNotEmpty == true) offer.variantTitle!,
+                  offer.serviceUnitLabel?.isNotEmpty == true
+                      ? '${offer.quantity} ${offer.serviceUnitLabel}'
+                      : 'Qty ${offer.quantity}',
+                ].join(' • '),
                 style: const TextStyle(fontSize: 12),
               ),
             if (offer.scheduledAt != null)

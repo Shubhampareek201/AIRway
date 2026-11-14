@@ -542,6 +542,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         ]),
         if (snapshot['variant_title'] != null) Text(snapshot['variant_title'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
+        if ((snapshot['unit_label']?.toString().isNotEmpty ?? false) && (row['quantity'] ?? 1) != 1)
+          Text('${row['quantity']} ${snapshot['unit_label']}', style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 6),
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
         if (row['completion_otp'] is Map &&
