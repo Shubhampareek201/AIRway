@@ -176,6 +176,24 @@ class Command(BaseCommand):
                 option.save(update_fields=["title", "subtitle", "sort_order", "is_active", "updated_at"])
             changes["beauty_audience_options_created_or_found"] += int(created)
 
+        # Correct clearly gender-specific legacy service records before they
+        # are exposed through the Men / Women / Unisex audience selector.
+        beauty_children = Category.objects.filter(parent=beauty)
+        beauty_services = Service.objects.filter(category__in=beauty_children, is_active=True)
+        audience_updates = 0
+        for service in beauty_services:
+            title = (service.title or "").strip().lower()
+            desired_audience = None
+            if title.startswith("men's ") or title in {"beard trim", "beard styling", "clean shave"}:
+                desired_audience = Service.Audience.MEN
+            elif title.startswith("women's "):
+                desired_audience = Service.Audience.WOMEN
+            if desired_audience and service.audience != desired_audience:
+                service.audience = desired_audience
+                service.save(update_fields=["audience", "updated_at"])
+                audience_updates += 1
+        changes["beauty_gender_specific_services_corrected"] = audience_updates
+
         # Car Wash: Car/Bike first, then the existing car service families.
         car = _category("car", "Car", car_wash, 1)
         bike = _category("bike", "Bike", car_wash, 2)
