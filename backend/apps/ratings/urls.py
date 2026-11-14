@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from apps.ratings.views import BookingRatingViewSet, RatingSummaryViewSet
 
 router = DefaultRouter()
-router.register(r'ratings', BookingRatingViewSet, basename='bookingrating')
+router.register(r'', BookingRatingViewSet, basename='bookingrating')
 router.register(r'summaries', RatingSummaryViewSet, basename='ratingsummary')
 
 urlpatterns = [

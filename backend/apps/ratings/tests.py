@@ -326,6 +326,6 @@ class RatingSecurityAndFlowAPITest(APITestCase):
         RatingSummary.objects.create(user=self.worker_user, average_rating=4, total_ratings=1)
         RatingSummary.objects.create(user=self.customer, average_rating=5, total_ratings=1)
         self.client.force_authenticate(self.customer)
-        response = self.client.get("/api/v1/ratings/summaries/user-ratings?user_ids=%s" % self.worker_user.pk)
+        response = self.client.get("/api/v1/ratings/summaries/user-ratings/?user_ids=%s" % self.worker_user.pk)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, [])
