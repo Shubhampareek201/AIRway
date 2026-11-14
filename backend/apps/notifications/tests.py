@@ -93,6 +93,35 @@ class NotificationServiceTest(TestCase):
         self.assertEqual(saved.user, self.user)
 
 
+    def test_send_push_initializes_firebase_and_sends_to_registered_devices(self):
+        from unittest.mock import Mock, patch
+        from apps.accounts.models import DeviceToken
+        from apps.notifications.service import send_push_notification
+
+        DeviceToken.objects.create(
+            user=self.user,
+            token="registered-fcm-token",
+            platform="android",
+        )
+        gateway_response = Mock(
+            success_count=1,
+            responses=[Mock(success=True)],
+        )
+        with patch("apps.accounts.firebase_service.get_firebase_app") as initialize, patch(
+            "firebase_admin.messaging.send_each_for_multicast",
+            return_value=gateway_response,
+        ) as send:
+            delivered = send_push_notification(
+                self.user,
+                "Booking confirmed",
+                "Your booking is confirmed.",
+                data={"booking_id": 123},
+            )
+
+        initialize.assert_called_once()
+        send.assert_called_once()
+        self.assertEqual(delivered, 1)
+
 class NotificationModelTest(TestCase):
     """Test Notification model methods."""
 

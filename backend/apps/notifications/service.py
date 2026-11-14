@@ -19,6 +19,8 @@ def send_push_notification(user, title, body="", data=None, channel_id="airway_g
         return 0
 
     try:
+        from apps.accounts.firebase_service import get_firebase_app
+        get_firebase_app()
         from firebase_admin import messaging
         message = messaging.MulticastMessage(
             tokens=tokens,
