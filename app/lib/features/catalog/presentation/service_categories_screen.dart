@@ -222,7 +222,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     final imageUrl = category.image?.isNotEmpty == true
         ? category.image!
         : _categoryPhoto(category);
-    return Ingram(
+    return GestureDetector(
       onTap: () => _openCategory(category),
       child: Container(
         decoration: BoxDecoration(
@@ -261,7 +261,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                     ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+              padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
               child: Row(
                 children: [
                   Expanded(
