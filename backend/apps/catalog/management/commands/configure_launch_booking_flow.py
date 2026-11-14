@@ -371,9 +371,54 @@ class Command(BaseCommand):
             key="work_type",
             is_active=True,
         )
-        # Keep these fields active: their DB options filter the service list
-        # and validate the category-level answer at booking time. The customer UI
-        # suppresses the duplicate service-level prompt when already answered.
+        # Keep these fields active: their DB options filter both the visible
+        # equipment subcategories and the final service list. Only replace the
+        # untouched seed defaults; preserve any Admin-customised options.
+        seeded_work_types = ["Installation", "Repair", "Replacement", "Inspection"]
+        specific_work_types = {
+            "New Wiring": ["Installation", "Inspection"],
+            "Old Wiring Replacement": ["Repair", "Installation", "Inspection"],
+            "Wiring Repair": ["Repair", "Maintenance", "Inspection"],
+            "Short Circuit Diagnosis": ["Repair", "Inspection"],
+            "Power Failure Diagnosis": ["Repair", "Inspection"],
+            "MCB Installation": ["Installation", "Maintenance"],
+            "MCB Tripping Repair": ["Repair", "Maintenance"],
+            "Fuse Replacement": ["Repair", "Installation", "Maintenance"],
+            "Earthing Work": ["Installation", "Repair", "Inspection"],
+            "RCCB / ELCB Installation": ["Installation", "Maintenance"],
+            "Voltage Fluctuation Diagnosis": ["Repair", "Inspection"],
+            "Inverter Installation": ["Installation", "Maintenance"],
+            "Inverter Repair": ["Repair", "Maintenance"],
+            "Inverter Wiring": ["Installation", "Repair", "Maintenance"],
+            "Battery Installation": ["Installation", "Maintenance"],
+            "Battery Replacement": ["Installation", "Repair", "Maintenance"],
+            "UPS Installation": ["Installation", "Maintenance"],
+            "UPS Repair": ["Repair", "Maintenance"],
+            "Charging Problem Diagnosis": ["Repair", "Inspection"],
+            "Geyser Installation": ["Installation", "Maintenance"],
+            "Geyser Electrical Connection": ["Installation"],
+            "Geyser Switch Replacement": ["Repair", "Installation"],
+            "Geyser Power Problem": ["Repair", "Inspection"],
+            "Water Pump Electrical Connection": ["Installation", "Maintenance"],
+            "Motor Wiring": ["Installation", "Repair"],
+            "Motor Starter Repair": ["Repair", "Maintenance"],
+            "Full Home Electrical Inspection": ["Inspection", "Maintenance"],
+            "Electrical Safety Check": ["Inspection", "Maintenance"],
+            "New Room Electrical Setup": ["Installation", "Inspection"],
+            "Additional Power Point": ["Installation", "Maintenance"],
+            "Decorative Electrical Setup": ["Installation", "Inspection"],
+            "Smart Switch Installation": ["Installation", "Maintenance"],
+            "Smart Light Installation": ["Installation", "Maintenance"],
+        }
+        configured_count = 0
+        for field in work_type_fields.select_related("service"):
+            if field.options == seeded_work_types:
+                field.options = specific_work_types.get(
+                    field.service.title, ["Repair", "Installation", "Maintenance", "Inspection"]
+                )
+                field.save(update_fields=["options", "updated_at"])
+                configured_count += 1
+        changes["electrical_work_type_fields_configured"] = configured_count
         changes["electrical_work_type_fields_preserved"] = work_type_fields.count()
 
         return changes

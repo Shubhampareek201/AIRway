@@ -198,6 +198,30 @@ class ServicePricingReadinessTests(TestCase):
         self.assertIn("fan-services", child_slugs)
         self.assertNotIn("lighting-services", child_slugs)
 
+    def test_electrical_maintenance_filters_to_services_supporting_maintenance(self):
+        electrical = Category.objects.create(title="Electrical", slug="electrical")
+        fans = Category.objects.create(title="Fan Services", slug="fan-services", parent=electrical)
+        wiring = Category.objects.create(title="Wiring Services", slug="wiring-services", parent=electrical)
+        fan = Service.objects.create(category=fans, title="Ceiling Fan")
+        wiring_repair = Service.objects.create(category=wiring, title="Wiring Repair")
+        FormField.objects.create(
+            service=fan, key="work_type", label="Work type",
+            field_type=FormField.FieldType.SELECT,
+            options=["Repair", "Installation", "Maintenance", "Inspection"],
+            is_required=True,
+        )
+        FormField.objects.create(
+            service=wiring_repair, key="work_type", label="Work type",
+            field_type=FormField.FieldType.SELECT,
+            options=["Repair", "Maintenance", "Inspection"],
+            is_required=True,
+        )
+        answers = urlencode({"category_answers": json.dumps({"work_type": "Maintenance"})})
+        response = APIClient().get(f"/api/v1/catalog/services/?{answers}")
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        self.assertEqual({row["id"] for row in rows}, {fan.id, wiring_repair.id})
+
     def test_electrical_work_type_rejects_malformed_category_answers(self):
         response = APIClient().get(
             "/api/v1/catalog/services/?launch_only=true&category_answers=not-json"
