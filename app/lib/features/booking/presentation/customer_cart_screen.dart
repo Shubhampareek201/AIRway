@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 import 'package:airway/features/booking/presentation/booking_schedule_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 
 class CustomerCartScreen extends StatefulWidget {
   const CustomerCartScreen({super.key});
@@ -43,6 +44,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() { loading = true; error = null; });
     try {
       final value = await BookingApi.getCart();
+      CustomerCartState.updateFromCart(value);
       try {
         final rawAddresses = await BookingApi.request('/api/v1/auth/addresses/');
         final rawList = rawAddresses is List ? rawAddresses : (rawAddresses is Map ? rawAddresses['results'] : null);
@@ -65,6 +67,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() => busy = true);
     try {
       final value = await BookingApi.deleteCartItem(id);
+      CustomerCartState.updateFromCart(value);
       if (mounted) setState(() { cart = value; busy = false; });
     } catch (e) {
       if (mounted) setState(() { busy = false; error = e.toString(); });
@@ -183,6 +186,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         return row;
       }).toList();
       final result = await BookingApi.checkoutCart(items: schedules);
+      CustomerCartState.itemCount.value = 0;
       if (!mounted) return;
       setState(() => busy = false);
       await showDialog<void>(
