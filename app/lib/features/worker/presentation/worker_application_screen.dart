@@ -250,6 +250,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     });
     final firstField = errors.keys.first;
     await Future<void>.delayed(const Duration(milliseconds: 60));
+    if (!mounted) return;
     final target = <String, GlobalKey>{
       'photo': _photoKey,
       'name': _nameKey,
@@ -274,17 +275,6 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         SnackBar(content: Text(errors.values.first)),
       );
     }
-  }
-
-  void _toggleService(int serviceId) {
-    setState(() {
-      if (_selectedServiceIds.contains(serviceId)) {
-        _selectedServiceIds.removeWhere((id) => id == serviceId);
-      } else {
-        _selectedServiceIds.add(serviceId);
-      }
-      _fieldErrors.remove('services');
-    });
   }
 
   Map<int, List<String>> _buildServiceCapabilities() {
