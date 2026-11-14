@@ -141,7 +141,10 @@ class CatalogApi {
     String? audience,
     Map<String, dynamic>? categoryAnswers,
   }) async {
-    final query = <String, String>{'launch_only': 'true'};
+    final query = <String, String>{
+      'launch_only': 'true',
+      'priced_only': 'true',
+    };
     if (addressId != null) query['address_id'] = addressId.toString();
     if (audience != null) query['audience'] = audience;
     if (categoryAnswers != null && categoryAnswers.isNotEmpty) {
@@ -186,6 +189,7 @@ class CatalogApi {
   }) async {
     final query = <String, String>{
       'launch_only': 'true',
+      'priced_only': 'true',
       if (addressId != null) 'address_id': addressId.toString(),
       if (audience != null) 'audience': audience,
       if (categoryAnswers != null && categoryAnswers.isNotEmpty)

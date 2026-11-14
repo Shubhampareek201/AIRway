@@ -80,7 +80,7 @@ class ServicePricingReadinessTests(TestCase):
         self.assertTrue(service_pricing_ready(self.per_unit))
 
     def test_customer_service_api_hides_unpriced_and_unsupported_services(self):
-        response = APIClient().get("/api/v1/catalog/services/?launch_only=true")
+        response = APIClient().get("/api/v1/catalog/services/?launch_only=true&priced_only=true")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         ids = {row["id"] for row in rows}
@@ -190,7 +190,7 @@ class ServicePricingReadinessTests(TestCase):
         )
 
         answers = urlencode({"category_answers": json.dumps({"work_type": "Repair"})})
-        response = APIClient().get(f"/api/v1/catalog/categories/?launch_only=true&{answers}")
+        response = APIClient().get(f"/api/v1/catalog/categories/?launch_only=true&priced_only=true&{answers}")
         self.assertEqual(response.status_code, 200, response.data)
         roots = response.data if isinstance(response.data, list) else response.data.get("results", [])
         electrical_row = next(row for row in roots if row["slug"] == "electrical")
@@ -205,7 +205,7 @@ class ServicePricingReadinessTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_customer_categories_hide_roots_without_priced_services(self):
-        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true")
+        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true&priced_only=true")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         self.assertEqual([row["slug"] for row in rows], ["beauty"])

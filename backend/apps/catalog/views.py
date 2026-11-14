@@ -280,8 +280,12 @@ class CategoryListView(generics.ListAPIView):
     def _visible_service_ids(self):
         location = _location_from_address(self.request)
         service_ids = (
-            None if _is_worker_catalogue_request(self.request)
-            else _customer_priced_service_ids()
+            _customer_priced_service_ids()
+            if (
+                not _is_worker_catalogue_request(self.request)
+                and self.request.query_params.get("priced_only", "").lower() == "true"
+            )
+            else None
         )
         if location is not None:
             location_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
@@ -343,7 +347,10 @@ class ServiceListView(generics.ListAPIView):
         )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = _launch_catalogue_filter(queryset)
-        if not _is_worker_catalogue_request(self.request):
+        if (
+            not _is_worker_catalogue_request(self.request)
+            and self.request.query_params.get("priced_only", "").lower() == "true"
+        ):
             queryset = queryset.filter(pk__in=_customer_priced_service_ids())
 
         location = _location_from_address(self.request)
