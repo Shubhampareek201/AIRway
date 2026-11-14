@@ -165,7 +165,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     if (!mounted || added != true) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('[0m${service.title} added to cart'),
+        content: Text('${service.title} added to cart'),
         action: SnackBarAction(
           label: 'VIEW CART',
           onPressed: () => Navigator.push<void>(
