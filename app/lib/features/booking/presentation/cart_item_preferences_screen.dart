@@ -104,11 +104,15 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
         return;
       }
     }
+    final visibleKeys = visibleFields.map((field) => field.key).toSet();
+    final visibleAnswers = Map<String, dynamic>.fromEntries(
+      answers.entries.where((entry) => visibleKeys.contains(entry.key)),
+    );
     setState(() => saving = true);
     try {
       await BookingApi.updateCartItem(
         itemId: widget.cartItemId,
-        data: {'form_answers': answers, 'category_answers': widget.categoryAnswers},
+        data: {'form_answers': visibleAnswers, 'category_answers': widget.categoryAnswers},
       );
       if (!mounted) return;
       Navigator.pop(context, true);
