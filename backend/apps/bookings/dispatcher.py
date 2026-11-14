@@ -340,9 +340,22 @@ class DispatcherService:
                 1 if booking.service.pricing_type == "per_unit"
                 else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
             )
+            service_quantity = (
+                booking.order_item.quantity
+                if hasattr(booking, "order_item")
+                else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+            )
+            service_unit_label = booking.service.unit_label or ""
+            quantity_preview = (
+                f"{service_quantity} {service_unit_label}"
+                if service_unit_label
+                else (f"Qty {service_quantity}" if service_quantity > 1 else "")
+            )
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
+                "quantity": service_quantity,
+                "service_unit_label": service_unit_label,
                 "order_id": order.pk if order else None,
                 "service_ids": list(order.items.values_list("booking__service_id", flat=True)) if order else [booking.service_id],
                 "service_title": summary,
@@ -361,8 +374,9 @@ class DispatcherService:
             location_preview = (address_text or "").strip()[:90]
             notification_body = (
                 f"{summary} • {booking.scheduled_at.strftime('%d %b, %I:%M %p')} "
-                f"• {location_preview} • Advance ₹{advance_received} "
-                f"• Balance ₹{remaining_balance}"
+                f"• {location_preview} "
+                f"{('• ' + quantity_preview + ' ') if quantity_preview else ''}"
+                f"• Advance ₹{advance_received} • Balance ₹{remaining_balance}"
             )
             Notification.objects.create(
                 user=worker.user,
