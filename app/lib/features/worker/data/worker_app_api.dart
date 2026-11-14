@@ -13,64 +13,62 @@ class WorkerAppApi {
     Map<String, dynamic>? data,
     File? file,
     String? fileFieldName,
+    bool _retried = false,
   }) async {
     final session = await SecureSessionStorage.readSession();
     if (session == null) throw Exception('Please sign in again.');
 
+    final baseUri = Uri.parse(AuthApi.baseUrl);
+    final uri = path.startsWith('http') ? Uri.parse(path) : baseUri.resolve(path);
+    if (uri.origin != baseUri.origin) {
+      throw const FormatException('AIRway API returned an unexpected host.');
+    }
+
+    late Map<String, dynamic> result;
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
-
     try {
-      final request = await client.openUrl(
-        method,
-        Uri.parse('${AuthApi.baseUrl}$path'),
-      );
-
+      final request = await client.openUrl(method, uri);
       request.headers.set(
         HttpHeaders.authorizationHeader,
         'Bearer ${session.accessToken}',
       );
 
       if (file != null && fileFieldName != null) {
-        // Multipart form data for file upload
         final bytes = await file.readAsBytes();
-        final boundary = '----AIRwayBoundary${DateTime.now().millisecondsSinceEpoch}';
-
+        final boundary = '----AIRwayBoundary${DateTime.now().microsecondsSinceEpoch}';
         final body = <List<int>>[];
 
         void addField(String key, dynamic value) {
-          final strValue = value is List || value is Map
+          final fieldValue = value is List || value is Map
               ? jsonEncode(value)
               : value.toString();
-          body.add(utf8.encode('--$boundary\r\n'));
+          body.add(utf8.encode('--$boundary\\r\\n'));
           body.add(utf8.encode(
-            'Content-Disposition: form-data; name="$key"\r\n\r\n',
+            'Content-Disposition: form-data; name="$key"\\r\\n\\r\\n',
           ));
-          body.add(utf8.encode('$strValue\r\n'));
+          body.add(utf8.encode('$fieldValue\\r\\n'));
         }
 
-        if (data != null) {
-          data.forEach((key, value) => addField(key, value));
-        }
-
-        body.add(utf8.encode('--$boundary\r\n'));
+        data?.forEach(addField);
+        body.add(utf8.encode('--$boundary\\r\\n'));
         body.add(utf8.encode(
-            'Content-Disposition: form-data; name="$fileFieldName"; filename="photo.jpg"\r\n'));
-        body.add(utf8.encode('Content-Type: image/jpeg\r\n\r\n'));
+          'Content-Disposition: form-data; name="$fileFieldName"; filename="photo.jpg"\\r\\n',
+        ));
+        body.add(utf8.encode('Content-Type: image/jpeg\\r\\n\\r\\n'));
         body.add(bytes);
-        body.add(utf8.encode('\r\n'));
-        body.add(utf8.encode('--$boundary--\r\n'));
+        body.add(utf8.encode('\\r\\n--$boundary--\\r\\n'));
 
-        final totalLength = body.fold<int>(0, (prev, elem) => prev + elem.length);
-        request.headers
-            .set('content-type', 'multipart/form-data; boundary=$boundary');
-        request.contentLength = totalLength;
-
+        request.headers.set(
+          HttpHeaders.contentTypeHeader,
+          'multipart/form-data; boundary=$boundary',
+        );
+        request.contentLength =
+            body.fold<int>(0, (total, chunk) => total + chunk.length);
         for (final chunk in body) {
           request.add(chunk);
         }
       } else if (data != null) {
-        // JSON body for regular requests
         final bytes = utf8.encode(jsonEncode(data));
         request.headers.contentType = ContentType.json;
         request.contentLength = bytes.length;
@@ -78,58 +76,57 @@ class WorkerAppApi {
       }
 
       final response = await request.close().timeout(
-        const Duration(seconds: 15),
+        const Duration(seconds: 20),
       );
-
-      final text = await utf8.decoder.bind(response).join();
-      dynamic result;
-      if (text.isNotEmpty) {
+      final responseText = await utf8.decoder.bind(response).join();
+      dynamic body;
+      if (responseText.isNotEmpty) {
         try {
-          result = jsonDecode(text);
+          body = jsonDecode(responseText);
         } catch (_) {
-          result = text;
+          body = responseText;
         }
       }
-
-      return {
-        'status': response.statusCode,
-        'body': result,
-      };
+      result = {'status': response.statusCode, 'body': body};
     } finally {
       client.close(force: true);
     }
+
+    if (result['status'] == 401 && !_retried) {
+      final refreshed = await AuthApi.refreshSession(
+        refreshToken: session.refreshToken,
+      );
+      if (refreshed == null) {
+        await SecureSessionStorage.clearSession();
+        return result;
+      }
+      final access = refreshed['access'] as String;
+      await SecureSessionStorage.saveSession(
+        accessToken: access,
+        refreshToken: refreshed['refresh'] as String? ?? session.refreshToken,
+      );
+      return _authenticatedRequest(
+        path,
+        method: method,
+        data: data,
+        file: file,
+        fileFieldName: fileFieldName,
+        _retried: true,
+      );
+    }
+
+    return result;
   }
 
   static Future<Map<String, dynamic>> getUserInfo() async {
-    final session = await SecureSessionStorage.readSession();
-    if (session == null) throw Exception('Please sign in again.');
-
-    final result = await AuthApi.validateSession(accessToken: session.accessToken);
-    if (!result) throw Exception('Session invalid');
-
-    // Fetch user info from /me/ endpoint
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-
-    try {
-      final request = await client.getUrl(
-        Uri.parse('${AuthApi.baseUrl}/api/v1/auth/me/'),
-      );
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${session.accessToken}',
-      );
-
-      final response = await request.close().timeout(
-        const Duration(seconds: 15),
-      );
-      final text = await utf8.decoder.bind(response).join();
-
-      final result = jsonDecode(text);
-      return Map<String, dynamic>.from(result as Map);
-    } finally {
-      client.close(force: true);
+    final result = await _authenticatedRequest('/api/v1/auth/me/');
+    if (result['status'] < 200 || result['status'] >= 300) {
+      throw Exception('Could not load your account (${result['status']}).');
     }
+    if (result['body'] is! Map) {
+      throw const FormatException('Unexpected account response.');
+    }
+    return Map<String, dynamic>.from(result['body'] as Map);
   }
 
   static Future<Map<String, dynamic>> submitWorkerApplication({
@@ -246,49 +243,19 @@ class WorkerAppApi {
   }
 
   static Future<List<dynamic>> fetchWorkerDocuments() async {
-    final session = await SecureSessionStorage.readSession();
-    if (session == null) throw Exception('Please sign in again.');
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-
-    try {
-      final request = await client.getUrl(
-        Uri.parse('${AuthApi.baseUrl}/api/v1/workers/documents/'),
-      );
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${session.accessToken}',
-      );
-
-      final response = await request.close().timeout(
-        const Duration(seconds: 15),
-      );
-
-      if (response.statusCode == 401) {
-        throw Exception('Session expired. Please sign in again.');
-      }
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final text = await utf8.decoder.bind(response).join();
-        throw Exception('Failed to fetch documents: $text');
-      }
-
-      final text = await utf8.decoder.bind(response).join();
-      final result = jsonDecode(text);
-      final list = result is List ? result : (result is Map ? result['results'] : null);
-
-      if (list is! List) {
-        throw const FormatException('Unexpected documents response');
-      }
-
-      return list
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    } finally {
-      client.close(force: true);
+    final result = await _authenticatedRequest('/api/v1/workers/documents/');
+    if (result['status'] < 200 || result['status'] >= 300) {
+      throw Exception('Failed to fetch documents: ${result['body']}');
     }
+    final body = result['body'];
+    final list = body is List ? body : (body is Map ? body['results'] : null);
+    if (list is! List) {
+      throw const FormatException('Unexpected documents response');
+    }
+    return list
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   static Future<void> switchToWorkerMode({
@@ -319,130 +286,71 @@ class WorkerAppApi {
     }
   }
   static Future<List<Service>> fetchServicesForWorkerApplication() async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
+    final baseUri = Uri.parse(
+      '${AuthApi.baseUrl}/api/v1/catalog/services/?is_active=true&for_worker=true&launch_only=true',
+    );
+    final services = <Service>[];
+    Uri? pageUri = baseUri;
+    final visitedPages = <String>{};
 
-    try {
-      final baseUri = Uri.parse(
-        '${AuthApi.baseUrl}/api/v1/catalog/services/?is_active=true&for_worker=true&launch_only=true',
-      );
-      final accessToken = (await SecureSessionStorage.readSession())?.accessToken;
-      final services = <Service>[];
-      Uri? pageUri = baseUri;
-      final visitedPages = <String>{};
-
-      // DRF paginates catalogue responses. Fetch every page so categories
-      // later in the catalogue (especially Car Wash) are not omitted.
-      while (pageUri != null) {
-        if (!visitedPages.add(pageUri.toString()) || visitedPages.length > 50) {
-          throw const FormatException('Invalid catalogue pagination response');
-        }
-        if (pageUri.origin != baseUri.origin) {
-          throw const FormatException('Catalogue pagination returned an unexpected host');
-        }
-
-        final request = await client.getUrl(pageUri);
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $accessToken');
-        final response = await request.close().timeout(const Duration(seconds: 20));
-        final text = await utf8.decoder.bind(response).join();
-
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw HttpException(
-            'Could not load worker services (HTTP ${response.statusCode}).',
-            uri: pageUri,
-          );
-        }
-
-        final result = jsonDecode(text);
-        final list = result is List ? result : (result is Map ? result['results'] : null);
-        if (list is! List) {
-          throw const FormatException('Unexpected services response');
-        }
-        services.addAll(
-          list.whereType<Map>().map(
-            (item) => Service.fromMap(Map<String, dynamic>.from(item)),
-          ),
-        );
-
-        final next = result is Map ? result['next']?.toString() : null;
-        pageUri = next == null || next.isEmpty ? null : baseUri.resolve(next);
+    while (pageUri != null) {
+      if (!visitedPages.add(pageUri.toString()) || visitedPages.length > 50) {
+        throw const FormatException('Invalid catalogue pagination response');
+      }
+      if (pageUri.origin != baseUri.origin) {
+        throw const FormatException('Catalogue pagination returned an unexpected host');
       }
 
-      return services;
-    } finally {
-      client.close(force: true);
+      final response = await _authenticatedRequest(pageUri.toString());
+      if (response['status'] < 200 || response['status'] >= 300) {
+        throw HttpException(
+          'Could not load worker services (HTTP ${response['status']}).',
+          uri: pageUri,
+        );
+      }
+      final body = response['body'];
+      final list = body is List ? body : (body is Map ? body['results'] : null);
+      if (list is! List) {
+        throw const FormatException('Unexpected services response');
+      }
+      services.addAll(
+        list.whereType<Map>().map(
+          (item) => Service.fromMap(Map<String, dynamic>.from(item)),
+        ),
+      );
+      final next = body is Map ? body['next']?.toString() : null;
+      pageUri = next == null || next.isEmpty ? null : baseUri.resolve(next);
     }
+    return services;
   }
 
   static Future<List<dynamic>> fetchZones({int? cityId}) async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-
-    try {
-      var uri = '${AuthApi.baseUrl}/api/v1/auth/zones/';
-      if (cityId != null) {
-        uri += '?city_id=$cityId';
-      }
-
-      final request = await client.getUrl(Uri.parse(uri));
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${(await SecureSessionStorage.readSession())?.accessToken}',
-      );
-
-      final response = await request.close().timeout(
-        const Duration(seconds: 15),
-      );
-      final text = await utf8.decoder.bind(response).join();
-
-      final result = jsonDecode(text);
-      final list = result is List ? result : (result is Map ? result['results'] : null);
-
-      if (list is! List) {
-        throw const FormatException('Unexpected zones response');
-      }
-
-      return list
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    } finally {
-      client.close(force: true);
+    final path = cityId == null
+        ? '/api/v1/auth/zones/'
+        : '/api/v1/auth/zones/?city_id=$cityId';
+    final result = await _authenticatedRequest(path);
+    if (result['status'] < 200 || result['status'] >= 300) {
+      throw Exception('Could not load service zones.');
     }
+    final body = result['body'];
+    final list = body is List ? body : (body is Map ? body['results'] : null);
+    if (list is! List) {
+      throw const FormatException('Unexpected zones response');
+    }
+    return list
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   static Future<Map<String, dynamic>?> fetchWorkerApplicationStatus() async {
     final session = await SecureSessionStorage.readSession();
     if (session == null) return null;
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-
     try {
-      final request = await client.getUrl(
-        Uri.parse('${AuthApi.baseUrl}/api/v1/auth/me/'),
-      );
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${session.accessToken}',
-      );
-
-      final response = await request.close().timeout(
-        const Duration(seconds: 15),
-      );
-
-      if (response.statusCode != 200) {
-        return null;
-      }
-
-      final text = await utf8.decoder.bind(response).join();
-      final result = jsonDecode(text) as Map<String, dynamic>;
-
-      return result;
-    } catch (e) {
+      final result = await _authenticatedRequest('/api/v1/auth/me/');
+      if (result['status'] != 200 || result['body'] is! Map) return null;
+      return Map<String, dynamic>.from(result['body'] as Map);
+    } catch (_) {
       return null;
-    } finally {
-      client.close(force: true);
     }
   }
-}
