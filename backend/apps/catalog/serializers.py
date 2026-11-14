@@ -138,7 +138,10 @@ class ServiceSerializer(serializers.ModelSerializer):
 
     def get_variants(self, obj):
         queryset = obj.variants.filter(is_active=True)
-        if self.context.get("priced_only", False):
+        if (
+            self.context.get("priced_only", False)
+            and obj.pricing_type != Service.PricingType.QUOTE
+        ):
             queryset = queryset.filter(price__gt=0)
         available_ids = self.context.get("available_variant_ids")
         if available_ids is not None:
