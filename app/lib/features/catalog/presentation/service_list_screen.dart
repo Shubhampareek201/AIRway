@@ -191,7 +191,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                         child: Row(children: [
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(variant.title, style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text)),
-                            if (variant.durationMinutes > 0)
+                            if (variant.durationMinutes != null && variant.durationMinutes! > 0)
                               Text('${variant.durationMinutes} min', style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary)),
                           ])),
                           Text('₹${variant.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AirwayColors.primary)),
