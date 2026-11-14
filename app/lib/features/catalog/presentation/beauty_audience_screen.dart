@@ -112,7 +112,7 @@ class BeautyAudienceScreen extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(color: _line),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.zero,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,14 +122,14 @@ class BeautyAudienceScreen extends StatelessWidget {
                   height: 57,
                   child: Row(
                     children: [
-                      Expanded(child: Image.network(image, height: 174, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
-                      Expanded(child: Image.network(secondaryImage, height: 174, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
+                      Expanded(child: Image.network(image, height: 57, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
+                      Expanded(child: Image.network(secondaryImage, height: 57, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
                     ],
                   ),
                 )
               else if (image.isNotEmpty)
                 SizedBox(
-                  height: 174,
+                  height: 57,
                   width: double.infinity,
                   child: Image.network(
                     image,
