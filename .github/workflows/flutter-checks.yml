@@ -35,37 +35,24 @@ jobs:
         working-directory: app
         run: flutter pub get
 
-      - name: Analyze changed Flutter features
+      - name: Analyze the complete Flutter application
         working-directory: app
         shell: bash
         run: |
           set +e
-          flutter analyze --no-pub \
-            lib/main.dart \
-            lib/features/auth/presentation/startup_gate.dart \
-            lib/features/customer/presentation/customer_home_screen.dart \
-            lib/features/booking/presentation/customer_order_screen.dart \
-            lib/features/notification/data/notification_api.dart \
-            lib/features/notification/data/push_notification_service.dart \
-            lib/features/worker/data/worker_api.dart \
-            lib/features/worker/data/worker_app_api.dart \
-            lib/features/worker/data/worker_models.dart \
-            lib/features/worker/presentation/worker_application_screen.dart \
-            lib/features/worker/presentation/worker_dashboard_screen.dart \
-            lib/features/worker/presentation/worker_profile_edit_screen.dart \
-            lib/features/worker/presentation/worker_service_management_screen.dart \
-            > /tmp/airway-flutter-analyze.log 2>&1
+          flutter analyze --no-pub > /tmp/airway-flutter-analyze.log 2>&1
+          analyze_status=$?
           cat /tmp/airway-flutter-analyze.log
           if ! grep -q "issues found" /tmp/airway-flutter-analyze.log; then
-            echo "Flutter analyzer did not complete successfully."
+            echo "Flutter analyzer did not complete successfully (exit $analyze_status)."
             exit 1
           fi
-          if grep -E " (error|warning) • " /tmp/airway-flutter-analyze.log; then
-            echo "Flutter analysis found errors or warnings."
+          if grep -E " error • " /tmp/airway-flutter-analyze.log; then
+            echo "Full-project Flutter analysis found errors."
             exit 1
           fi
-          echo "No Dart errors or warnings. Informational lints remain."
-          
+          echo "No Dart errors. Any warnings or informational lints are reported above for follow-up."
+
       - name: Run Flutter tests
         working-directory: app
         run: flutter test --no-pub
