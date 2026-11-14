@@ -2758,11 +2758,11 @@ class DispatcherServiceTest(TestCase):
             )
         return worker
 
-    def test_dispatcher_creates_5_offers_for_batch(self):
-        """DispatcherService should create exactly 5 offers per batch."""
+    def test_dispatcher_offers_all_eligible_workers_simultaneously(self):
+        """Launch dispatch offers every eligible worker in the same pass."""
         from apps.bookings.dispatcher import DispatcherService
 
-        # Create 10 workers, all eligible (more than batch_size of 5)
+        # Create 10 workers; the launch policy offers all eligible workers.
         for i in range(10):
             self._create_eligible_worker(suffix=f"3{i}", rating=4.0)
 
@@ -2785,9 +2785,9 @@ class DispatcherServiceTest(TestCase):
         )
         offers = DispatcherService.dispatch_offers(booking)
 
-        # Should create exactly 5 offers (batch_size)
-        self.assertEqual(len(offers), 5)
-        self.assertEqual(WorkerOffer.objects.filter(booking=booking).count(), 5)
+        # The configured launch policy offers every eligible worker.
+        self.assertEqual(len(offers), 10)
+        self.assertEqual(WorkerOffer.objects.filter(booking=booking).count(), 10)
 
     def test_dispatcher_limits_to_batch_size(self):
         """DispatcherService should respect batch_size parameter."""
