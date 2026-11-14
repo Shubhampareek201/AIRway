@@ -78,10 +78,8 @@ class RatingApi {
     return fallback;
   }
 
-  static Future<List<RatingModel>> fetchUserRatings({
-    required int userId,
-  }) async {
-    final result = await _request('/api/v1/ratings/?user_ratings=$userId');
+  static Future<List<RatingModel>> fetchUserRatings() async {
+    final result = await _request('/api/v1/ratings/');
     if (result.status != 200) {
       throw Exception(_errorMessage(result.body, 'Could not load ratings.'));
     }
@@ -91,10 +89,8 @@ class RatingApi {
         .toList();
   }
 
-  static Future<RatingSummaryModel?> fetchRatingSummary({
-    required int userId,
-  }) async {
-    final result = await _request('/api/v1/ratings/summaries/user-ratings?user_ids=$userId');
+  static Future<RatingSummaryModel?> fetchRatingSummary() async {
+    final result = await _request('/api/v1/ratings/summaries/user-ratings/');
     if (result.status != 200) {
       throw Exception(_errorMessage(result.body, 'Could not load rating summary.'));
     }

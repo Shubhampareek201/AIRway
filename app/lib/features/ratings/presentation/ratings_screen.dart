@@ -25,8 +25,8 @@ class _RatingsScreenState extends State<RatingsScreen> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
-      final ratings = await RatingApi.fetchUserRatings(userId: 1);
-      final summary = await RatingApi.fetchRatingSummary(userId: 1);
+      final ratings = await RatingApi.fetchUserRatings();
+      final summary = await RatingApi.fetchRatingSummary();
       if (mounted) {
         setState(() {
           _ratings = ratings;
@@ -114,8 +114,8 @@ class _RatingTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCustomer = rating.ratingType == 'customer';
-    final title = isCustomer ? 'Worker' : 'Booking';
-    final subtitle = isCustomer ? rating.ratedPhone : rating.createdAt;
+    final title = isCustomer ? 'Worker rating' : 'Customer rating';
+    final subtitle = 'Booking #${rating.bookingId} • ${rating.createdAt}';
     return Card(
       child: ListTile(
         leading: CircleAvatar(

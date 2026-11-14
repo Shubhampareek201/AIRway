@@ -5,34 +5,28 @@ from apps.ratings.models import BookingRating, RatingSummary
 
 class BookingRatingSerializer(serializers.ModelSerializer):
     rating_type_display = serializers.CharField(
-        source='get_rating_type_display',
-        read_only=True
+        source="get_rating_type_display",
+        read_only=True,
     )
-    rater_phone = serializers.CharField(source='rater.phone', read_only=True)
-    rated_phone = serializers.CharField(source='rated.phone', read_only=True)
 
     class Meta:
         model = BookingRating
         fields = [
-            'id', 'rating_type', 'rating_type_display', 'booking',
-            'rater', 'rater_phone', 'rated', 'rated_phone',
-            'rating', 'comment', 'created_at'
+            "id", "rating_type", "rating_type_display", "booking",
+            "rater", "rated", "rating", "comment", "created_at",
         ]
-        read_only_fields = ['id', 'booking', 'rater', 'created_at']
+        read_only_fields = fields
 
 
 class RatingSummarySerializer(serializers.ModelSerializer):
-    user_phone = serializers.CharField(source='user.phone', read_only=True)
-
     class Meta:
         model = RatingSummary
-        fields = [
-            'user_phone', 'average_rating', 'total_ratings',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['user', 'average_rating', 'total_ratings', 'created_at', 'updated_at']
+        fields = ["average_rating", "total_ratings", "created_at", "updated_at"]
+        read_only_fields = fields
 
 
 class RateBookingSerializer(serializers.Serializer):
+    rated_id = serializers.IntegerField(min_value=1)
+    rating_type = serializers.ChoiceField(choices=BookingRating._meta.get_field("rating_type").choices)
     rating = serializers.IntegerField(min_value=1, max_value=5)
     comment = serializers.CharField(max_length=500, required=False, allow_blank=True)
