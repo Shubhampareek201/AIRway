@@ -563,7 +563,7 @@ class WorkerJobListView(APIView):
                 "address": booking.address.full_address,
                 "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
-                    "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+                "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
                 "payment_label": payment_label,
                 "worker_notes": booking.worker_notes or None,
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
