@@ -91,7 +91,19 @@ class LaunchBookingFlowConfigurationTests(TestCase):
         call_command("configure_launch_booking_flow", verbosity=0)
 
         self.assertFalse(Category.objects.filter(slug="car").exists())
-        self.assertFalse(CategoryAudienceOption.objects.filter(category=self.roots["beauty"]).exists())
+        existing_men_option = CategoryAudienceOption.objects.get(
+            category=self.roots["beauty"],
+            audience="men",
+        )
+        self.assertEqual(existing_men_option.title, "Old Men option")
+        self.assertEqual(existing_men_option.subtitle, "Old subtitle")
+        self.assertFalse(existing_men_option.is_active)
+        self.assertFalse(
+            CategoryAudienceOption.objects.filter(
+                category=self.roots["beauty"],
+                audience__in=["women", "both"],
+            ).exists()
+        )
         self.assertEqual(self.roots["car-wash"].flow_steps, [])
         self.assertEqual(
             Category.objects.get(slug="exterior-car-cleaning").parent_id,
