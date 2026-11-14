@@ -7,6 +7,7 @@ import 'package:airway/features/catalog/data/beauty_audience.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 
 /// Backend-driven service listing. Service photography uses the same canonical
 /// resolver as Home and service details; admin-uploaded images take priority.
@@ -149,8 +150,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     );
   }
 
-  void _startAddFlow(Service service) {
-    Navigator.push<void>(
+  Future<void> _startAddFlow(Service service) async {
+    final added = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => BookingScheduledScreen(
@@ -158,6 +159,19 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           serviceTitle: service.title,
           addressId: widget.addressId,
           initialCategoryAnswers: widget.initialAnswers,
+        ),
+      ),
+    );
+    if (!mounted || added != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('[0m${service.title} added to cart'),
+        action: SnackBarAction(
+          label: 'VIEW CART',
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+          ),
         ),
       ),
     );
@@ -172,13 +186,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         title: Text(title),
         backgroundColor: AirwayColors.background,
         actions: [
-          IconButton(
-            tooltip: 'Your cart',
-            onPressed: () => Navigator.push<void>(
+          CustomerCartBadge(
+            onTap: () => Navigator.push<void>(
               context,
               MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
             ),
-            icon: const Icon(Icons.shopping_bag_outlined),
           ),
         ],
       ),
