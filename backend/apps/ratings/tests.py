@@ -246,6 +246,9 @@ class RatingSecurityAndFlowAPITest(APITestCase):
         self.assertEqual(response.data["booking"], self.booking.pk)
         self.assertNotIn("rated_phone", response.data)
         self.assertEqual(RatingSummary.objects.get(user=self.worker_user).total_ratings, 1)
+        self.worker_profile.refresh_from_db()
+        self.assertEqual(float(self.worker_profile.rating_avg), 5.0)
+        self.assertEqual(self.worker_profile.rating_count, 1)
 
     def test_assigned_worker_can_rate_customer(self):
         self.client.force_authenticate(self.worker_user)
