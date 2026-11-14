@@ -4,6 +4,7 @@ import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
+import 'package:airway/features/ratings/data/rating_api.dart';
 
 class AssignedJobScreen extends StatefulWidget {
   const AssignedJobScreen({super.key, this.assignmentId});
@@ -19,6 +20,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
   bool _loading = true;
   String? _error;
   bool _isActionInProgress = false;
+  bool _hasRatedCustomer = false;
 
   @override
   void initState() {
@@ -63,9 +65,20 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       // Get full job details for this exact assignment.
       final selectedJob = matchingJobs.first;
       final detail = await WorkerApi.getJobDetail(selectedJob['id'] as int);
+      final parsedDetail = WorkerAssignmentDetail.fromMap(detail);
+      var hasRatedCustomer = false;
+      try {
+        final ratings = await RatingApi.fetchUserRatings();
+        hasRatedCustomer = ratings.any((rating) =>
+            rating.bookingId == parsedDetail.bookingId &&
+            rating.ratingType == 'worker');
+      } catch (_) {
+        // Keep the job screen usable if rating history is temporarily unavailable.
+      }
       if (mounted) {
-        _jobDetail = WorkerAssignmentDetail.fromMap(detail);
+        _jobDetail = parsedDetail;
         setState(() {
+          _hasRatedCustomer = hasRatedCustomer;
           _loading = false;
         });
       }
@@ -439,12 +452,30 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     }
 
     if (status == BookingStatus.completed) {
-      return Card(
-        child: const ListTile(
-          leading: Icon(Icons.check_circle),
-          title: Text('Job Status'),
-          subtitle: Text('This job has been completed'),
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.check_circle),
+              title: Text('Job Status'),
+              subtitle: Text('This job has been completed'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_hasRatedCustomer)
+            const Text(
+              'Thank you. Your customer feedback has been recorded.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AirwayColors.success, fontWeight: FontWeight.w700),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : () => _rateCustomer(job),
+              icon: const Icon(Icons.star_rounded),
+              label: const Text('Rate customer'),
+            ),
+        ],
       );
     }
 
@@ -465,6 +496,79 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         subtitle: Text('Status: ${BookingStatus.display(status)}'),
       ),
     );
+  }
+
+  Future<void> _rateCustomer(WorkerAssignmentDetail job) async {
+    var selectedRating = 5;
+    final commentController = TextEditingController();
+    final result = await showDialog<({int rating, String comment})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Rate customer'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Share your experience working with this customer.'),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (index) => IconButton(
+                  onPressed: () => setDialogState(() => selectedRating = index + 1),
+                  icon: Icon(
+                    index < selectedRating ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: const Color(0xFFFFB020),
+                    size: 30,
+                  ),
+                )),
+              ),
+              TextField(
+                controller: commentController,
+                maxLength: 500,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Comment (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not now')),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                (rating: selectedRating, comment: commentController.text.trim()),
+              ),
+              child: const Text('Submit rating'),
+            ),
+          ],
+        ),
+      ),
+    );
+    commentController.dispose();
+    if (result == null || !mounted) return;
+    setState(() => _isActionInProgress = true);
+    try {
+      await RatingApi.submitRating(
+        bookingId: job.bookingId,
+        rating: result.rating,
+        ratingType: 'worker',
+        comment: result.comment,
+      );
+      if (!mounted) return;
+      setState(() => _hasRatedCustomer = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Customer rating submitted. Thank you.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit rating: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
   }
 
   Color _getStatusColor(String status) {
