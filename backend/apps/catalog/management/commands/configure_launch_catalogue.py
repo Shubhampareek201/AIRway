@@ -95,7 +95,15 @@ def _package_price(root, service_title, package_title, attributes):
 
     if root == "Home Cleaning":
         if "full home" in service:
-            return Decimal("0.00")  # BHK-specific variants are configured by the booking-flow command.
+            if "1 bhk" in package:
+                return Decimal("2499")
+            if "2 bhk" in package:
+                return Decimal("3499")
+            if "3 bhk" in package:
+                return Decimal("4999")
+            if "4 bhk" in package:
+                return Decimal("6499")
+            return Decimal("2499")
         if "bathroom" in service:
             return Decimal("499") if "basic" in package else Decimal("599") if "deep" in package else Decimal("799")
         if "kitchen" in service:
@@ -180,9 +188,11 @@ def _service_base_price(root, service):
         if "carpet" in title or "rug" in title:
             return Decimal("299")
         if "full home" in title:
-            return Decimal("0.00")
+            return Decimal("2499")
         return Decimal("499")
-    return Decimal("0.00")
+    # New launch services without a category-specific rule still get a
+    # clearly indicative demo amount rather than being omitted from testing.
+    return Decimal("199.00")
 
 
 def _addon_price(root, title):
@@ -289,6 +299,8 @@ class Command(BaseCommand):
                     unit_rate = Decimal("199.00")
                 else:
                     unit_rate = _service_base_price(root, service)
+                if unit_rate <= 0:
+                    unit_rate = Decimal("199.00")
 
                 variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
                 if not variants:
@@ -307,11 +319,17 @@ class Command(BaseCommand):
                     )
                     if created:
                         counts["standard_variants_created"] += 1
-                    elif variant.price <= 0:
-                        variant.price = unit_rate
-                        variant.mrp = _mrp(unit_rate)
-                        variant.save(update_fields=["price", "mrp", "updated_at"])
-                        counts["variants_priced"] += 1
+                    elif variant.price <= 0 or not variant.is_active:
+                        update_fields = []
+                        if variant.price <= 0:
+                            variant.price = unit_rate
+                            variant.mrp = _mrp(unit_rate)
+                            update_fields.extend(["price", "mrp"])
+                        if not variant.is_active:
+                            variant.is_active = True
+                            update_fields.append("is_active")
+                        variant.save(update_fields=update_fields + ["updated_at"])
+                        counts["variants_priced"] += int("price" in update_fields)
                     else:
                         counts["existing_nonzero_prices_preserved"] += 1
                 else:
@@ -331,6 +349,8 @@ class Command(BaseCommand):
                 variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
                 if not variants:
                     price = _service_base_price(root, service)
+                    if price <= 0:
+                        price = Decimal("199.00")
                     if price > 0:
                         variant, created = ServiceVariant.objects.get_or_create(
                             service=service,
@@ -347,11 +367,17 @@ class Command(BaseCommand):
                         )
                         if created:
                             counts["standard_variants_created"] += 1
-                        elif variant.price <= 0:
-                            variant.price = price
-                            variant.mrp = _mrp(price)
-                            variant.save(update_fields=["price", "mrp", "updated_at"])
-                            counts["variants_priced"] += 1
+                        elif variant.price <= 0 or not variant.is_active:
+                            update_fields = []
+                            if variant.price <= 0:
+                                variant.price = price
+                                variant.mrp = _mrp(price)
+                                update_fields.extend(["price", "mrp"])
+                            if not variant.is_active:
+                                variant.is_active = True
+                                update_fields.append("is_active")
+                            variant.save(update_fields=update_fields + ["updated_at"])
+                            counts["variants_priced"] += int("price" in update_fields)
                         else:
                             counts["existing_nonzero_prices_preserved"] += 1
                     else:
@@ -370,7 +396,7 @@ class Command(BaseCommand):
                         ):
                             price = _service_base_price(root, service)
                         if price <= 0:
-                            continue
+                            price = Decimal("199.00")
                         variant.price = price
                         variant.mrp = _mrp(price)
                         variant.save(update_fields=["price", "mrp", "updated_at"])

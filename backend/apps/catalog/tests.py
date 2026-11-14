@@ -158,12 +158,12 @@ class CatalogServiceDetailTest(TestCase):
         response = self.client.get(f"/api/v1/catalog/services/{self.nonexistent_id}/")
         self.assertEqual(response.status_code, 404)
 
-class CityFilteredCategoryTreeTest(TestCase):
+class WorkerEnrolledCatalogueVisibilityTest(TestCase):
     def setUp(self):
         from apps.accounts.models import User, Address
         from apps.core.models import City, Zone
         from apps.catalog.models import CityService
-        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
+        from apps.workers.models import WorkerProfile, WorkerService
 
         self.client = APIClient()
         self.user = User.objects.create_user(
@@ -211,64 +211,49 @@ class CityFilteredCategoryTreeTest(TestCase):
             pricing_type="fixed",
             is_active=True,
         )
-        CityService.objects.create(
-            city=self.city,
-            service=self.visible_service,
-            is_active=True,
-        )
-        # CityService controls catalogue publication independently of the
-        # current worker's online state and schedule.
-        CityService.objects.create(
-            city=self.city,
-            service=self.hidden_service,
-            is_active=True,
-        )
+        for service in (self.visible_service, self.hidden_service):
+            ServiceVariant.objects.create(
+                service=service,
+                title="Standard",
+                mrp="120.00",
+                price="100.00",
+                is_active=True,
+            )
+
         worker_user = User.objects.create_user(
             phone="+919876543298",
             password="password123",
         )
+        # A pending, offline worker with no zone assignment still counts.
         self.worker = WorkerProfile.objects.create(
             user=worker_user,
-            status=WorkerProfile.Status.APPROVED,
-            is_online=True,
+            status=WorkerProfile.Status.PENDING,
+            is_online=False,
         )
         WorkerService.objects.create(worker=self.worker, service=self.visible_service)
-        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
-        WorkerSchedule.objects.create(
-            worker=self.worker,
-            weekday=0,
-            start_time="09:00:00",
-            end_time="18:00:00",
-            is_active=True,
+        WorkerService.objects.create(worker=self.worker, service=self.hidden_service)
+
+        # City publication flags must not override a worker's enrolment.
+        CityService.objects.create(
+            city=self.city,
+            service=self.hidden_service,
+            is_active=False,
         )
 
-    def test_category_tree_only_shows_categories_with_enrolled_services(self):
+    def test_categories_show_services_enrolled_by_pending_offline_worker(self):
         response = self.client.get(
-            f"/api/v1/catalog/categories/?address_id={self.address.id}"
+            f"/api/v1/catalog/categories/?address_id={self.address.id}&priced_only=true"
         )
 
         self.assertEqual(response.status_code, 200, response.data)
         categories = response.data["results"]
         self.assertEqual([item["id"] for item in categories], [self.root.id])
         child_ids = [child["id"] for child in categories[0]["children"]]
-        self.assertEqual(child_ids, [self.visible_child.id])
+        self.assertEqual(set(child_ids), {self.visible_child.id, self.hidden_child.id})
 
-    def test_categories_remain_visible_when_no_worker_is_online(self):
-        self.worker.is_online = False
-        self.worker.save(update_fields=["is_online", "updated_at"])
-
-        response = self.client.get(
-            f"/api/v1/catalog/categories/?address_id={self.address.id}"
-        )
-
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual([item["id"] for item in response.data["results"]], [self.root.id])
-        child_ids = [child["id"] for child in response.data["results"][0]["children"]]
-        self.assertEqual(child_ids, [self.visible_child.id])
-
-    def test_customer_service_list_marks_services_without_eligible_workers_unavailable(self):
+    def test_service_list_and_detail_ignore_worker_status_and_city_publication(self):
         list_response = self.client.get(
-            f"/api/v1/catalog/services/?address_id={self.address.id}"
+            f"/api/v1/catalog/services/?address_id={self.address.id}&priced_only=true"
         )
         self.assertEqual(list_response.status_code, 200, list_response.data)
         listed_services = (
@@ -276,15 +261,29 @@ class CityFilteredCategoryTreeTest(TestCase):
             if isinstance(list_response.data, list)
             else list_response.data.get("results", [])
         )
-        by_id = {item["id"]: item for item in listed_services}
-        self.assertEqual(set(by_id), {self.visible_service.id})
-        self.assertTrue(by_id[self.visible_service.id]["is_available"])
+        self.assertEqual(
+            {item["id"] for item in listed_services},
+            {self.visible_service.id, self.hidden_service.id},
+        )
+        self.assertTrue(all(item["is_available"] for item in listed_services))
 
         detail_response = self.client.get(
-            f"/api/v1/catalog/services/{self.hidden_service.id}/?address_id={self.address.id}"
+            f"/api/v1/catalog/services/{self.hidden_service.id}/?address_id={self.address.id}&priced_only=true"
         )
-        self.assertEqual(detail_response.status_code, 404)
+        self.assertEqual(detail_response.status_code, 200, detail_response.data)
 
+    def test_catalogue_visibility_does_not_require_a_selected_address(self):
+        response = APIClient().get("/api/v1/catalog/services/?priced_only=true")
+        self.assertEqual(response.status_code, 200, response.data)
+        listed_services = (
+            response.data
+            if isinstance(response.data, list)
+            else response.data.get("results", [])
+        )
+        self.assertEqual(
+            {item["id"] for item in listed_services},
+            {self.visible_service.id, self.hidden_service.id},
+        )
 
 
 class CatalogPackageIncludedTasksTest(TestCase):
@@ -496,3 +495,66 @@ class BeautyCatalogueStagingCommandTest(TestCase):
             1,
         )
 
+
+
+class ConfigureLaunchCatalogueDemoPricingTest(TestCase):
+    def test_every_active_launch_service_gets_a_demo_price(self):
+        from django.core.management import call_command
+        from apps.catalog.pricing import service_pricing_ready
+
+        beauty = Category.objects.create(title="Beauty", slug="beauty")
+        car = Category.objects.create(title="Car Wash", slug="car-wash")
+        electrical = Category.objects.create(title="Electrical", slug="electrical")
+        home = Category.objects.create(title="Home Cleaning", slug="home-cleaning")
+
+        fixed = Service.objects.create(
+            category=beauty,
+            title="New Test Beauty Service",
+            pricing_type=Service.PricingType.FIXED,
+        )
+        ServiceVariant.objects.create(
+            service=fixed, title="Standard", mrp="0.00", price="0.00"
+        )
+        per_unit = Service.objects.create(
+            category=home,
+            title="Sofa Cleaning",
+            pricing_type=Service.PricingType.PER_UNIT,
+            unit_label="seat",
+        )
+        quote = Service.objects.create(
+            category=electrical,
+            title="Electrical Inspection",
+            pricing_type=Service.PricingType.QUOTE,
+            booking_mode=Service.BookingMode.SCHEDULED,
+        )
+        full_home = Service.objects.create(
+            category=home,
+            title="Full Home Cleaning",
+            pricing_type=Service.PricingType.FIXED,
+        )
+        ServiceVariant.objects.create(
+            service=full_home,
+            title="Deep Cleaning — 1 BHK",
+            mrp="0.00",
+            price="0.00",
+        )
+        car_service = Service.objects.create(
+            category=car,
+            title="New Test Car Service",
+            pricing_type=Service.PricingType.FIXED,
+        )
+
+        call_command("configure_launch_catalogue", apply=True, verbosity=0)
+
+        for service in (fixed, per_unit, quote, full_home, car_service):
+            service.refresh_from_db()
+            self.assertTrue(
+                service_pricing_ready(service),
+                f"{service.title} did not receive a usable demo price",
+            )
+        self.assertEqual(quote.booking_mode, Service.BookingMode.INSPECTION)
+        self.assertGreater(quote.visit_fee, 0)
+        self.assertEqual(
+            full_home.variants.get(title="Deep Cleaning — 1 BHK").price,
+            2499,
+        )

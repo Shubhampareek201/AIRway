@@ -6,9 +6,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.models import Address
-from apps.workers.eligibility import eligible_worker_profiles
-from apps.workers.models import WorkerProfile, WorkerService
-from .models import Banner, Category, CityService, FormField, Service
+from apps.workers.models import WorkerService
+from .models import Banner, Category, FormField, Service
 from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer
 from .pricing import priced_service_ids
 
@@ -44,54 +43,18 @@ def _location_from_address(request):
     return address.zone.city, address.zone
 
 
-def _city_service_ids(city, zone=None):
+def _enrolled_service_ids():
     """
-    CityService is an explicit city-level opt-out: an inactive row hides that
-    service in the selected city. The customer catalogue applies this city
-    publication rule together with the eligible-worker service filter.
+    Customer catalogue visibility depends only on a worker's service enrolment.
+    Worker approval, online state, schedule, zone and city do not hide services
+    during catalogue browsing or demo testing.
     """
-    if city is None:
-        return None
-
-    hidden_ids = set(
-        CityService.objects.filter(
-            city=city,
-            is_active=False,
-        ).values_list("service_id", flat=True)
+    return set(
+        WorkerService.objects.filter(
+            service__is_active=True,
+            service__category__is_active=True,
+        ).values_list("service_id", flat=True).distinct()
     )
-    active_ids = set(
-        Service.objects.filter(
-            is_active=True,
-            category__is_active=True,
-        ).values_list("id", flat=True)
-    )
-    return active_ids - hidden_ids
-
-def _enrolled_service_ids(city, zone=None):
-    """
-    Services visible to customers are based on approved worker enrolments
-    in the selected zone, not on whether a worker happens to be online
-    or scheduled at the moment the catalogue is opened.
-    """
-    if city is None:
-        return None
-
-    links = WorkerService.objects.filter(
-        worker__status=WorkerProfile.Status.APPROVED,
-        worker__worker_zones__zone__city=city,
-        worker__worker_zones__zone__is_active=True,
-        worker__worker_zones__zone__city__is_active=True,
-        service__is_active=True,
-        service__category__is_active=True,
-    )
-    if zone is not None:
-        links = links.filter(worker__worker_zones__zone=zone)
-
-    links = links.filter(
-        Q(service__requires_female_worker=False)
-        | Q(worker__gender=WorkerProfile.Gender.FEMALE)
-    )
-    return set(links.values_list("service_id", flat=True).distinct())
 
 
 def _audience_service_ids(audience):
@@ -110,46 +73,6 @@ def _audience_service_ids(audience):
         category__is_active=True,
         audience__in=allowed,
     ).values_list("id", flat=True))
-
-
-def _available_service_ids(city, zone=None):
-    if city is None:
-        return None
-    eligible_workers = eligible_worker_profiles(city=city, zone=zone)
-    service_links = WorkerService.objects.filter(
-        worker__in=eligible_workers,
-        service__is_active=True,
-        service__category__is_active=True,
-    ).filter(
-        Q(service__requires_female_worker=False)
-        | Q(worker__gender=WorkerProfile.Gender.FEMALE)
-    )
-    return set(service_links.values_list("service_id", flat=True).distinct())
-
-
-def _available_variant_ids(city, zone=None):
-    if city is None:
-        return None
-    eligible_workers = eligible_worker_profiles(city=city, zone=zone)
-    links = WorkerService.objects.filter(
-        worker__in=eligible_workers,
-        service__is_active=True,
-        service__category__is_active=True,
-    ).filter(
-        Q(service__requires_female_worker=False)
-        | Q(worker__gender=WorkerProfile.Gender.FEMALE)
-    ).select_related("service").prefetch_related("service__variants")
-    available = set()
-    for link in links:
-        skills = {str(task).strip() for task in (link.capabilities or []) if str(task).strip()}
-        for variant in link.service.variants.filter(is_active=True):
-            required = {str(task).strip() for task in (variant.included_tasks or []) if str(task).strip()}
-            if required and (
-                not link.capabilities_verified or not required.issubset(skills)
-            ):
-                continue
-            available.add(variant.pk)
-    return available
 
 
 LAUNCH_CATEGORY_SLUGS = ("car-wash", "beauty", "electrical", "home-cleaning")
@@ -278,18 +201,12 @@ class CategoryListView(generics.ListAPIView):
     serializer_class = CategoryTreeSerializer
 
     def _visible_service_ids(self):
-        location = _location_from_address(self.request)
-        service_ids = (
-            _customer_priced_service_ids()
-            if (
-                not _is_worker_catalogue_request(self.request)
-                and self.request.query_params.get("priced_only", "").lower() == "true"
-            )
-            else None
-        )
-        if location is not None:
-            location_ids = _enrolled_service_ids(*location) & _city_service_ids(*location)
-            service_ids = location_ids if service_ids is None else service_ids & location_ids
+        if _is_worker_catalogue_request(self.request):
+            service_ids = None
+        else:
+            service_ids = _enrolled_service_ids()
+            if self.request.query_params.get("priced_only", "").lower() == "true":
+                service_ids &= _customer_priced_service_ids()
 
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
         if audience_ids is not None:
@@ -328,18 +245,12 @@ class ServiceListView(generics.ListAPIView):
         context["priced_only"] = (
             self.request.query_params.get("priced_only", "").lower() == "true"
         )
-        location = _location_from_address(self.request)
-        if location is None:
-            context["available_service_ids"] = None
-        else:
-            city, zone = location
-            context["available_service_ids"] = (
-                _enrolled_service_ids(city, zone=zone)
-                & _city_service_ids(city, zone=zone)
-            )
-        context["available_variant_ids"] = (
-            None if location is None else _available_variant_ids(*location)
+        context["available_service_ids"] = (
+            None if _is_worker_catalogue_request(self.request) else _enrolled_service_ids()
         )
+        # Do not hide package variants based on worker online state, schedule,
+        # capabilities or zone while the customer browses the demo catalogue.
+        context["available_variant_ids"] = None
         return context
 
     def get_queryset(self):
@@ -356,11 +267,9 @@ class ServiceListView(generics.ListAPIView):
         ):
             queryset = queryset.filter(pk__in=_customer_priced_service_ids())
 
-        location = _location_from_address(self.request)
-        visible_service_ids = None
-        if location is not None:
-            city, zone = location
-            visible_service_ids = _enrolled_service_ids(city, zone=zone) & _city_service_ids(city, zone=zone)
+        visible_service_ids = (
+            None if _is_worker_catalogue_request(self.request) else _enrolled_service_ids()
+        )
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
         if audience_ids is not None:
             visible_service_ids = audience_ids if visible_service_ids is None else visible_service_ids & audience_ids
@@ -392,18 +301,12 @@ class ServiceDetailView(generics.RetrieveAPIView):
         context["priced_only"] = (
             self.request.query_params.get("priced_only", "").lower() == "true"
         )
-        location = _location_from_address(self.request)
-        if location is None:
-            context["available_service_ids"] = None
-        else:
-            city, zone = location
-            context["available_service_ids"] = (
-                _enrolled_service_ids(city, zone=zone)
-                & _city_service_ids(city, zone=zone)
-            )
-        context["available_variant_ids"] = (
-            None if location is None else _available_variant_ids(*location)
+        context["available_service_ids"] = (
+            None if _is_worker_catalogue_request(self.request) else _enrolled_service_ids()
         )
+        # Do not hide package variants based on worker online state, schedule,
+        # capabilities or zone while the customer browses the demo catalogue.
+        context["available_variant_ids"] = None
         return context
 
     def get_queryset(self):
@@ -419,11 +322,9 @@ class ServiceDetailView(generics.RetrieveAPIView):
             and self.request.query_params.get("priced_only", "").lower() == "true"
         ):
             queryset = queryset.filter(pk__in=_customer_priced_service_ids())
-        location = _location_from_address(self.request)
-        visible_service_ids = None
-        if location is not None:
-            city, zone = location
-            visible_service_ids = _enrolled_service_ids(city, zone=zone) & _city_service_ids(city, zone=zone)
+        visible_service_ids = (
+            None if _is_worker_catalogue_request(self.request) else _enrolled_service_ids()
+        )
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
         if audience_ids is not None:
             visible_service_ids = audience_ids if visible_service_ids is None else visible_service_ids & audience_ids
