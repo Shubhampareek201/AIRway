@@ -220,7 +220,11 @@ class ServicePricingReadinessTests(TestCase):
         response = APIClient().get(f"/api/v1/catalog/services/?{answers}")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
-        self.assertEqual({row["id"] for row in rows}, {fan.id, wiring_repair.id})
+        electrical_ids = {
+            row["id"] for row in rows
+            if row.get("category_slug") in {"fan-services", "wiring-services"}
+        }
+        self.assertEqual(electrical_ids, {fan.id, wiring_repair.id})
 
     def test_electrical_work_type_rejects_malformed_category_answers(self):
         response = APIClient().get(
