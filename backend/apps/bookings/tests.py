@@ -64,6 +64,17 @@ class BookingAPITestMixin:
         # Create zone hierarchy
         city, _ = City.objects.get_or_create(name="Mumbai", defaults={"state": "Maharashtra"})
         zone, _ = Zone.objects.get_or_create(name="Dadar", defaults={"city": city, "is_active": True})
+        # Booking API tests use a dedicated Mumbai fixture area. Give that test
+        # zone an explicit polygon so production Rawatbhata coverage checks stay
+        # enabled instead of bypassing geographic validation in test settings.
+        zone.coverage_polygon = {
+            "type": "Polygon",
+            "coordinates": [[
+                [72.80, 19.00], [72.95, 19.00], [72.95, 19.20],
+                [72.80, 19.20], [72.80, 19.00],
+            ]],
+        }
+        zone.save(update_fields=["coverage_polygon", "updated_at"])
 
         address = Address.objects.create(
             user=user,
