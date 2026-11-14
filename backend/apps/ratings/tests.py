@@ -239,7 +239,7 @@ class RatingSecurityAndFlowAPITest(APITestCase):
         self.client.force_authenticate(self.customer)
         response = self.client.post(
             f"/api/v1/ratings/{self.booking.pk}/rating/",
-            {"rated_id": self.worker_user.pk, "rating_type": "customer", "rating": 5},
+            {"rating_type": "customer", "rating": 5},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -254,7 +254,7 @@ class RatingSecurityAndFlowAPITest(APITestCase):
         self.client.force_authenticate(self.worker_user)
         response = self.client.post(
             f"/api/v1/ratings/{self.booking.pk}/rating/",
-            {"rated_id": self.customer.pk, "rating_type": "worker", "rating": 4},
+            {"rating_type": "worker", "rating": 4},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
