@@ -88,18 +88,19 @@ class ServicePricingReadinessTests(TestCase):
 
 
     def test_priced_customer_detail_hides_unpriced_fixed_variants(self):
+        priced_variant = self.fixed_priced.variants.get()
         unpriced_variant = ServiceVariant.objects.create(
-            service=self.fixed,
+            service=self.fixed_priced,
             title="Legacy unpriced option",
             mrp=Decimal("0.00"),
             price=Decimal("0.00"),
         )
         response = APIClient().get(
-            f"/api/v1/catalog/services/{self.fixed.id}/?launch_only=true&priced_only=true"
+            f"/api/v1/catalog/services/{self.fixed_priced.id}/?launch_only=true&priced_only=true"
         )
         self.assertEqual(response.status_code, 200, response.data)
         visible_ids = {row["id"] for row in response.data["variants"]}
-        self.assertIn(self.fixed_variant.id, visible_ids)
+        self.assertIn(priced_variant.id, visible_ids)
         self.assertNotIn(unpriced_variant.id, visible_ids)
 
     def test_priced_customer_catalogue_keeps_quote_package_choices_visible(self):
