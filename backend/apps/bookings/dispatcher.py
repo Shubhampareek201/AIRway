@@ -89,6 +89,11 @@ class DispatcherService:
             status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
         ).values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered]
+        # The launch default offers every eligible worker simultaneously. Keep
+        # the explicit batch_size argument meaningful for controlled dispatches
+        # and callers that intentionally request a smaller batch.
+        if batch_size is not None:
+            candidates = candidates[:max(int(batch_size), 0)]
         if not candidates:
             cls._notify_dispatch_exhausted(booking)
             return []
