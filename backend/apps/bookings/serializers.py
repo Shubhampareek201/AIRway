@@ -74,10 +74,7 @@ class BookingStatusHistorySerializer(serializers.ModelSerializer):
             return "AIRway Support"
         if user.pk == obj.booking.customer_id:
             return "You"
-        from apps.workers.models import WorkerProfile
-        if WorkerProfile.objects.filter(user_id=user.pk).exists():
-            return "AIRway Professional"
-        return "AIRway User"
+        return "AIRway Professional"
 
 
 class BookingAssignmentSerializer(serializers.ModelSerializer):
