@@ -307,9 +307,9 @@ class Command(BaseCommand):
                         variant.price = unit_rate
                         variant.mrp = _mrp(unit_rate)
                         variant.save(update_fields=["price", "mrp", "updated_at"])
+                        counts["variants_priced"] += 1
                 if service.variants.filter(is_active=True, price__gt=0).exists():
                     counts["per_unit_services_priced"] += 1
-                        counts["variants_priced"] += 1
             else:
                 variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
                 if not variants:
