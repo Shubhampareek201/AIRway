@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -53,7 +54,7 @@ class BookingRatingViewSet(viewsets.ModelViewSet):
 
         try:
             assignment = booking.assignment
-        except Booking.assignment.RelatedObjectDoesNotExist:
+        except ObjectDoesNotExist:
             return Response(
                 {"detail": "This booking has no completed worker assignment."},
                 status=status.HTTP_400_BAD_REQUEST,
