@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.catalog.models import Category, FormField, Service, ServiceVariant
 from apps.catalog.pricing import service_pricing_ready
+from apps.catalog.management.commands.configure_launch_catalogue import _package_price, _service_base_price
 
 
 class ServicePricingReadinessTests(TestCase):
@@ -43,6 +44,24 @@ class ServicePricingReadinessTests(TestCase):
             pricing_type=Service.PricingType.PER_UNIT,
             booking_mode=Service.BookingMode.SCHEDULED,
             unit_label="sq ft",
+        )
+
+    def test_home_cleaning_sofa_and_carpet_have_indicative_starting_prices(self):
+        self.assertEqual(
+            _service_base_price("Home Cleaning", type("ServiceStub", (), {"title": "Sofa & Upholstery Cleaning"})()),
+            Decimal("399"),
+        )
+        self.assertEqual(
+            _service_base_price("Home Cleaning", type("ServiceStub", (), {"title": "Carpet & Rug Cleaning"})()),
+            Decimal("299"),
+        )
+        self.assertEqual(
+            _package_price("Home Cleaning", "Sofa & Upholstery Cleaning", "Deep Sofa Cleaning", {}),
+            Decimal("599"),
+        )
+        self.assertEqual(
+            _package_price("Home Cleaning", "Carpet & Rug Cleaning", "Premium Carpet Cleaning", {}),
+            Decimal("699"),
         )
 
     def test_pricing_readiness_requires_real_customer_price(self):

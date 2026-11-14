@@ -101,11 +101,19 @@ def _package_price(root, service_title, package_title, attributes):
         if "kitchen" in service:
             return Decimal("799") if "basic" in package else Decimal("999") if "deep" in package else Decimal("1799")
         if "sofa" in service or "upholstery" in service:
-            return Decimal("0.00")  # Per-seat calculation is not supported by the current booking snapshot.
+            if "basic" in package:
+                return Decimal("399")
+            if "deep" in package:
+                return Decimal("599")
+            return Decimal("799")
         if "mattress" in service:
             return Decimal("499") if "basic" in package else Decimal("599") if "deep" in package else Decimal("799")
         if "carpet" in service or "rug" in service:
-            return Decimal("0.00")  # Per-square-foot calculation is not supported by the current booking snapshot.
+            if "basic" in package:
+                return Decimal("299")
+            if "deep" in package:
+                return Decimal("499")
+            return Decimal("699")
         if "window" in service or "glass" in service or "balcony" in service or "terrace" in service:
             return Decimal("399") if "basic" in package else Decimal("699") if "deep" in package else Decimal("999")
         return Decimal("499") if "basic" in package else Decimal("799") if "deep" in package else Decimal("1199")
@@ -165,12 +173,12 @@ def _service_base_price(root, service):
             return Decimal("499")
         if "kitchen" in title:
             return Decimal("999")
-        if "sofa" in title:
-            return Decimal("0.00")
+        if "sofa" in title or "upholstery" in title:
+            return Decimal("399")
         if "mattress" in title:
             return Decimal("499")
         if "carpet" in title or "rug" in title:
-            return Decimal("0.00")
+            return Decimal("299")
         if "full home" in title:
             return Decimal("0.00")
         return Decimal("499")
@@ -241,6 +249,7 @@ class Command(BaseCommand):
             "inspection_fees_set": 0,
             "addons_priced": 0,
             "per_unit_services_left_unpriced_for_proper_quantity_support": 0,
+            "fixed_services_still_unpriced": 0,
             "existing_nonzero_prices_preserved": 0,
         }
         for service in services:
@@ -250,59 +259,67 @@ class Command(BaseCommand):
                     service.visit_fee = Decimal("149.00")
                     service.save(update_fields=["visit_fee", "updated_at"])
                     counts["inspection_fees_set"] += 1
-                # Quote services remain quotes; never convert quote variants into fixed packages.
-                continue
-
-            if service.pricing_type == Service.PricingType.PER_UNIT:
+            elif service.pricing_type == Service.PricingType.PER_UNIT:
+                # The current booking snapshot does not yet multiply by a measured
+                # unit (sq ft, seat, etc.). Keep these out of customer booking until
+                # the dedicated unit-quantity flow is implemented.
                 counts["per_unit_services_left_unpriced_for_proper_quantity_support"] += 1
-                continue
-
-            variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
-            if not variants:
-                price = _service_base_price(root, service)
-                if price > 0:
-                    variant, created = ServiceVariant.objects.get_or_create(
-                        service=service,
-                        title="Standard",
-                        defaults={
-                            "description": "Standard service labour/package. Confirm any materials or scope exclusions before booking.",
-                            "mrp": _mrp(price),
-                            "price": price,
-                            "duration_minutes": service.duration_minutes,
-                            "included_tasks": [],
-                            "attributes": {},
-                            "is_active": True,
-                        },
-                    )
-                    if created:
-                        counts["standard_variants_created"] += 1
-                    elif variant.price <= 0:
+            else:
+                variants = list(service.variants.filter(is_active=True).order_by("sort_order", "id"))
+                if not variants:
+                    price = _service_base_price(root, service)
+                    if price > 0:
+                        variant, created = ServiceVariant.objects.get_or_create(
+                            service=service,
+                            title="Standard",
+                            defaults={
+                                "description": "Indicative starting price for the standard scope. Confirm materials and any additional quantity before work.",
+                                "mrp": _mrp(price),
+                                "price": price,
+                                "duration_minutes": service.duration_minutes,
+                                "included_tasks": [],
+                                "attributes": {},
+                                "is_active": True,
+                            },
+                        )
+                        if created:
+                            counts["standard_variants_created"] += 1
+                        elif variant.price <= 0:
+                            variant.price = price
+                            variant.mrp = _mrp(price)
+                            variant.save(update_fields=["price", "mrp", "updated_at"])
+                            counts["variants_priced"] += 1
+                        else:
+                            counts["existing_nonzero_prices_preserved"] += 1
+                    else:
+                        counts["fixed_services_still_unpriced"] += 1
+                else:
+                    service_has_price = False
+                    for variant in variants:
+                        if variant.price > 0:
+                            counts["existing_nonzero_prices_preserved"] += 1
+                            service_has_price = True
+                            continue
+                        price = _package_price(root, service.title, variant.title, variant.attributes)
+                        if price <= 0 and not (
+                            root == "Home Cleaning"
+                            and "full home" in service.title.lower()
+                        ):
+                            price = _service_base_price(root, service)
+                        if price <= 0:
+                            continue
                         variant.price = price
                         variant.mrp = _mrp(price)
                         variant.save(update_fields=["price", "mrp", "updated_at"])
                         counts["variants_priced"] += 1
-                    else:
-                        counts["existing_nonzero_prices_preserved"] += 1
-            else:
-                for variant in variants:
-                    if variant.price > 0:
-                        counts["existing_nonzero_prices_preserved"] += 1
-                        continue
-                    price = _package_price(root, service.title, variant.title, variant.attributes)
-                    if price <= 0 and not (
-                        root == "Home Cleaning"
-                        and any(token in service.title.lower() for token in (
-                            "full home", "sofa", "upholstery", "carpet", "rug"
-                        ))
+                        service_has_price = True
+                    if not service_has_price and not (
+                        root == "Home Cleaning" and "full home" in service.title.lower()
                     ):
-                        price = _service_base_price(root, service)
-                    if price <= 0:
-                        continue
-                    variant.price = price
-                    variant.mrp = _mrp(price)
-                    variant.save(update_fields=["price", "mrp", "updated_at"])
-                    counts["variants_priced"] += 1
+                        counts["fixed_services_still_unpriced"] += 1
 
+            # Add-ons can still be selected on quote/inspection services; price
+            # them independently of the service's base pricing model.
             for addon in service.addons.filter(is_active=True):
                 if addon.price > 0:
                     counts["existing_nonzero_prices_preserved"] += 1
