@@ -8,6 +8,7 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
+import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 
 /// Backend-driven service listing. Service photography uses the same canonical
 /// resolver as Home and service details; admin-uploaded images take priority.
@@ -151,6 +152,34 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _startAddFlow(Service service) async {
+    // Keep the existing booking flow unchanged for non-Beauty categories.
+    if (widget.initialAnswers['beauty_audience'] == null) {
+      final added = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BookingScheduledScreen(
+            serviceId: service.id,
+            serviceTitle: service.title,
+            addressId: widget.addressId,
+            initialCategoryAnswers: widget.initialAnswers,
+          ),
+        ),
+      );
+      if (!mounted || added != true) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${service.title} added to cart'),
+          action: SnackBarAction(
+            label: 'VIEW CART',
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
     final availableVariants = service.variants.where((variant) {
       if (variant.attributes.isEmpty) return true;
       return variant.attributes.entries.every((entry) =>
