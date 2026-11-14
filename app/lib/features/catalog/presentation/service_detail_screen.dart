@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/catalog/data/beauty_audience.dart';
-import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
 
 class _Ui {
   static const violet = Color(0xFF315C46);
@@ -63,67 +61,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
-  List<ServiceVariant> _matchingVariants(Service service) {
-    return service.variants.where((variant) {
-      if (variant.attributes.isEmpty) return true;
-      return variant.attributes.entries.every((entry) =>
-          widget.initialAnswers[entry.key]?.toString() == entry.value.toString());
-    }).toList();
-  }
-
-  Future<void> _navigateToBooking() async {
-    final service = _service;
-    if (service == null) return;
-
-    final answers = Map<String, dynamic>.from(widget.initialAnswers);
-    if (service.supportsProfessionalPreference &&
-        answers['beauty_audience'] == null) {
-      final audience = await BeautyAudienceScreen.choose(context);
-      if (audience == null || !mounted) return;
-      if (!BeautyAudience.includes(
-        selected: audience,
-        serviceAudience: service.audience,
-      )) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              service.audience == 'men'
-                  ? 'This service is listed under Men. Choose Men to continue.'
-                  : 'This service is listed under Women. Choose Women to continue.',
-            ),
-          ),
-        );
-        return;
-      }
-      answers['beauty_audience'] = audience;
-    }
-
-    if (!mounted) return;
-    final added = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BookingScheduledScreen(
-          serviceId: service.id,
-          serviceTitle: service.title,
-          addressId: widget.addressId,
-          initialCategoryAnswers: answers,
-        ),
-      ),
-    );
-    if (!mounted || added != true) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${service.title} added to cart'),
-        action: SnackBarAction(
-          label: 'VIEW CART',
-          onPressed: () => Navigator.push<void>(
-            context,
-            MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -295,27 +232,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           ),
         ],
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
-        SliverToBoxAdapter(
-          child: Builder(
-            builder: (context) {
-              return Container(
-                color: _Ui.bg,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: FilledButton(
-                    onPressed: _navigateToBooking,
-                    child: const Text('Customize & Add to Cart'),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 28)),
       ],
     );
   }
