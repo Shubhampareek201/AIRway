@@ -157,7 +157,7 @@ class Command(BaseCommand):
             ("women", "Women", "Hair, skin, nails and beauty services for women"),
             ("both", "Unisex", "Services explicitly available to all customers"),
         ], start=1):
-            _, created = CategoryAudienceOption.objects.get_or_create(
+            option, created = CategoryAudienceOption.objects.get_or_create(
                 category=beauty,
                 audience=audience,
                 defaults={
@@ -168,6 +168,12 @@ class Command(BaseCommand):
                     "is_active": True,
                 },
             )
+            if not created:
+                option.title = title
+                option.subtitle = subtitle
+                option.sort_order = index
+                option.is_active = True
+                option.save(update_fields=["title", "subtitle", "sort_order", "is_active", "updated_at"])
             changes["beauty_audience_options_created_or_found"] += int(created)
 
         # Car Wash: Car/Bike first, then the existing car service families.

@@ -19,6 +19,14 @@ class LaunchBookingFlowConfigurationTests(TestCase):
                 ("home-cleaning", "Home Cleaning"),
             ]
         }
+        CategoryAudienceOption.objects.create(
+            category=self.roots["beauty"],
+            audience="men",
+            title="Old Men option",
+            subtitle="Old subtitle",
+            image="",
+            is_active=False,
+        )
         self.car_groups = [
             "exterior-car-cleaning", "interior-car-cleaning",
             "complete-car-cleaning", "car-detailing-paint-protection",
