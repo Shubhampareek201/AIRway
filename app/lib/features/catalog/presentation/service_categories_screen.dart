@@ -227,7 +227,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       child: Container(
         decoration: BoxDecoration(
           color: AirwayColors.surface,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AirwayColors.border),
         ),
         clipBehavior: Clip.antiAlias,
@@ -235,7 +235,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              height: 168,
+              height: 112,
               child: imageUrl == null
                   ? Container(
                       color: AirwayColors.primarySoft,
@@ -243,7 +243,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       child: Icon(
                         _categoryIcon(category.title),
                         color: AirwayColors.primary,
-                        size: 48,
+                        size: 38,
                       ),
                     )
                   : Image.network(
@@ -261,7 +261,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                     ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 15),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
               child: Row(
                 children: [
                   Expanded(
@@ -273,13 +273,13 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight: FontWeight.w900,
                             color: AirwayColors.text,
                           ),
                         ),
                         if (category.children.isNotEmpty) ...[
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 3),
                           Text(
                             '${category.children.length} subcategories',
                             style: const TextStyle(
@@ -291,7 +291,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   const Icon(
                     Icons.arrow_forward_rounded,
                     color: AirwayColors.primary,
