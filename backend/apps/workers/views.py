@@ -498,6 +498,38 @@ class WorkerOnboardingView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+def _worker_payment_label(booking):
+    """Return a worker-safe summary of the payment stage for this assigned job."""
+    from apps.payments.models import Payment
+
+    order_item = getattr(booking, "order_item", None)
+    if order_item:
+        order = order_item.order
+        allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+        if allocation:
+            advance_paid = Payment.objects.filter(
+                order=order,
+                stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).exists()
+            return (
+                "30% advance received. Remaining balance is due after OTP-verified completion."
+                if advance_paid else "Customer advance payment is pending."
+            )
+        legacy_paid = Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.LEGACY,
+            status=Payment.Status.PAID,
+        ).exists()
+        return "Full order payment received." if legacy_paid else "Full order payment pending."
+
+    booking_paid = Payment.objects.filter(
+        booking=booking,
+        status=Payment.Status.PAID,
+    ).exists()
+    return "Full booking payment received." if booking_paid else "Booking payment pending."
+
+
 class WorkerJobListView(APIView):
     """Jobs assigned to the current worker."""
     permission_classes = [IsAuthenticated]
@@ -521,6 +553,7 @@ class WorkerJobListView(APIView):
         results = []
         for assign in query:
             booking = assign.booking
+            payment_label = _worker_payment_label(booking)
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
@@ -530,8 +563,8 @@ class WorkerJobListView(APIView):
                 "address": booking.address.full_address,
                 "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
-                "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
-            "payment_label": payment_label,
+                    "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+                "payment_label": payment_label,
                 "worker_notes": booking.worker_notes or None,
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
             })
@@ -553,31 +586,7 @@ class WorkerJobDetailView(APIView):
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
-        from apps.payments.models import Payment
-        order_item = getattr(booking, "order_item", None)
-        if order_item:
-            order = order_item.order
-            allocation = (order.metadata or {}).get("payment_allocation_v1", {})
-            if allocation:
-                advance_paid = Payment.objects.filter(
-                    order=order, stage=Payment.Stage.ADVANCE,
-                    status=Payment.Status.PAID,
-                ).exists()
-                payment_label = (
-                    "30% advance received. Remaining balance is due after OTP-verified completion."
-                    if advance_paid else "Customer advance payment is pending."
-                )
-            else:
-                legacy_paid = Payment.objects.filter(
-                    order=order, stage=Payment.Stage.LEGACY,
-                    status=Payment.Status.PAID,
-                ).exists()
-                payment_label = "Full order payment received." if legacy_paid else "Full order payment pending."
-        else:
-            booking_paid = Payment.objects.filter(
-                booking=booking, status=Payment.Status.PAID
-            ).exists()
-            payment_label = "Full booking payment received." if booking_paid else "Booking payment pending."
+        payment_label = _worker_payment_label(booking)
         customer_answers = dict(booking.customer_answers or {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
