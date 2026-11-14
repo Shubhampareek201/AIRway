@@ -19,6 +19,7 @@ from apps.ratings.serializers import (
 class BookingRatingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingRatingSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
@@ -108,6 +109,7 @@ class BookingRatingViewSet(viewsets.ModelViewSet):
 class RatingSummaryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RatingSummarySerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         # A user's rating summary is private to that authenticated account.
