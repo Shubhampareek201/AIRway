@@ -42,6 +42,10 @@ jobs:
         working-directory: backend
         run: python manage.py check --settings=config.test_settings
 
+      - name: Smoke test read-only catalogue diagnosis command
+        working-directory: backend
+        run: python manage.py help diagnose_customer_catalogue --settings=config.test_settings
+
       - name: Run worker approval regression tests
         working-directory: backend
         run: python manage.py test apps.workers.test_admin_approval --settings=config.test_settings --verbosity 2
