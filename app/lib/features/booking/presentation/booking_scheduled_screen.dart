@@ -5,7 +5,7 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
-import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/location/presentation/address_picker_screen.dart';
 import 'package:airway/features/location/presentation/location_selection_screen.dart';
 
@@ -1225,7 +1225,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
       final addonSelections = _selectedAddonIds
           .map((id) => {'id': id, 'quantity': 1})
           .toList();
-      await BookingApi.addCartItem(
+      final updatedCart = await BookingApi.addCartItem(
         serviceId: widget.serviceId,
         variantId: _selectedVariantId,
         quantity: _quantity,
@@ -1233,12 +1233,10 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
         formAnswers: _formAnswers,
         categoryAnswers: _categoryAnswers,
       );
+      CustomerCartState.updateFromCart(updatedCart);
       if (!mounted) return;
-      Navigator.pop(context);
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
-      );
+      Navigator.pop(context); // Close the loading dialog.
+      Navigator.pop(context, true); // Return to browsing with the cart updated.
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
