@@ -48,9 +48,11 @@ class BeautyAudienceScreen extends StatelessWidget {
         backgroundColor: const Color(0xFFF8F8F5),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        padding: const EdgeInsets.fromLTRB(0, 12, 0, 28),
         children: [
-          const Text(
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
             'Who are you booking for?',
             style: TextStyle(
               color: _ink,
@@ -58,10 +60,14 @@ class BeautyAudienceScreen extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
+          ),
           const SizedBox(height: 7),
-          const Text(
-            'Choose an option to see the right salon services.',
-            style: TextStyle(color: _muted, height: 1.45),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'Choose an option to see the right salon services.',
+              style: TextStyle(color: _muted, height: 1.45),
+            ),
           ),
           const SizedBox(height: 22),
           for (final option in _visibleOptions) ...[
@@ -76,10 +82,13 @@ class BeautyAudienceScreen extends StatelessWidget {
             const SizedBox(height: 14),
           ],
           const SizedBox(height: 16),
-          const Text(
-            'Your selection only filters the services; it does not determine your professional preference.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: _muted, fontSize: 11, height: 1.45),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'Your selection only filters the services; it does not determine your professional preference.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted, fontSize: 11, height: 1.45),
+            ),
           ),
         ],
       ),
@@ -96,7 +105,7 @@ class BeautyAudienceScreen extends StatelessWidget {
   }) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.pop(context, value),
@@ -110,7 +119,7 @@ class BeautyAudienceScreen extends StatelessWidget {
             children: [
               if (value == BeautyAudience.both && image.isNotEmpty && secondaryImage.isNotEmpty)
                 SizedBox(
-                  height: 174,
+                  height: 57,
                   child: Row(
                     children: [
                       Expanded(child: Image.network(image, height: 174, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _imageFallback())),
@@ -129,7 +138,7 @@ class BeautyAudienceScreen extends StatelessWidget {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 13, 16, 15),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 9),
                 child: Row(
                   children: [
                     Expanded(
@@ -137,11 +146,11 @@ class BeautyAudienceScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(title, style: const TextStyle(
-                            color: _ink, fontSize: 18, fontWeight: FontWeight.w900,
+                            color: _ink, fontSize: 16, fontWeight: FontWeight.w900,
                           )),
                           const SizedBox(height: 3),
                           Text(subtitle, style: const TextStyle(
-                            color: _muted, fontSize: 12,
+                            color: _muted, fontSize: 11,
                           )),
                         ],
                       ),
@@ -226,6 +235,6 @@ class BeautyAudienceScreen extends StatelessWidget {
   Widget _imageFallback() => Container(
     color: const Color(0xFFEAF1EA),
     alignment: Alignment.center,
-    child: const Icon(Icons.spa_outlined, color: _green, size: 42),
+    child: const Icon(Icons.spa_outlined, color: _green, size: 28),
   );
 }
