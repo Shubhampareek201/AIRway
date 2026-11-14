@@ -227,8 +227,10 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       child: Container(
         decoration: BoxDecoration(
           color: AirwayColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AirwayColors.border),
+          border: Border(
+            top: BorderSide(color: AirwayColors.border),
+            bottom: BorderSide(color: AirwayColors.border),
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -324,16 +326,24 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
               : _categories.isEmpty
                   ? _emptyState()
                   : ListView(
-                      padding: AirwaySpacing.screenPadding,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                       children: [
-                        Text(
-                          widget.title == 'Browse Services' ? 'Choose a category' : 'Choose a service',
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AirwayColors.text),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _audienceSubtitle,
-                          style: const TextStyle(fontSize: 13, color: AirwayColors.textSecondary),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.title == 'Browse Services' ? 'Choose a category' : 'Choose a service',
+                                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AirwayColors.text),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _audienceSubtitle,
+                                style: const TextStyle(fontSize: 13, color: AirwayColors.textSecondary),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 20),
                         ..._buildCategoryGrid(),
