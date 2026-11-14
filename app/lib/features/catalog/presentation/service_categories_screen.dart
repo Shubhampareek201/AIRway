@@ -316,7 +316,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           crossAxisCount: 2,
           crossAxisSpacing: 12,
           mainAxisSpacing: 14,
-          mainAxisExtent: 174,
+          mainAxisExtent: 164,
         ),
         itemBuilder: (context, index) => _categoryCard(_categories[index]),
       );
