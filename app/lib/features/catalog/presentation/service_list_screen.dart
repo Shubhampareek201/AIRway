@@ -151,8 +151,19 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _startAddFlow(Service service) async {
+    final availableVariants = service.variants.where((variant) {
+      if (variant.attributes.isEmpty) return true;
+      return variant.attributes.entries.every((entry) =>
+          widget.initialAnswers[entry.key]?.toString() == entry.value.toString());
+    }).toList();
+    if (service.variants.isNotEmpty && availableVariants.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No package is available for this selection.')),
+      );
+      return;
+    }
     ServiceVariant? selectedVariant;
-    if (service.variants.isNotEmpty) {
+    if (availableVariants.isNotEmpty) {
       selectedVariant = await showModalBottomSheet<ServiceVariant>(
         context: context,
         isScrollControlled: true,
@@ -176,7 +187,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 const SizedBox(height: 5),
                 const Text('Choose a package to add this service to your cart.', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
                 const SizedBox(height: 14),
-                for (final variant in service.variants)
+                for (final variant in availableVariants)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 9),
                     child: InkWell(
