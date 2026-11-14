@@ -1,4 +1,5 @@
 """Django settings for test environment."""
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -59,13 +60,26 @@ TEMPLATES = [{
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "test_db.sqlite3",
-        "CONN_MAX_AGE": 60,
+if os.environ.get("AIRWAY_TEST_POSTGRES") == "1":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DB_NAME", "airway_test"),
+            "USER": os.environ.get("DB_USER", "airway"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", "airway_test_password"),
+            "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+            "CONN_MAX_AGE": 0,
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "test_db.sqlite3",
+            "CONN_MAX_AGE": 60,
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {

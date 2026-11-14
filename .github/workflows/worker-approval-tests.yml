@@ -49,3 +49,52 @@ jobs:
       - name: Run complete backend regression suite
         working-directory: backend
         run: python manage.py test --settings=config.test_settings --verbosity 1
+
+  postgres-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: airway_test
+          POSTGRES_USER: airway
+          POSTGRES_PASSWORD: airway_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U airway -d airway_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      AIRWAY_TEST_POSTGRES: "1"
+      DB_NAME: airway_test
+      DB_USER: airway
+      DB_PASSWORD: airway_test_password
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run PostgreSQL Django system checks
+        working-directory: backend
+        run: python manage.py check --settings=config.test_settings
+
+      - name: Run complete backend regression suite on PostgreSQL 16
+        working-directory: backend
+        run: python manage.py test --settings=config.test_settings --verbosity 1
