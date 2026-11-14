@@ -41,7 +41,12 @@ class CatalogCategoryImageResolver {
     'fan-services': 'https://images.unsplash.com/photo-1706973320036-b5049d93b580?w=900&auto=format&fit=crop',
     'lighting-services': 'https://images.unsplash.com/photo-1724054913772-afffd0933162?w=900&auto=format&fit=crop',
     'switch-socket': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&auto=format&fit=crop',
+    'switch-socket-services': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&auto=format&fit=crop',
     'wiring-services': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&auto=format&fit=crop',
+    'wiring-electrical-repairs': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&auto=format&fit=crop',
+    'inverter-ups': 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=900&auto=format&fit=crop',
+    'geyser-electrical-connections': 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=900&auto=format&fit=crop',
+    'electrical-inspection-setup': 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=900&auto=format&fit=crop',
   };
 
   static String? forCategory({required String slug, required String title}) {
