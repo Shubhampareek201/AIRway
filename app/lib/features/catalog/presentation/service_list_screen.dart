@@ -10,6 +10,16 @@ import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 
+class _PackageSelection {
+  final ServiceVariant? variant;
+  final String notes;
+  final bool openDetails;
+
+  const _PackageSelection.add(this.variant, this.notes) : openDetails = false;
+  const _PackageSelection.openDetails()
+      : variant = null, notes = '', openDetails = true;
+}
+
 /// Backend-driven service listing. Service photography uses the same canonical
 /// resolver as Home and service details; admin-uploaded images take priority.
 class ServiceListScreen extends StatefulWidget {
@@ -151,6 +161,251 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     );
   }
 
+  String _packageDescription(ServiceVariant variant) {
+    final description = variant.description?.trim() ?? '';
+    if (description.isNotEmpty) return description;
+    final title = variant.title.toLowerCase();
+    if (title.contains('basic') || title.contains('essential')) {
+      return 'Essential care for everyday service needs.';
+    }
+    if (title.contains('standard') || title.contains('regular') || title.contains('normal')) {
+      return 'A balanced option for regular upkeep and care.';
+    }
+    if (title.contains('premium') || title.contains('deep')) {
+      return 'Enhanced care for a more detailed service experience.';
+    }
+    return 'A service package tailored to your selected requirements.';
+  }
+
+  Future<_PackageSelection?> _showBeautyPackageSheet(
+    Service service,
+    List<ServiceVariant> variants,
+  ) async {
+    final notesController = TextEditingController();
+    try {
+      return await showModalBottomSheet<_PackageSelection>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          ServiceVariant? selectedVariant;
+          return StatefulBuilder(
+            builder: (context, setSheetState) => SafeArea(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+                ),
+                padding: EdgeInsets.fromLTRB(
+                  18, 12, 18, 16 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(child: Container(
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(
+                        color: AirwayColors.border,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    )),
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(service.title, style: const TextStyle(
+                            fontSize: 19, fontWeight: FontWeight.w900,
+                            color: AirwayColors.text,
+                          )),
+                          const SizedBox(height: 4),
+                          const Text('Choose the package that suits you best',
+                            style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                        ],
+                      )),
+                      const Icon(Icons.auto_awesome_rounded, color: AirwayColors.primary, size: 25),
+                    ]),
+                    const SizedBox(height: 14),
+                    Flexible(child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          if (variants.isEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AirwayColors.primarySoft,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Text(
+                                'This service will be added at its listed price. Our team will confirm any service-specific details.',
+                                style: TextStyle(fontSize: 12, height: 1.4, color: AirwayColors.text),
+                              ),
+                            ),
+                          for (final variant in variants) ...[
+                            _buildPackageOption(
+                              variant,
+                              selected: selectedVariant?.id == variant.id,
+                              description: _packageDescription(variant),
+                              onTap: () => setSheetState(() => selectedVariant = variant),
+                            ),
+                            const SizedBox(height: 9),
+                          ],
+                          const SizedBox(height: 5),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('Anything we should know?',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+                          ),
+                          const SizedBox(height: 7),
+                          TextField(
+                            controller: notesController,
+                            minLines: 2,
+                            maxLines: 4,
+                            maxLength: 300,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText: 'Add a request or special instruction (optional)',
+                              hintStyle: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                              filled: true,
+                              fillColor: AirwayColors.background,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(13),
+                                borderSide: const BorderSide(color: AirwayColors.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(13),
+                                borderSide: const BorderSide(color: AirwayColors.border),
+                              ),
+                              contentPadding: const EdgeInsets.all(13),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => Navigator.pop(
+                              sheetContext,
+                              const _PackageSelection.openDetails(),
+                            ),
+                            icon: const Icon(Icons.info_outline_rounded, size: 18),
+                            label: const Text('View full service details'),
+                            style: TextButton.styleFrom(foregroundColor: AirwayColors.primary),
+                          ),
+                        ],
+                      ),
+                    )),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: variants.isNotEmpty && selectedVariant == null
+                            ? null
+                            : () => Navigator.pop(
+                                sheetContext,
+                                _PackageSelection.add(
+                                  selectedVariant,
+                                  notesController.text.trim(),
+                                ),
+                              ),
+                        icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                        label: const Text('Add to Cart'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AirwayColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      notesController.dispose();
+    }
+  }
+
+  Widget _buildPackageOption(
+    ServiceVariant variant, {
+    required bool selected,
+    required String description,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? AirwayColors.primarySoft : Colors.white,
+      borderRadius: BorderRadius.circular(15),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: selected ? AirwayColors.primary : AirwayColors.border,
+              width: selected ? 1.7 : 1,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                color: AirwayColors.primary,
+                size: 21,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(variant.title, style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w900, color: AirwayColors.text,
+                  )),
+                  const SizedBox(height: 4),
+                  Text(description, style: const TextStyle(
+                    fontSize: 11.5, height: 1.35, color: AirwayColors.textSecondary,
+                  )),
+                  if (variant.includedTasks.isNotEmpty) ...[
+                    const SizedBox(height: 7),
+                    for (final task in variant.includedTasks.take(4))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Icon(Icons.check_rounded, size: 14, color: AirwayColors.primary),
+                          const SizedBox(width: 5),
+                          Expanded(child: Text(task, style: const TextStyle(
+                            fontSize: 11, color: AirwayColors.text,
+                          ))),
+                        ]),
+                      ),
+                    if (variant.includedTasks.length > 4)
+                      Text('+ ${variant.includedTasks.length - 4} more included',
+                        style: const TextStyle(fontSize: 10.5, color: AirwayColors.primary, fontWeight: FontWeight.w700)),
+                  ],
+                  if (variant.durationMinutes != null && variant.durationMinutes! > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('${variant.durationMinutes} min',
+                        style: const TextStyle(fontSize: 10.5, color: AirwayColors.textSecondary)),
+                    ),
+                ],
+              )),
+              const SizedBox(width: 8),
+              Text('₹${variant.price.toStringAsFixed(0)}', style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w900, color: AirwayColors.primary,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _startAddFlow(Service service) async {
     // Keep the existing booking flow unchanged for non-Beauty categories.
     if (widget.initialAnswers['beauty_audience'] == null) {
@@ -180,6 +435,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       );
       return;
     }
+
     final availableVariants = service.variants.where((variant) {
       if (variant.attributes.isEmpty) return true;
       return variant.attributes.entries.every((entry) =>
@@ -191,71 +447,22 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       );
       return;
     }
-    ServiceVariant? selectedVariant;
-    if (availableVariants.isNotEmpty) {
-      selectedVariant = await showModalBottomSheet<ServiceVariant>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (sheetContext) => SafeArea(
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(child: Container(width: 38, height: 4, decoration: BoxDecoration(
-                  color: AirwayColors.border, borderRadius: BorderRadius.circular(4),
-                ))),
-                const SizedBox(height: 18),
-                Text(service.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AirwayColors.text)),
-                const SizedBox(height: 5),
-                const Text('Choose a package to add this service to your cart.', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
-                const SizedBox(height: 14),
-                for (final variant in availableVariants)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 9),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(13),
-                      onTap: () => Navigator.pop(sheetContext, variant),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AirwayColors.border),
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: Row(children: [
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(variant.title, style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text)),
-                            if (variant.durationMinutes != null && variant.durationMinutes! > 0)
-                              Text('${variant.durationMinutes} min', style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary)),
-                          ])),
-                          Text('₹${variant.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, color: AirwayColors.primary)),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.add_circle_outline, color: AirwayColors.primary),
-                        ]),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      );
-      if (selectedVariant == null || !mounted) return;
+
+    final selection = await _showBeautyPackageSheet(service, availableVariants);
+    if (!mounted || selection == null) return;
+    if (selection.openDetails) {
+      _openService(service);
+      return;
     }
 
     try {
       final updatedCart = await BookingApi.addCartItem(
         serviceId: service.id,
-        variantId: selectedVariant?.id,
+        variantId: selection.variant?.id,
         addonSelections: const [],
         formAnswers: const {},
         categoryAnswers: widget.initialAnswers,
+        notes: selection.notes,
       );
       CustomerCartState.updateFromCart(updatedCart);
       if (!mounted) return;
