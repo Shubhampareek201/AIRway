@@ -247,6 +247,7 @@ class Command(BaseCommand):
             "variants_priced": 0,
             "standard_variants_created": 0,
             "inspection_fees_set": 0,
+            "quote_services_configured_for_inspection": 0,
             "addons_priced": 0,
             "per_unit_services_priced": 0,
             "fixed_services_still_unpriced": 0,
@@ -255,15 +256,25 @@ class Command(BaseCommand):
         for service in services:
             root = _root_name(service.category)
             if service.pricing_type == Service.PricingType.QUOTE:
-                if service.booking_mode == Service.BookingMode.INSPECTION and service.visit_fee <= 0:
+                quote_updates = []
+                if service.booking_mode != Service.BookingMode.INSPECTION:
+                    service.booking_mode = Service.BookingMode.INSPECTION
+                    quote_updates.append("booking_mode")
+                    counts["quote_services_configured_for_inspection"] += 1
+                if service.visit_fee <= 0:
                     service.visit_fee = Decimal("149.00")
-                    service.save(update_fields=["visit_fee", "updated_at"])
+                    quote_updates.append("visit_fee")
                     counts["inspection_fees_set"] += 1
+                if quote_updates:
+                    service.save(update_fields=quote_updates + ["updated_at"])
             elif service.pricing_type == Service.PricingType.PER_UNIT:
                 # The existing booking/cart quantity is already multiplied into
                 # pricing snapshots. For per-unit services it represents the
                 # measured unit count (sq ft, seat, piece, etc.).
-                unit_label = (service.unit_label or "").strip().lower()
+                if not service.unit_label:
+                    service.unit_label = "unit"
+                    service.save(update_fields=["unit_label", "updated_at"])
+                unit_label = service.unit_label.strip().lower()
                 if "sq" in unit_label or "square" in unit_label:
                     unit_rate = Decimal("15.00")
                 elif "seat" in unit_label:
