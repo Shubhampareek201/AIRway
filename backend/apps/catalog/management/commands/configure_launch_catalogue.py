@@ -275,7 +275,10 @@ class Command(BaseCommand):
                     service.unit_label = "unit"
                     service.save(update_fields=["unit_label", "updated_at"])
                 unit_label = service.unit_label.strip().lower()
-                if "sq" in unit_label or "square" in unit_label:
+                service_title = service.title.lower()
+                if "mattress" in service_title:
+                    unit_rate = Decimal("499.00")
+                elif "sq" in unit_label or "square" in unit_label:
                     unit_rate = Decimal("15.00")
                 elif "seat" in unit_label:
                     unit_rate = Decimal("199.00")
