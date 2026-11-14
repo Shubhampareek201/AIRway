@@ -109,11 +109,14 @@ DATABASES = {
         "USER": os.environ["POSTGRES_USER"],
         "PASSWORD": os.environ["POSTGRES_PASSWORD"],
         "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
-        "PORT": os.environ.get("DB_PORT", "5433"),
+        "PORT": os.environ.get("DB_PORT", "5434"),
         "CONN_MAX_AGE": 60,
         "CONN_HEALTH_CHECKS": True,
     }
 }
+
+# Worker profiles may contain many service capability rows and admin inlines.
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 
 
 # Password validation
