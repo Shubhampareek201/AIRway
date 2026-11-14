@@ -255,7 +255,9 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
 
             duration = variant.duration_minutes if variant else service.duration_minutes
-            duration = (duration or 60) * data.get("quantity", 1)
+            duration = (duration or 60) * (
+                1 if service.pricing_type == "per_unit" else data.get("quantity", 1)
+            )
 
             check_slot_availability(
                 service=service,

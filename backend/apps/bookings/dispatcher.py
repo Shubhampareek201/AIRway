@@ -66,6 +66,7 @@ class DispatcherService:
         batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
         duration = (booking.variant.duration_minutes if booking.variant_id and booking.variant.duration_minutes else booking.service.duration_minutes) or 60
         quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+        duration_multiplier = 1 if booking.service.pricing_type == "per_unit" else quantity
         from apps.workers.eligibility import required_worker_gender_for_booking
         try:
             gender = required_worker_gender_for_booking(booking.service, booking.customer_answers)
@@ -76,7 +77,7 @@ class DispatcherService:
             service=booking.service,
             zone=booking.address.zone if booking.address_id else None,
             scheduled_at=booking.scheduled_at,
-            duration_minutes=duration * quantity,
+            duration_minutes=duration * duration_multiplier,
             drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
             exclude_booking_id=booking.pk,
             exclude_customer_id=booking.customer_id,
@@ -157,6 +158,7 @@ class DispatcherService:
                     else booking.service.duration_minutes
                 ) or 60
                 quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                duration_multiplier = 1 if booking.service.pricing_type == "per_unit" else quantity
                 from apps.workers.eligibility import required_worker_gender_for_booking
                 try:
                     gender = required_worker_gender_for_booking(booking.service, booking.customer_answers)
@@ -167,7 +169,7 @@ class DispatcherService:
                     service=booking.service,
                     zone=booking.address.zone,
                     scheduled_at=booking.scheduled_at,
-                    duration_minutes=duration * quantity,
+                    duration_minutes=duration * duration_multiplier,
                     drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
                     exclude_booking_id=booking.pk,
                     exclude_customer_id=booking.customer_id,
@@ -255,9 +257,10 @@ class DispatcherService:
                 else booking.service.duration_minutes
             ) or 60
             quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+            duration_multiplier = 1 if booking.service.pricing_type == "per_unit" else quantity
             intervals = _booking_intervals(
                 booking.scheduled_at,
-                duration * quantity,
+                duration * duration_multiplier,
                 booking.service.buffer_minutes,
                 booking.drop_scheduled_at
                 if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
@@ -333,7 +336,10 @@ class DispatcherService:
                 if booking.variant_id and booking.variant.duration_minutes
                 else booking.service.duration_minutes
             ) or 60
-            duration_minutes *= max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+            duration_minutes *= (
+                1 if booking.service.pricing_type == "per_unit"
+                else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+            )
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,

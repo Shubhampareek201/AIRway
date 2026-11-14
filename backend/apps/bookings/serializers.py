@@ -246,7 +246,9 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                     service=service,
                     address=address,
                     scheduled_at=scheduled_at,
-                    duration_minutes=(duration or 60) * quantity,
+                    duration_minutes=(duration or 60) * (
+                        1 if service.pricing_type == Service.PricingType.PER_UNIT else quantity
+                    ),
                     required_gender=required_gender,
                     drop_scheduled_at=drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
                     exclude_customer_id=user.id,
@@ -504,6 +506,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
 class BookingListSerializer(serializers.ModelSerializer):
     service_title = serializers.CharField(source="service.title", read_only=True)
+    service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     service_image = serializers.SerializerMethodField()
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     address_label = serializers.CharField(source="address.label", read_only=True)
@@ -513,7 +516,7 @@ class BookingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            "id", "service", "service_title", "service_image", "variant_title",
+            "id", "service", "service_title", "service_unit_label", "service_image", "variant_title",
             "booking_mode", "scheduled_at", "status", "status_display",
             "address_label", "address_full", "pricing_snapshot", "created_at"
         ]
@@ -530,6 +533,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     order_id = serializers.IntegerField(source="order_item.order_id", read_only=True)
     service_title = serializers.CharField(source="service.title", read_only=True)
     service_title_hi = serializers.CharField(source="service.title_hi", read_only=True)
+    service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     service_image = serializers.SerializerMethodField()
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     variant_title_hi = serializers.CharField(source="variant.title_hi", read_only=True)
@@ -546,7 +550,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            "id", "order_id", "service", "service_title", "service_title_hi", "service_image",
+            "id", "order_id", "service", "service_title", "service_title_hi", "service_unit_label", "service_image",
             "variant", "variant_title", "variant_title_hi", "booking_mode", "booking_mode_display",
             "scheduled_at", "drop_scheduled_at", "status", "status_display",
             "address_detail", "pricing_snapshot", "notes", "worker_notes",
@@ -602,7 +606,7 @@ class BookingAvailabilitySerializer(serializers.Serializer):
     booking_mode = serializers.CharField(required=False, default="scheduled")
     audience = serializers.CharField(required=False, default="all")
     address_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
-    quantity = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10000, default=1)
     category_answers = serializers.DictField(required=False, default=dict)
 
     def validate_scheduled_at(self, value):
@@ -619,9 +623,17 @@ class BookingAvailabilitySerializer(serializers.Serializer):
             raise serializers.ValidationError({"service": "Invalid service ID."})
 
         attrs["service_obj"] = service
+        quantity = attrs.get("quantity", 1)
+        quantity_limit = 10000 if service.pricing_type == Service.PricingType.PER_UNIT else 20
+        if quantity > quantity_limit:
+            raise serializers.ValidationError({"quantity": f"Quantity must not exceed {quantity_limit}."})
         variant = ServiceVariant.objects.filter(pk=attrs.get("variant_id"), is_active=True).first() if attrs.get("variant_id") else None
         if attrs.get("variant_id") and (variant is None or variant.service_id != service.id):
             raise serializers.ValidationError({"variant_id": "Choose an active package for this service."})
+        if service.pricing_type == Service.PricingType.PER_UNIT and (
+            variant is None or variant.price <= 0
+        ):
+            raise serializers.ValidationError({"variant_id": "Choose a priced unit rate for this service."})
         attrs["variant"] = variant
 
         booking_mode = attrs.get("booking_mode", "scheduled")
@@ -650,6 +662,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     worker_name = serializers.CharField(source="worker.user.name", read_only=True)
     worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
     service_title = serializers.CharField(source="booking.service.title", read_only=True)
+    service_unit_label = serializers.CharField(source="booking.service.unit_label", read_only=True)
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
@@ -678,7 +691,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "customer_total", "advance_received", "remaining_balance",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
-            "worker_phone", "service_title", "variant_title", "scheduled_at",
+            "worker_phone", "service_title", "service_unit_label", "variant_title", "scheduled_at",
             "service_address", "booking_notes", "expected_duration_minutes",
             "customer_answers", "professional_preference",
             "form_responses", "addons", "quantity", "can_accept", "can_decline",
@@ -717,6 +730,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 "booking_id": obj.booking_id,
                 "service_id": obj.booking.service_id,
                 "service_title": obj.booking.service.title,
+                "service_unit_label": obj.booking.service.unit_label,
                 "variant_title": obj.booking.variant.title if obj.booking.variant_id else None,
                 "scheduled_at": obj.booking.scheduled_at,
             }]
@@ -724,6 +738,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "booking_id": item.booking_id,
             "service_id": item.booking.service_id,
             "service_title": item.booking.service.title,
+            "service_unit_label": item.booking.service.unit_label,
             "variant_title": item.booking.variant.title if item.booking.variant_id else None,
             "scheduled_at": item.booking.scheduled_at,
             "quantity": item.quantity,
@@ -736,7 +751,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             if booking.variant_id and booking.variant.duration_minutes
             else booking.service.duration_minutes
         ) or 60
-        return duration * max(self.get_quantity(obj), 1)
+        multiplier = 1 if booking.service.pricing_type == "per_unit" else max(self.get_quantity(obj), 1)
+        return duration * multiplier
 
     def get_customer_answers(self, obj):
         answers = dict(obj.booking.customer_answers or {})

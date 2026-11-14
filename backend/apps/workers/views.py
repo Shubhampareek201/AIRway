@@ -594,6 +594,7 @@ class WorkerJobDetailView(APIView):
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
             "variant_title": booking.variant.title if booking.variant_id else None,
+            "service_unit_label": booking.service.unit_label,
             "quantity": (
                 booking.order_item.quantity
                 if hasattr(booking, "order_item")
@@ -1149,7 +1150,9 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     service=booking.service,
                     zone=zone,
                     scheduled_at=booking.scheduled_at,
-                    duration_minutes=duration * quantity,
+                    duration_minutes=duration * (
+                        1 if booking.service.pricing_type == "per_unit" else quantity
+                    ),
                     drop_scheduled_at=(
                         booking.drop_scheduled_at
                         if booking.booking_mode == Booking.BookingMode.PICKUP_DROP else None
