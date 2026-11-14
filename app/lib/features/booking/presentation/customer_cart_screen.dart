@@ -4,6 +4,7 @@ import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 import 'package:airway/features/booking/presentation/booking_schedule_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
+import 'package:airway/features/booking/presentation/cart_item_preferences_screen.dart';
 
 class CustomerCartScreen extends StatefulWidget {
   const CustomerCartScreen({super.key});
@@ -72,6 +73,25 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     } catch (e) {
       if (mounted) setState(() { busy = false; error = e.toString(); });
     }
+  }
+
+  Future<void> editPreferences(Map<String, dynamic> item) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CartItemPreferencesScreen(
+          cartItemId: item['id'] as int,
+          serviceId: int.parse(item['service'].toString()),
+          serviceTitle: item['service_title']?.toString() ?? 'Service',
+          categoryAnswers: Map<String, dynamic>.from(
+            item['category_answers'] as Map? ?? const {},
+          ),
+          initialAnswers: Map<String, dynamic>.from(
+            item['form_answers'] as Map? ?? const {},
+          ),
+        ),
+      ),
+    );
+    if (saved == true && mounted) await loadCart();
   }
 
   Future<void> chooseSchedule(int id) async {
@@ -361,6 +381,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: sub)),
           for (final addon in addons) Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 12, color: ink)),
         ],
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: busy ? null : () => editPreferences(item),
+          icon: const Icon(Icons.tune_rounded, size: 18),
+          label: const Text('Add / edit preferences'),
+          style: OutlinedButton.styleFrom(foregroundColor: violet),
+        ),
         const Divider(height: 20),
         const Text('Service Schedule', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 13)),
         const SizedBox(height: 8),
