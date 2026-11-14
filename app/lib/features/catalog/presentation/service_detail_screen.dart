@@ -62,6 +62,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
 
+  List<ServiceVariant> _matchingVariants(Service service) {
+    return service.variants.where((variant) {
+      if (variant.attributes.isEmpty) return true;
+      return variant.attributes.entries.every((entry) =>
+          widget.initialAnswers[entry.key]?.toString() == entry.value.toString());
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
