@@ -47,6 +47,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   bool _loading = true;
   String? _error;
   final _searchController = TextEditingController();
+  final _packageNotesController = TextEditingController();
   String _query = '';
 
   @override
@@ -58,6 +59,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _packageNotesController.dispose();
     super.dispose();
   }
 
@@ -181,9 +183,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     Service service,
     List<ServiceVariant> variants,
   ) async {
-    final notesController = TextEditingController();
-    try {
-      return await showModalBottomSheet<_PackageSelection>(
+    _packageNotesController.clear();
+    return showModalBottomSheet<_PackageSelection>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -262,7 +263,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ),
                           const SizedBox(height: 7),
                           TextField(
-                            controller: notesController,
+                            controller: _packageNotesController,
                             minLines: 2,
                             maxLines: 4,
                             maxLength: 300,
@@ -284,9 +285,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             ),
                           ),
                           TextButton.icon(
-                            onPressed: () => Navigator.pop(
-                              sheetContext,
-                              const _PackageSelection.openDetails(),
+                            onPressed: () => Navigator.of(sheetContext).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) => ServiceDetailScreen(
+                                  serviceId: service.id,
+                                  addressId: widget.addressId,
+                                  initialAnswers: widget.initialAnswers,
+                                ),
+                              ),
                             ),
                             icon: const Icon(Icons.info_outline_rounded, size: 18),
                             label: const Text('View full service details'),
@@ -305,7 +311,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 sheetContext,
                                 _PackageSelection.add(
                                   selectedVariant,
-                                  notesController.text.trim(),
+                                  _packageNotesController.text.trim(),
                                 ),
                               ),
                         icon: const Icon(Icons.shopping_bag_outlined, size: 18),
@@ -325,9 +331,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           );
         },
       );
-    } finally {
-      notesController.dispose();
-    }
   }
 
   Widget _buildPackageOption(
