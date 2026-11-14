@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
+import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
@@ -98,7 +99,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
 
     if (!mounted) return;
-    Navigator.push<void>(
+    final added = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => BookingScheduledScreen(
@@ -106,6 +107,19 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           serviceTitle: service.title,
           addressId: widget.addressId,
           initialCategoryAnswers: answers,
+        ),
+      ),
+    );
+    if (!mounted || added != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${service.title} added to cart'),
+        action: SnackBarAction(
+          label: 'VIEW CART',
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+          ),
         ),
       ),
     );
@@ -119,13 +133,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         title: Text(_service?.title ?? 'Service'),
         backgroundColor: _Ui.bg,
         actions: [
-          IconButton(
-            tooltip: 'Your cart',
-            onPressed: () => Navigator.push(
+          CustomerCartBadge(
+            color: _Ui.violet,
+            onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
             ),
-            icon: const Icon(Icons.shopping_bag_outlined, color: _Ui.violet),
           ),
         ],
       ),
