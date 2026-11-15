@@ -241,6 +241,46 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         );
         return;
       }
+
+      // Ask the backend for the catalogue tree compatible with the selected
+      // vehicle. The backend returns only categories containing matching
+      // services; Bike covers both motorcycles and scooters.
+      try {
+        final filteredRoots = await CatalogApi.listCategories(
+          addressId: addressId,
+          categoryAnswers: answers,
+        );
+        Category? findCategory(List<Category> items, int id) {
+          for (final item in items) {
+            if (item.id == id) return item;
+            final nested = findCategory(item.children, id);
+            if (nested != null) return nested;
+          }
+          return null;
+        }
+
+        selectedVehicleCategory =
+            findCategory(filteredRoots, selectedVehicleCategory!.id) ??
+            selectedVehicleCategory;
+        categoriesToShow = selectedVehicleCategory!.children;
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load matching vehicle categories: $e')),
+        );
+        return;
+      }
+
+      if (categoriesToShow.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'No service categories are configured for $vehicleSlug yet.',
+            ),
+          ),
+        );
+        return;
+      }
     } else if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
@@ -255,26 +295,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       answers = selected;
     }
 
-    // Car Wash vehicle details are collected once at the root category.
-    // Go straight to services under the selected Car/Bike node; do not show
-    // its intermediate "N categories" screen (which would ask for vehicle
-    // details again when the customer taps Car/Bike).
-    if (selectedVehicleCategory != null) {
-      Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceListScreen(
-            categoryId: selectedVehicleCategory!.id,
-            categoryTitle: selectedVehicleCategory!.title,
-            addressId: addressId,
-            initialAnswers: answers,
-            includeDescendants: true,
-          ),
-        ),
-      );
-      return;
-    }
-
+    // Vehicle details are collected once. Show the backend-filtered service
+    // categories for the selected Car/Bike branch before listing services.
     if (categoriesToShow.isNotEmpty) {
       Navigator.push<void>(
         context,
