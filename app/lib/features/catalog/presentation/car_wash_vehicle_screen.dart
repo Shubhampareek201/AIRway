@@ -173,9 +173,11 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       'vehicle_make': _make?.name ?? '',
       'vehicle_model_id': _model?.id,
       'vehicle_model': _model?.name ?? '',
-      'vehicle_type': _model?.vehicleClass ?? '',
-      'vehicle_type_label': _model?.vehicleClass ?? '',
     };
+    if (_model?.vehicleClass.isNotEmpty == true) {
+      answers['vehicle_type'] = _model!.vehicleClass;
+      answers['vehicle_type_label'] = _model!.vehicleClass;
+    }
     Navigator.pop(context, answers);
   }
 
