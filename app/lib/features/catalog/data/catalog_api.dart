@@ -249,6 +249,7 @@ class CatalogApi {
     int? vehicleModelId,
     String customMake = '',
     String customModel = '',
+    String vehicleClass = '',
     String nickname = '',
     bool isDefault = false,
   }) async {
@@ -257,6 +258,7 @@ class CatalogApi {
       'vehicle_model': vehicleModelId,
       'custom_make': customMake,
       'custom_model': customModel,
+      'vehicle_class': vehicleClass,
       'nickname': nickname,
       'is_default': isDefault,
     });
