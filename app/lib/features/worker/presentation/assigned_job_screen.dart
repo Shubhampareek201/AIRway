@@ -289,7 +289,10 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
               const Text('Customer selections', style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               for (final entry in job.customerAnswers.entries)
-                Padding(
+                if (!entry.key.endsWith('_id') &&
+                    entry.key != 'vehicle_type' &&
+                    entry.value != null && entry.value.toString().isNotEmpty)
+                  Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
                     workerCustomerAnswerLabel(entry.key, entry.value),
