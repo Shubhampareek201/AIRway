@@ -397,14 +397,22 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     return null;
   }
 
+  // Black front-right three-quarter studio references on white backgrounds.
+  // These are body-style illustrations; exact model photographs come from the database.
   String? _bodyTypeImage(String value) {
     final key = value.toLowerCase();
-    if (key.contains('hatch')) return _defaultModelImage('Swift');
-    if (key.contains('sedan')) return _defaultModelImage('City');
-    if (key.contains('muv') || key.contains('mpv')) return _defaultModelImage('Innova Crysta');
-    if (key.contains('luxury')) return _defaultModelImage('Fortuner');
-    if (key.contains('7')) return _defaultModelImage('Safari');
-    if (key.contains('compact') || key.contains('suv')) return _defaultModelImage('Creta');
+    if (key.contains('hatch')) {
+      return 'https://www.2dvornika.com.ua/public/images/cars/seatibiza5.jpg';
+    }
+    if (key.contains('sedan')) {
+      return 'https://s1.auto.drom.ru/photo/9Ch2Z4zgM4nUJ7_8WC6-yC6vcmEBsqSB9XpYsxoXo8V0Y6RxlunS7QpbMzZMpdbjvDgbG-O_dDy2CEfdaRTRaLYfLgreHD_5OS60DuLsnaG0yK6hq7E.jpg';
+    }
+    if (key.contains('muv') || key.contains('mpv')) {
+      return 'https://i5.walmartimages.cl/asr/e9299c31-2334-493a-8209-c897ecdd4238.7804224ef938eacc5a547ca9f7aac02b.png?odnBg=ffffff&odnHeight=2000&odnWidth=2000';
+    }
+    if (key.contains('suv') || key.contains('luxury') || key.contains('7')) {
+      return 'https://images.91wheels.com/assets/uploads/swatchs/XUV700_EbonyBlack1742199441.jpg?q=40&w=1040';
+    }
     return null;
   }
 
@@ -421,51 +429,32 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     return sorted;
   }
 
-  Widget _makeInitials(VehicleMake make) {
-    final initials = make.name.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join().toUpperCase();
-    return Container(
-      width: 54, height: 54,
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(color: Color(0xFFF0F3EF), shape: BoxShape.circle),
-      child: Text(initials, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: _green)),
-    );
-  }
-
   Widget _makeTile(VehicleMake make) {
     final selected = _make?.id == make.id;
+    final fallback = _defaultBrandLogo(make.name);
+    final logo = (make.logo != null && make.logo!.isNotEmpty) ? make.logo! : fallback;
     return InkWell(
       onTap: () => _selectMake(make),
       borderRadius: BorderRadius.circular(13),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFEAF1EA) : Colors.white,
+          color: Colors.white,
           border: Border.all(color: selected ? _green : _line, width: selected ? 2 : 1),
           borderRadius: BorderRadius.circular(13),
         ),
-        child: Column(
-          children: [
-            Expanded(
-              child: Center(
-                child: (make.logo != null && make.logo!.isNotEmpty)
-                  ? Image.network(make.logo!, fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) {
-                        final fallback = _defaultBrandLogo(make.name);
-                        return fallback == null ? _makeInitials(make) : Image.network(
-                          fallback, fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => _makeInitials(make),
-                        );
-                      })
-                  : (_defaultBrandLogo(make.name) == null
-                      ? _makeInitials(make)
-                      : Image.network(_defaultBrandLogo(make.name)!, fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => _makeInitials(make))),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(make.name, maxLines: 2, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _ink)),
-          ],
+        child: Center(
+          child: logo == null
+              ? const Icon(Icons.directions_car_filled_outlined, size: 34, color: Color(0xFF68736B))
+              : Image.network(
+                  logo,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.directions_car_filled_outlined,
+                    size: 34,
+                    color: Color(0xFF68736B),
+                  ),
+                ),
         ),
       ),
     );
@@ -575,7 +564,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                       width: 132,
                       padding: const EdgeInsets.all(9),
                       decoration: BoxDecoration(
-                        color: selected ? const Color(0xFFEAF1EA) : Colors.white,
+                        color: Colors.white,
                         border: Border.all(color: selected ? _green : _line, width: selected ? 2 : 1),
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -583,10 +572,10 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                         children: [
                           Expanded(
                             child: (image != null && image.toString().isNotEmpty)
-                              ? Image.network(image.toString(), fit: BoxFit.cover,
+                              ? Image.network(image.toString(), fit: BoxFit.contain,
                                   errorBuilder: (_, __, ___) => _bodyTypeImage(value) == null
                                       ? CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())
-                                      : Image.network(_bodyTypeImage(value)!, fit: BoxFit.cover,
+                                      : Image.network(_bodyTypeImage(value)!, fit: BoxFit.contain,
                                           errorBuilder: (_, __, ___) => CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())))
                               : (_bodyTypeImage(value) == null
                                   ? CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())
