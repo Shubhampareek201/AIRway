@@ -4152,3 +4152,161 @@ class ServiceRefundLifecycleTest(BookingAPITestMixin, TestCase):
         self.assertEqual(refund.status, PaymentRefund.Status.FAILED)
         self.assertEqual(self.wallet.balance, Decimal("30.00"))
         self.assertEqual(refund.gateway_amount, Decimal("70.00"))
+
+
+class CustomerCartIssuePhotoAPITest(BookingAPITestMixin, TestCase):
+    """Electrical issue details remain private and survive cart checkout."""
+
+    def setUp(self):
+        import tempfile
+        from django.test.utils import override_settings
+
+        self.private_root = tempfile.mkdtemp(prefix="airway-private-uploads-")
+        self._private_settings = override_settings(PRIVATE_UPLOAD_ROOT=self.private_root)
+        self._private_settings.enable()
+
+        self.client = APIClient()
+        self.customer = self._create_user("+919876543321")
+        self.client.force_authenticate(user=self.customer)
+        self.category = Category.objects.create(title="Electrical", slug="electrical")
+        self.service = self._create_service(self.category, title="Electrical Repair")
+        self.service.booking_mode = Service.BookingMode.INSPECTION
+        self.service.visit_fee = Decimal("125.00")
+        self.service.save(update_fields=["booking_mode", "visit_fee", "updated_at"])
+        self.variant = self._create_variant(self.service, price=500, mrp=600)
+        self.address = self._create_address(self.customer)
+        self.cart = CustomerCart.objects.create(
+            customer=self.customer,
+            address=self.address,
+        )
+        self.cart_item = CartItem.objects.create(
+            cart=self.cart,
+            service=self.service,
+            variant=self.variant,
+            quantity=1,
+            notes="Fan makes a grinding noise",
+            category_answers={"room": "Bedroom"},
+            pricing_snapshot={"line_total": "625.00"},
+        )
+
+    def tearDown(self):
+        import shutil
+        self._private_settings.disable()
+        shutil.rmtree(self.private_root, ignore_errors=True)
+        super().tearDown()
+
+    def _jpeg_upload(self):
+        from io import BytesIO
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        stream = BytesIO()
+        Image.new("RGB", (8, 8), color=(30, 90, 60)).save(stream, format="JPEG")
+        return SimpleUploadedFile(
+            "electrical-issue.jpg",
+            stream.getvalue(),
+            content_type="image/jpeg",
+        )
+
+    def test_inspection_visit_fee_is_included_once_in_cart_snapshot(self):
+        serializer = CartItemSerializer(
+            data={
+                "service": self.service.pk,
+                "variant": self.variant.pk,
+                "quantity": 1,
+                "addon_selections": [],
+                "form_answers": {},
+                "category_answers": {"room": "Bedroom"},
+                "notes": "Fan makes a grinding noise",
+            },
+            context={"allow_incomplete": True},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        snapshot = serializer.validated_data["_cart_snapshot"]
+        self.assertEqual(Decimal(snapshot["base_price"]), Decimal("500.00"))
+        self.assertEqual(Decimal(snapshot["visit_fee"]), Decimal("125.00"))
+        self.assertEqual(Decimal(snapshot["line_total"]), Decimal("625.00"))
+
+    def test_photo_is_private_and_survives_checkout_for_assigned_worker(self):
+        upload = self.client.post(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/issue-photo/",
+            {"photo": self._jpeg_upload()},
+            format="multipart",
+        )
+        self.assertEqual(upload.status_code, 200, upload.data)
+        self.cart_item.refresh_from_db()
+        stored_path = self.cart_item.category_answers["_airway_issue_photo"]
+
+        cart_response = self.client.get("/api/v1/bookings/cart/")
+        self.assertEqual(cart_response.status_code, 200)
+        item_data = cart_response.data["items"][0]
+        self.assertTrue(item_data["has_issue_photo"])
+        self.assertNotIn("_airway_issue_photo", item_data["category_answers"])
+
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [{
+                "cart_item_id": self.cart_item.pk,
+                "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+            }]},
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        booking = Booking.objects.get(pk=checkout.data["items"][0]["booking_id"])
+        self.assertEqual(
+            booking.customer_answers["_airway_issue_photo"],
+            stored_path,
+        )
+        self.assertEqual(booking.notes, "Fan makes a grinding noise")
+        self.assertFalse(self.cart.items.exists())
+
+        worker_user = self._create_user("+919876543322")
+        worker = WorkerProfile.objects.create(user=worker_user)
+        BookingAssignment.objects.create(booking=booking, worker=worker)
+
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        photo_response = worker_client.get(
+            f"/api/v1/bookings/issue-photos/{booking.pk}/"
+        )
+        self.assertEqual(photo_response.status_code, 200)
+        self.assertEqual(photo_response["Content-Type"], "image/jpeg")
+
+        unrelated_user = self._create_user("+919876543323")
+        unrelated_client = APIClient()
+        unrelated_client.force_authenticate(user=unrelated_user)
+        denied = unrelated_client.get(
+            f"/api/v1/bookings/issue-photos/{booking.pk}/"
+        )
+        self.assertEqual(denied.status_code, 404)
+
+    def test_customer_cannot_upload_to_another_customers_cart_item(self):
+        other_user = self._create_user("+919876543324")
+        other_client = APIClient()
+        other_client.force_authenticate(user=other_user)
+        response = other_client.post(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/issue-photo/",
+            {"photo": self._jpeg_upload()},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_cart_item_delete_removes_its_private_photo(self):
+        from django.core.files.storage import FileSystemStorage
+
+        uploaded = self.client.post(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/issue-photo/",
+            {"photo": self._jpeg_upload()},
+            format="multipart",
+        )
+        self.assertEqual(uploaded.status_code, 200, uploaded.data)
+        self.cart_item.refresh_from_db()
+        stored_path = self.cart_item.category_answers["_airway_issue_photo"]
+        storage = FileSystemStorage(location=self.private_root)
+        self.assertTrue(storage.exists(stored_path))
+
+        deleted = self.client.delete(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/"
+        )
+        self.assertEqual(deleted.status_code, 200)
+        self.assertFalse(storage.exists(stored_path))
