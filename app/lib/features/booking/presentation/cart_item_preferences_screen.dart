@@ -204,6 +204,7 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
                         style: TextStyle(color: muted, fontSize: 13),
                       ),
                       const SizedBox(height: 22),
+                      if (service?.categoryRootSlug.toLowerCase() == 'electrical') ...[
                       const Text('Issue photo (optional)', style: TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w800, color: ink,
                       )),
@@ -265,6 +266,7 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      ],
                       const SizedBox(height: 22),
                       if (service?.supportsProfessionalPreference == true) ...[
                         const Text('Professional preference', style: TextStyle(
