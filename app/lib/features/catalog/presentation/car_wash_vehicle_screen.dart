@@ -78,7 +78,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       final makes = await CatalogApi.listVehicleMakes(type);
       if (!mounted) return;
       setState(() {
-        _makes = makes;
+        _makes = _prioritisePremiumMakes(makes);
         _loadingMakes = false;
       });
     } catch (e) {
@@ -227,7 +227,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     try {
       final makes = await CatalogApi.listVehicleMakes(type);
       if (!mounted) return;
-      setState(() { _makes = makes; _loadingMakes = false; });
+      setState(() { _makes = _prioritisePremiumMakes(makes); _loadingMakes = false; });
     } catch (_) {
       if (mounted) setState(() { _makes = []; _loadingMakes = false; });
     }
@@ -365,6 +365,44 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     ),
   );
 
+  // Wikimedia Commons image fallbacks; admin-uploaded catalogue images take priority.
+  String? _defaultBrandLogo(String name) {
+    final key = name.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    if (key == 'bmw') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/500px-BMW.svg.png';
+    if (key == 'audi') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Audi_logo.svg/500px-Audi_logo.svg.png';
+    if (key.contains('mercedes')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Mercedes-Benz_logo.svg/500px-Mercedes-Benz_logo.svg.png';
+    return null;
+  }
+
+  String? _defaultModelImage(String name) {
+    final key = name.toLowerCase().trim();
+    if (key == 'swift') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/eb/Swift.jpg/330px-Swift.jpg';
+    if (key == 'creta') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3d/Hyundai_Creta_1.5_Plus_2024.jpg/640px-Hyundai_Creta_1.5_Plus_2024.jpg';
+    if (key == 'city') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1f/0_Honda_City_%287th_generation%29_sedan.jpg/640px-0_Honda_City_%287th_generation%29_sedan.jpg';
+    return null;
+  }
+
+  String? _bodyTypeImage(String value) {
+    final key = value.toLowerCase();
+    if (key.contains('hatch')) return _defaultModelImage('Swift');
+    if (key.contains('sedan')) return _defaultModelImage('City');
+    if (key.contains('compact') || key.contains('suv')) return _defaultModelImage('Creta');
+    return null;
+  }
+
+  List<VehicleMake> _prioritisePremiumMakes(List<VehicleMake> makes) {
+    const priority = ['bmw', 'audi', 'mercedes'];
+    final sorted = [...makes];
+    sorted.sort((a, b) {
+      int rank(String name) {
+        final index = priority.indexWhere((brand) => name.toLowerCase().contains(brand));
+        return index < 0 ? priority.length : index;
+      }
+      return rank(a.name).compareTo(rank(b.name));
+    });
+    return sorted;
+  }
+
   Widget _makeInitials(VehicleMake make) {
     final initials = make.name.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join().toUpperCase();
     return Container(
@@ -391,10 +429,19 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
           children: [
             Expanded(
               child: Center(
-                child: make.logo != null && make.logo!.isNotEmpty
+                child: (make.logo != null && make.logo!.isNotEmpty)
                   ? Image.network(make.logo!, fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => _makeInitials(make))
-                  : _makeInitials(make),
+                      errorBuilder: (_, __, ___) {
+                        final fallback = _defaultBrandLogo(make.name);
+                        return fallback == null ? _makeInitials(make) : Image.network(
+                          fallback, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => _makeInitials(make),
+                        );
+                      })
+                  : (_defaultBrandLogo(make.name) == null
+                      ? _makeInitials(make)
+                      : Image.network(_defaultBrandLogo(make.name)!, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => _makeInitials(make))),
               ),
             ),
             const SizedBox(height: 6),
@@ -422,9 +469,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: model.image == null
+              child: (model.image ?? _defaultModelImage(model.name)) == null
                 ? const ColoredBox(color: Color(0xFFF4F5F2), child: Icon(Icons.directions_car_filled_outlined, size: 42, color: _muted))
-                : Image.network(model.image!, fit: BoxFit.contain,
+                : Image.network(model.image ?? _defaultModelImage(model.name)!, fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFF4F5F2), child: Icon(Icons.directions_car_filled_outlined, size: 42, color: _muted))),
             ),
             Padding(
@@ -517,16 +564,16 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                       child: Column(
                         children: [
                           Expanded(
-                            child: image != null && image.toString().isNotEmpty
-                              ? Image.network(image.toString(), fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => CustomPaint(
-                                    painter: _VehicleBodyPainter(value, selected),
-                                    child: const SizedBox.expand(),
-                                  ))
-                              : CustomPaint(
-                                  painter: _VehicleBodyPainter(value, selected),
-                                  child: const SizedBox.expand(),
-                                ),
+                            child: (image != null && image.toString().isNotEmpty)
+                              ? Image.network(image.toString(), fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _bodyTypeImage(value) == null
+                                      ? CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())
+                                      : Image.network(_bodyTypeImage(value)!, fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())))
+                              : (_bodyTypeImage(value) == null
+                                  ? CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())
+                                  : Image.network(_bodyTypeImage(value)!, fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand()))),
                           ),
                           const SizedBox(height: 6),
                           Text(option['label']!, textAlign: TextAlign.center, maxLines: 2,
