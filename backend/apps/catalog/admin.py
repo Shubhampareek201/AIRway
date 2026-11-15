@@ -134,12 +134,20 @@ class BannerAdmin(ModelAdmin):
     list_filter = ("city", "is_active")
     search_fields = ("title",)
 
+class VehicleModelInline(TabularInline):
+    model = VehicleModel
+    extra = 0
+    fields = ("name", "image", "vehicle_class", "sort_order", "is_active")
+    show_change_link = True
+
+
 @admin.register(VehicleMake)
 class VehicleMakeAdmin(ModelAdmin):
     list_display = ("name", "vehicle_type", "sort_order", "is_active")
     list_editable = ("sort_order", "is_active")
     list_filter = ("vehicle_type", "is_active")
     search_fields = ("name",)
+    inlines = [VehicleModelInline]
 
 
 @admin.register(VehicleModel)
