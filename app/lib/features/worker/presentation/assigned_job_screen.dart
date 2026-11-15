@@ -329,6 +329,33 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
               const SizedBox(height: 6),
               Text(job.notes!, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
             ],
+            if (job.issuePhotoUrl?.isNotEmpty == true) ...[
+              const Divider(height: 22),
+              const Text('Customer issue photo', style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              FutureBuilder<Map<String, String>>(
+                future: WorkerApi.getAuthHeaders(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Text('Could not authorize photo access.');
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      job.issuePhotoUrl!,
+                      headers: snapshot.data,
+                      width: double.infinity,
+                      height: 220,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Text('Issue photo is unavailable.'),
+                    ),
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
