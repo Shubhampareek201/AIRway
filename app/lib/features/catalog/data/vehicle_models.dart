@@ -1,4 +1,4 @@
-import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/core/network/auth_api.dart';
 
 class VehicleMake {
   final int id;
@@ -76,5 +76,5 @@ class CustomerVehicle {
 String? _vehicleMedia(dynamic value) {
   final raw = value?.toString().trim() ?? '';
   if (raw.isEmpty) return null;
-  return CatalogMedia.resolve(raw);
+  final uri = Uri.tryParse(raw);\n  if (uri == null) return null;\n  final base = Uri.parse(AuthApi.baseUrl);\n  if (!uri.hasScheme || uri.host.isEmpty) return base.resolve(raw).toString();\n  if ({'localhost', '127.0.0.1', '0.0.0.0'}.contains(uri.host) &&\n      !{'localhost', '127.0.0.1', '0.0.0.0'}.contains(base.host)) {\n    return uri.replace(scheme: base.scheme, host: base.host, port: base.hasPort ? base.port : null).toString();\n  }\n  return uri.toString();
 }
