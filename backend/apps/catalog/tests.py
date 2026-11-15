@@ -664,8 +664,6 @@ class VehicleCatalogueClassFilterTest(TestCase):
 
 class ElectricalCategoryAnswerFilterTest(TestCase):
     def setUp(self):
-        from apps.catalog.models import FormField
-
         self.root = Category.objects.create(
             title="Electrical",
             slug="electrical",
