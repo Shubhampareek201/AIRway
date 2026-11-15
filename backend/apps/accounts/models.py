@@ -184,6 +184,7 @@ class CustomerVehicle(TimeStampedModel):
     )
     custom_make = models.CharField(max_length=100, blank=True)
     custom_model = models.CharField(max_length=120, blank=True)
+    vehicle_class = models.CharField(max_length=40, blank=True)
     nickname = models.CharField(max_length=60, blank=True)
     is_default = models.BooleanField(default=False)
 
