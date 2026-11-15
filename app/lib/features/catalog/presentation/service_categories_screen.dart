@@ -94,7 +94,15 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     if (selectedCategory.slug == 'car-wash') {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
-        MaterialPageRoute(builder: (_) => const CarWashVehicleScreen()),
+        MaterialPageRoute(
+          builder: (_) => CarWashVehicleScreen(
+            vehicleTypeSteps: {
+              for (final child in selectedCategory.children)
+                if (child.slug == 'car' || child.slug == 'bike')
+                  child.slug: child.customerFlowSteps,
+            },
+          ),
+        ),
       );
       if (selected == null || !mounted) return;
       answers.addAll(selected);
