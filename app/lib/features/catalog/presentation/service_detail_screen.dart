@@ -234,6 +234,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ),
         ],
         if (service.categoryRootSlug.toLowerCase() == 'electrical' &&
+            service.pricingType == 'quote' &&
             _matchingVariants(service).isEmpty)
           SliverToBoxAdapter(
             child: Padding(
