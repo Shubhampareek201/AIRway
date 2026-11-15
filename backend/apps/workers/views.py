@@ -588,6 +588,7 @@ class WorkerJobDetailView(APIView):
         booking = assign.booking
         payment_label = _worker_payment_label(booking)
         customer_answers = dict(booking.customer_answers or {})
+        has_issue_photo = bool(customer_answers.pop("_airway_issue_photo", None))
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
         return Response({
@@ -608,6 +609,10 @@ class WorkerJobDetailView(APIView):
                 else int((booking.pricing_snapshot or {}).get("quantity", 1))
             ),
             "customer_answers": customer_answers,
+            "issue_photo_url": (
+                request.build_absolute_uri(f"/api/v1/bookings/issue-photos/{booking.id}/")
+                if has_issue_photo else None
+            ),
             "notes": booking.notes,
             "worker_notes": booking.worker_notes,
             "addons": [
