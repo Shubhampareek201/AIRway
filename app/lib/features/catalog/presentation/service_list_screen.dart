@@ -410,8 +410,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _startAddFlow(Service service) async {
-    // Keep the existing booking flow unchanged for non-Beauty categories.
-    if (widget.initialAnswers['beauty_audience'] == null) {
+    // Beauty and Car Wash share the package-first add-to-cart experience.
+    // Other service families retain their existing booking flow.
+    final usesPackageCartFlow =
+        widget.initialAnswers['beauty_audience'] != null ||
+        widget.initialAnswers['vehicle_kind'] != null;
+    if (!usesPackageCartFlow) {
       final added = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
