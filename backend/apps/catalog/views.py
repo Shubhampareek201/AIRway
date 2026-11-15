@@ -413,6 +413,9 @@ class VehicleMakeListView(generics.ListAPIView):
         vehicle_type = self.request.query_params.get("vehicle_type")
         if vehicle_type in ("car", "bike"):
             queryset = queryset.filter(vehicle_type=vehicle_type)
+        vehicle_class = self.request.query_params.get("vehicle_class")
+        if vehicle_class:
+            queryset = queryset.filter(models__is_active=True, models__vehicle_class__iexact=vehicle_class).distinct()
         return queryset
 
 
@@ -428,4 +431,10 @@ class VehicleModelListView(generics.ListAPIView):
             queryset = queryset.filter(make_id=make_id)
         if vehicle_type in ("car", "bike"):
             queryset = queryset.filter(make__vehicle_type=vehicle_type)
+        vehicle_class = self.request.query_params.get("vehicle_class")
+        if vehicle_class:
+            queryset = queryset.filter(vehicle_class__iexact=vehicle_class)
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(name__icontains=search)
         return queryset
