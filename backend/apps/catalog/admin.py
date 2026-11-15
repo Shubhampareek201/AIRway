@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin, TabularInline
 from .pricing import service_pricing_ready
 from .models import (
     AddOn, Banner, Category, CategoryAudienceOption, CityService, FormField, Service,
-    ServiceImage, ServiceVariant,
+    ServiceImage, ServiceVariant, VehicleMake, VehicleModel,
 )
 
 
@@ -133,3 +133,18 @@ class BannerAdmin(ModelAdmin):
     list_editable = ("sort_order", "is_active")
     list_filter = ("city", "is_active")
     search_fields = ("title",)
+
+@admin.register(VehicleMake)
+class VehicleMakeAdmin(ModelAdmin):
+    list_display = ("name", "vehicle_type", "sort_order", "is_active")
+    list_editable = ("sort_order", "is_active")
+    list_filter = ("vehicle_type", "is_active")
+    search_fields = ("name",)
+
+
+@admin.register(VehicleModel)
+class VehicleModelAdmin(ModelAdmin):
+    list_display = ("name", "make", "vehicle_class", "sort_order", "is_active")
+    list_editable = ("vehicle_class", "sort_order", "is_active")
+    list_filter = ("make__vehicle_type", "make", "vehicle_class", "is_active")
+    search_fields = ("name", "make__name")
