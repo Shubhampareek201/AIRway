@@ -43,7 +43,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         _savedVehicles = vehicles;
         _loadingSaved = false;
       });
-      final preferred = vehicles.where((v) => v.isDefault).isEmpty\n          ? null\n          : vehicles.firstWhere((v) => v.isDefault);
+      final preferred = vehicles.where((v) => v.isDefault).isEmpty
+          ? null
+          : vehicles.firstWhere((v) => v.isDefault);
       if (preferred != null) _selectSavedVehicle(preferred);
     } catch (_) {
       if (mounted) setState(() => _loadingSaved = false);
@@ -127,7 +129,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         _models = models;
         _loadingModels = false;
         if (selectedModelId != null) {
-          _model = models.where((m) => m.id == selectedModelId).isEmpty\n              ? _model\n              : models.firstWhere((m) => m.id == selectedModelId);
+          _model = models.where((m) => m.id == selectedModelId).isEmpty
+              ? _model
+              : models.firstWhere((m) => m.id == selectedModelId);
         }
       });
     } catch (_) {
