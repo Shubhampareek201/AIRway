@@ -180,6 +180,23 @@ BIKE_CATALOGUE = {
 }
 
 
+# Raster brand marks are returned by the existing serializer as logo URLs.
+BRAND_DOMAINS = {
+    "Honda": "honda2wheelersindia.com", "TVS": "tvsmotor.com",
+    "Suzuki": "suzukimotorcycle.co.in", "Yamaha": "yamaha-motor-india.com",
+    "Hero": "heromotocorp.com", "Bajaj": "bajajauto.com",
+    "Ather": "atherenergy.com", "Ola Electric": "olaelectric.com",
+    "Vida": "vidaworld.com", "Vespa": "vespa.com", "Aprilia": "aprilia.com",
+    "Royal Enfield": "royalenfield.com", "KTM": "ktm.com",
+    "Kawasaki": "kawasaki.com", "Triumph": "triumphmotorcycles.com",
+    "BMW Motorrad": "bmwmotorcycles.com", "Ducati": "ducati.com",
+    "Jawa": "jawamotorcycles.com", "Yezdi": "yezdi.com",
+    "Husqvarna": "husqvarna-motorcycles.com", "Harley-Davidson": "harley-davidson.com",
+    "Indian Motorcycle": "indianmotorcycle.com", "Benelli": "benelli.com",
+    "Moto Guzzi": "motoguzzi.com", "QJMotor": "qjmotor.com", "Keeway": "keeway.com",
+}
+
+
 def seed_india_bike_catalogue(apps, schema_editor):
     VehicleMake = apps.get_model("catalog", "VehicleMake")
     VehicleModel = apps.get_model("catalog", "VehicleModel")
@@ -190,6 +207,10 @@ def seed_india_bike_catalogue(apps, schema_editor):
             name=make_name,
             defaults={"sort_order": make_order, "is_active": True},
         )
+        domain = BRAND_DOMAINS.get(make_name)
+        if domain and not make.logo_url:
+            make.logo_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+            make.save(update_fields=["logo_url"])
         for class_order, (vehicle_class, model_names) in enumerate(classes.items()):
             for model_order, model_name in enumerate(model_names, start=1):
                 VehicleModel.objects.update_or_create(
