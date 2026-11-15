@@ -34,6 +34,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   bool _saveAsDefault = false;
   bool _saving = false;
   String _modelSearch = '';
+  String _makeSearch = '';
   String? _error;
 
   @override
@@ -119,10 +120,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
             : vehicle.vehicleClass.isNotEmpty ? vehicle.vehicleClass : null);
       });
       try {
-        final makes = await CatalogApi.listVehicleMakes(
-          vehicle.vehicleType,
-          vehicleClass: _vehicleClass,
-        );
+        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType);
         if (!mounted) return;
         setState(() { _makes = makes; });
       } catch (_) {
@@ -132,7 +130,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     } else {
       setState(() => _loadingMakes = true);
       try {
-        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType, vehicleClass: _vehicleClass);
+        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType);
         if (!mounted) return;
         setState(() {
           _makes = makes;
@@ -181,7 +179,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _loadingMakes = true;
     });
     try {
-      final makes = await CatalogApi.listVehicleMakes(type, vehicleClass: value);
+      final makes = await CatalogApi.listVehicleMakes(type);
       if (!mounted) return;
       setState(() { _makes = makes; _loadingMakes = false; });
     } catch (_) {
@@ -194,8 +192,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _selectedSavedVehicleId = null;
       _make = make;
       _model = null;
-      _vehicleClass = null;
       _models = [];
+      _modelSearch = '';
       _loadingModels = true;
     });
     await _loadModels(make.id);
@@ -321,6 +319,16 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     ),
   );
 
+  Widget _makeInitials(VehicleMake make) {
+    final initials = make.name.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join().toUpperCase();
+    return Container(
+      width: 54, height: 54,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(color: Color(0xFFF0F3EF), shape: BoxShape.circle),
+      child: Text(initials, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: _green)),
+    );
+  }
+
   Widget _makeTile(VehicleMake make) {
     final selected = _make?.id == make.id;
     return InkWell(
@@ -336,16 +344,17 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         ),
         child: Column(
           children: [
-            SizedBox(
-              height: 44,
-              child: make.logo == null
-                ? const Icon(Icons.directions_car_filled_outlined, color: _muted, size: 32)
-                : Image.network(make.logo!, fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.directions_car_filled_outlined, color: _muted, size: 32)),
+            Expanded(
+              child: Center(
+                child: make.logo != null && make.logo!.isNotEmpty
+                  ? Image.network(make.logo!, fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => _makeInitials(make))
+                  : _makeInitials(make),
+              ),
             ),
             const SizedBox(height: 6),
             Text(make.name, maxLines: 2, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _ink)),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _ink)),
           ],
         ),
       ),
@@ -465,8 +474,14 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                           Expanded(
                             child: image != null && image.toString().isNotEmpty
                               ? Image.network(image.toString(), fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => Icon(_vehicleType == 'car' ? Icons.directions_car_filled : Icons.two_wheeler, size: 44, color: _muted))
-                              : Icon(_vehicleType == 'car' ? Icons.directions_car_filled : Icons.two_wheeler, size: 44, color: selected ? _green : _muted),
+                                  errorBuilder: (_, __, ___) => CustomPaint(
+                                    painter: _VehicleBodyPainter(value, selected),
+                                    child: const SizedBox.expand(),
+                                  ))
+                              : CustomPaint(
+                                  painter: _VehicleBodyPainter(value, selected),
+                                  child: const SizedBox.expand(),
+                                ),
                           ),
                           const SizedBox(height: 6),
                           Text(option['label']!, textAlign: TextAlign.center, maxLines: 2,
@@ -479,16 +494,33 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
               ),
             ),
             if (_vehicleClass != null) ...[
-              _sectionTitle('Select company (optional)', 'We only show manufacturers with models in this vehicle class.'),
+              _sectionTitle('Choose your car company (optional)', 'Browse all available brands. Select one to see its models below.'),
+              TextField(
+                onChanged: (value) => setState(() => _makeSearch = value),
+                decoration: InputDecoration(
+                  hintText: 'Search car company',
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true, fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
+                ),
+              ),
+              const SizedBox(height: 10),
               if (_loadingMakes) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
               if (!_loadingMakes && _makes.isEmpty)
-                const Text('No matching manufacturers are configured. You can continue with vehicle type only.', style: TextStyle(color: _muted, fontSize: 12)),
+                const Text('No manufacturers are configured yet. You can continue without selecting one.', style: TextStyle(color: _muted, fontSize: 12)),
               if (_makes.isNotEmpty)
-                SizedBox(height: 112, child: ListView.separated(
-                  scrollDirection: Axis.horizontal, itemCount: _makes.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 9),
-                  itemBuilder: (_, index) => _makeTile(_makes[index]),
-                )),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _makes.where((m) => m.name.toLowerCase().contains(_makeSearch.toLowerCase())).length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: 1.05,
+                  ),
+                  itemBuilder: (_, index) {
+                    final filtered = _makes.where((m) => m.name.toLowerCase().contains(_makeSearch.toLowerCase())).toList();
+                    return _makeTile(filtered[index]);
+                  },
+                ),
               if (_make != null) ...[
                 _sectionTitle('Find your model (optional)', 'Search and choose your exact model to refine pricing.'),
                 TextField(
@@ -548,4 +580,55 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       ),
     );
   }
+}
+
+
+class _VehicleBodyPainter extends CustomPainter {
+  final String bodyType;
+  final bool selected;
+  const _VehicleBodyPainter(this.bodyType, this.selected);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final fill = Paint()..color = selected ? const Color(0xFF315C46) : const Color(0xFF89968D);
+    final glass = Paint()..color = const Color(0xFFEAF0EC);
+    final wheel = Paint()..color = const Color(0xFF34413A);
+    final w = size.width;
+    final h = size.height;
+    final kind = bodyType.toLowerCase();
+    double roofStart = 0.30, roofEnd = 0.68, roofHeight = 0.30;
+    if (kind.contains('sedan')) { roofStart = 0.28; roofEnd = 0.68; roofHeight = 0.29; }
+    if (kind.contains('hatch')) { roofStart = 0.34; roofEnd = 0.70; roofHeight = 0.27; }
+    if (kind.contains('compact')) { roofStart = 0.29; roofEnd = 0.70; roofHeight = 0.23; }
+    if (kind.contains('suv') || kind.contains('luxury')) { roofStart = 0.25; roofEnd = 0.72; roofHeight = 0.19; }
+    if (kind.contains('muv') || kind.contains('mpv') || kind.contains('7')) { roofStart = 0.20; roofEnd = 0.78; roofHeight = 0.18; }
+    final baseY = h * 0.72;
+    final roofY = h * roofHeight;
+    final path = Path()
+      ..moveTo(w * 0.08, baseY)
+      ..lineTo(w * 0.14, h * 0.54)
+      ..quadraticBezierTo(w * 0.18, h * 0.49, w * roofStart, roofY + h * 0.12)
+      ..quadraticBezierTo(w * 0.43, roofY, w * roofEnd, roofY + h * 0.12)
+      ..lineTo(w * 0.86, h * 0.53)
+      ..lineTo(w * 0.94, h * 0.59)
+      ..lineTo(w * 0.96, baseY)
+      ..close();
+    canvas.drawPath(path, fill);
+    final windowPath = Path()
+      ..moveTo(w * (roofStart + 0.035), roofY + h * 0.15)
+      ..lineTo(w * (roofEnd - 0.025), roofY + h * 0.15)
+      ..lineTo(w * 0.79, h * 0.53)
+      ..lineTo(w * 0.20, h * 0.53)
+      ..close();
+    canvas.drawPath(windowPath, glass);
+    canvas.drawCircle(Offset(w * 0.28, baseY), h * 0.13, wheel);
+    canvas.drawCircle(Offset(w * 0.75, baseY), h * 0.13, wheel);
+    final hub = Paint()..color = const Color(0xFFDDE3DE);
+    canvas.drawCircle(Offset(w * 0.28, baseY), h * 0.055, hub);
+    canvas.drawCircle(Offset(w * 0.75, baseY), h * 0.055, hub);
+  }
+
+  @override
+  bool shouldRepaint(covariant _VehicleBodyPainter oldDelegate) =>
+      oldDelegate.bodyType != bodyType || oldDelegate.selected != selected;
 }
