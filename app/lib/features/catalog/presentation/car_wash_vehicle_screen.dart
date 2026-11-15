@@ -47,7 +47,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       final vehicles = await CatalogApi.listSavedVehicles();
       if (!mounted) return;
       setState(() {
-        _savedVehicles = vehicles;
+        _savedVehicles = [...vehicles]..sort((a, b) => (b.isDefault ? 1 : 0).compareTo(a.isDefault ? 1 : 0));
         _loadingSaved = false;
       });
       final preferred = vehicles.where((v) => v.isDefault).isEmpty
@@ -118,6 +118,16 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
             ? detail['vehicle_class']?.toString()
             : null;
       });
+      try {
+        final makes = await CatalogApi.listVehicleMakes(
+          vehicle.vehicleType,
+          vehicleClass: _vehicleClass,
+        );
+        if (!mounted) return;
+        setState(() { _makes = makes; });
+      } catch (_) {
+        // Saved vehicle details remain usable even if the make list is unavailable.
+      }
       _loadModels(_make!.id, selectedModelId: _model!.id);
     } else {
       setState(() => _loadingMakes = true);
