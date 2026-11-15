@@ -18,6 +18,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   String? _vehicleType;
   VehicleMake? _make;
   VehicleModel? _model;
+  String? _vehicleClass;
   List<CustomerVehicle> _savedVehicles = [];
   List<VehicleMake> _makes = [];
   List<VehicleModel> _models = [];
@@ -54,6 +55,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _vehicleType = type;
       _make = null;
       _model = null;
+      _vehicleClass = null;
       _models = [];
       _makes = [];
       _error = null;
@@ -80,6 +82,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _vehicleType = vehicle.vehicleType;
       _make = null;
       _model = null;
+      _vehicleClass = null;
       _models = [];
       _saveAsDefault = true;
     });
@@ -100,6 +103,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
           image: detail['image']?.toString(),
           vehicleClass: detail['vehicle_class']?.toString() ?? '',
         );
+        _vehicleClass = detail['vehicle_class']?.toString().isNotEmpty == true
+            ? detail['vehicle_class']?.toString()
+            : null;
       });
       _loadModels(_make!.id, selectedModelId: _model!.id);
     } else {
@@ -133,6 +139,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     setState(() {
       _make = make;
       _model = null;
+      _vehicleClass = null;
       _models = [];
       _loadingModels = true;
     });
@@ -144,6 +151,12 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (type == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select Car or Bike first.')),
+      );
+      return;
+    }
+    if (_vehicleClass == null || _vehicleClass!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your vehicle size/type to see the correct packages.')),
       );
       return;
     }
@@ -174,11 +187,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       'vehicle_make': _make?.name ?? '',
       'vehicle_model_id': _model?.id,
       'vehicle_model': _model?.name ?? '',
+      'vehicle_type': _vehicleClass,
+      'vehicle_type_label': _vehicleClass,
     };
-    if (_model?.vehicleClass.isNotEmpty == true) {
-      answers['vehicle_type'] = _model!.vehicleClass;
-      answers['vehicle_type_label'] = _model!.vehicleClass;
-    }
     Navigator.pop(context, answers);
   }
 
@@ -259,7 +270,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   Widget _modelTile(VehicleModel model) {
     final selected = _model?.id == model.id;
     return InkWell(
-      onTap: () => setState(() => _model = model),
+      onTap: () => setState(() { _model = model; _vehicleClass = model.vehicleClass.isNotEmpty ? model.vehicleClass : null; }),
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
@@ -353,6 +364,25 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                   ),
                 ),
             ],
+            _sectionTitle(
+              _vehicleType == 'car' ? 'Select vehicle size' : 'Select two-wheeler type',
+              'This helps us show the correct package and price.',
+            ),
+            DropdownButtonFormField<String>(
+              value: _vehicleClass,
+              decoration: InputDecoration(
+                hintText: _vehicleType == 'car' ? 'Choose car size' : 'Choose scooter or motorcycle',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
+              ),
+              items: (_vehicleType == 'car'
+                ? const ['Hatchback', 'Sedan', 'Compact SUV', 'SUV – 5 Seater', 'SUV – 7 Seater', 'MUV / MPV', 'Luxury Car', 'Luxury SUV']
+                : const ['Scooter', 'Motorcycle'])
+                .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                .toList(),
+              onChanged: (value) => setState(() => _vehicleClass = value),
+            ),
             const SizedBox(height: 12),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
