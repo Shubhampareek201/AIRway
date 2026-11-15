@@ -2,7 +2,7 @@ from django.test import TestCase
 
 from rest_framework.test import APIClient
 
-from apps.catalog.models import Category, Service, ServiceVariant
+from apps.catalog.models import Category, Service, ServiceVariant, VehicleMake, VehicleModel
 
 
 class CatalogSerializerFieldRegressionTest(TestCase):
@@ -558,3 +558,67 @@ class ConfigureLaunchCatalogueDemoPricingTest(TestCase):
             full_home.variants.get(title="Deep Cleaning — 1 BHK").price,
             2499,
         )
+
+
+class CarWashVehicleCatalogueApiTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.car_make = VehicleMake.objects.create(vehicle_type="car", name="Maruti Suzuki")
+        self.bike_make = VehicleMake.objects.create(vehicle_type="bike", name="Honda")
+        self.car_model = VehicleModel.objects.create(
+            make=self.car_make, name="Swift", vehicle_class="Hatchback"
+        )
+        VehicleModel.objects.create(make=self.bike_make, name="Activa")
+
+    def test_vehicle_makes_are_filtered_by_type(self):
+        response = self.client.get("/api/v1/catalog/vehicle-makes/?vehicle_type=car")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["name"] for item in response.data], ["Maruti Suzuki"])
+
+    def test_vehicle_models_are_filtered_by_make_and_type(self):
+        response = self.client.get(
+            f"/api/v1/catalog/vehicle-models/?make={self.car_make.id}&vehicle_type=car"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["name"] for item in response.data], ["Swift"])
+        self.assertEqual(response.data[0]["vehicle_class"], "Hatchback")
+
+
+class CarWashVehicleBranchFilterTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.root = Category.objects.create(title="Car Wash", slug="car-wash")
+        self.car = Category.objects.create(title="Car", slug="car", parent=self.root)
+        self.bike = Category.objects.create(title="Bike", slug="bike", parent=self.root)
+        self.exterior_car = Category.objects.create(
+            title="Exterior Car Cleaning", slug="exterior-car-cleaning", parent=self.car
+        )
+        self.exterior_bike = Category.objects.create(
+            title="Exterior Bike Cleaning", slug="exterior-bike-cleaning", parent=self.bike
+        )
+        self.car_service = Service.objects.create(
+            category=self.exterior_car, title="Car Exterior Wash",
+            booking_mode="scheduled", pricing_type="fixed",
+        )
+        self.bike_service = Service.objects.create(
+            category=self.exterior_bike, title="Bike Exterior Wash",
+            booking_mode="scheduled", pricing_type="fixed",
+        )
+
+    def test_car_selection_hides_bike_services(self):
+        response = self.client.get(
+            "/api/v1/catalog/services/?for_worker=true&category_answers=%7B%22vehicle_kind%22%3A%22Car%22%7D"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        ids = {item["id"] for item in response.data}
+        self.assertIn(self.car_service.id, ids)
+        self.assertNotIn(self.bike_service.id, ids)
+
+    def test_bike_selection_hides_car_services(self):
+        response = self.client.get(
+            "/api/v1/catalog/services/?for_worker=true&category_answers=%7B%22vehicle_kind%22%3A%22Bike%22%7D"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        ids = {item["id"] for item in response.data}
+        self.assertIn(self.bike_service.id, ids)
+        self.assertNotIn(self.car_service.id, ids)
