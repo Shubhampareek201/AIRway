@@ -88,6 +88,8 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           initialAnswers: Map<String, dynamic>.from(
             item['form_answers'] as Map? ?? const {},
           ),
+          initialNotes: item['notes']?.toString() ?? '',
+          hasIssuePhoto: item['has_issue_photo'] == true,
         ),
       ),
     );
