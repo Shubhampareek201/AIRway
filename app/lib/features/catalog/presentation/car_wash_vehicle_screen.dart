@@ -423,9 +423,10 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                   final option = _vehicleClassOptions()[index];
                   final value = option['value']!;
                   final selected = _vehicleClass == value;
-                  final step = (widget.vehicleTypeSteps[_vehicleType] ?? const [])
+                  final matchingSteps = (widget.vehicleTypeSteps[_vehicleType] ?? const [])
                       .where((item) => item['key']?.toString() == 'vehicle_type')
-                      .firstOrNull;
+                      .toList();
+                  final step = matchingSteps.isEmpty ? null : matchingSteps.first;
                   final rawOptions = step?['options'];
                   dynamic image;
                   if (rawOptions is List) {
