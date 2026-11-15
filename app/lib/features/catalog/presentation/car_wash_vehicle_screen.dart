@@ -403,7 +403,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                 : const ['Scooter', 'Motorcycle'])
                 .map((value) => DropdownMenuItem(value: value, child: Text(value)))
                 .toList(),
-              onChanged: (value) => setState(() => _vehicleClass = value),
+              onChanged: _model?.vehicleClass.isNotEmpty == true\n                  ? null\n                  : (value) => setState(() => _vehicleClass = value),
             ),
             const SizedBox(height: 12),
             CheckboxListTile(
@@ -424,7 +424,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
           ),
           TextButton(
             onPressed: _vehicleType == null ? null : () {
-              setState(() { _make = null; _model = null; });
+              setState(() { _selectedSavedVehicleId = null; _make = null; _model = null; });
               _continue();
             },
             child: const Text('Skip company and model'),
