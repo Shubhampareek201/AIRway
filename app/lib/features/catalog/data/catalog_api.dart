@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
-import 'package:airway/features/catalog/data/catalog_models.dart';\nimport 'package:airway/features/catalog/data/vehicle_models.dart';
+import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/data/vehicle_models.dart';
 
 class CatalogApi {
   CatalogApi._();
