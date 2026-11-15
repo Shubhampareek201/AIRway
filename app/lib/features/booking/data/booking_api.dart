@@ -151,11 +151,17 @@ class BookingApi {
             : extension == 'webp'
                 ? 'image/webp'
                 : 'image/jpeg';
-        request.write('--$boundary\r\n');
-        request.write('Content-Disposition: form-data; name="photo"; filename="$filename"\r\n');
-        request.write('Content-Type: $mime\r\n\r\n');
-        request.add(await photo.readAsBytes());
-        request.write('\r\n--$boundary--\r\n');
+        final headerBytes = utf8.encode(
+          '--$boundary\r\n'
+          'Content-Disposition: form-data; name="photo"; filename="$filename"\r\n'
+          'Content-Type: $mime\r\n\r\n',
+        );
+        final photoBytes = await photo.readAsBytes();
+        final footerBytes = utf8.encode('\r\n--$boundary--\r\n');
+        request.contentLength = headerBytes.length + photoBytes.length + footerBytes.length;
+        request.add(headerBytes);
+        request.add(photoBytes);
+        request.add(footerBytes);
         final response = await request.close().timeout(const Duration(seconds: 30));
         final bodyText = await utf8.decoder.bind(response).join();
         return (
