@@ -194,3 +194,32 @@ class BannerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Banner
         fields = ["id", "title", "image", "link_service", "sort_order"]
+
+
+class VehicleMakeSerializer(serializers.ModelSerializer):
+    logo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = __import__("apps.catalog.models", fromlist=["VehicleMake"]).VehicleMake
+        fields = ["id", "vehicle_type", "name", "logo", "sort_order"]
+
+    def get_logo(self, obj):
+        if not obj.logo:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+
+
+class VehicleModelSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    make_name = serializers.CharField(source="make.name", read_only=True)
+
+    class Meta:
+        model = __import__("apps.catalog.models", fromlist=["VehicleModel"]).VehicleModel
+        fields = ["id", "make", "make_name", "name", "image", "vehicle_class", "sort_order"]
+
+    def get_image(self, obj):
+        if not obj.image:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(obj.image.url) if request else obj.image.url
