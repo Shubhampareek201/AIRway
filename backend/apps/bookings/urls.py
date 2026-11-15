@@ -8,6 +8,8 @@ from .views import (
     CustomerCheckoutView,
     CustomerOrderDetailView,
     CustomerOrderListView,
+    CustomerCartIssuePhotoView,
+    BookingIssuePhotoView,
 )
 
 router = DefaultRouter()
@@ -19,5 +21,7 @@ urlpatterns = [
     path("orders/", CustomerOrderListView.as_view(), name="customer-order-list"),
     path("orders/<int:order_id>/", CustomerOrderDetailView.as_view(), name="customer-order-detail"),
     path("cart/items/<int:item_id>/", CustomerCartItemView.as_view(), name="customer-cart-item"),
+    path("cart/items/<int:item_id>/issue-photo/", CustomerCartIssuePhotoView.as_view(), name="customer-cart-issue-photo"),
+    path("issue-photos/<int:booking_id>/", BookingIssuePhotoView.as_view(), name="booking-issue-photo"),
     path("", include(router.urls)),
 ]
