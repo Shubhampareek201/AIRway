@@ -270,3 +270,47 @@ class AddressCreateSerializer(serializers.ModelSerializer):
             longitude=longitude,
         )
         return attrs
+
+
+from .models import CustomerVehicle
+
+
+class CustomerVehicleSerializer(serializers.ModelSerializer):
+    vehicle_model_detail = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CustomerVehicle
+        fields = [
+            "id", "vehicle_type", "vehicle_model", "vehicle_model_detail",
+            "custom_make", "custom_model", "nickname", "is_default",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        vehicle_type = attrs.get("vehicle_type", getattr(self.instance, "vehicle_type", None))
+        vehicle_model = attrs.get("vehicle_model", getattr(self.instance, "vehicle_model", None))
+        if vehicle_model and vehicle_model.make.vehicle_type != vehicle_type:
+            raise serializers.ValidationError({
+                "vehicle_model": "Selected model does not match the selected vehicle type."
+            })
+        return attrs
+
+    def get_vehicle_model_detail(self, obj):
+        model = obj.vehicle_model
+        if not model:
+            return None
+        request = self.context.get("request")
+        def media_url(field):
+            if not field:
+                return None
+            return request.build_absolute_uri(field.url) if request else field.url
+        return {
+            "id": model.id,
+            "name": model.name,
+            "make_id": model.make_id,
+            "make_name": model.make.name,
+            "make_logo": media_url(model.make.logo),
+            "image": media_url(model.image),
+            "vehicle_class": model.vehicle_class,
+        }
