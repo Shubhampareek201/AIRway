@@ -661,3 +661,56 @@ class VehicleCatalogueClassFilterTest(TestCase):
         )
         results = response.data if isinstance(response.data, list) else response.data["results"]
         self.assertNotIn(self.honda_bike.id, {item["id"] for item in results})
+
+class ElectricalCategoryAnswerFilterTest(TestCase):
+    def setUp(self):
+        from apps.catalog.models import FormField
+
+        self.root = Category.objects.create(
+            title="Electrical",
+            slug="electrical",
+            flow_steps=[{
+                "key": "work_type",
+                "title": "What do you need?",
+                "type": "select",
+                "options": ["Repair", "Installation"],
+                "filter_children": True,
+                "child_slugs": {
+                    "Repair": ["electrical-repair"],
+                    "Installation": ["electrical-installation"],
+                },
+            }],
+        )
+        self.repair = Category.objects.create(
+            title="Repair", slug="electrical-repair", parent=self.root
+        )
+        self.installation = Category.objects.create(
+            title="Installation", slug="electrical-installation", parent=self.root
+        )
+        self.repair_service = Service.objects.create(
+            category=self.repair, title="Fan Repair",
+            booking_mode="inspection", pricing_type="quote",
+        )
+        self.installation_service = Service.objects.create(
+            category=self.installation, title="Fan Installation",
+            booking_mode="scheduled", pricing_type="fixed",
+        )
+        self.other_service = Service.objects.create(
+            category=Category.objects.create(title="Plumbing", slug="plumbing"),
+            title="Tap Repair", booking_mode="scheduled", pricing_type="fixed",
+        )
+
+    def test_category_flow_mapping_limits_electrical_services_to_selected_branch(self):
+        from apps.catalog.views import _category_answer_service_ids
+
+        visible = _category_answer_service_ids({"work_type": "Repair"})
+        self.assertIn(self.repair_service.id, visible)
+        self.assertNotIn(self.installation_service.id, visible)
+        self.assertIn(self.other_service.id, visible)
+
+    def test_unknown_work_type_does_not_hide_all_electrical_services(self):
+        from apps.catalog.views import _category_answer_service_ids
+
+        visible = _category_answer_service_ids({"work_type": "Emergency"})
+        self.assertIn(self.repair_service.id, visible)
+        self.assertIn(self.installation_service.id, visible)
