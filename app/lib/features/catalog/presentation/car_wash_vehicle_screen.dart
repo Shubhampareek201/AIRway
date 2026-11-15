@@ -411,7 +411,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (key.contains('hatch')) {
       return 'https://www.2dvornika.com.ua/public/images/cars/seatibiza5.jpg';
     }
-    if (key.contains('sedan')) {
+    if (key.contains('sedan') || key.contains('luxury car')) {
       return 'https://s1.auto.drom.ru/photo/9Ch2Z4zgM4nUJ7_8WC6-yC6vcmEBsqSB9XpYsxoXo8V0Y6RxlunS7QpbMzZMpdbjvDgbG-O_dDy2CEfdaRTRaLYfLgreHD_5OS60DuLsnaG0yK6hq7E.jpg';
     }
     if (key.contains('muv') || key.contains('mpv')) {
