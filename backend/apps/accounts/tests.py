@@ -721,3 +721,14 @@ class CustomerSavedVehicleApiTest(APITestCase):
             "vehicle_model": self.model.id,
         }, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_customer_can_save_vehicle_class_without_exact_model(self):
+        response = self.client.post("/api/v1/auth/vehicles/", {
+            "vehicle_type": "car",
+            "vehicle_class": "SUV",
+            "custom_make": "Other",
+            "is_default": True,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["vehicle_class"], "SUV")
+        self.assertEqual(response.data["custom_make"], "Other")
