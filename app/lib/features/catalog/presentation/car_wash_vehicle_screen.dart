@@ -33,6 +33,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   bool _loadingModels = false;
   bool _saveAsDefault = false;
   bool _saving = false;
+  String _modelSearch = '';
   String? _error;
 
   @override
@@ -141,7 +142,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _models = [];
     });
     try {
-      final models = await CatalogApi.listVehicleModels(makeId: makeId, vehicleType: type);
+      final models = await CatalogApi.listVehicleModels(makeId: makeId, vehicleType: type, vehicleClass: _vehicleClass);
       if (!mounted) return;
       setState(() {
         _models = models;
@@ -154,6 +155,26 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       });
     } catch (_) {
       if (mounted) setState(() => _loadingModels = false);
+    }
+  }
+
+  Future<void> _selectVehicleClass(String value) async {
+    final type = _vehicleType;
+    if (type == null) return;
+    setState(() {
+      _vehicleClass = value;
+      _make = null;
+      _model = null;
+      _models = [];
+      _modelSearch = '';
+      _loadingMakes = true;
+    });
+    try {
+      final makes = await CatalogApi.listVehicleMakes(type, vehicleClass: value);
+      if (!mounted) return;
+      setState(() { _makes = makes; _loadingMakes = false; });
+    } catch (_) {
+      if (mounted) setState(() { _makes = []; _loadingMakes = false; });
     }
   }
 
@@ -388,56 +409,104 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
             _choice(title: 'Bike', subtitle: 'Two-wheeler', icon: Icons.two_wheeler, selected: _vehicleType == 'bike', onTap: () => _selectType('bike')),
           ]),
           if (_vehicleType != null) ...[
-            _sectionTitle('Select company (optional)', 'Choose your vehicle manufacturer.'),
-            if (_loadingMakes) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
-            if (!_loadingMakes && _makes.isEmpty)
-              const Text('No manufacturers are configured yet. You can continue without selecting one.', style: TextStyle(color: _muted, fontSize: 12)),
-            if (_makes.isNotEmpty)
-              SizedBox(height: 112, child: ListView.separated(
-                scrollDirection: Axis.horizontal, itemCount: _makes.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 9),
-                itemBuilder: (_, index) => _makeTile(_makes[index]),
-              )),
-            if (_make != null) ...[
-              _sectionTitle('Select model (optional)', 'Choose your exact model if it is listed.'),
-              if (_loadingModels) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
-              if (!_loadingModels && _models.isEmpty)
-                const Text('No models are configured for this company yet.', style: TextStyle(color: _muted, fontSize: 12)),
-              if (_models.isNotEmpty)
-                SizedBox(
-                  height: 190,
-                  child: GridView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _models.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 1, mainAxisExtent: 145, mainAxisSpacing: 10,
+            _sectionTitle(
+              _vehicleType == 'car' ? 'Choose your car body type' : 'Choose your two-wheeler type',
+              'Select the closest match. This is enough to show the right starting price.',
+            ),
+            SizedBox(
+              height: 148,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _vehicleClassOptions().length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (_, index) {
+                  final option = _vehicleClassOptions()[index];
+                  final value = option['value']!;
+                  final selected = _vehicleClass == value;
+                  final step = (widget.vehicleTypeSteps[_vehicleType] ?? const [])
+                      .where((item) => item['key']?.toString() == 'vehicle_type')
+                      .firstOrNull;
+                  final rawOptions = step?['options'];
+                  dynamic image;
+                  if (rawOptions is List) {
+                    for (final item in rawOptions) {
+                      if (item is Map && (item['value']?.toString() ?? item['label']?.toString()) == value) {
+                        image = item['image'];
+                        break;
+                      }
+                    }
+                  }
+                  return InkWell(
+                    onTap: () => _selectVehicleClass(value),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: 132,
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        color: selected ? const Color(0xFFEAF1EA) : Colors.white,
+                        border: Border.all(color: selected ? _green : _line, width: selected ? 2 : 1),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: image != null && image.toString().isNotEmpty
+                              ? Image.network(image.toString(), fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => Icon(_vehicleType == 'car' ? Icons.directions_car_filled : Icons.two_wheeler, size: 44, color: _muted))
+                              : Icon(_vehicleType == 'car' ? Icons.directions_car_filled : Icons.two_wheeler, size: 44, color: selected ? _green : _muted),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(option['label']!, textAlign: TextAlign.center, maxLines: 2,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _ink)),
+                        ],
+                      ),
                     ),
-                    itemBuilder: (_, index) => _modelTile(_models[index]),
+                  );
+                },
+              ),
+            ),
+            if (_vehicleClass != null) ...[
+              _sectionTitle('Select company (optional)', 'We only show manufacturers with models in this vehicle class.'),
+              if (_loadingMakes) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
+              if (!_loadingMakes && _makes.isEmpty)
+                const Text('No matching manufacturers are configured. You can continue with vehicle type only.', style: TextStyle(color: _muted, fontSize: 12)),
+              if (_makes.isNotEmpty)
+                SizedBox(height: 112, child: ListView.separated(
+                  scrollDirection: Axis.horizontal, itemCount: _makes.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 9),
+                  itemBuilder: (_, index) => _makeTile(_makes[index]),
+                )),
+              if (_make != null) ...[
+                _sectionTitle('Find your model (optional)', 'Search and choose your exact model to refine pricing.'),
+                TextField(
+                  onChanged: (value) => setState(() => _modelSearch = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search model name',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true, fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
                   ),
                 ),
+                if (_loadingModels) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
+                if (!_loadingModels && _models.isEmpty)
+                  const Text('No models are configured for this company and vehicle type.', style: TextStyle(color: _muted, fontSize: 12)),
+                if (_models.isNotEmpty)
+                  SizedBox(
+                    height: 190,
+                    child: GridView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _models.where((m) => m.name.toLowerCase().contains(_modelSearch.toLowerCase())).length,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 1, mainAxisExtent: 145, mainAxisSpacing: 10,
+                      ),
+                      itemBuilder: (_, index) {
+                        final filtered = _models.where((m) => m.name.toLowerCase().contains(_modelSearch.toLowerCase())).toList();
+                        return _modelTile(filtered[index]);
+                      },
+                    ),
+                  ),
+              ],
             ],
-            _sectionTitle(
-              _vehicleType == 'car' ? 'Select vehicle size' : 'Select two-wheeler type',
-              'This helps us show the correct package and price.',
-            ),
-            DropdownButtonFormField<String>(
-              value: _vehicleClass,
-              decoration: InputDecoration(
-                hintText: _vehicleType == 'car' ? 'Choose car size' : 'Choose scooter or motorcycle',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
-              ),
-              items: _vehicleClassOptions()
-                .map((option) => DropdownMenuItem(
-                  value: option['value'],
-                  child: Text(option['label']!),
-                ))
-                .toList(),
-              onChanged: _model?.vehicleClass.isNotEmpty == true
-                  ? null
-                  : (value) => setState(() => _vehicleClass = value),
-            ),
             const SizedBox(height: 12),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
