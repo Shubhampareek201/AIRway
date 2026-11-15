@@ -98,7 +98,9 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       );
       if (selected == null || !mounted) return;
       answers.addAll(selected);
-    } else if (selectedCategory.customerFlowSteps.isNotEmpty) {
+    } else if (selectedCategory.customerFlowSteps.isNotEmpty &&
+        !(answers['vehicle_kind'] != null &&
+            (selectedCategory.slug == 'car' || selectedCategory.slug == 'bike'))) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
