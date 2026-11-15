@@ -3,7 +3,12 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/vehicle_models.dart';
 
 class CarWashVehicleScreen extends StatefulWidget {
-  const CarWashVehicleScreen({super.key});
+  final Map<String, List<Map<String, dynamic>>> vehicleTypeSteps;
+
+  const CarWashVehicleScreen({
+    super.key,
+    this.vehicleTypeSteps = const {},
+  });
 
   @override
   State<CarWashVehicleScreen> createState() => _CarWashVehicleScreenState();
@@ -215,6 +220,26 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     Navigator.pop(context, answers);
   }
 
+  List<Map<String, String>> _vehicleClassOptions() {
+    final steps = widget.vehicleTypeSteps[_vehicleType] ?? const [];
+    final matchingSteps = steps.where((step) => step['key']?.toString() == 'vehicle_type');
+    final options = matchingSteps.isNotEmpty ? matchingSteps.first['options'] : null;
+    if (options is List && options.isNotEmpty) {
+      return options.map((item) {
+        if (item is Map) {
+          final value = item['value']?.toString() ?? item['label']?.toString() ?? '';
+          return {'value': value, 'label': item['label']?.toString() ?? value};
+        }
+        final value = item.toString();
+        return {'value': value, 'label': value};
+      }).where((item) => item['value']!.isNotEmpty).toList();
+    }
+    final fallback = _vehicleType == 'car'
+        ? const ['Hatchback', 'Sedan', 'Compact SUV', 'SUV – 5 Seater', 'SUV – 7 Seater', 'MUV / MPV', 'Luxury Car', 'Luxury SUV']
+        : const ['Scooter', 'Motorcycle'];
+    return fallback.map((value) => {'value': value, 'label': value}).toList();
+  }
+
   Widget _choice({
     required String title,
     required String subtitle,
@@ -398,10 +423,11 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                 fillColor: Colors.white,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
               ),
-              items: (_vehicleType == 'car'
-                ? const ['Hatchback', 'Sedan', 'Compact SUV', 'SUV – 5 Seater', 'SUV – 7 Seater', 'MUV / MPV', 'Luxury Car', 'Luxury SUV']
-                : const ['Scooter', 'Motorcycle'])
-                .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+              items: _vehicleClassOptions()
+                .map((option) => DropdownMenuItem(
+                  value: option['value'],
+                  child: Text(option['label']!),
+                ))
                 .toList(),
               onChanged: _model?.vehicleClass.isNotEmpty == true
                   ? null
