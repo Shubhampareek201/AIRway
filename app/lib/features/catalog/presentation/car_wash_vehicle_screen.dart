@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/vehicle_models.dart';
+import 'package:airway/features/booking/data/booking_api.dart';
+import 'package:airway/features/booking/data/booking_models.dart';
 
 class CarWashVehicleScreen extends StatefulWidget {
   final Map<String, List<Map<String, dynamic>>> vehicleTypeSteps;
@@ -35,8 +37,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   bool _loadingSaved = true;
   bool _loadingMakes = false;
   bool _loadingModels = false;
-  bool _saveAsDefault = false;
   bool _saving = false;
+  Map<String, DateTime> _lastCompletedWashByVehicle = {};
   String _modelSearch = '';
   String _makeSearch = '';
   String? _error;
@@ -55,22 +57,66 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
 
   Future<void> _loadSavedVehicles() async {
     try {
-      final vehicles = await CatalogApi.listSavedVehicles();
+      final results = await Future.wait([
+        CatalogApi.listSavedVehicles(),
+        BookingApi.listBookings(status: BookingStatus.completed),
+      ]);
+      final vehicles = results[0] as List<CustomerVehicle>;
+      final bookings = results[1] as List<Booking>;
+      final lastWashDates = <String, DateTime>{};
+      for (final booking in bookings) {
+        if (!booking.serviceTitle.toLowerCase().contains('wash')) continue;
+        final completedAt = booking.assignment?.completedAt ??
+            (booking.statusHistory.where((entry) =>
+              entry.toStatus.toLowerCase() == BookingStatus.completed).isEmpty
+                ? null
+                : booking.statusHistory.where((entry) =>
+                    entry.toStatus.toLowerCase() == BookingStatus.completed)
+                    .last.createdAt);
+        if (completedAt == null) continue;
+        String? kind;
+        String? bodyType;
+        for (final response in booking.formResponses) {
+          final key = response.fieldKey.toLowerCase();
+          final label = response.fieldLabel.toLowerCase();
+          final value = response.value?.toString().trim();
+          if (value == null || value.isEmpty) continue;
+          if (key.contains('vehicle_kind') || label.contains('vehicle type')) {
+            kind = value.toLowerCase();
+          }
+          if (key == 'vehicle_type' || key == 'vehicle_type_label' ||
+              label.contains('vehicle size') || label.contains('body type')) {
+            bodyType = value;
+          }
+        }
+        if (kind == null || bodyType == null) continue;
+        final type = kind.contains('bike') || kind.contains('scooter') ||
+                kind.contains('motorcycle') ? 'bike' : 'car';
+        final key = _vehicleHistoryKey(type, bodyType);
+        final previous = lastWashDates[key];
+        if (previous == null || completedAt.isAfter(previous)) {
+          lastWashDates[key] = completedAt;
+        }
+      }
       if (!mounted) return;
       setState(() {
-        _savedVehicles = [...vehicles]..sort((a, b) => (b.isDefault ? 1 : 0).compareTo(a.isDefault ? 1 : 0));
+        _savedVehicles = vehicles;
+        _lastCompletedWashByVehicle = lastWashDates;
         _loadingSaved = false;
       });
-      final matchingVehicles = widget.initialVehicleType == null
-          ? vehicles
-          : vehicles.where((v) => v.vehicleType == widget.initialVehicleType);
-      final preferred = matchingVehicles.where((v) => v.isDefault).isEmpty
-          ? null
-          : matchingVehicles.firstWhere((v) => v.isDefault);
-      if (preferred != null) _selectSavedVehicle(preferred);
     } catch (_) {
       if (mounted) setState(() => _loadingSaved = false);
     }
+  }
+
+  String _vehicleHistoryKey(String type, String bodyType) =>
+      '${type.toLowerCase()}|${bodyType.trim().toLowerCase()}';
+
+  String _formatWashDate(DateTime date) {
+    final local = date.toLocal();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
 
   Future<void> _selectType(String type) async {
@@ -83,22 +129,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _models = [];
       _makes = [];
       _error = null;
-      _loadingMakes = true;
+      _makeSearch = '';
+      _modelSearch = '';
     });
-    try {
-      final makes = await CatalogApi.listVehicleMakes(type);
-      if (!mounted) return;
-      setState(() {
-        _makes = _prioritisePremiumMakes(makes);
-        _loadingMakes = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadingMakes = false;
-        _error = 'Could not load vehicle companies. You can still continue without selecting a model.';
-      });
-    }
   }
 
   Future<void> _selectSavedVehicle(CustomerVehicle vehicle) async {
@@ -107,52 +140,18 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _selectedSavedVehicleId = vehicle.id;
       _make = null;
       _model = null;
-      _vehicleClass = vehicle.vehicleClass.isNotEmpty ? vehicle.vehicleClass : null;
+      _vehicleClass = vehicle.vehicleClass.isNotEmpty
+          ? vehicle.vehicleClass
+          : null;
       _models = [];
-      _saveAsDefault = vehicle.isDefault;
     });
-    final detail = vehicle.modelDetail;
-    if (detail != null) {
-      setState(() {
-        _make = VehicleMake(
-          id: detail['make_id'] as int,
-          vehicleType: vehicle.vehicleType,
-          name: detail['make_name']?.toString() ?? '',
-          logo: detail['make_logo']?.toString(),
-        );
-        _model = VehicleModel(
-          id: detail['id'] as int,
-          makeId: detail['make_id'] as int,
-          makeName: detail['make_name']?.toString() ?? '',
-          name: detail['name']?.toString() ?? '',
-          image: detail['image']?.toString(),
-          vehicleClass: detail['vehicle_class']?.toString() ?? '',
-        );
-        _vehicleClass = (detail['vehicle_class']?.toString().isNotEmpty == true
-            ? detail['vehicle_class']?.toString()
-            : vehicle.vehicleClass.isNotEmpty ? vehicle.vehicleClass : null);
-      });
-      try {
-        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType);
-        if (!mounted) return;
-        setState(() { _makes = makes; });
-      } catch (_) {
-        // Saved vehicle details remain usable even if the make list is unavailable.
-      }
-      _loadModels(_make!.id, selectedModelId: _model!.id);
-    } else {
-      setState(() => _loadingMakes = true);
-      try {
-        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType);
-        if (!mounted) return;
-        setState(() {
-          _makes = makes;
-          _loadingMakes = false;
-        });
-      } catch (_) {
-        if (mounted) setState(() => _loadingMakes = false);
-      }
+    if (_vehicleClass == null || _vehicleClass!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please choose this vehicle\'s body type first.')),
+      );
+      return;
     }
+    await _continue();
   }
 
   Future<void> _loadModels(int makeId, {int? selectedModelId}) async {
@@ -224,8 +223,6 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   }
 
   Future<void> _selectVehicleClass(String value) async {
-    final type = _vehicleType;
-    if (type == null) return;
     setState(() {
       _selectedSavedVehicleId = null;
       _vehicleClass = value;
@@ -233,15 +230,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _model = null;
       _models = [];
       _modelSearch = '';
-      _loadingMakes = true;
     });
-    try {
-      final makes = await CatalogApi.listVehicleMakes(type);
-      if (!mounted) return;
-      setState(() { _makes = _prioritisePremiumMakes(makes); _loadingMakes = false; });
-    } catch (_) {
-      if (mounted) setState(() { _makes = []; _loadingMakes = false; });
-    }
   }
 
   Future<void> _selectMake(VehicleMake make) async {
@@ -258,37 +247,39 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
 
   Future<void> _continue() async {
     final type = _vehicleType;
+    final bodyType = _vehicleClass;
     if (type == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select Car or Bike first.')),
       );
       return;
     }
-    if (_vehicleClass == null || _vehicleClass!.isEmpty) {
+    if (bodyType == null || bodyType.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select your vehicle size/type to see the correct packages.')),
+        const SnackBar(content: Text('Please select your vehicle body type to see the correct packages.')),
       );
       return;
     }
-    if (_saveAsDefault && !_saving) {
+
+    // Body type is a saved vehicle detail. Keep one saved entry per type/body
+    // combination; make/model and default-vehicle data remain untouched for
+    // future Mechanical Service flows.
+    final alreadySaved = _savedVehicles.any((vehicle) =>
+      vehicle.vehicleType == type &&
+      vehicle.vehicleClass.trim().toLowerCase() == bodyType.trim().toLowerCase());
+    if (!alreadySaved && !_saving) {
       setState(() => _saving = true);
       try {
-        if (_selectedSavedVehicleId != null) {
-          await CatalogApi.setDefaultVehicle(_selectedSavedVehicleId!);
-        } else {
-          await CatalogApi.saveVehicle(
-            vehicleType: type,
-            vehicleModelId: _model?.id,
-            customMake: _model == null ? (_make?.name ?? '') : '',
-            vehicleClass: _vehicleClass ?? '',
-            isDefault: true,
-          );
-        }
+        await CatalogApi.saveVehicle(
+          vehicleType: type,
+          vehicleClass: bodyType,
+          isDefault: false,
+        );
       } catch (e) {
         if (!mounted) return;
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save your default vehicle: $e')),
+          SnackBar(content: Text('Could not save this vehicle. Please try again.')),
         );
         return;
       }
@@ -298,12 +289,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
 
     final answers = <String, dynamic>{
       'vehicle_kind': type == 'car' ? 'Car' : 'Bike',
-      'vehicle_make_id': _make?.id,
-      'vehicle_make': _make?.name ?? '',
-      'vehicle_model_id': _model?.id,
-      'vehicle_model': _model?.name ?? '',
-      'vehicle_type': _vehicleClass,
-      'vehicle_type_label': _vehicleClass,
+      'vehicle_type': bodyType,
+      'vehicle_type_label': bodyType,
     };
     final onContinue = widget.onContinue;
     if (onContinue != null) {
@@ -561,23 +548,38 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         children: [
           const Text('Which vehicle needs cleaning?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _ink)),
           const SizedBox(height: 6),
-          const Text('Choose the vehicle type. Company and model details are optional.', style: TextStyle(color: _muted, fontSize: 13)),
+          const Text('Choose your car body type or two-wheeler type to see matching services.', style: TextStyle(color: _muted, fontSize: 13)),
           if (_loadingSaved) const LinearProgressIndicator(minHeight: 2),
-          if (_savedVehicles.isNotEmpty) ...[
-            _sectionTitle('Your saved vehicles', 'Select a saved vehicle to use it again.'),
-            ..._savedVehicles.map((vehicle) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                tileColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13), side: const BorderSide(color: _line)),
-                leading: Icon(vehicle.vehicleType == 'car' ? Icons.directions_car : Icons.two_wheeler, color: _green),
-                title: Text(vehicle.displayName.isEmpty ? (vehicle.vehicleType == 'car' ? 'Car' : 'Bike') : vehicle.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(vehicle.isDefault ? 'Default vehicle' : vehicle.vehicleType.toUpperCase()),
-                trailing: vehicle.isDefault ? const Icon(Icons.check_circle, color: _green) : null,
-                onTap: () => _selectSavedVehicle(vehicle),
-              ),
-            )),
+          if (_savedVehicles.any((vehicle) => _lastCompletedWashByVehicle.containsKey(
+                _vehicleHistoryKey(vehicle.vehicleType, vehicle.vehicleClass)))) ...[
+            _sectionTitle('Your vehicles', 'Choose a vehicle you have used for a completed wash.'),
+            ..._savedVehicles.where((vehicle) => _lastCompletedWashByVehicle.containsKey(
+              _vehicleHistoryKey(vehicle.vehicleType, vehicle.vehicleClass))).map((vehicle) {
+              final lastWash = _lastCompletedWashByVehicle[
+                _vehicleHistoryKey(vehicle.vehicleType, vehicle.vehicleClass)]!;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  tileColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(13),
+                    side: const BorderSide(color: _line),
+                  ),
+                  leading: Icon(
+                    vehicle.vehicleType == 'car' ? Icons.directions_car : Icons.two_wheeler,
+                    color: _green,
+                  ),
+                  title: Text(
+                    vehicle.vehicleClass.isEmpty
+                      ? (vehicle.vehicleType == 'car' ? 'Car' : 'Bike')
+                      : vehicle.vehicleClass,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text('Last wash: ${_formatWashDate(lastWash)}'),
+                  onTap: () => _selectSavedVehicle(vehicle),
+                ),
+              );
+            }),
           ],
           const SizedBox(height: 16),
           if (widget.initialVehicleType == null)
@@ -637,98 +639,15 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                 },
               ),
             ),
-            if (_vehicleClass != null) ...[
-              _sectionTitle('Choose your car company (optional)', 'Browse all available brands. Select one to see its models below.'),
-              TextField(
-                onChanged: (value) { setState(() => _makeSearch = value); _searchMakes(value); },
-                decoration: InputDecoration(
-                  hintText: 'Search car company',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: true, fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (_loadingMakes) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
-              if (!_loadingMakes && _makes.isEmpty)
-                const Text('No manufacturers are configured yet. You can continue without selecting one.', style: TextStyle(color: _muted, fontSize: 12)),
-              if (_makes.isNotEmpty) ...[
-                Builder(builder: (context) {
-                  final visibleMakes = _makeSearch.trim().isEmpty ? _makes.take(6).toList() : _makes;
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: visibleMakes.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: 1.05,
-                    ),
-                    itemBuilder: (_, index) => _makeTile(visibleMakes[index]),
-                  );
-                }),
-                if (_makeSearch.trim().isEmpty && _makes.length > 6)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text('Search to find any other available company.', style: TextStyle(color: _muted, fontSize: 11)),
-                  ),
-              ],
-              if (_make != null) ...[
-                _sectionTitle('Find your model (optional)', 'Search and choose your exact model to refine pricing.'),
-                TextField(
-                  onChanged: (value) { setState(() => _modelSearch = value); _searchModels(value); },
-                  decoration: InputDecoration(
-                    hintText: 'Search model name',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true, fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
-                  ),
-                ),
-                if (_loadingModels) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
-                if (!_loadingModels && _models.isEmpty)
-                  const Text('No models are configured for this company and vehicle type.', style: TextStyle(color: _muted, fontSize: 12)),
-                if (_models.isNotEmpty)
-                  SizedBox(
-                    height: 190,
-                    child: GridView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _modelSearch.trim().isEmpty
-                          ? (_models.length < 4 ? _models.length : 4)
-                          : _models.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 1, mainAxisExtent: 145, mainAxisSpacing: 10,
-                      ),
-                      itemBuilder: (_, index) => _modelTile(_models[index]),
-                    ),
-                  ),
-                if (_modelSearch.trim().isEmpty && _models.length > 4)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text('Search to find any other model from this company.', style: TextStyle(color: _muted, fontSize: 11)),
-                  ),
-              ],
-            ],
+
             const SizedBox(height: 12),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _saveAsDefault,
-              activeColor: _green,
-              onChanged: (value) => setState(() => _saveAsDefault = value ?? false),
-              title: const Text('Save this as my default vehicle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              subtitle: const Text('You can change it anytime.', style: TextStyle(fontSize: 11)),
-            ),
           ],
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12))),
           const SizedBox(height: 14),
           FilledButton(
             onPressed: _vehicleType == null || _saving ? null : _continue,
             style: FilledButton.styleFrom(backgroundColor: _green, padding: const EdgeInsets.symmetric(vertical: 16)),
-            child: Text(_saving ? 'Saving...' : 'Continue to services'),
-          ),
-          TextButton(
-            onPressed: _vehicleType == null ? null : () {
-              setState(() { _selectedSavedVehicleId = null; _make = null; _model = null; });
-              _continue();
-            },
-            child: const Text('Skip company and model'),
+            child: Text(_saving ? 'Saving vehicle...' : 'Continue to services'),
           ),
         ],
       ),
