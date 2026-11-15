@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
-import 'package:airway/features/catalog/data/catalog_models.dart';
+import 'package:airway/features/catalog/data/catalog_models.dart';\nimport 'package:airway/features/catalog/data/vehicle_models.dart';
 
 class CatalogApi {
   CatalogApi._();
@@ -207,5 +207,60 @@ class CatalogApi {
       throw const FormatException('Unexpected service detail response');
     }
     return Service.fromMap(Map<String, dynamic>.from(result));
+  }
+
+
+  static Future<List<VehicleMake>> listVehicleMakes(String vehicleType) async {
+    final uri = Uri(
+      path: '/api/v1/catalog/vehicle-makes/',
+      queryParameters: {'vehicle_type': vehicleType},
+    );
+    return _parseList(await request(uri.toString()), VehicleMake.fromMap);
+  }
+
+  static Future<List<VehicleModel>> listVehicleModels({
+    required int makeId,
+    required String vehicleType,
+  }) async {
+    final uri = Uri(
+      path: '/api/v1/catalog/vehicle-models/',
+      queryParameters: {'make': makeId.toString(), 'vehicle_type': vehicleType},
+    );
+    return _parseList(await request(uri.toString()), VehicleModel.fromMap);
+  }
+
+  static Future<List<CustomerVehicle>> listSavedVehicles() async {
+    return _parseList(await request('/api/v1/auth/vehicles/'), CustomerVehicle.fromMap);
+  }
+
+  static Future<CustomerVehicle> saveVehicle({
+    required String vehicleType,
+    int? vehicleModelId,
+    String customMake = '',
+    String customModel = '',
+    String nickname = '',
+    bool isDefault = false,
+  }) async {
+    final result = await request('/api/v1/auth/vehicles/', method: 'POST', data: {
+      'vehicle_type': vehicleType,
+      'vehicle_model': vehicleModelId,
+      'custom_make': customMake,
+      'custom_model': customModel,
+      'nickname': nickname,
+      'is_default': isDefault,
+    });
+    return CustomerVehicle.fromMap(Map<String, dynamic>.from(result as Map));
+  }
+
+  static Future<CustomerVehicle> setDefaultVehicle(int vehicleId) async {
+    final result = await request(
+      '/api/v1/auth/vehicles/$vehicleId/set-default/',
+      method: 'POST',
+    );
+    return CustomerVehicle.fromMap(Map<String, dynamic>.from(result as Map));
+  }
+
+  static Future<void> deleteSavedVehicle(int vehicleId) async {
+    await request('/api/v1/auth/vehicles/$vehicleId/', method: 'DELETE');
   }
 }
