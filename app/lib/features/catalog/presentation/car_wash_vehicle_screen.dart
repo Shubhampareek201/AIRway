@@ -5,11 +5,13 @@ import 'package:airway/features/catalog/data/vehicle_models.dart';
 class CarWashVehicleScreen extends StatefulWidget {
   final Map<String, List<Map<String, dynamic>>> vehicleTypeSteps;
   final String? initialVehicleType;
+  final Future<void> Function(BuildContext vehicleContext, Map<String, dynamic> answers) onContinue;
 
   const CarWashVehicleScreen({
     super.key,
     this.vehicleTypeSteps = const {},
     this.initialVehicleType,
+    required this.onContinue,
   });
 
   @override
@@ -303,7 +305,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       'vehicle_type': _vehicleClass,
       'vehicle_type_label': _vehicleClass,
     };
-    Navigator.pop(context, answers);
+    await widget.onContinue(context, answers);
   }
 
   List<Map<String, String>> _vehicleClassOptions() {
