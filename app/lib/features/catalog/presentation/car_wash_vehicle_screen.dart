@@ -66,7 +66,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       final lastWashDates = <String, DateTime>{};
       for (final booking in bookings) {
         if (!booking.serviceTitle.toLowerCase().contains('wash')) continue;
-        final completedAt = booking.assignment?.completedAt ??
+        final completedAt = booking.completedAt ??
+            booking.assignment?.completedAt ??
             (booking.statusHistory.where((entry) =>
               entry.toStatus.toLowerCase() == BookingStatus.completed).isEmpty
                 ? null
@@ -74,18 +75,24 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                     entry.toStatus.toLowerCase() == BookingStatus.completed)
                     .last.createdAt);
         if (completedAt == null) continue;
-        String? kind;
-        String? bodyType;
+        final answers = booking.customerAnswers;
+        String? kind = answers['vehicle_kind']?.toString().toLowerCase();
+        String? bodyType = (answers['vehicle_type'] ??
+                answers['vehicle_type_label'])?.toString();
+        // Older bookings may not have category answers populated; retain a
+        // safe fallback to configured form responses where those fields exist.
         for (final response in booking.formResponses) {
           final key = response.fieldKey.toLowerCase();
           final label = response.fieldLabel.toLowerCase();
           final value = response.value?.toString().trim();
           if (value == null || value.isEmpty) continue;
-          if (key.contains('vehicle_kind') || label.contains('vehicle type')) {
+          if (kind == null &&
+              (key.contains('vehicle_kind') || label.contains('vehicle type'))) {
             kind = value.toLowerCase();
           }
-          if (key == 'vehicle_type' || key == 'vehicle_type_label' ||
-              label.contains('vehicle size') || label.contains('body type')) {
+          if (bodyType == null &&
+              (key == 'vehicle_type' || key == 'vehicle_type_label' ||
+               label.contains('vehicle size') || label.contains('body type'))) {
             bodyType = value;
           }
         }
