@@ -11,12 +11,12 @@ class ElectricalIssueDetailsScreen extends StatefulWidget {
   const ElectricalIssueDetailsScreen({
     super.key,
     required this.service,
-    required this.variant,
+    this.variant,
     required this.categoryAnswers,
   });
 
   final Service service;
-  final ServiceVariant variant;
+  final ServiceVariant? variant;
   final Map<String, dynamic> categoryAnswers;
 
   @override
@@ -67,7 +67,7 @@ class _ElectricalIssueDetailsScreenState
     try {
       final cart = await BookingApi.addCartItem(
         serviceId: widget.service.id,
-        variantId: widget.variant.id,
+        variantId: widget.variant?.id,
         quantity: 1,
         addonSelections: const [],
         formAnswers: const {},
@@ -131,8 +131,9 @@ class _ElectricalIssueDetailsScreenState
           Text(widget.service.title,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 5),
-          Text(widget.variant.title,
-              style: const TextStyle(fontSize: 14, color: muted)),
+          if (widget.variant?.title.isNotEmpty == true)
+            Text(widget.variant!.title,
+                style: const TextStyle(fontSize: 14, color: muted)),
           const SizedBox(height: 18),
           Container(
             padding: const EdgeInsets.all(14),
@@ -143,7 +144,7 @@ class _ElectricalIssueDetailsScreenState
             ),
             child: Column(
               children: [
-                _priceRow('Service price', '₹${widget.variant.price.toStringAsFixed(0)}'),
+                _priceRow('Service price', widget.variant == null ? 'Quote after assessment' : '₹${widget.variant!.price.toStringAsFixed(0)}'),
                 if (visitFee > 0) ...[
                   const SizedBox(height: 8),
                   _priceRow('Inspection / visit charge', '₹${visitFee.toStringAsFixed(0)}'),
@@ -151,7 +152,7 @@ class _ElectricalIssueDetailsScreenState
                 const Divider(height: 20),
                 _priceRow(
                   'Before applicable taxes',
-                  '₹${(widget.variant.price + visitFee).toStringAsFixed(0)}',
+                  widget.variant == null ? 'Quote after assessment' : '₹${(widget.variant!.price + visitFee).toStringAsFixed(0)}',
                   bold: true,
                 ),
                 if (visitFee > 0)
