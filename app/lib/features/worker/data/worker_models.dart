@@ -273,6 +273,7 @@ class WorkerAssignmentDetail {
   final double amount;
   final String? paymentLabel;
   final String? notes;
+  final String? issuePhotoUrl;
   final String? workerNotes;
   final List<Map<String, dynamic>> formResponses;
   final Map<String, dynamic> customerAnswers;
@@ -295,6 +296,7 @@ class WorkerAssignmentDetail {
     required this.amount,
     this.paymentLabel,
     this.notes,
+    this.issuePhotoUrl,
     this.workerNotes,
     required this.formResponses,
     this.customerAnswers = const {},
@@ -319,6 +321,7 @@ class WorkerAssignmentDetail {
       amount: double.tryParse(map['amount'].toString()) ?? 0.0,
       paymentLabel: map['payment_label']?.toString(),
       notes: map['notes'],
+      issuePhotoUrl: map['issue_photo_url']?.toString(),
       workerNotes: map['worker_notes'],
       formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       customerAnswers: Map<String, dynamic>.from(map['customer_answers'] as Map? ?? {}),
