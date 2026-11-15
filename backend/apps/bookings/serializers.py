@@ -845,6 +845,12 @@ class CartItemSerializer(serializers.ModelSerializer):
         addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
         answers = attrs.get("form_answers", instance.form_answers if instance else {})
         category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
+        if "_airway_issue_photo" in category_answers and (
+            instance is None or "_airway_issue_photo" not in (instance.category_answers or {})
+        ):
+            raise serializers.ValidationError({
+                "category_answers": "Issue-photo metadata is managed by AIRway and cannot be supplied directly."
+            })
 
         try:
             validate_beauty_audience(service, category_answers)
@@ -956,7 +962,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         elif service.variants.filter(is_active=True).exists():
             raise serializers.ValidationError({"variant": "Please select a package."})
         else:
-            base = Decimal(service.visit_fee)
+            base = Decimal("0")
             base_title = service.title
 
         addon_rows = []
