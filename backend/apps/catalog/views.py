@@ -127,64 +127,59 @@ def _category_answers_from_request(request):
 
 
 def _category_answer_service_ids(answers):
-    """Apply launch-category filters driven by the selected customer answers."""
+    """Filter Car Wash and Electrical services using selected category answers."""
+    vehicle_service_ids = None
     vehicle_kind = answers.get("vehicle_kind") if isinstance(answers, dict) else None
-    work_type = answers.get("work_type") if isinstance(answers, dict) else None
     if vehicle_kind not in (None, ""):
         selected = str(vehicle_kind).strip().casefold()
         if selected not in ("car", "bike"):
             raise ValidationError({"category_answers": "Choose Car or Bike."})
-        car_wash_roots = Category.objects.filter(
+        root_ids = list(Category.objects.filter(
             slug="car-wash", parent__isnull=True, is_active=True
-        ).values_list("id", flat=True)
-        root_ids = list(car_wash_roots)
-        if root_ids:
-            branch = Category.objects.filter(
-                parent_id__in=root_ids, slug=selected, is_active=True
-            ).first()
-            if branch:
-                branch_ids = {branch.id}
-                pending = [branch.id]
-                children = {}
-                for row in Category.objects.filter(is_active=True).values("id", "parent_id"):
-                    if row["parent_id"] is not None:
-                        children.setdefault(row["parent_id"], []).append(row["id"])
-                while pending:
-                    parent_id = pending.pop()
-                    for child_id in children.get(parent_id, []):
-                        if child_id not in branch_ids:
-                            branch_ids.add(child_id)
-                            pending.append(child_id)
-                matching = set(Service.objects.filter(
-                    is_active=True, category_id__in=branch_ids
+        ).values_list("id", flat=True))
+        branch = Category.objects.filter(
+            parent_id__in=root_ids, slug=selected, is_active=True
+        ).first()
+        if branch:
+            car_wash_ids = set()
+            pending = list(Category.objects.filter(
+                parent_id__in=root_ids, is_active=True
+            ).values_list("id", flat=True))
+            while pending:
+                category_id = pending.pop()
+                if category_id in car_wash_ids:
+                    continue
+                car_wash_ids.add(category_id)
+                pending.extend(Category.objects.filter(
+                    parent_id=category_id, is_active=True
                 ).values_list("id", flat=True))
-                outside_car_wash = set(Service.objects.filter(
-                    is_active=True, category__is_active=True
-                ).exclude(category_id__in=Category.objects.filter(
-                    parent_id__in=root_ids
-                ).values_list("id", flat=True)).values_list("id", flat=True))
-                # Exclude the opposite vehicle branch and retain unrelated launch services.
-                all_car_wash_ids = set()
-                for candidate in Category.objects.filter(parent_id__in=root_ids, is_active=True):
-                    all_car_wash_ids.add(candidate.id)
-                    stack = [candidate.id]
-                    while stack:
-                        parent_id = stack.pop()
-                        child_ids = list(Category.objects.filter(parent_id=parent_id, is_active=True).values_list("id", flat=True))
-                        all_car_wash_ids.update(child_ids)
-                        stack.extend(child_ids)
-                outside_car_wash = set(Service.objects.filter(
-                    is_active=True, category__is_active=True
-                ).exclude(category_id__in=all_car_wash_ids).values_list("id", flat=True))
-                return matching | outside_car_wash
+            selected_branch_ids = {branch.id}
+            pending = [branch.id]
+            while pending:
+                category_id = pending.pop()
+                for child_id in Category.objects.filter(
+                    parent_id=category_id, is_active=True
+                ).values_list("id", flat=True):
+                    if child_id not in selected_branch_ids:
+                        selected_branch_ids.add(child_id)
+                        pending.append(child_id)
+            matching_ids = set(Service.objects.filter(
+                is_active=True, category_id__in=selected_branch_ids
+            ).values_list("id", flat=True))
+            other_ids = set(Service.objects.filter(
+                is_active=True, category__is_active=True
+            ).exclude(category_id__in=car_wash_ids).values_list("id", flat=True))
+            vehicle_service_ids = matching_ids | other_ids
+
+    work_type = answers.get("work_type") if isinstance(answers, dict) else None
     if work_type in (None, ""):
-        return None
+        return vehicle_service_ids
 
     roots = set(Category.objects.filter(
         slug="electrical", parent__isnull=True, is_active=True
     ).values_list("id", flat=True))
     if not roots:
-        return None
+        return vehicle_service_ids
 
     children = {}
     for row in Category.objects.filter(is_active=True).values("id", "parent_id"):
@@ -219,7 +214,8 @@ def _category_answer_service_ids(answers):
     non_electrical_ids = set(Service.objects.filter(
         is_active=True, category__is_active=True
     ).exclude(category_id__in=category_ids).values_list("id", flat=True))
-    return non_electrical_ids | allowed_service_ids
+    electrical_result = non_electrical_ids | allowed_service_ids
+    return electrical_result if vehicle_service_ids is None else electrical_result & vehicle_service_ids
 
 
 def _visible_category_ids(service_ids):
