@@ -279,7 +279,7 @@ class CustomerVehicleSerializer(serializers.ModelSerializer):
         model = CustomerVehicle
         fields = [
             "id", "vehicle_type", "vehicle_model", "vehicle_model_detail",
-            "custom_make", "custom_model", "nickname", "is_default",
+            "custom_make", "custom_model", "vehicle_class", "nickname", "is_default",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
@@ -309,5 +309,5 @@ class CustomerVehicleSerializer(serializers.ModelSerializer):
             "make_name": model.make.name,
             "make_logo": media_url(model.make.logo),
             "image": media_url(model.image),
-            "vehicle_class": model.vehicle_class,
+            "vehicle_class": model.vehicle_class or obj.vehicle_class,
         }
