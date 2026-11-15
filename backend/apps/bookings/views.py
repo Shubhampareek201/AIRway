@@ -1137,8 +1137,9 @@ class CustomerCartIssuePhotoView(APIView):
         try:
             from PIL import Image
             image = Image.open(photo)
-            image.verify()
+            image_width, image_height = image.size
             image_format = image.format
+            image.verify()
             if image_format not in ("JPEG", "PNG", "WEBP"):
                 raise ValueError("Unsupported image format")
         except Exception:
@@ -1147,7 +1148,7 @@ class CustomerCartIssuePhotoView(APIView):
             photo.seek(0)
 
         extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}[image_format]
-        if image.width > 6000 or image.height > 6000:
+        if image_width > 6000 or image_height > 6000:
             return Response({"detail": "Image dimensions must not exceed 6000 × 6000 pixels."}, status=status.HTTP_400_BAD_REQUEST)
         stored_path = storage.save(
             f"booking_issue_photos/customer_{request.user.pk}/{uuid.uuid4().hex}{extension}",
@@ -1300,5 +1301,8 @@ class CustomerCartItemView(APIView):
     def delete(self, request, item_id):
         item = self.get_item(request, item_id)
         cart = item.cart
+        stored_path = (item.category_answers or {}).get("_airway_issue_photo")
         item.delete()
+        if stored_path:
+            FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT).delete(stored_path)
         return Response(CustomerCartSerializer(cart, context={"request": request}).data)
