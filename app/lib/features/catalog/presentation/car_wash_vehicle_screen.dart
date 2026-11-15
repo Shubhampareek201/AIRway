@@ -19,6 +19,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   VehicleMake? _make;
   VehicleModel? _model;
   String? _vehicleClass;
+  int? _selectedSavedVehicleId;
   List<CustomerVehicle> _savedVehicles = [];
   List<VehicleMake> _makes = [];
   List<VehicleModel> _models = [];
@@ -55,6 +56,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   Future<void> _selectType(String type) async {
     setState(() {
       _vehicleType = type;
+      _selectedSavedVehicleId = null;
       _make = null;
       _model = null;
       _vehicleClass = null;
@@ -82,6 +84,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   void _selectSavedVehicle(CustomerVehicle vehicle) {
     setState(() {
       _vehicleType = vehicle.vehicleType;
+      _selectedSavedVehicleId = vehicle.id;
       _make = null;
       _model = null;
       _vehicleClass = null;
@@ -141,6 +144,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
 
   Future<void> _selectMake(VehicleMake make) async {
     setState(() {
+      _selectedSavedVehicleId = null;
       _make = make;
       _model = null;
       _vehicleClass = null;
@@ -167,12 +171,16 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (_saveAsDefault && !_saving) {
       setState(() => _saving = true);
       try {
-        await CatalogApi.saveVehicle(
-          vehicleType: type,
-          vehicleModelId: _model?.id,
-          customMake: _model == null ? (_make?.name ?? '') : '',
-          isDefault: true,
-        );
+        if (_selectedSavedVehicleId != null) {
+          await CatalogApi.setDefaultVehicle(_selectedSavedVehicleId!);
+        } else {
+          await CatalogApi.saveVehicle(
+            vehicleType: type,
+            vehicleModelId: _model?.id,
+            customMake: _model == null ? (_make?.name ?? '') : '',
+            isDefault: true,
+          );
+        }
       } catch (e) {
         if (!mounted) return;
         setState(() => _saving = false);
@@ -274,7 +282,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   Widget _modelTile(VehicleModel model) {
     final selected = _model?.id == model.id;
     return InkWell(
-      onTap: () => setState(() { _model = model; _vehicleClass = model.vehicleClass.isNotEmpty ? model.vehicleClass : null; }),
+      onTap: () => setState(() { _selectedSavedVehicleId = null; _model = model; _vehicleClass = model.vehicleClass.isNotEmpty ? model.vehicleClass : null; }),
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
