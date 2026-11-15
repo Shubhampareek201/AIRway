@@ -43,13 +43,14 @@ class CustomerVehicle {
   final int? vehicleModelId;
   final String customMake;
   final String customModel;
+  final String vehicleClass;
   final String nickname;
   final bool isDefault;
   final Map<String, dynamic>? modelDetail;
 
   const CustomerVehicle({
     required this.id, required this.vehicleType, this.vehicleModelId,
-    this.customMake = '', this.customModel = '', this.nickname = '',
+    this.customMake = '', this.customModel = '', this.vehicleClass = '', this.nickname = '',
     this.isDefault = false, this.modelDetail,
   });
 
@@ -59,6 +60,7 @@ class CustomerVehicle {
     vehicleModelId: map['vehicle_model'] as int?,
     customMake: map['custom_make']?.toString() ?? '',
     customModel: map['custom_model']?.toString() ?? '',
+    vehicleClass: map['vehicle_class']?.toString() ?? '',
     nickname: map['nickname']?.toString() ?? '',
     isDefault: map['is_default'] == true,
     modelDetail: map['vehicle_model_detail'] is Map
