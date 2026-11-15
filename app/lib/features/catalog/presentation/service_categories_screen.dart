@@ -172,12 +172,13 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         );
         return;
       }
+      final selectedVehicleCategory = vehicleCategory;
       Navigator.push<void>(
         context,
         MaterialPageRoute(
           builder: (_) => ServiceListScreen(
-            categoryId: vehicleCategory!.id,
-            categoryTitle: vehicleCategory.title,
+            categoryId: selectedVehicleCategory.id,
+            categoryTitle: selectedVehicleCategory.title,
             addressId: widget.addressId,
             initialAnswers: answers,
             includeDescendants: true,
