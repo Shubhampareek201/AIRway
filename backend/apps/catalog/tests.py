@@ -573,15 +573,17 @@ class CarWashVehicleCatalogueApiTest(TestCase):
     def test_vehicle_makes_are_filtered_by_type(self):
         response = self.client.get("/api/v1/catalog/vehicle-makes/?vehicle_type=car")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item["name"] for item in response.data], ["Maruti Suzuki"])
+        results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        self.assertEqual([item["name"] for item in results], ["Maruti Suzuki"])
 
     def test_vehicle_models_are_filtered_by_make_and_type(self):
         response = self.client.get(
             f"/api/v1/catalog/vehicle-models/?make={self.car_make.id}&vehicle_type=car"
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item["name"] for item in response.data], ["Swift"])
-        self.assertEqual(response.data[0]["vehicle_class"], "Hatchback")
+        results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        self.assertEqual([item["name"] for item in results], ["Swift"])
+        self.assertEqual(results[0]["vehicle_class"], "Hatchback")
 
 
 class CarWashVehicleBranchFilterTest(TestCase):
@@ -610,7 +612,8 @@ class CarWashVehicleBranchFilterTest(TestCase):
             "/api/v1/catalog/services/?for_worker=true&category_answers=%7B%22vehicle_kind%22%3A%22Car%22%7D"
         )
         self.assertEqual(response.status_code, 200, response.data)
-        ids = {item["id"] for item in response.data}
+        results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        ids = {item["id"] for item in results}
         self.assertIn(self.car_service.id, ids)
         self.assertNotIn(self.bike_service.id, ids)
 
@@ -619,6 +622,7 @@ class CarWashVehicleBranchFilterTest(TestCase):
             "/api/v1/catalog/services/?for_worker=true&category_answers=%7B%22vehicle_kind%22%3A%22Bike%22%7D"
         )
         self.assertEqual(response.status_code, 200, response.data)
-        ids = {item["id"] for item in response.data}
+        results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+        ids = {item["id"] for item in results}
         self.assertIn(self.bike_service.id, ids)
         self.assertNotIn(self.car_service.id, ids)
