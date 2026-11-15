@@ -114,7 +114,17 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       });
       _loadModels(_make!.id, selectedModelId: _model!.id);
     } else {
-      _selectType(vehicle.vehicleType);
+      setState(() => _loadingMakes = true);
+      try {
+        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType);
+        if (!mounted) return;
+        setState(() {
+          _makes = makes;
+          _loadingMakes = false;
+        });
+      } catch (_) {
+        if (mounted) setState(() => _loadingMakes = false);
+      }
     }
   }
 
