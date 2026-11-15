@@ -24,7 +24,13 @@ String workerCustomerAnswerLabel(String key, dynamic value) {
         ? 'Professional requirement: Female professional'
         : 'Professional requirement: No preference';
   }
-  return '${key.replaceAll('_', ' ')}: $value';
+  const labels = {
+    'vehicle_kind': 'Vehicle',
+    'vehicle_make': 'Company',
+    'vehicle_model': 'Model',
+    'vehicle_type_label': 'Vehicle size',
+  };
+  return '${labels[key] ?? key.replaceAll('_', ' ')}: $value';
 }
 
 class WorkerProfile {
