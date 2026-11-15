@@ -543,20 +543,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                   final option = _vehicleClassOptions()[index];
                   final value = option['value']!;
                   final selected = _vehicleClass == value;
-                  final matchingSteps = (widget.vehicleTypeSteps[_vehicleType] ?? const [])
-                      .where((item) => item['key']?.toString() == 'vehicle_type')
-                      .toList();
-                  final step = matchingSteps.isEmpty ? null : matchingSteps.first;
-                  final rawOptions = step?['options'];
-                  dynamic image;
-                  if (rawOptions is List) {
-                    for (final item in rawOptions) {
-                      if (item is Map && (item['value']?.toString() ?? item['label']?.toString()) == value) {
-                        image = item['image'];
-                        break;
-                      }
-                    }
-                  }
+                  final bodyImage = _vehicleType == 'car' ? _bodyTypeImage(value) : null;
                   return InkWell(
                     onTap: () => _selectVehicleClass(value),
                     borderRadius: BorderRadius.circular(14),
@@ -571,16 +558,19 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                       child: Column(
                         children: [
                           Expanded(
-                            child: (image != null && image.toString().isNotEmpty)
-                              ? Image.network(image.toString(), fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => _bodyTypeImage(value) == null
-                                      ? CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())
-                                      : Image.network(_bodyTypeImage(value)!, fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) => CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())))
-                              : (_bodyTypeImage(value) == null
+                            child: ColoredBox(
+                              color: Colors.white,
+                              child: bodyImage == null
                                   ? CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand())
-                                  : Image.network(_bodyTypeImage(value)!, fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => CustomPaint(painter: _VehicleBodyPainter(value, selected), child: const SizedBox.expand()))),
+                                  : Image.network(
+                                      bodyImage,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => CustomPaint(
+                                        painter: _VehicleBodyPainter(value, selected),
+                                        child: const SizedBox.expand(),
+                                      ),
+                                    ),
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Text(option['label']!, textAlign: TextAlign.center, maxLines: 2,
