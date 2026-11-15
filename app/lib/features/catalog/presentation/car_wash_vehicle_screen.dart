@@ -381,6 +381,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (key.contains('volkswagen') || key == 'vw') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Volkswagen_-_Logo.svg/250px-Volkswagen_-_Logo.svg.png';
     if (key == 'mg' || key.contains('mgmotor')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c8/MG_Motor_2021_logo.svg/500px-MG_Motor_2021_logo.svg.png';
     if (key.contains('renault')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Renault_Logo.svg/500px-Renault_Logo.svg.png';
+    if (key.contains('nissan')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Nissan_2020_logo.svg/500px-Nissan_2020_logo.svg.png';
+    if (key.contains('skoda')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Skoda_Logo.png/330px-Skoda_Logo.png';
     return null;
   }
 
