@@ -1,10 +1,27 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
-import 'package:airway/features/catalog/presentation/electrical_issue_details_screen.dart';
+
+
+
+class _ElectricalAddSelection {
+  const _ElectricalAddSelection({
+    required this.variant,
+    required this.notes,
+    required this.photo,
+  });
+
+  final ServiceVariant? variant;
+  final String notes;
+  final File? photo;
+}
 
 class _Ui {
   static const violet = Color(0xFF315C46);
@@ -62,22 +79,414 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
 
-  Future<void> _addElectricalService(Service service, ServiceVariant? variant) async {
-    final added = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ElectricalIssueDetailsScreen(
-          service: service,
-          variant: variant,
-          categoryAnswers: widget.initialAnswers,
+  Future<void> _addElectricalService(Service service) async {
+    final variants = _matchingVariants(service);
+    final notesController = TextEditingController();
+    final picker = ImagePicker();
+    File? selectedPhoto;
+
+    Future<_ElectricalAddSelection?> showElectricalSheet() {
+      ServiceVariant? selectedVariant;
+      return showModalBottomSheet<_ElectricalAddSelection>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final visitFee = service.bookingMode == 'inspection'
+                ? service.visitFee
+                : 0.0;
+            final servicePrice = selectedVariant?.price;
+            final total = servicePrice == null ? null : servicePrice + visitFee;
+
+            Future<void> pickPhoto(ImageSource source) async {
+              try {
+                final picked = await picker.pickImage(
+                  source: source,
+                  imageQuality: 82,
+                  maxWidth: 1600,
+                  maxHeight: 1600,
+                );
+                if (picked != null) {
+                  setSheetState(() => selectedPhoto = File(picked.path));
+                }
+              } catch (error) {
+                if (sheetContext.mounted) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(content: Text('Could not select photo: $error')),
+                  );
+                }
+              }
+            }
+
+            return SafeArea(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.90,
+                ),
+                padding: EdgeInsets.fromLTRB(
+                  18, 12, 18, 16 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: _Ui.line,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(service.title, style: const TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w900,
+                                color: _Ui.ink,
+                              )),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Choose an option and tell us about the issue',
+                                style: TextStyle(fontSize: 12, color: _Ui.sub),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.electrical_services_rounded,
+                            color: _Ui.violet, size: 25),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (variants.isEmpty)
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7F8F6),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: _Ui.line),
+                                ),
+                                child: const Text(
+                                  'Professional assessment required. The final service cost will be confirmed after the issue is checked.',
+                                  style: TextStyle(fontSize: 12, height: 1.4, color: _Ui.ink),
+                                ),
+                              ),
+                            for (final variant in variants) ...[
+                              InkWell(
+                                onTap: () => setSheetState(() => selectedVariant = variant),
+                                borderRadius: BorderRadius.circular(15),
+                                child: Container(
+                                  padding: const EdgeInsets.all(13),
+                                  decoration: BoxDecoration(
+                                    color: selectedVariant?.id == variant.id
+                                        ? const Color(0xFFEAF1EA)
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color: selectedVariant?.id == variant.id
+                                          ? _Ui.violet
+                                          : _Ui.line,
+                                      width: selectedVariant?.id == variant.id ? 1.7 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        selectedVariant?.id == variant.id
+                                            ? Icons.radio_button_checked_rounded
+                                            : Icons.radio_button_off_rounded,
+                                        color: _Ui.violet,
+                                        size: 21,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(variant.title, style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                              color: _Ui.ink,
+                                            )),
+                                            if (variant.description?.isNotEmpty == true)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 4),
+                                                child: Text(variant.description!,
+                                                  style: const TextStyle(fontSize: 11.5, height: 1.35, color: _Ui.sub)),
+                                              ),
+                                            if (variant.includedTasks.isNotEmpty) ...[
+                                              const SizedBox(height: 7),
+                                              for (final task in variant.includedTasks)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(top: 3),
+                                                  child: Row(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      const Icon(Icons.check_rounded, size: 14, color: _Ui.violet),
+                                                      const SizedBox(width: 5),
+                                                      Expanded(child: Text(task,
+                                                        style: const TextStyle(fontSize: 11, color: _Ui.ink))),
+                                                    ],
+                                                  ),
+                                                ),
+                                            ],
+                                            if (variant.durationMinutes != null && variant.durationMinutes! > 0)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 6),
+                                                child: Text('${variant.durationMinutes} min',
+                                                  style: const TextStyle(fontSize: 10.5, color: _Ui.sub)),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        variant.price > 0
+                                            ? '₹${variant.price.toStringAsFixed(0)}'
+                                            : 'Quote',
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: _Ui.violet),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 9),
+                            ],
+                            if (service.pricingType == 'quote' || service.bookingMode == 'inspection' || service.visitFee > 0) ...[
+                              const SizedBox(height: 5),
+                              Container(
+                                padding: const EdgeInsets.all(13),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7F8F6),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: _Ui.line),
+                                ),
+                                child: Column(
+                                  children: [
+                                    _priceLine(
+                                      'Service charge',
+                                      servicePrice == null ? 'Confirmed after assessment' : '₹${servicePrice.toStringAsFixed(0)}',
+                                    ),
+                                    if (visitFee > 0) ...[
+                                      const SizedBox(height: 8),
+                                      _priceLine('Inspection / visit charge', '₹${visitFee.toStringAsFixed(0)}'),
+                                    ],
+                                    const Divider(height: 18),
+                                    _priceLine(
+                                      'Total before applicable taxes',
+                                      total == null ? 'Confirmed after assessment' : '₹${total.toStringAsFixed(0)}',
+                                      bold: true,
+                                    ),
+                                    if (visitFee > 0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(top: 7),
+                                        child: Text(
+                                          'Visit charge is admin-configured and charged once. Any repair cost will be confirmed after assessment.',
+                                          style: TextStyle(fontSize: 10.5, height: 1.35, color: _Ui.sub),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 14),
+                            const Text('Add a photo (optional)', style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800, color: _Ui.ink,
+                            )),
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Attach a photo so the professional can understand the problem.',
+                              style: TextStyle(fontSize: 11.5, color: _Ui.sub),
+                            ),
+                            const SizedBox(height: 9),
+                            if (selectedPhoto != null) ...[
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.file(selectedPhoto!, height: 150, fit: BoxFit.cover),
+                              ),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: () => setSheetState(() => selectedPhoto = null),
+                                  icon: const Icon(Icons.delete_outline),
+                                  label: const Text('Remove photo'),
+                                ),
+                              ),
+                            ] else
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => pickPhoto(ImageSource.camera),
+                                      icon: const Icon(Icons.camera_alt_outlined),
+                                      label: const Text('Camera'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 9),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => pickPhoto(ImageSource.gallery),
+                                      icon: const Icon(Icons.photo_library_outlined),
+                                      label: const Text('Gallery'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            const SizedBox(height: 13),
+                            const Text('Describe the actual problem (optional)', style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800, color: _Ui.ink,
+                            )),
+                            const SizedBox(height: 7),
+                            TextField(
+                              controller: notesController,
+                              minLines: 2,
+                              maxLines: 4,
+                              maxLength: 1000,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: InputDecoration(
+                                hintText: 'Example: The fan makes noise and stops after a few minutes...',
+                                hintStyle: const TextStyle(fontSize: 11.5, color: _Ui.sub),
+                                filled: true,
+                                fillColor: const Color(0xFFFAFAF8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(13),
+                                  borderSide: const BorderSide(color: _Ui.line),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(13),
+                                  borderSide: const BorderSide(color: _Ui.line),
+                                ),
+                                contentPadding: const EdgeInsets.all(13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: variants.isNotEmpty && selectedVariant == null
+                            ? null
+                            : () => Navigator.pop(
+                                  sheetContext,
+                                  _ElectricalAddSelection(
+                                    variant: selectedVariant,
+                                    notes: notesController.text.trim(),
+                                    photo: selectedPhoto,
+                                  ),
+                                ),
+                        icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                        label: const Text('Add to Cart'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _Ui.violet,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-      ),
-    );
-    if (added == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Electrical service added to your cart.')),
       );
     }
+
+    try {
+      final selection = await showElectricalSheet();
+      if (!mounted || selection == null) return;
+      int? createdItemId;
+      try {
+        final cart = await BookingApi.addCartItem(
+          serviceId: service.id,
+          variantId: selection.variant?.id,
+          quantity: 1,
+          addonSelections: const [],
+          formAnswers: const {},
+          categoryAnswers: widget.initialAnswers,
+          notes: selection.notes,
+        );
+        createdItemId = int.tryParse(cart['added_item_id']?.toString() ?? '');
+        if (createdItemId == null) {
+          throw Exception('The service was not added to the cart. Please try again.');
+        }
+        if (selection.photo != null) {
+          await BookingApi.uploadCartItemIssuePhoto(
+            itemId: createdItemId,
+            photo: selection.photo!,
+          );
+        }
+        CustomerCartState.updateFromCart(cart);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${service.title} added to cart'),
+            action: SnackBarAction(
+              label: 'VIEW CART',
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+              ),
+            ),
+          ),
+        );
+      } catch (error) {
+        if (createdItemId != null) {
+          try {
+            await BookingApi.deleteCartItem(createdItemId);
+          } catch (_) {}
+        }
+        rethrow;
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not add service: $error')),
+        );
+      }
+    } finally {
+      notesController.dispose();
+    }
   }
+
+  Widget _priceLine(String label, String value, {bool bold = false}) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Expanded(child: Text(label, style: TextStyle(
+        fontSize: 12,
+        color: bold ? _Ui.ink : _Ui.sub,
+        fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+      ))),
+      const SizedBox(width: 8),
+      Text(value, textAlign: TextAlign.end, style: TextStyle(
+        fontSize: 12.5,
+        color: _Ui.ink,
+        fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
+      )),
+    ],
+  );
+
 
   List<ServiceVariant> _matchingVariants(Service service) {
     return service.variants.where((variant) {
@@ -227,7 +636,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   service.audience,
                   service.pricingType == 'per_unit' ? service.unitLabel : '',
                   showAdd: isElectrical,
-                  onAdd: isElectrical ? () => _addElectricalService(service, v) : null,
+                  onAdd: isElectrical ? () => _addElectricalService(service) : null,
                 );
               },
             ),
@@ -263,7 +672,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: () => _addElectricalService(service, null),
+                        onPressed: () => _addElectricalService(service),
                         style: FilledButton.styleFrom(backgroundColor: _Ui.violet),
                         child: const Text('ADD'),
                       ),
