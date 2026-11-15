@@ -168,6 +168,7 @@ AUTH_USER_MODEL = "accounts.User"
 LANGUAGE_CODE = "en"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+PRIVATE_UPLOAD_ROOT = Path(os.environ.get("PRIVATE_UPLOAD_ROOT", str(BASE_DIR / "private_uploads")))
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
