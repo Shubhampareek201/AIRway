@@ -233,6 +233,44 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
           ),
         ],
+        if (service.categoryRootSlug.toLowerCase() == 'electrical' &&
+            _matchingVariants(service).isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _Ui.line),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Professional assessment',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _Ui.ink),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Add this service and describe the issue. The final repair cost will be confirmed after assessment.',
+                      style: TextStyle(fontSize: 12, height: 1.4, color: _Ui.sub),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () => _addElectricalService(service, null),
+                        style: FilledButton.styleFrom(backgroundColor: _Ui.violet),
+                        child: const Text('ADD'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (service.addons.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
