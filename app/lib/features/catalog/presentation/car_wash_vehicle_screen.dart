@@ -4,10 +4,12 @@ import 'package:airway/features/catalog/data/vehicle_models.dart';
 
 class CarWashVehicleScreen extends StatefulWidget {
   final Map<String, List<Map<String, dynamic>>> vehicleTypeSteps;
+  final String? initialVehicleType;
 
   const CarWashVehicleScreen({
     super.key,
     this.vehicleTypeSteps = const {},
+    this.initialVehicleType,
   });
 
   @override
@@ -42,6 +44,10 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialVehicleType != null) {
+      _vehicleType = widget.initialVehicleType;
+      _selectType(widget.initialVehicleType!);
+    }
     _loadSavedVehicles();
   }
 
@@ -53,9 +59,12 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         _savedVehicles = [...vehicles]..sort((a, b) => (b.isDefault ? 1 : 0).compareTo(a.isDefault ? 1 : 0));
         _loadingSaved = false;
       });
-      final preferred = vehicles.where((v) => v.isDefault).isEmpty
+      final matchingVehicles = widget.initialVehicleType == null
+          ? vehicles
+          : vehicles.where((v) => v.vehicleType == widget.initialVehicleType);
+      final preferred = matchingVehicles.where((v) => v.isDefault).isEmpty
           ? null
-          : vehicles.firstWhere((v) => v.isDefault);
+          : matchingVehicles.firstWhere((v) => v.isDefault);
       if (preferred != null) _selectSavedVehicle(preferred);
     } catch (_) {
       if (mounted) setState(() => _loadingSaved = false);
@@ -564,11 +573,12 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
             )),
           ],
           const SizedBox(height: 16),
-          Row(children: [
-            _choice(title: 'Car', subtitle: 'Four-wheeler', icon: Icons.directions_car_filled, selected: _vehicleType == 'car', onTap: () => _selectType('car')),
-            const SizedBox(width: 12),
-            _choice(title: 'Bike', subtitle: 'Two-wheeler', icon: Icons.two_wheeler, selected: _vehicleType == 'bike', onTap: () => _selectType('bike')),
-          ]),
+          if (widget.initialVehicleType == null)
+            Row(children: [
+              _choice(title: 'Car', subtitle: 'Four-wheeler', icon: Icons.directions_car_filled, selected: _vehicleType == 'car', onTap: () => _selectType('car')),
+              const SizedBox(width: 12),
+              _choice(title: 'Bike', subtitle: 'Two-wheeler', icon: Icons.two_wheeler, selected: _vehicleType == 'bike', onTap: () => _selectType('bike')),
+            ]),
           if (_vehicleType != null) ...[
             _sectionTitle(
               _vehicleType == 'car' ? 'Choose your car body type' : 'Choose your two-wheeler type',
