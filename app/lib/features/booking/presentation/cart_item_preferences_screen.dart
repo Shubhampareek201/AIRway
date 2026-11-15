@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
@@ -9,6 +12,8 @@ class CartItemPreferencesScreen extends StatefulWidget {
   final String serviceTitle;
   final Map<String, dynamic> categoryAnswers;
   final Map<String, dynamic> initialAnswers;
+  final String initialNotes;
+  final bool hasIssuePhoto;
 
   const CartItemPreferencesScreen({
     super.key,
@@ -17,6 +22,8 @@ class CartItemPreferencesScreen extends StatefulWidget {
     required this.serviceTitle,
     required this.categoryAnswers,
     required this.initialAnswers,
+    this.initialNotes = '',
+    this.hasIssuePhoto = false,
   });
 
   @override
@@ -36,11 +43,16 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
   final Map<String, dynamic> answers = {};
   final Map<String, dynamic> categoryAnswers = {};
   final Map<String, TextEditingController> controllers = {};
+  final TextEditingController notesController = TextEditingController();
+  final ImagePicker picker = ImagePicker();
+  File? selectedPhoto;
+  bool removeExistingPhoto = false;
 
   @override
   void initState() {
     super.initState();
     answers.addAll(widget.initialAnswers);
+    notesController.text = widget.initialNotes;
     categoryAnswers.addAll(widget.categoryAnswers);
     _load();
   }
@@ -50,6 +62,7 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
     for (final controller in controllers.values) {
       controller.dispose();
     }
+    notesController.dispose();
     super.dispose();
   }
 
@@ -96,6 +109,29 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
     });
   }
 
+  Future<void> _pickIssuePhoto(ImageSource source) async {
+    try {
+      final picked = await picker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked != null && mounted) {
+        setState(() {
+          selectedPhoto = File(picked.path);
+          removeExistingPhoto = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not select photo: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _save() async {
     for (final field in visibleFields) {
       final value = answers[field.key];
@@ -114,8 +150,20 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
     try {
       await BookingApi.updateCartItem(
         itemId: widget.cartItemId,
-        data: {'form_answers': visibleAnswers, 'category_answers': categoryAnswers},
+        data: {
+          'form_answers': visibleAnswers,
+          'category_answers': categoryAnswers,
+          'notes': notesController.text.trim(),
+        },
       );
+      if (selectedPhoto != null) {
+        await BookingApi.uploadCartItemIssuePhoto(
+          itemId: widget.cartItemId,
+          photo: selectedPhoto!,
+        );
+      } else if (removeExistingPhoto) {
+        await BookingApi.removeCartItemIssuePhoto(widget.cartItemId);
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
@@ -154,6 +202,68 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
                       const Text(
                         'You can complete these details now or return to them before checkout.',
                         style: TextStyle(color: muted, fontSize: 13),
+                      ),
+                      const SizedBox(height: 22),
+                      const Text('Issue photo (optional)', style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w800, color: ink,
+                      )),
+                      const SizedBox(height: 8),
+                      if (selectedPhoto != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(selectedPhoto!, height: 170, fit: BoxFit.cover),
+                        )
+                      else if (widget.hasIssuePhoto && !removeExistingPhoto)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F6F3),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Row(children: [
+                            Icon(Icons.check_circle, color: green),
+                            SizedBox(width: 8),
+                            Text('A photo is attached to this service'),
+                          ]),
+                        ),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: saving ? null : () => _pickIssuePhoto(ImageSource.camera),
+                            icon: const Icon(Icons.camera_alt_outlined),
+                            label: const Text('Camera'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: saving ? null : () => _pickIssuePhoto(ImageSource.gallery),
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Gallery'),
+                          ),
+                          if ((widget.hasIssuePhoto && !removeExistingPhoto) || selectedPhoto != null)
+                            TextButton.icon(
+                              onPressed: saving ? null : () => setState(() {
+                                selectedPhoto = null;
+                                removeExistingPhoto = true;
+                              }),
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Remove'),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Issue description (optional)', style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w800, color: ink,
+                      )),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: notesController,
+                        minLines: 2,
+                        maxLines: 4,
+                        maxLength: 1000,
+                        decoration: const InputDecoration(
+                          hintText: 'Describe the problem or add instructions',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                       const SizedBox(height: 22),
                       if (service?.supportsProfessionalPreference == true) ...[
