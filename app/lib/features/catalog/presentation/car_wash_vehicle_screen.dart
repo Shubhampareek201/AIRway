@@ -36,6 +36,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   String _modelSearch = '';
   String _makeSearch = '';
   String? _error;
+  int _makeSearchRequest = 0;
+  int _modelSearchRequest = 0;
 
   @override
   void initState() {
@@ -163,6 +165,50 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       });
     } catch (_) {
       if (mounted) setState(() => _loadingModels = false);
+    }
+  }
+
+  Future<void> _searchMakes(String query) async {
+    final type = _vehicleType;
+    if (type == null) return;
+    final requestId = ++_makeSearchRequest;
+    setState(() => _loadingMakes = true);
+    try {
+      final makes = await CatalogApi.listVehicleMakes(type, search: query);
+      if (!mounted || requestId != _makeSearchRequest) return;
+      setState(() {
+        _makes = makes;
+        _loadingMakes = false;
+      });
+    } catch (_) {
+      if (mounted && requestId == _makeSearchRequest) {
+        setState(() => _loadingMakes = false);
+      }
+    }
+  }
+
+  Future<void> _searchModels(String query) async {
+    final make = _make;
+    final type = _vehicleType;
+    if (make == null || type == null) return;
+    final requestId = ++_modelSearchRequest;
+    setState(() => _loadingModels = true);
+    try {
+      final models = await CatalogApi.listVehicleModels(
+        makeId: make.id,
+        vehicleType: type,
+        vehicleClass: _vehicleClass,
+        search: query,
+      );
+      if (!mounted || requestId != _modelSearchRequest) return;
+      setState(() {
+        _models = models;
+        _loadingModels = false;
+      });
+    } catch (_) {
+      if (mounted && requestId == _modelSearchRequest) {
+        setState(() => _loadingModels = false);
+      }
     }
   }
 
@@ -495,7 +541,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
             if (_vehicleClass != null) ...[
               _sectionTitle('Choose your car company (optional)', 'Browse all available brands. Select one to see its models below.'),
               TextField(
-                onChanged: (value) => setState(() => _makeSearch = value),
+                onChanged: (value) { setState(() => _makeSearch = value); _searchMakes(value); },
                 decoration: InputDecoration(
                   hintText: 'Search car company',
                   prefixIcon: const Icon(Icons.search),
@@ -507,23 +553,29 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
               if (_loadingMakes) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
               if (!_loadingMakes && _makes.isEmpty)
                 const Text('No manufacturers are configured yet. You can continue without selecting one.', style: TextStyle(color: _muted, fontSize: 12)),
-              if (_makes.isNotEmpty)
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _makes.where((m) => m.name.toLowerCase().contains(_makeSearch.toLowerCase())).length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: 1.05,
+              if (_makes.isNotEmpty) ...[
+                Builder(builder: (context) {
+                  final visibleMakes = _makeSearch.trim().isEmpty ? _makes.take(6).toList() : _makes;
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: visibleMakes.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: 1.05,
+                    ),
+                    itemBuilder: (_, index) => _makeTile(visibleMakes[index]),
+                  );
+                }),
+                if (_makeSearch.trim().isEmpty && _makes.length > 6)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('Search to find any other available company.', style: TextStyle(color: _muted, fontSize: 11)),
                   ),
-                  itemBuilder: (_, index) {
-                    final filtered = _makes.where((m) => m.name.toLowerCase().contains(_makeSearch.toLowerCase())).toList();
-                    return _makeTile(filtered[index]);
-                  },
-                ),
+              ],
               if (_make != null) ...[
                 _sectionTitle('Find your model (optional)', 'Search and choose your exact model to refine pricing.'),
                 TextField(
-                  onChanged: (value) => setState(() => _modelSearch = value),
+                  onChanged: (value) { setState(() => _modelSearch = value); _searchModels(value); },
                   decoration: InputDecoration(
                     hintText: 'Search model name',
                     prefixIcon: const Icon(Icons.search),
@@ -539,15 +591,19 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                     height: 190,
                     child: GridView.builder(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _models.where((m) => m.name.toLowerCase().contains(_modelSearch.toLowerCase())).length,
+                      itemCount: _modelSearch.trim().isEmpty
+                          ? (_models.length < 4 ? _models.length : 4)
+                          : _models.length,
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 1, mainAxisExtent: 145, mainAxisSpacing: 10,
                       ),
-                      itemBuilder: (_, index) {
-                        final filtered = _models.where((m) => m.name.toLowerCase().contains(_modelSearch.toLowerCase())).toList();
-                        return _modelTile(filtered[index]);
-                      },
+                      itemBuilder: (_, index) => _modelTile(_models[index]),
                     ),
+                  ),
+                if (_modelSearch.trim().isEmpty && _models.length > 4)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('Search to find any other model from this company.', style: TextStyle(color: _muted, fontSize: 11)),
                   ),
               ],
             ],
