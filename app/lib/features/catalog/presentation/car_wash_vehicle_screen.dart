@@ -383,6 +383,13 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (key.contains('renault')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Renault_Logo.svg/500px-Renault_Logo.svg.png';
     if (key.contains('nissan')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Nissan_2020_logo.svg/500px-Nissan_2020_logo.svg.png';
     if (key.contains('skoda')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Skoda_Logo.png/330px-Skoda_Logo.png';
+    if (key.contains('jeep')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Jeep_logo.svg';
+    if (key.contains('citroen')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Citroën_2022.svg';
+    if (key.contains('byd')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/BYD_Auto_logo.svg';
+    if (key.contains('volvo')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Volvo_Iron_Mark.svg';
+    if (key.contains('isuzu')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Isuzu_logo.svg';
+    if (key.contains('force')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Force_Motors_logo.svg';
+    if (key == 'mini') return 'https://commons.wikimedia.org/wiki/Special:FilePath/Mini_logo.svg';
     return null;
   }
 
