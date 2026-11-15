@@ -8,7 +8,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.core.models import Zone
-from .models import Address
+from .models import Address, CustomerVehicle
 
 User = get_user_model()
 
@@ -270,9 +270,6 @@ class AddressCreateSerializer(serializers.ModelSerializer):
             longitude=longitude,
         )
         return attrs
-
-
-from .models import CustomerVehicle
 
 
 class CustomerVehicleSerializer(serializers.ModelSerializer):
