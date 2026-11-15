@@ -62,7 +62,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
 
-  Future<void> _addElectricalService(Service service, ServiceVariant variant) async {
+  Future<void> _addElectricalService(Service service, ServiceVariant? variant) async {
     final added = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ElectricalIssueDetailsScreen(
