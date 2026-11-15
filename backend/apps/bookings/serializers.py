@@ -153,6 +153,10 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         category_answers = attrs.get("category_answers", {})
         if not isinstance(category_answers, dict):
             raise serializers.ValidationError({"category_answers": "Answers must be an object."})
+        if "_airway_issue_photo" in category_answers and not self.context.get("allow_issue_photo_metadata"):
+            raise serializers.ValidationError({
+                "category_answers": "Issue-photo metadata is managed by AIRway and cannot be supplied directly."
+            })
         try:
             validate_beauty_audience(service, category_answers)
             required_gender = required_worker_gender_for_booking(service, category_answers)
