@@ -137,7 +137,7 @@ class BannerAdmin(ModelAdmin):
 class VehicleModelInline(TabularInline):
     model = VehicleModel
     extra = 0
-    fields = ("name", "image", "vehicle_class", "sort_order", "is_active")
+    fields = ("name", "image", "image_url", "vehicle_class", "sort_order", "is_active")
     show_change_link = True
 
 
