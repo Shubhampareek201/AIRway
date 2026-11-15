@@ -19,7 +19,10 @@ from .views import (
     RegisterView,
     ResetPasswordView,
     SetDefaultAddressView,
-    SwitchModeView,\n    CustomerVehicleListCreateView,\n    CustomerVehicleDetailView,\n    SetDefaultCustomerVehicleView,
+    SwitchModeView,
+    CustomerVehicleListCreateView,
+    CustomerVehicleDetailView,
+    SetDefaultCustomerVehicleView,
     VerifyForgotOTPView,
     ZoneListView,
 )
