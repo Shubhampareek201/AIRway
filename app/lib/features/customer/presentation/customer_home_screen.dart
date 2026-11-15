@@ -219,6 +219,42 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
       );
       if (selected == null || !mounted) return;
+
+      // The vehicle picker returns before the filtered catalogue request starts.
+      // Keep the customer from seeing the home screen during that short gap.
+      var loadingDialogOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: Center(
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 14),
+                    Text('Loading available services...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      void closeCatalogueLoading() {
+        if (loadingDialogOpen && mounted) {
+          loadingDialogOpen = false;
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+      }
+
       answers.addAll(selected);
 
       final vehicleSlug =
@@ -232,6 +268,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ? null
           : matchingVehicleCategories.first;
       if (selectedVehicleCategory == null) {
+        closeCatalogueLoading();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -250,6 +287,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           addressId: addressId,
           categoryAnswers: answers,
         );
+        closeCatalogueLoading();
         Category? findCategory(List<Category> items, int id) {
           for (final item in items) {
             if (item.id == id) return item;
@@ -264,6 +302,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             selectedVehicleCategory;
         categoriesToShow = selectedVehicleCategory!.children;
       } catch (e) {
+        closeCatalogueLoading();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not load matching vehicle categories: $e')),
