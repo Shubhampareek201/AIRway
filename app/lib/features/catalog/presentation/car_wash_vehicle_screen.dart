@@ -383,13 +383,14 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (key.contains('renault')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Renault_Logo.svg/500px-Renault_Logo.svg.png';
     if (key.contains('nissan')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Nissan_2020_logo.svg/500px-Nissan_2020_logo.svg.png';
     if (key.contains('skoda')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Skoda_Logo.png/330px-Skoda_Logo.png';
-    if (key.contains('jeep')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Jeep_logo.svg';
-    if (key.contains('citroen')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Citroën_2022.svg';
-    if (key.contains('byd')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/BYD_Auto_logo.svg';
-    if (key.contains('volvo')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Volvo_Iron_Mark.svg';
-    if (key.contains('isuzu')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Isuzu_logo.svg';
-    if (key.contains('force')) return 'https://commons.wikimedia.org/wiki/Special:FilePath/Force_Motors_logo.svg';
-    if (key == 'mini') return 'https://commons.wikimedia.org/wiki/Special:FilePath/Mini_logo.svg';
+    // Google favicon endpoint returns raster images; Flutter Image.network cannot decode SVG.
+    if (key.contains('jeep')) return 'https://www.google.com/s2/favicons?domain=jeep.com&sz=128';
+    if (key.contains('citroen')) return 'https://www.google.com/s2/favicons?domain=citroen.in&sz=128';
+    if (key.contains('byd')) return 'https://www.google.com/s2/favicons?domain=bydautoindia.com&sz=128';
+    if (key.contains('volvo')) return 'https://www.google.com/s2/favicons?domain=volvocars.com&sz=128';
+    if (key.contains('isuzu')) return 'https://www.google.com/s2/favicons?domain=isuzu.in&sz=128';
+    if (key.contains('force')) return 'https://www.google.com/s2/favicons?domain=forcemotors.com&sz=128';
+    if (key == 'mini') return 'https://www.google.com/s2/favicons?domain=mini.com&sz=128';
     return null;
   }
 
@@ -439,7 +440,13 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   Widget _makeTile(VehicleMake make) {
     final selected = _make?.id == make.id;
     final fallback = _defaultBrandLogo(make.name);
-    final logo = (make.logo != null && make.logo!.isNotEmpty) ? make.logo! : fallback;
+    final apiLogo = make.logo?.trim();
+    // The API catalogue currently contains SVG links for several makes. Keep
+    // Image.network on raster formats and use the raster fallback for SVG URLs.
+    final apiLogoIsRaster = apiLogo != null &&
+        apiLogo.isNotEmpty &&
+        !apiLogo.toLowerCase().contains('.svg');
+    final logo = fallback ?? (apiLogoIsRaster ? apiLogo : null);
     return InkWell(
       onTap: () => _selectMake(make),
       borderRadius: BorderRadius.circular(13),
