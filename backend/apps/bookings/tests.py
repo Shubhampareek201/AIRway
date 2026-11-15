@@ -4258,6 +4258,9 @@ class CustomerCartIssuePhotoAPITest(BookingAPITestMixin, TestCase):
             stored_path,
         )
         self.assertEqual(booking.notes, "Fan makes a grinding noise")
+        self.assertEqual(Decimal(booking.pricing_snapshot["visit_fee"]), Decimal("125.00"))
+        self.assertEqual(Decimal(booking.pricing_snapshot["subtotal"]), Decimal("625.00"))
+        self.assertEqual(Decimal(booking.pricing_snapshot["total"]), Decimal("737.50"))
         self.assertFalse(self.cart.items.exists())
 
         worker_user = self._create_user("+919876543322")
