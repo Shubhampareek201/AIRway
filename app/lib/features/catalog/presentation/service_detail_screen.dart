@@ -4,6 +4,7 @@ import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
+import 'package:airway/features/catalog/presentation/electrical_issue_details_screen.dart';
 
 class _Ui {
   static const violet = Color(0xFF315C46);
@@ -60,6 +61,23 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
+
+  Future<void> _addElectricalService(Service service, ServiceVariant variant) async {
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ElectricalIssueDetailsScreen(
+          service: service,
+          variant: variant,
+          categoryAnswers: widget.initialAnswers,
+        ),
+      ),
+    );
+    if (added == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Electrical service added to your cart.')),
+      );
+    }
+  }
 
   List<ServiceVariant> _matchingVariants(Service service) {
     return service.variants.where((variant) {
@@ -202,11 +220,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final v = _matchingVariants(service)[index];
+                final isElectrical = service.categoryRootSlug.toLowerCase() == 'electrical';
                 return _variantCard(
                   v,
                   service.categoryName,
                   service.audience,
                   service.pricingType == 'per_unit' ? service.unitLabel : '',
+                  showAdd: isElectrical,
+                  onAdd: isElectrical ? () => _addElectricalService(service, v) : null,
                 );
               },
             ),
@@ -308,7 +329,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     ),
   );
 
-  Widget _variantCard(ServiceVariant v, String categoryName, String audience, String unitLabel) {
+  Widget _variantCard(
+    ServiceVariant v,
+    String categoryName,
+    String audience,
+    String unitLabel, {
+    bool showAdd = false,
+    VoidCallback? onAdd,
+  }) {
     final variantImage = v.image?.isNotEmpty == true
         ? v.image!
         : CatalogImageResolver.forService(
@@ -401,6 +429,21 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ),
             if (v.discountPercent > 0)
               Text('${v.discountPercent}% OFF', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF7861A8))),
+            if (showAdd) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 34,
+                child: FilledButton(
+                  onPressed: onAdd,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _Ui.violet,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('ADD'),
+                ),
+              ),
+            ],
           ],
         ),
       ],
