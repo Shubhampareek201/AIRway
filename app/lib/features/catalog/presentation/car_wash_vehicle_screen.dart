@@ -320,7 +320,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   );
 
   Widget _makeInitials(VehicleMake make) {
-    final initials = make.name.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join().toUpperCase();
+    final initials = make.name.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join().toUpperCase();
     return Container(
       width: 54, height: 54,
       alignment: Alignment.center,
@@ -335,7 +335,6 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       onTap: () => _selectMake(make),
       borderRadius: BorderRadius.circular(13),
       child: Container(
-        width: 104,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFEAF1EA) : Colors.white,
