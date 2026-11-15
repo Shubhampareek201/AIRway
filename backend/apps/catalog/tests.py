@@ -626,3 +626,38 @@ class CarWashVehicleBranchFilterTest(TestCase):
         ids = {item["id"] for item in results}
         self.assertIn(self.bike_service.id, ids)
         self.assertNotIn(self.car_service.id, ids)
+
+
+class VehicleCatalogueClassFilterTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.maruti = VehicleMake.objects.create(vehicle_type="car", name="Maruti Suzuki")
+        self.hyundai = VehicleMake.objects.create(vehicle_type="car", name="Hyundai")
+        self.honda_bike = VehicleMake.objects.create(vehicle_type="bike", name="Honda")
+        VehicleModel.objects.create(make=self.maruti, name="Swift", vehicle_class="Hatchback")
+        VehicleModel.objects.create(make=self.maruti, name="Brezza", vehicle_class="SUV")
+        VehicleModel.objects.create(make=self.hyundai, name="i20", vehicle_class="Hatchback")
+        VehicleModel.objects.create(make=self.honda_bike, name="Activa", vehicle_class="Scooter")
+
+    def test_manufacturers_are_filtered_by_selected_vehicle_class(self):
+        response = self.client.get(
+            "/api/v1/catalog/vehicle-makes/?vehicle_type=car&vehicle_class=Hatchback"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        results = response.data if isinstance(response.data, list) else response.data["results"]
+        self.assertEqual({item["id"] for item in results}, {self.maruti.id, self.hyundai.id})
+
+    def test_models_are_filtered_by_class_and_search(self):
+        response = self.client.get(
+            f"/api/v1/catalog/vehicle-models/?make={self.maruti.id}&vehicle_type=car&vehicle_class=Hatchback&search=sw"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        results = response.data if isinstance(response.data, list) else response.data["results"]
+        self.assertEqual([item["name"] for item in results], ["Swift"])
+
+    def test_vehicle_class_filter_does_not_mix_car_and_bike_manufacturers(self):
+        response = self.client.get(
+            "/api/v1/catalog/vehicle-makes/?vehicle_type=car&vehicle_class=Hatchback"
+        )
+        results = response.data if isinstance(response.data, list) else response.data["results"]
+        self.assertNotIn(self.honda_bike.id, {item["id"] for item in results})
