@@ -55,7 +55,9 @@ class Booking {
   final String bookingMode;
   final String status;
   final DateTime scheduledAt;
+  final DateTime? completedAt;
   final DateTime? dropScheduledAt;
+  final Map<String, dynamic> customerAnswers;
   final Map<String, dynamic> pricingSnapshot;
   final List<BookingAddOn> addons;
   final List<BookingFormResponse> formResponses;
@@ -73,7 +75,9 @@ class Booking {
     required this.bookingMode,
     required this.status,
     required this.scheduledAt,
+    this.completedAt,
     this.dropScheduledAt,
+    this.customerAnswers = const {},
     required this.pricingSnapshot,
     required this.addons,
     required this.formResponses,
@@ -103,10 +107,14 @@ class Booking {
       bookingMode: map['booking_mode'],
       status: map['status'],
       scheduledAt: DateTime.parse(map['scheduled_at']),
+      completedAt: map['completed_at'] != null
+          ? DateTime.parse(map['completed_at'])
+          : null,
       dropScheduledAt: map['drop_scheduled_at'] != null
           ? DateTime.parse(map['drop_scheduled_at'])
           : null,
       pricingSnapshot: Map<String, dynamic>.from(map['pricing_snapshot'] ?? {}),
+      customerAnswers: Map<String, dynamic>.from(map['customer_answers'] ?? {}),
       addons: (map['addons'] as List? ?? [])
           .map((e) => BookingAddOn.fromMap(Map<String, dynamic>.from(e)))
           .toList(),
