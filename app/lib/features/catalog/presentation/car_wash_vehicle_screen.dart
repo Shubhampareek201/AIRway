@@ -572,10 +572,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                                   : Image.network(
                                       bodyImage,
                                       fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) => CustomPaint(
-                                        painter: _VehicleBodyPainter(value, selected),
-                                        child: const SizedBox.expand(),
-                                      ),
+                                      errorBuilder: (_, __, ___) => const SizedBox.expand(),
                                     ),
                             ),
                           ),
