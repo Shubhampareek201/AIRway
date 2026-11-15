@@ -90,13 +90,6 @@ def seed_vehicle_catalogue(apps, schema_editor):
                 )
 
 
-def unseed_vehicle_catalogue(apps, schema_editor):
-    VehicleMake = apps.get_model("catalog", "VehicleMake")
-    VehicleMake.objects.filter(
-        vehicle_type__in=("car", "bike"),
-        name__in=list(CAR_MAKES) + list(BIKE_MAKES),
-    ).delete()
-
 
 class Migration(migrations.Migration):
 
@@ -105,5 +98,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(seed_vehicle_catalogue, unseed_vehicle_catalogue),
+        migrations.RunPython(seed_vehicle_catalogue, migrations.RunPython.noop),
     ]
