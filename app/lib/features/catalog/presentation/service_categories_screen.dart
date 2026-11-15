@@ -97,17 +97,23 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         selectedCategory.children.any(
           (child) => child.slug == 'car' || child.slug == 'bike',
         );
+    final isCarWashVehicleBranch =
+        selectedCategory.slug == 'car' || selectedCategory.slug == 'bike';
 
-    if (isCarWashCategory) {
+    if (isCarWashCategory || isCarWashVehicleBranch) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
           builder: (_) => CarWashVehicleScreen(
-            vehicleTypeSteps: {
-              for (final child in selectedCategory.children)
-                if (child.slug == 'car' || child.slug == 'bike')
-                  child.slug: child.customerFlowSteps,
-            },
+            initialVehicleType:
+                isCarWashVehicleBranch ? selectedCategory.slug : null,
+            vehicleTypeSteps: isCarWashVehicleBranch
+                ? {selectedCategory.slug: selectedCategory.customerFlowSteps}
+                : {
+                    for (final child in selectedCategory.children)
+                      if (child.slug == 'car' || child.slug == 'bike')
+                        child.slug: child.customerFlowSteps,
+                  },
           ),
         ),
       );
