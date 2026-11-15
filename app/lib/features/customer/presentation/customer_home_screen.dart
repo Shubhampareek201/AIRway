@@ -204,6 +204,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         categoryIdentity.replaceAll(' ', '').contains('carwash');
 
     var categoriesToShow = category.children;
+    Category? selectedVehicleCategory;
     if (isCarWash) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
@@ -224,10 +225,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           selected['vehicle_kind']?.toString().toLowerCase() == 'bike'
               ? 'bike'
               : 'car';
-      categoriesToShow = category.children
+      selectedVehicleCategory = category.children
           .where((child) => child.slug.toLowerCase() == vehicleSlug)
-          .toList();
-      if (categoriesToShow.isEmpty) {
+          .firstOrNull;
+      if (selectedVehicleCategory == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -249,6 +250,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       );
       if (selected == null || !mounted) return;
       answers = selected;
+    }
+
+    // Car Wash vehicle details are collected once at the root category.
+    // Go straight to services under the selected Car/Bike node; do not show
+    // its intermediate "N categories" screen (which would ask for vehicle
+    // details again when the customer taps Car/Bike).
+    if (selectedVehicleCategory != null) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceListScreen(
+            categoryId: selectedVehicleCategory!.id,
+            categoryTitle: selectedVehicleCategory!.title,
+            addressId: addressId,
+            initialAnswers: answers,
+            includeDescendants: true,
+          ),
+        ),
+      );
+      return;
     }
 
     if (categoriesToShow.isNotEmpty) {
