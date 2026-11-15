@@ -203,11 +203,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final isCarWash = categoryIdentity.contains('car wash') ||
         categoryIdentity.replaceAll(' ', '').contains('carwash');
 
-    var categoriesToShow = category.children;
-    Category? selectedVehicleCategory;
     if (isCarWash) {
-      final selected = await Navigator.push<Map<String, dynamic>>(
-        context,
+      Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => CarWashVehicleScreen(
             vehicleTypeSteps: {
@@ -215,112 +212,72 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 if (child.slug == 'car' || child.slug == 'bike')
                   child.slug: child.customerFlowSteps,
             },
+            onContinue: (vehicleContext, selectedAnswers) async {
+              final selectedAnswersCopy = Map<String, dynamic>.from(selectedAnswers);
+              final vehicleSlug =
+                  selectedAnswersCopy['vehicle_kind']?.toString().toLowerCase() == 'bike'
+                      ? 'bike'
+                      : 'car';
+              final selectedVehicleCategory = category.children
+                  .where((child) => child.slug.toLowerCase() == vehicleSlug)
+                  .firstOrNull;
+              if (selectedVehicleCategory == null) {
+                ScaffoldMessenger.of(vehicleContext).showSnackBar(
+                  SnackBar(content: Text('The $vehicleSlug service category is not configured yet.')),
+                );
+                return;
+              }
+
+              try {
+                final filteredRoots = await CatalogApi.listCategories(
+                  addressId: addressId,
+                  categoryAnswers: selectedAnswersCopy,
+                );
+                Category? findCategory(List<Category> items, int id) {
+                  for (final item in items) {
+                    if (item.id == id) return item;
+                    final nested = findCategory(item.children, id);
+                    if (nested != null) return nested;
+                  }
+                  return null;
+                }
+
+                final filteredVehicleCategory =
+                    findCategory(filteredRoots, selectedVehicleCategory.id) ??
+                    selectedVehicleCategory;
+                final categoriesToShow = filteredVehicleCategory.children;
+                if (categoriesToShow.isEmpty) {
+                  ScaffoldMessenger.of(vehicleContext).showSnackBar(
+                    SnackBar(content: Text('No service categories are configured for $vehicleSlug yet.')),
+                  );
+                  return;
+                }
+
+                if (!vehicleContext.mounted) return;
+                Navigator.of(vehicleContext).pushReplacement<void, void>(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceCategoriesScreen(
+                      initialCategories: categoriesToShow,
+                      addressId: addressId,
+                      title: filteredVehicleCategory.title,
+                      initialAnswers: selectedAnswersCopy,
+                    ),
+                  ),
+                );
+              } catch (e) {
+                if (!vehicleContext.mounted) return;
+                ScaffoldMessenger.of(vehicleContext).showSnackBar(
+                  SnackBar(content: Text('Could not load matching vehicle categories: $e')),
+                );
+              }
+            },
           ),
         ),
       );
-      if (selected == null || !mounted) return;
+      return;
+    }
 
-      // The vehicle picker returns before the filtered catalogue request starts.
-      // Keep the customer from seeing the home screen during that short gap.
-      var loadingDialogOpen = true;
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const PopScope(
-          canPop: false,
-          child: Center(
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.all(Radius.circular(16)),
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 14),
-                    Text('Loading available services...'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      void closeCatalogueLoading() {
-        if (loadingDialogOpen && mounted) {
-          loadingDialogOpen = false;
-          Navigator.of(context, rootNavigator: true).pop();
-        }
-      }
-
-      answers.addAll(selected);
-
-      final vehicleSlug =
-          selected['vehicle_kind']?.toString().toLowerCase() == 'bike'
-              ? 'bike'
-              : 'car';
-      final matchingVehicleCategories = category.children
-          .where((child) => child.slug.toLowerCase() == vehicleSlug)
-          .toList();
-      selectedVehicleCategory = matchingVehicleCategories.isEmpty
-          ? null
-          : matchingVehicleCategories.first;
-      if (selectedVehicleCategory == null) {
-        closeCatalogueLoading();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'The $vehicleSlug service category is not configured yet.',
-            ),
-          ),
-        );
-        return;
-      }
-
-      // Ask the backend for the catalogue tree compatible with the selected
-      // vehicle. The backend returns only categories containing matching
-      // services; Bike covers both motorcycles and scooters.
-      try {
-        final filteredRoots = await CatalogApi.listCategories(
-          addressId: addressId,
-          categoryAnswers: answers,
-        );
-        closeCatalogueLoading();
-        Category? findCategory(List<Category> items, int id) {
-          for (final item in items) {
-            if (item.id == id) return item;
-            final nested = findCategory(item.children, id);
-            if (nested != null) return nested;
-          }
-          return null;
-        }
-
-        selectedVehicleCategory =
-            findCategory(filteredRoots, selectedVehicleCategory!.id) ??
-            selectedVehicleCategory;
-        categoriesToShow = selectedVehicleCategory!.children;
-      } catch (e) {
-        closeCatalogueLoading();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load matching vehicle categories: $e')),
-        );
-        return;
-      }
-
-      if (categoriesToShow.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No service categories are configured for $vehicleSlug yet.',
-            ),
-          ),
-        );
-        return;
-      }
-    } else if (category.customerFlowSteps.isNotEmpty) {
+    if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
@@ -334,16 +291,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       answers = selected;
     }
 
-    // Vehicle details are collected once. Show the backend-filtered service
-    // categories for the selected Car/Bike branch before listing services.
-    if (categoriesToShow.isNotEmpty) {
+    if (!mounted) return;
+    if (category.children.isNotEmpty) {
       Navigator.push<void>(
         context,
         MaterialPageRoute(
           builder: (_) => ServiceCategoriesScreen(
-            initialCategories: categoriesToShow,
+            initialCategories: category.children,
             addressId: addressId,
-            title: selectedVehicleCategory?.title ?? category.title,
+            title: category.title,
             initialAnswers: answers,
           ),
         ),
