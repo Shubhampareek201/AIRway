@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
-from .models import Address, ConsentLog, DeviceToken, Referral, User, UserRole
+from .models import Address, ConsentLog, CustomerVehicle, DeviceToken, Referral, User, UserRole
 
 
 class UserRoleInline(TabularInline):
@@ -54,3 +54,9 @@ class ReferralAdmin(ModelAdmin):
 
 
 admin.site.register(DeviceToken, ModelAdmin)
+
+@admin.register(CustomerVehicle)
+class CustomerVehicleAdmin(ModelAdmin):
+    list_display = ("user", "vehicle_type", "vehicle_model", "custom_make", "custom_model", "nickname", "is_default")
+    list_filter = ("vehicle_type", "is_default")
+    search_fields = ("user__phone", "user__name", "custom_make", "custom_model", "vehicle_model__name", "vehicle_model__make__name")
