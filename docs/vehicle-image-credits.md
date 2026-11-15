@@ -14,7 +14,7 @@ The Flutter vehicle selector uses these Wikimedia Commons images as initial fall
 - Honda logo: https://commons.wikimedia.org/wiki/File:Honda_Logo.svg — Public domain simple logo; trademark restrictions may still apply.
 - Toyota logo: https://commons.wikimedia.org/wiki/File:Toyota_Logo.svg — Public domain simple logo; trademark restrictions may still apply.
 - Kia logo: https://commons.wikimedia.org/wiki/File:KIA_logo.svg — Public domain simple logo; trademark restrictions may still apply.
-- Mahindra logo: https://commons.wikimedia.org/wiki/File:Mahindra_logo.svg — image currently nominated for deletion; replace with an approved official asset before launch.
+- Mahindra Automotive emblem: https://commons.wikimedia.org/wiki/File:Mahindra_Automotive_new_logo.png — Wikimedia Commons marks this simple logo public domain; trademark restrictions may still apply.
 - Volkswagen logo: https://commons.wikimedia.org/wiki/File:Volkswagen_-_Logo.svg — Public domain simple logo; trademark restrictions may still apply.
 - MG Motor logo: https://commons.wikimedia.org/wiki/File:MG_Motor_2021_logo.svg — Public domain simple logo; trademark restrictions may still apply.
 - Renault wordmark: https://commons.wikimedia.org/wiki/File:Renault_Logo.svg — Public domain simple logo; trademark restrictions may still apply.
