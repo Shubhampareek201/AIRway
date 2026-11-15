@@ -18,6 +18,8 @@ The Flutter vehicle selector uses these Wikimedia Commons images as initial fall
 - Volkswagen logo: https://commons.wikimedia.org/wiki/File:Volkswagen_-_Logo.svg — Public domain simple logo; trademark restrictions may still apply.
 - MG Motor logo: https://commons.wikimedia.org/wiki/File:MG_Motor_2021_logo.svg — Public domain simple logo; trademark restrictions may still apply.
 - Renault wordmark: https://commons.wikimedia.org/wiki/File:Renault_Logo.svg — Public domain simple logo; trademark restrictions may still apply.
+- Nissan logo: https://commons.wikimedia.org/wiki/File:Nissan_2020_logo.svg — Public domain simple logo; trademark restrictions may still apply.
+- Škoda logo: https://commons.wikimedia.org/wiki/File:Skoda_Logo.png — MrMikkelsen, CC BY-SA 4.0.
 
 ## Vehicle photographs
 
