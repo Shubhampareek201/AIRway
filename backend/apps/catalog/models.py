@@ -260,6 +260,7 @@ class VehicleMake(TimeStampedModel):
     vehicle_type = models.CharField(max_length=10, choices=VehicleType.choices)
     name = models.CharField(max_length=100)
     logo = models.ImageField(upload_to="vehicle_makes/", blank=True)
+    logo_url = models.URLField(blank=True, max_length=1000)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
@@ -277,6 +278,7 @@ class VehicleModel(TimeStampedModel):
     make = models.ForeignKey(VehicleMake, on_delete=models.CASCADE, related_name="models")
     name = models.CharField(max_length=120)
     image = models.ImageField(upload_to="vehicle_models/", blank=True)
+    image_url = models.URLField(blank=True, max_length=1000)
     vehicle_class = models.CharField(
         max_length=30, blank=True,
         help_text="Optional pricing class used by car-wash packages, e.g. Hatchback, Sedan, SUV."
