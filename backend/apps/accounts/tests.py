@@ -7,8 +7,8 @@ from rest_framework.test import APIClient
 
 from apps.core.models import City, Zone
 from apps.workers.models import WorkerProfile
-from apps.catalog.models import Category, Service
-from .models import Address
+from apps.catalog.models import Category, Service, VehicleMake, VehicleModel
+from .models import Address, CustomerVehicle
 
 
 User = get_user_model()
@@ -677,3 +677,47 @@ class WorkerApplicationTest(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("not approved", response.data["error"].lower())
         self.assertIn("rejected", response.data["error"].lower())
+
+
+class CustomerSavedVehicleApiTest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(phone="+919876543211", name="Vehicle User")
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.make = VehicleMake.objects.create(vehicle_type="car", name="Hyundai")
+        self.model = VehicleModel.objects.create(
+            make=self.make, name="i20", vehicle_class="Hatchback"
+        )
+
+    def test_customer_can_save_vehicle_as_default(self):
+        response = self.client.post("/api/v1/auth/vehicles/", {
+            "vehicle_type": "car",
+            "vehicle_model": self.model.id,
+            "is_default": True,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data["is_default"])
+        self.assertEqual(response.data["vehicle_model_detail"]["name"], "i20")
+
+    def test_only_one_default_vehicle_is_kept_per_customer(self):
+        first = CustomerVehicle.objects.create(
+            user=self.user, vehicle_type="car", vehicle_model=self.model, is_default=True
+        )
+        second = CustomerVehicle.objects.create(
+            user=self.user, vehicle_type="bike", is_default=False
+        )
+        response = self.client.post(
+            f"/api/v1/auth/vehicles/{second.id}/set-default/", {}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertFalse(first.is_default)
+        self.assertTrue(second.is_default)
+
+    def test_vehicle_model_must_match_vehicle_type(self):
+        response = self.client.post("/api/v1/auth/vehicles/", {
+            "vehicle_type": "bike",
+            "vehicle_model": self.model.id,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
