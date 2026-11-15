@@ -523,7 +523,8 @@ class BookingListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "service", "service_title", "service_unit_label", "service_image", "variant_title",
             "booking_mode", "scheduled_at", "status", "status_display",
-            "address_label", "address_full", "pricing_snapshot", "created_at"
+            "address_label", "address_full", "pricing_snapshot",
+            "customer_answers", "completed_at", "created_at"
         ]
 
     def get_service_image(self, obj):
