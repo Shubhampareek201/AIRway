@@ -153,6 +153,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         await CatalogApi.saveVehicle(
           vehicleType: type,
           vehicleModelId: _model?.id,
+          customMake: _model == null ? (_make?.name ?? '') : '',
           isDefault: true,
         );
       } catch (e) {
