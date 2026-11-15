@@ -8,6 +8,11 @@ from django.conf import settings
 from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.files.storage import default_storage
+from django.http import FileResponse
+from rest_framework.parsers import MultiPartParser, FormParser
+import mimetypes
+import uuid
 
 from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer
 from .serializers import (
@@ -1110,6 +1115,89 @@ class CustomerOrderListView(APIView):
         return Response(results)
 
 
+class CustomerCartIssuePhotoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, item_id):
+        item = get_object_or_404(
+            CartItem.objects.select_related("cart"),
+            pk=item_id,
+            cart__customer=request.user,
+        )
+        photo = request.FILES.get("photo")
+        if photo is None:
+            return Response({"detail": "Choose a photo to upload."}, status=status.HTTP_400_BAD_REQUEST)
+        if photo.size > 5 * 1024 * 1024:
+            return Response({"detail": "Photo must be 5 MB or smaller."}, status=status.HTTP_400_BAD_REQUEST)
+        if photo.content_type not in ("image/jpeg", "image/png", "image/webp"):
+            return Response({"detail": "Upload a JPG, PNG or WEBP image."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from PIL import Image
+            image = Image.open(photo)
+            image.verify()
+            image_format = image.format
+            if image_format not in ("JPEG", "PNG", "WEBP"):
+                raise ValueError("Unsupported image format")
+        except Exception:
+            return Response({"detail": "The uploaded file is not a valid supported image."}, status=status.HTTP_400_BAD_REQUEST)
+        finally:
+            photo.seek(0)
+
+        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}[image_format]
+        stored_path = default_storage.save(
+            f"booking_issue_photos/customer_{request.user.pk}/{uuid.uuid4().hex}{extension}",
+            photo,
+        )
+        answers = dict(item.category_answers or {})
+        previous_path = answers.get("_airway_issue_photo")
+        answers["_airway_issue_photo"] = stored_path
+        item.category_answers = answers
+        item.save(update_fields=["category_answers", "updated_at"])
+        if previous_path and previous_path != stored_path:
+            default_storage.delete(previous_path)
+        return Response({"has_issue_photo": True}, status=status.HTTP_200_OK)
+
+    def delete(self, request, item_id):
+        item = get_object_or_404(
+            CartItem.objects.select_related("cart"),
+            pk=item_id,
+            cart__customer=request.user,
+        )
+        answers = dict(item.category_answers or {})
+        stored_path = answers.pop("_airway_issue_photo", None)
+        item.category_answers = answers
+        item.save(update_fields=["category_answers", "updated_at"])
+        if stored_path:
+            default_storage.delete(stored_path)
+        return Response({"has_issue_photo": False}, status=status.HTTP_200_OK)
+
+
+class BookingIssuePhotoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, booking_id):
+        booking = get_object_or_404(
+            Booking.objects.select_related("customer", "assignment__worker"),
+            pk=booking_id,
+        )
+        allowed = booking.customer_id == request.user.pk
+        if not allowed:
+            try:
+                allowed = booking.assignment.worker.user_id == request.user.pk
+            except (BookingAssignment.DoesNotExist, AttributeError):
+                allowed = False
+        if not allowed:
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        stored_path = (booking.customer_answers or {}).get("_airway_issue_photo")
+        if not stored_path or not default_storage.exists(stored_path):
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
+        return FileResponse(default_storage.open(stored_path, "rb"), content_type=content_type)
+
+
 class CustomerCartView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1138,11 +1226,10 @@ class CustomerCartView(APIView):
             except ServiceUnavailableError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer.save(cart=cart)
-        return Response(
-            CustomerCartSerializer(cart, context={"request": request}).data,
-            status=status.HTTP_201_CREATED,
-        )
+        created_item = serializer.save(cart=cart)
+        response_data = CustomerCartSerializer(cart, context={"request": request}).data
+        response_data["added_item_id"] = created_item.pk
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     def patch(self, request):
         cart = self.get_cart(request.user)
