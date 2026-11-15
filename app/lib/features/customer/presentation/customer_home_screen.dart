@@ -225,9 +225,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           selected['vehicle_kind']?.toString().toLowerCase() == 'bike'
               ? 'bike'
               : 'car';
-      selectedVehicleCategory = category.children
+      final matchingVehicleCategories = category.children
           .where((child) => child.slug.toLowerCase() == vehicleSlug)
-          .firstOrNull;
+          .toList();
+      selectedVehicleCategory = matchingVehicleCategories.isEmpty
+          ? null
+          : matchingVehicleCategories.first;
       if (selectedVehicleCategory == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
