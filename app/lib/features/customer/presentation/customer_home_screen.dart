@@ -22,6 +22,7 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/catalog/presentation/service_categories_screen.dart';
+import 'package:airway/features/catalog/presentation/car_wash_vehicle_screen.dart';
 import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
 import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
 import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
@@ -194,7 +195,49 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (audience == null || !mounted) return;
       answers['beauty_audience'] = audience;
     }
-    if (category.customerFlowSteps.isNotEmpty) {
+    final categoryIdentity =
+        '${category.slug} ${category.title}'.toLowerCase().replaceAll(
+          RegExp(r'[^a-z0-9]+'),
+          ' ',
+        ).trim();
+    final isCarWash = categoryIdentity.contains('car wash') ||
+        categoryIdentity.replaceAll(' ', '').contains('carwash');
+
+    var categoriesToShow = category.children;
+    if (isCarWash) {
+      final selected = await Navigator.push<Map<String, dynamic>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CarWashVehicleScreen(
+            vehicleTypeSteps: {
+              for (final child in category.children)
+                if (child.slug == 'car' || child.slug == 'bike')
+                  child.slug: child.customerFlowSteps,
+            },
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      answers.addAll(selected);
+
+      final vehicleSlug =
+          selected['vehicle_kind']?.toString().toLowerCase() == 'bike'
+              ? 'bike'
+              : 'car';
+      categoriesToShow = category.children
+          .where((child) => child.slug.toLowerCase() == vehicleSlug)
+          .toList();
+      if (categoriesToShow.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'The $vehicleSlug service category is not configured yet.',
+            ),
+          ),
+        );
+        return;
+      }
+    } else if (category.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
@@ -207,12 +250,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (selected == null || !mounted) return;
       answers = selected;
     }
-    if (category.children.isNotEmpty) {
+
+    if (categoriesToShow.isNotEmpty) {
       Navigator.push<void>(
         context,
         MaterialPageRoute(
           builder: (_) => ServiceCategoriesScreen(
-            initialCategories: category.children,
+            initialCategories: categoriesToShow,
             addressId: addressId,
             title: category.title,
             initialAnswers: answers,
