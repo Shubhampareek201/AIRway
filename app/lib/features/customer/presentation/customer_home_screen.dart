@@ -304,7 +304,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           builder: (_) => ServiceCategoriesScreen(
             initialCategories: categoriesToShow,
             addressId: addressId,
-            title: category.title,
+            title: selectedVehicleCategory?.title ?? category.title,
             initialAnswers: answers,
           ),
         ),
