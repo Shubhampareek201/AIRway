@@ -93,7 +93,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _selectedSavedVehicleId = vehicle.id;
       _make = null;
       _model = null;
-      _vehicleClass = null;
+      _vehicleClass = vehicle.vehicleClass.isNotEmpty ? vehicle.vehicleClass : null;
       _models = [];
       _saveAsDefault = vehicle.isDefault;
     });
@@ -114,9 +114,9 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
           image: detail['image']?.toString(),
           vehicleClass: detail['vehicle_class']?.toString() ?? '',
         );
-        _vehicleClass = detail['vehicle_class']?.toString().isNotEmpty == true
+        _vehicleClass = (detail['vehicle_class']?.toString().isNotEmpty == true
             ? detail['vehicle_class']?.toString()
-            : null;
+            : vehicle.vehicleClass.isNotEmpty ? vehicle.vehicleClass : null);
       });
       try {
         final makes = await CatalogApi.listVehicleMakes(
@@ -224,6 +224,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
             vehicleType: type,
             vehicleModelId: _model?.id,
             customMake: _model == null ? (_make?.name ?? '') : '',
+            vehicleClass: _vehicleClass ?? '',
             isDefault: true,
           );
         }
