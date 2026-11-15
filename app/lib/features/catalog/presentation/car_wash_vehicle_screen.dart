@@ -94,7 +94,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       _model = null;
       _vehicleClass = null;
       _models = [];
-      _saveAsDefault = true;
+      _saveAsDefault = vehicle.isDefault;
     });
     final detail = vehicle.modelDetail;
     if (detail != null) {
