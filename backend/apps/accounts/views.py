@@ -38,7 +38,8 @@ from .serializers import (
     ForgotPasswordSerializer,
     VerifyOTPSerializer,
     ResetPasswordSerializer,
-    ProfileCompletionSerializer,\n    CustomerVehicleSerializer,
+    ProfileCompletionSerializer,
+    CustomerVehicleSerializer,
 )
 
 User = get_user_model()
