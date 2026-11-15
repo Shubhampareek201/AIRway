@@ -81,7 +81,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     }
   }
 
-  void _selectSavedVehicle(CustomerVehicle vehicle) {
+  Future<void> _selectSavedVehicle(CustomerVehicle vehicle) async {
     setState(() {
       _vehicleType = vehicle.vehicleType;
       _selectedSavedVehicleId = vehicle.id;
