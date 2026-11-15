@@ -7,8 +7,8 @@ from django.utils import timezone
 
 from apps.accounts.models import Address
 from apps.workers.models import WorkerService
-from .models import Banner, Category, FormField, Service
-from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer
+from .models import Banner, Category, FormField, Service, VehicleMake, VehicleModel
+from .serializers import BannerSerializer, CategoryTreeSerializer, ServiceSerializer, VehicleMakeSerializer, VehicleModelSerializer
 from .pricing import priced_service_ids
 
 
@@ -358,3 +358,30 @@ class BannerListView(generics.ListAPIView):
             queryset = queryset.filter(Q(city__isnull=True) | Q(city=city))
 
         return queryset.order_by("sort_order", "id")
+
+
+class VehicleMakeListView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = VehicleMakeSerializer
+
+    def get_queryset(self):
+        queryset = VehicleMake.objects.filter(is_active=True)
+        vehicle_type = self.request.query_params.get("vehicle_type")
+        if vehicle_type in ("car", "bike"):
+            queryset = queryset.filter(vehicle_type=vehicle_type)
+        return queryset
+
+
+class VehicleModelListView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = VehicleModelSerializer
+
+    def get_queryset(self):
+        queryset = VehicleModel.objects.filter(is_active=True, make__is_active=True).select_related("make")
+        make_id = self.request.query_params.get("make")
+        vehicle_type = self.request.query_params.get("vehicle_type")
+        if make_id:
+            queryset = queryset.filter(make_id=make_id)
+        if vehicle_type in ("car", "bike"):
+            queryset = queryset.filter(make__vehicle_type=vehicle_type)
+        return queryset
