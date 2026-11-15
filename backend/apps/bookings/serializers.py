@@ -836,7 +836,9 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["category_answers"].pop("_airway_issue_photo", None)
+        category_answers = data.get("category_answers")
+        if isinstance(category_answers, dict):
+            category_answers.pop("_airway_issue_photo", None)
         return data
 
     def get_line_total(self, obj):
