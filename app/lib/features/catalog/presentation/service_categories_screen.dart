@@ -160,13 +160,21 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
               ? 'bike'
               : 'car';
-      Category? vehicleCategory;
-      for (final child in selectedCategory.children) {
-        if (child.slug == vehicleSlug) {
-          vehicleCategory = child;
-          break;
+      Category? findVehicleCategory(List<Category> categories) {
+        for (final item in categories) {
+          if (item.slug.toLowerCase() == vehicleSlug) return item;
+          final nested = findVehicleCategory(item.children);
+          if (nested != null) return nested;
         }
+        return null;
       }
+
+      // The filtered API response can omit or reshape parent nodes after
+      // vehicle answers are applied. Search the refreshed tree first, then
+      // the original tree, so the customer never lands on "Car (N subcategories)".
+      final vehicleCategory =
+          findVehicleCategory([selectedCategory]) ??
+          findVehicleCategory(_categories);
       if (vehicleCategory == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
