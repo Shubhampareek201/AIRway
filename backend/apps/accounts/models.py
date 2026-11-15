@@ -170,3 +170,38 @@ class Referral(TimeStampedModel):
 
     def __str__(self):
         return f"{self.referrer.phone} -> {self.referred.phone}"
+
+class CustomerVehicle(TimeStampedModel):
+    class VehicleType(models.TextChoices):
+        CAR = "car", "Car"
+        BIKE = "bike", "Bike"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_vehicles")
+    vehicle_type = models.CharField(max_length=10, choices=VehicleType.choices)
+    vehicle_model = models.ForeignKey(
+        "catalog.VehicleModel", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="customer_vehicles"
+    )
+    custom_make = models.CharField(max_length=100, blank=True)
+    custom_model = models.CharField(max_length=120, blank=True)
+    nickname = models.CharField(max_length=60, blank=True)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-is_default", "-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"], condition=models.Q(is_default=True),
+                name="one_default_vehicle_per_customer",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.vehicle_model_id and self.vehicle_model.make.vehicle_type != self.vehicle_type:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({"vehicle_model": "Selected model does not match vehicle type."})
+
+    def __str__(self):
+        return self.nickname or self.custom_model or str(self.vehicle_model or self.get_vehicle_type_display())
+
