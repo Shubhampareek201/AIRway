@@ -416,6 +416,9 @@ class VehicleMakeListView(generics.ListAPIView):
         vehicle_class = self.request.query_params.get("vehicle_class")
         if vehicle_class:
             queryset = queryset.filter(models__is_active=True, models__vehicle_class__iexact=vehicle_class).distinct()
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(name__icontains=search)
         return queryset
 
 
