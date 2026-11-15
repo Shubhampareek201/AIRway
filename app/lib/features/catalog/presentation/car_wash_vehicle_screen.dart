@@ -107,7 +107,10 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _savedVehicles = vehicles;
+        _savedVehicles = widget.initialVehicleType == null
+            ? vehicles
+            : vehicles.where((vehicle) =>
+                vehicle.vehicleType == widget.initialVehicleType).toList();
         _lastCompletedWashByVehicle = lastWashDates;
         _loadingSaved = false;
       });
@@ -277,11 +280,12 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (!alreadySaved && !_saving) {
       setState(() => _saving = true);
       try {
-        await CatalogApi.saveVehicle(
+        final savedVehicle = await CatalogApi.saveVehicle(
           vehicleType: type,
           vehicleClass: bodyType,
           isDefault: false,
         );
+        _savedVehicles = [..._savedVehicles, savedVehicle];
       } catch (e) {
         if (!mounted) return;
         setState(() => _saving = false);
