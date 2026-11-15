@@ -72,6 +72,12 @@ class WorkerApi {
     return result.body;
   }
 
+  static Future<Map<String, String>> getAuthHeaders() async {
+    final session = await SecureSessionStorage.readSession();
+    if (session == null) throw Exception('Please sign in again.');
+    return {HttpHeaders.authorizationHeader: 'Bearer ${session.accessToken}'};
+  }
+
   static Future<WorkerProfile> getMyProfile() async {
     final result = Map<String, dynamic>.from(
       await _request('/api/v1/workers/me/') as Map,
