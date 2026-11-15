@@ -8,7 +8,7 @@ from django.conf import settings
 from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.files.storage import default_storage
+from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse
 from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
@@ -1120,6 +1120,7 @@ class CustomerCartIssuePhotoView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, item_id):
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
         item = get_object_or_404(
             CartItem.objects.select_related("cart"),
             pk=item_id,
@@ -1146,7 +1147,9 @@ class CustomerCartIssuePhotoView(APIView):
             photo.seek(0)
 
         extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}[image_format]
-        stored_path = default_storage.save(
+        if image.width > 6000 or image.height > 6000:
+            return Response({"detail": "Image dimensions must not exceed 6000 × 6000 pixels."}, status=status.HTTP_400_BAD_REQUEST)
+        stored_path = storage.save(
             f"booking_issue_photos/customer_{request.user.pk}/{uuid.uuid4().hex}{extension}",
             photo,
         )
@@ -1156,10 +1159,11 @@ class CustomerCartIssuePhotoView(APIView):
         item.category_answers = answers
         item.save(update_fields=["category_answers", "updated_at"])
         if previous_path and previous_path != stored_path:
-            default_storage.delete(previous_path)
+            storage.delete(previous_path)
         return Response({"has_issue_photo": True}, status=status.HTTP_200_OK)
 
     def delete(self, request, item_id):
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
         item = get_object_or_404(
             CartItem.objects.select_related("cart"),
             pk=item_id,
@@ -1170,7 +1174,7 @@ class CustomerCartIssuePhotoView(APIView):
         item.category_answers = answers
         item.save(update_fields=["category_answers", "updated_at"])
         if stored_path:
-            default_storage.delete(stored_path)
+            storage.delete(stored_path)
         return Response({"has_issue_photo": False}, status=status.HTTP_200_OK)
 
 
@@ -1178,6 +1182,7 @@ class BookingIssuePhotoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, booking_id):
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
         booking = get_object_or_404(
             Booking.objects.select_related("customer", "assignment__worker"),
             pk=booking_id,
@@ -1192,10 +1197,10 @@ class BookingIssuePhotoView(APIView):
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
 
         stored_path = (booking.customer_answers or {}).get("_airway_issue_photo")
-        if not stored_path or not default_storage.exists(stored_path):
+        if not stored_path or not storage.exists(stored_path):
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
         content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
-        return FileResponse(default_storage.open(stored_path, "rb"), content_type=content_type)
+        return FileResponse(storage.open(stored_path, "rb"), content_type=content_type)
 
 
 class CustomerCartView(APIView):
