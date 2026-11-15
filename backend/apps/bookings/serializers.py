@@ -510,6 +510,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
 
 class BookingListSerializer(serializers.ModelSerializer):
+    customer_answers = serializers.SerializerMethodField()
     service_title = serializers.CharField(source="service.title", read_only=True)
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     service_image = serializers.SerializerMethodField()
@@ -527,6 +528,11 @@ class BookingListSerializer(serializers.ModelSerializer):
             "customer_answers", "completed_at", "created_at"
         ]
 
+    def get_customer_answers(self, obj):
+        answers = dict(obj.customer_answers or {})
+        answers.pop("_airway_issue_photo", None)
+        return answers
+
     def get_service_image(self, obj):
         if obj.service.image:
             request = self.context.get("request")
@@ -536,6 +542,7 @@ class BookingListSerializer(serializers.ModelSerializer):
 
 
 class BookingDetailSerializer(serializers.ModelSerializer):
+    customer_answers = serializers.SerializerMethodField()
     order_id = serializers.IntegerField(source="order_item.order_id", read_only=True)
     service_title = serializers.CharField(source="service.title", read_only=True)
     service_title_hi = serializers.CharField(source="service.title_hi", read_only=True)
@@ -564,6 +571,11 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
             "refunds", "created_at", "updated_at"
         ]
+
+    def get_customer_answers(self, obj):
+        answers = dict(obj.customer_answers or {})
+        answers.pop("_airway_issue_photo", None)
+        return answers
 
     def get_service_image(self, obj):
         if obj.service.image:
@@ -762,6 +774,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def get_customer_answers(self, obj):
         answers = dict(obj.booking.customer_answers or {})
+        answers.pop("_airway_issue_photo", None)
         if obj.booking.service.requires_female_worker:
             answers["professional_preference"] = "female"
         return answers
@@ -801,14 +814,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
-    category_answers = serializers.SerializerMethodField()
     has_issue_photo = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
-
-    def get_category_answers(self, obj):
-        answers = dict(obj.category_answers or {})
-        answers.pop("_airway_issue_photo", None)
-        return answers
 
     def get_has_issue_photo(self, obj):
         return bool((obj.category_answers or {}).get("_airway_issue_photo"))
@@ -821,6 +828,11 @@ class CartItemSerializer(serializers.ModelSerializer):
             "pricing_snapshot", "line_total",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["category_answers"].pop("_airway_issue_photo", None)
+        return data
 
     def get_line_total(self, obj):
         return str(obj.line_total)
@@ -980,6 +992,12 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         snapshot = validated_data.pop("_cart_snapshot")
+        if "category_answers" in validated_data:
+            answers = dict(validated_data["category_answers"] or {})
+            existing_photo = (instance.category_answers or {}).get("_airway_issue_photo")
+            if existing_photo:
+                answers["_airway_issue_photo"] = existing_photo
+            validated_data["category_answers"] = answers
         for key, value in validated_data.items():
             setattr(instance, key, value)
         instance.pricing_snapshot = snapshot
