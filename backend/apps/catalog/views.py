@@ -175,45 +175,101 @@ def _category_answer_service_ids(answers):
     if work_type in (None, ""):
         return vehicle_service_ids
 
-    roots = set(Category.objects.filter(
+    electrical_roots = list(Category.objects.filter(
         slug="electrical", parent__isnull=True, is_active=True
-    ).values_list("id", flat=True))
-    if not roots:
+    ))
+    if not electrical_roots:
         return vehicle_service_ids
 
-    children = {}
-    for row in Category.objects.filter(is_active=True).values("id", "parent_id"):
+    # Prefer the admin-authored category flow mapping. This keeps Electrical
+    # filtering aligned with the exact subcategory branches shown in Flutter.
+    selected = str(work_type).strip().casefold()
+    mapped_slugs = set()
+    for root in electrical_roots:
+        for step in root.flow_steps or []:
+            if not isinstance(step, dict) or step.get("key") != "work_type":
+                continue
+            child_slugs = step.get("child_slugs")
+            if not isinstance(child_slugs, dict):
+                continue
+            configured = child_slugs.get(work_type)
+            if configured is None:
+                configured = next(
+                    (value for key, value in child_slugs.items()
+                     if str(key).strip().casefold() == selected),
+                    None,
+                )
+            if isinstance(configured, list):
+                mapped_slugs.update(
+                    str(slug).strip().casefold()
+                    for slug in configured
+                    if str(slug).strip()
+                )
+
+    electrical_category_ids = set()
+    pending = [root.id for root in electrical_roots]
+    children_by_parent = {}
+    for row in Category.objects.filter(is_active=True).values("id", "parent_id", "slug"):
         if row["parent_id"] is not None:
-            children.setdefault(row["parent_id"], []).append(row["id"])
-    category_ids = set(roots)
-    pending = list(roots)
+            children_by_parent.setdefault(row["parent_id"], []).append(row)
+
     while pending:
         parent_id = pending.pop()
-        for child_id in children.get(parent_id, []):
-            if child_id not in category_ids:
-                category_ids.add(child_id)
+        for child in children_by_parent.get(parent_id, []):
+            child_id = child["id"]
+            if child_id in electrical_category_ids:
+                continue
+            electrical_category_ids.add(child_id)
+            if not mapped_slugs or child["slug"].casefold() in mapped_slugs:
                 pending.append(child_id)
 
-    electrical_service_ids = set(Service.objects.filter(
-        is_active=True, category_id__in=category_ids
-    ).values_list("id", flat=True))
-    allowed_service_ids = set()
-    fields = FormField.objects.filter(
-        service_id__in=electrical_service_ids,
-        key="work_type",
-        is_active=True,
-    ).values_list("service_id", "options")
-    selected = str(work_type).strip().casefold()
-    for service_id, options in fields:
-        for option in options or []:
-            value = option.get("value", option.get("label")) if isinstance(option, dict) else option
-            if value is not None and str(value).strip().casefold() == selected:
-                allowed_service_ids.add(service_id)
-                break
+    if mapped_slugs:
+        # Include descendants of each selected branch, but not sibling branches.
+        allowed_category_ids = set()
+        pending = [
+            row["id"]
+            for root in electrical_roots
+            for row in children_by_parent.get(root.id, [])
+            if row["slug"].casefold() in mapped_slugs
+        ]
+        while pending:
+            category_id = pending.pop()
+            if category_id in allowed_category_ids:
+                continue
+            allowed_category_ids.add(category_id)
+            pending.extend(
+                row["id"] for row in children_by_parent.get(category_id, [])
+            )
+        allowed_service_ids = set(Service.objects.filter(
+            is_active=True, category_id__in=allowed_category_ids
+        ).values_list("id", flat=True))
+    else:
+        # Backward compatibility for catalogues configured with a service-level
+        # FormField named work_type rather than category child_slugs.
+        electrical_service_ids = set(Service.objects.filter(
+            is_active=True, category_id__in=electrical_category_ids
+        ).values_list("id", flat=True))
+        allowed_service_ids = set()
+        fields = FormField.objects.filter(
+            service_id__in=electrical_service_ids,
+            key="work_type",
+            is_active=True,
+        ).values_list("service_id", "options")
+        for service_id, options in fields:
+            for option in options or []:
+                value = option.get("value", option.get("label")) if isinstance(option, dict) else option
+                if value is not None and str(value).strip().casefold() == selected:
+                    allowed_service_ids.add(service_id)
+                    break
+
+        # If neither admin mapping style is configured, do not accidentally
+        # hide every Electrical service from customers.
+        if not allowed_service_ids:
+            allowed_service_ids = electrical_service_ids
 
     non_electrical_ids = set(Service.objects.filter(
         is_active=True, category__is_active=True
-    ).exclude(category_id__in=category_ids).values_list("id", flat=True))
+    ).exclude(category_id__in=electrical_category_ids).values_list("id", flat=True))
     electrical_result = non_electrical_ids | allowed_service_ids
     return electrical_result if vehicle_service_ids is None else electrical_result & vehicle_service_ids
 
