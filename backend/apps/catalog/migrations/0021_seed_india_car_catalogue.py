@@ -173,6 +173,19 @@ MODEL_IMAGES = {
     "Renault|Kwid": "Renault_Kwid.jpg",
 }
 
+# Temporary same-segment image fallback for models without an exact Commons photograph.
+# These remain editable per model from the admin catalogue.
+CLASS_FALLBACK_IMAGES = {
+    "Hatchback": "Suzuki_Swift_%282024%29_hybrid_DSC_7922.jpg",
+    "Sedan": "Suzuki_Dzire_2024_ZXI%2B.jpg",
+    "Compact SUV": "Maruti_Suzuki_Brezza_-_front.jpg",
+    "SUV – 5 Seater": "2024_Hyundai_Creta_1.5_MPi_SX%28O%29_%28India%29_front_view.png",
+    "SUV – 7 Seater": "2021_Mahindra_XUV700_2.2_AX7_%28India%29_front_view.png",
+    "MUV / MPV": "Toyota_Innova_Crysta.jpg",
+    "Luxury SUV": "Toyota_Fortuner_4x2_G_2021.jpg",
+    "Luxury Car": "Suzuki_Dzire_2024_ZXI%2B.jpg",
+}
+
 MAKE_LOGOS = {
     "BMW": "https://commons.wikimedia.org/wiki/Special:FilePath/BMW.svg",
     "Audi": "https://commons.wikimedia.org/wiki/Special:FilePath/Audi_logo.svg",
