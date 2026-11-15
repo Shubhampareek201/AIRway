@@ -76,5 +76,13 @@ class CustomerVehicle {
 String? _vehicleMedia(dynamic value) {
   final raw = value?.toString().trim() ?? '';
   if (raw.isEmpty) return null;
-  final uri = Uri.tryParse(raw);\n  if (uri == null) return null;\n  final base = Uri.parse(AuthApi.baseUrl);\n  if (!uri.hasScheme || uri.host.isEmpty) return base.resolve(raw).toString();\n  if ({'localhost', '127.0.0.1', '0.0.0.0'}.contains(uri.host) &&\n      !{'localhost', '127.0.0.1', '0.0.0.0'}.contains(base.host)) {\n    return uri.replace(scheme: base.scheme, host: base.host, port: base.hasPort ? base.port : null).toString();\n  }\n  return uri.toString();
+  final uri = Uri.tryParse(raw);
+  if (uri == null) return null;
+  final base = Uri.parse(AuthApi.baseUrl);
+  if (!uri.hasScheme || uri.host.isEmpty) return base.resolve(raw).toString();
+  if ({'localhost', '127.0.0.1', '0.0.0.0'}.contains(uri.host) &&
+      !{'localhost', '127.0.0.1', '0.0.0.0'}.contains(base.host)) {
+    return uri.replace(scheme: base.scheme, host: base.host, port: base.hasPort ? base.port : null).toString();
+  }
+  return uri.toString();
 }
