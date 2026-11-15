@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
+import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 
 class ElectricalIssueDetailsScreen extends StatefulWidget {
@@ -114,7 +115,15 @@ class _ElectricalIssueDetailsScreenState
       appBar: AppBar(
         title: const Text('Describe the issue'),
         backgroundColor: Colors.white,
-        actions: const [CustomerCartBadge(color: violet)],
+        actions: [
+          CustomerCartBadge(
+            color: violet,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+            ),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
