@@ -28,7 +28,7 @@ from apps.core.models import City, Zone
 from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
-from .models import Address, DeviceToken
+from .models import Address, DeviceToken, CustomerVehicle
 from .serializers import (
     AddressCreateSerializer,
     AddressSerializer,
@@ -38,7 +38,7 @@ from .serializers import (
     ForgotPasswordSerializer,
     VerifyOTPSerializer,
     ResetPasswordSerializer,
-    ProfileCompletionSerializer,
+    ProfileCompletionSerializer,\n    CustomerVehicleSerializer,
 )
 
 User = get_user_model()
@@ -1018,3 +1018,62 @@ class LocationReverseView(APIView):
 
         cache.set(key, result, timeout=3600)
         return Response(result)
+
+
+class CustomerVehicleListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        vehicles = CustomerVehicle.objects.filter(user=request.user).select_related("vehicle_model__make")
+        serializer = CustomerVehicleSerializer(vehicles, many=True, context={"request": request})
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = CustomerVehicleSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            if serializer.validated_data.get("is_default"):
+                CustomerVehicle.objects.filter(user=request.user, is_default=True).update(is_default=False)
+            vehicle = serializer.save(user=request.user)
+        return Response(
+            CustomerVehicleSerializer(vehicle, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CustomerVehicleDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, vehicle_id):
+        vehicle = CustomerVehicle.objects.filter(user=request.user, pk=vehicle_id).select_related("vehicle_model__make").first()
+        if vehicle is None:
+            return Response({"detail": "Vehicle not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CustomerVehicleSerializer(vehicle, data=request.data, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            if serializer.validated_data.get("is_default"):
+                CustomerVehicle.objects.filter(user=request.user, is_default=True).exclude(pk=vehicle.pk).update(is_default=False)
+            vehicle = serializer.save()
+        return Response(CustomerVehicleSerializer(vehicle, context={"request": request}).data)
+
+    def delete(self, request, vehicle_id):
+        deleted, _ = CustomerVehicle.objects.filter(user=request.user, pk=vehicle_id).delete()
+        if not deleted:
+            return Response({"detail": "Vehicle not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SetDefaultCustomerVehicleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, vehicle_id):
+        vehicle = CustomerVehicle.objects.filter(user=request.user, pk=vehicle_id).first()
+        if vehicle is None:
+            return Response({"detail": "Vehicle not found."}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            CustomerVehicle.objects.filter(user=request.user, is_default=True).update(is_default=False)
+            vehicle.is_default = True
+            vehicle.save(update_fields=["is_default", "updated_at"])
+        return Response(CustomerVehicleSerializer(
+            vehicle, context={"request": request}
+        ).data)
