@@ -820,6 +820,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     has_issue_photo = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
     def get_has_issue_photo(self, obj):
         return bool((obj.category_answers or {}).get("_airway_issue_photo"))
