@@ -368,21 +368,21 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   // Wikimedia Commons image fallbacks; admin-uploaded catalogue images take priority.
   String? _defaultBrandLogo(String name) {
     final key = name.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-    if (key == 'bmw') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/500px-BMW.svg.png';
-    if (key == 'audi') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Audi_logo.svg/500px-Audi_logo.svg.png';
-    if (key.contains('mercedes')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Mercedes-Benz_logo.svg/500px-Mercedes-Benz_logo.svg.png';
-    if (key.contains('maruti')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Maruti_Suzuki_logo.svg/500px-Maruti_Suzuki_logo.svg.png';
-    if (key.contains('hyundai')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Hyundai_logo.svg/500px-Hyundai_logo.svg.png';
-    if (key.contains('tata')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Tata_Motors_Logo.svg/500px-Tata_Motors_Logo.svg.png';
-    if (key.contains('honda')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Honda_Logo.svg/500px-Honda_Logo.svg.png';
-    if (key.contains('toyota')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/78/Toyota_Logo.svg/500px-Toyota_Logo.svg.png';
-    if (key.contains('kia')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2f/KIA_logo.svg/500px-KIA_logo.svg.png';
-    if (key.contains('mahindra')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/da/Mahindra_Automotive_new_logo.png/500px-Mahindra_Automotive_new_logo.png';
-    if (key.contains('volkswagen') || key == 'vw') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Volkswagen_-_Logo.svg/250px-Volkswagen_-_Logo.svg.png';
-    if (key == 'mg' || key.contains('mgmotor')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c8/MG_Motor_2021_logo.svg/500px-MG_Motor_2021_logo.svg.png';
-    if (key.contains('renault')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Renault_Logo.svg/500px-Renault_Logo.svg.png';
-    if (key.contains('nissan')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Nissan_2020_logo.svg/500px-Nissan_2020_logo.svg.png';
-    if (key.contains('skoda')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Skoda_Logo.png/330px-Skoda_Logo.png';
+    if (key == 'bmw') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/500px-BMW.svg.png';
+    if (key == 'audi') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Audi_logo.svg/500px-Audi_logo.svg.png';
+    if (key.contains('mercedes')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Mercedes-Benz_logo.svg/500px-Mercedes-Benz_logo.svg.png';
+    if (key.contains('maruti')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Maruti_Suzuki_logo.svg/500px-Maruti_Suzuki_logo.svg.png';
+    if (key.contains('hyundai')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Hyundai_logo.svg/500px-Hyundai_logo.svg.png';
+    if (key.contains('tata')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Tata_Motors_Logo.svg/500px-Tata_Motors_Logo.svg.png';
+    if (key.contains('honda')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Honda_Logo.svg/500px-Honda_Logo.svg.png';
+    if (key.contains('toyota')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Toyota_Logo.svg/500px-Toyota_Logo.svg.png';
+    if (key.contains('kia')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/KIA_logo.svg/500px-KIA_logo.svg.png';
+    if (key.contains('mahindra')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Mahindra_Automotive_new_logo.png/500px-Mahindra_Automotive_new_logo.png';
+    if (key.contains('volkswagen') || key == 'vw') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Volkswagen_-_Logo.svg/250px-Volkswagen_-_Logo.svg.png';
+    if (key == 'mg' || key.contains('mgmotor')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/MG_Motor_2021_logo.svg/500px-MG_Motor_2021_logo.svg.png';
+    if (key.contains('renault')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/34/Renault_Logo.svg/500px-Renault_Logo.svg.png';
+    if (key.contains('nissan')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Nissan_2020_logo.svg/500px-Nissan_2020_logo.svg.png';
+    if (key.contains('skoda')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Skoda_Logo.png/330px-Skoda_Logo.png';
     // Google favicon endpoint returns raster images; Flutter Image.network cannot decode SVG.
     if (key.contains('jeep')) return 'https://www.google.com/s2/favicons?domain=jeep.com&sz=128';
     if (key.contains('citroen')) return 'https://www.google.com/s2/favicons?domain=citroen.in&sz=128';
@@ -396,12 +396,12 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
 
   String? _defaultModelImage(String name) {
     final key = name.toLowerCase().trim();
-    if (key == 'swift') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/eb/Swift.jpg/330px-Swift.jpg';
-    if (key == 'creta') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3d/Hyundai_Creta_1.5_Plus_2024.jpg/640px-Hyundai_Creta_1.5_Plus_2024.jpg';
-    if (key == 'city') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1f/0_Honda_City_%287th_generation%29_sedan.jpg/640px-0_Honda_City_%287th_generation%29_sedan.jpg';
-    if (key == 'innova crysta' || key == 'innova') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/68/Toyota_Innova_Crysta.jpg/640px-Toyota_Innova_Crysta.jpg';
-    if (key == 'safari') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Tata_Safari.jpg/640px-Tata_Safari.jpg';
-    if (key == 'fortuner') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/Toyota_Fortuner_4x2_Legender_2023_%287%29.jpg/640px-Toyota_Fortuner_4x2_Legender_2023_%287%29.jpg';
+    if (key == 'swift') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Swift.jpg/330px-Swift.jpg';
+    if (key == 'creta') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Hyundai_Creta_1.5_Plus_2024.jpg/640px-Hyundai_Creta_1.5_Plus_2024.jpg';
+    if (key == 'city') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/0_Honda_City_%287th_generation%29_sedan.jpg/640px-0_Honda_City_%287th_generation%29_sedan.jpg';
+    if (key == 'innova crysta' || key == 'innova') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Toyota_Innova_Crysta.jpg/640px-Toyota_Innova_Crysta.jpg';
+    if (key == 'safari') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Tata_Safari.jpg/640px-Tata_Safari.jpg';
+    if (key == 'fortuner') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/Toyota_Fortuner_4x2_Legender_2023_%287%29.jpg/640px-Toyota_Fortuner_4x2_Legender_2023_%287%29.jpg';
     return null;
   }
 
