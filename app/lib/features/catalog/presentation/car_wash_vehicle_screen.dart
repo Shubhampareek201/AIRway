@@ -391,6 +391,31 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (key.contains('isuzu')) return 'https://www.google.com/s2/favicons?domain=isuzu.in&sz=128';
     if (key.contains('force')) return 'https://www.google.com/s2/favicons?domain=forcemotors.com&sz=128';
     if (key == 'mini') return 'https://www.google.com/s2/favicons?domain=mini.com&sz=128';
+    if (key == 'tvs') return 'https://www.google.com/s2/favicons?domain=tvsmotor.com&sz=128';
+    if (key == 'suzuki') return 'https://www.google.com/s2/favicons?domain=suzukimotorcycle.co.in&sz=128';
+    if (key == 'yamaha') return 'https://www.google.com/s2/favicons?domain=yamaha-motor-india.com&sz=128';
+    if (key == 'hero') return 'https://www.google.com/s2/favicons?domain=heromotocorp.com&sz=128';
+    if (key == 'bajaj') return 'https://www.google.com/s2/favicons?domain=bajajauto.com&sz=128';
+    if (key == 'ather') return 'https://www.google.com/s2/favicons?domain=atherenergy.com&sz=128';
+    if (key.contains('ola')) return 'https://www.google.com/s2/favicons?domain=olaelectric.com&sz=128';
+    if (key == 'vida') return 'https://www.google.com/s2/favicons?domain=vidaworld.com&sz=128';
+    if (key == 'vespa') return 'https://www.google.com/s2/favicons?domain=vespa.com&sz=128';
+    if (key == 'aprilia') return 'https://www.google.com/s2/favicons?domain=aprilia.com&sz=128';
+    if (key.contains('royalenfield')) return 'https://www.google.com/s2/favicons?domain=royalenfield.com&sz=128';
+    if (key == 'ktm') return 'https://www.google.com/s2/favicons?domain=ktm.com&sz=128';
+    if (key == 'kawasaki') return 'https://www.google.com/s2/favicons?domain=kawasaki.com&sz=128';
+    if (key == 'triumph') return 'https://www.google.com/s2/favicons?domain=triumphmotorcycles.com&sz=128';
+    if (key.contains('bmwmotorrad')) return 'https://www.google.com/s2/favicons?domain=bmwmotorcycles.com&sz=128';
+    if (key == 'ducati') return 'https://www.google.com/s2/favicons?domain=ducati.com&sz=128';
+    if (key == 'jawa') return 'https://www.google.com/s2/favicons?domain=jawamotorcycles.com&sz=128';
+    if (key == 'yezdi') return 'https://www.google.com/s2/favicons?domain=yezdi.com&sz=128';
+    if (key == 'husqvarna') return 'https://www.google.com/s2/favicons?domain=husqvarna-motorcycles.com&sz=128';
+    if (key.contains('harleydavidson')) return 'https://www.google.com/s2/favicons?domain=harley-davidson.com&sz=128';
+    if (key.contains('indianmotorcycle')) return 'https://www.google.com/s2/favicons?domain=indianmotorcycle.com&sz=128';
+    if (key == 'benelli') return 'https://www.google.com/s2/favicons?domain=benelli.com&sz=128';
+    if (key.contains('motoguzzi')) return 'https://www.google.com/s2/favicons?domain=motoguzzi.com&sz=128';
+    if (key == 'qjmotor') return 'https://www.google.com/s2/favicons?domain=qjmotor.com&sz=128';
+    if (key == 'keeway') return 'https://www.google.com/s2/favicons?domain=keeway.com&sz=128';
     return null;
   }
 
@@ -409,6 +434,8 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
   // These are body-style illustrations; exact model photographs come from the database.
   String? _bodyTypeImage(String value) {
     final key = value.toLowerCase();
+    if (key.contains('scooter')) return 'https://www.pressanahonda.com/wt_prod-24926/images/activa6g/white.png';
+    if (key.contains('motorcycle')) return 'https://www.edinburghkawasaki.co.uk/new-bikes/supersport/_images/_multimedia/212/multimedia_8.jpg';
     if (key.contains('hatch')) {
       return 'https://www.2dvornika.com.ua/public/images/cars/seatibiza5.jpg';
     }
@@ -459,7 +486,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
         ),
         child: Center(
           child: logo == null
-              ? const Icon(Icons.directions_car_filled_outlined, size: 34, color: Color(0xFF68736B))
+              ? Icon(_vehicleType == 'bike' ? Icons.two_wheeler : Icons.directions_car_filled_outlined, size: 34, color: const Color(0xFF68736B))
               : Image.network(
                   logo,
                   fit: BoxFit.contain,
@@ -491,7 +518,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
           children: [
             Expanded(
               child: (model.image ?? _defaultModelImage(model.name)) == null
-                ? const ColoredBox(color: Color(0xFFF4F5F2), child: Icon(Icons.directions_car_filled_outlined, size: 42, color: _muted))
+                ? ColoredBox(color: const Color(0xFFF4F5F2), child: Icon(_vehicleType == 'bike' ? Icons.two_wheeler : Icons.directions_car_filled_outlined, size: 42, color: _muted))
                 : Image.network(model.image ?? _defaultModelImage(model.name)!, fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFF4F5F2), child: Icon(Icons.directions_car_filled_outlined, size: 42, color: _muted))),
             ),
@@ -557,7 +584,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
                   final option = _vehicleClassOptions()[index];
                   final value = option['value']!;
                   final selected = _vehicleClass == value;
-                  final bodyImage = _vehicleType == 'car' ? _bodyTypeImage(value) : null;
+                  final bodyImage = _bodyTypeImage(value);
                   return InkWell(
                     onTap: () => _selectVehicleClass(value),
                     borderRadius: BorderRadius.circular(14),
