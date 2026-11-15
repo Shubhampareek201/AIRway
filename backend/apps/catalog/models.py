@@ -251,3 +251,45 @@ class Banner(TimeStampedModel):
 
     def __str__(self):
         return self.title
+
+class VehicleMake(TimeStampedModel):
+    class VehicleType(models.TextChoices):
+        CAR = "car", "Car"
+        BIKE = "bike", "Bike"
+
+    vehicle_type = models.CharField(max_length=10, choices=VehicleType.choices)
+    name = models.CharField(max_length=100)
+    logo = models.ImageField(upload_to="vehicle_makes/", blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["vehicle_type", "name"], name="unique_vehicle_make_type_name")
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_vehicle_type_display()})"
+
+
+class VehicleModel(TimeStampedModel):
+    make = models.ForeignKey(VehicleMake, on_delete=models.CASCADE, related_name="models")
+    name = models.CharField(max_length=120)
+    image = models.ImageField(upload_to="vehicle_models/", blank=True)
+    vehicle_class = models.CharField(
+        max_length=30, blank=True,
+        help_text="Optional pricing class used by car-wash packages, e.g. Hatchback, Sedan, SUV."
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["make", "name"], name="unique_vehicle_model_per_make")
+        ]
+
+    def __str__(self):
+        return f"{self.make.name} {self.name}"
+
