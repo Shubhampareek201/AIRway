@@ -155,7 +155,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     // Car Wash is a direct vehicle-to-service journey: once the customer
     // chooses Car/Bike and vehicle details, show all matching descendant
     // services instead of making them navigate through category screens.
-    if (isCarWashCategory) {
+    // Once the vehicle picker has returned a vehicle_kind, this is the
+    // vehicle-to-services transition regardless of which nested category
+    // level opened the picker. Do not route through the Car/Bike category card.
+    if (answers['vehicle_kind'] != null &&
+        answers['vehicle_kind'].toString().trim().isNotEmpty) {
       final vehicleSlug =
           answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
               ? 'bike'
