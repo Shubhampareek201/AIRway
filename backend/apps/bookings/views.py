@@ -683,7 +683,11 @@ class CustomerCheckoutView(APIView):
             }
             serializer = BookingCreateSerializer(
                 data=booking_data,
-                context={"request": request, "defer_worker_dispatch": True},
+                context={
+                    "request": request,
+                    "defer_worker_dispatch": True,
+                    "allow_issue_photo_metadata": True,
+                },
             )
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
