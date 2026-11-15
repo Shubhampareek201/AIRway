@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Banner, Category, CategoryAudienceOption, Service, ServiceVariant, AddOn, FormField, ServiceImage
+from .models import Banner, Category, CategoryAudienceOption, Service, ServiceVariant, AddOn, FormField, ServiceImage, VehicleMake, VehicleModel
 
 
 class CategoryAudienceOptionSerializer(serializers.ModelSerializer):
@@ -200,7 +200,7 @@ class VehicleMakeSerializer(serializers.ModelSerializer):
     logo = serializers.SerializerMethodField()
 
     class Meta:
-        model = __import__("apps.catalog.models", fromlist=["VehicleMake"]).VehicleMake
+        model = VehicleMake
         fields = ["id", "vehicle_type", "name", "logo", "sort_order"]
 
     def get_logo(self, obj):
@@ -215,7 +215,7 @@ class VehicleModelSerializer(serializers.ModelSerializer):
     make_name = serializers.CharField(source="make.name", read_only=True)
 
     class Meta:
-        model = __import__("apps.catalog.models", fromlist=["VehicleModel"]).VehicleModel
+        model = VehicleModel
         fields = ["id", "make", "make_name", "name", "image", "vehicle_class", "sort_order"]
 
     def get_image(self, obj):
