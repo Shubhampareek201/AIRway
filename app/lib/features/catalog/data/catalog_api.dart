@@ -211,12 +211,15 @@ class CatalogApi {
   }
 
 
-  static Future<List<VehicleMake>> listVehicleMakes(String vehicleType, {String? vehicleClass}) async {
+  static Future<List<VehicleMake>> listVehicleMakes(
+    String vehicleType, {String? vehicleClass, String? search}
+  ) async {
     final uri = Uri(
       path: '/api/v1/catalog/vehicle-makes/',
       queryParameters: {
         'vehicle_type': vehicleType,
         if (vehicleClass != null && vehicleClass.isNotEmpty) 'vehicle_class': vehicleClass,
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
       },
     );
     return _parseList(await request(uri.toString()), VehicleMake.fromMap);
