@@ -386,6 +386,31 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           ])),
           IconButton(onPressed: busy ? null : () => removeItem(id), icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
         ]),
+        if (number(snapshot['visit_fee']) > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Text(
+              'Inspection / visit charge: ₹${number(snapshot['visit_fee']).toStringAsFixed(0)} (included once)',
+              style: const TextStyle(fontSize: 12, color: sub, fontWeight: FontWeight.w700),
+            ),
+          ),
+        if (item['notes']?.toString().trim().isNotEmpty == true)
+          Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Text(
+              'Issue description: ${item['notes']}',
+              style: const TextStyle(fontSize: 12, color: sub),
+            ),
+          ),
+        if (item['has_issue_photo'] == true)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Row(children: [
+              Icon(Icons.image_outlined, size: 15, color: violet),
+              SizedBox(width: 5),
+              Text('Issue photo attached', style: TextStyle(fontSize: 12, color: sub)),
+            ]),
+          ),
         if (addons.isNotEmpty) ...[
           const Divider(height: 20),
           const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: sub)),
