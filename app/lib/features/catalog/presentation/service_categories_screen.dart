@@ -5,7 +5,7 @@ import 'package:airway/core/widgets/airway_components.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/presentation/service_list_screen.dart';
-import 'package:airway/features/catalog/presentation/category_decision_screen.dart';
+import 'package:airway/features/catalog/presentation/category_decision_screen.dart';\nimport 'package:airway/features/catalog/presentation/car_wash_vehicle_screen.dart';
 import 'package:airway/features/catalog/presentation/beauty_audience_screen.dart';
 import 'package:airway/features/catalog/data/catalog_category_image_resolver.dart';
 import 'package:airway/features/catalog/data/beauty_audience.dart';
@@ -90,7 +90,14 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       answers['beauty_audience'] = audience;
     }
 
-    if (selectedCategory.customerFlowSteps.isNotEmpty) {
+    if (selectedCategory.slug == 'car-wash') {
+      final selected = await Navigator.push<Map<String, dynamic>>(
+        context,
+        MaterialPageRoute(builder: (_) => const CarWashVehicleScreen()),
+      );
+      if (selected == null || !mounted) return;
+      answers.addAll(selected);
+    } else if (selectedCategory.customerFlowSteps.isNotEmpty) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
