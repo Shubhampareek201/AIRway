@@ -97,17 +97,27 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         selectedCategory.children.any(
           (child) => child.slug == 'car' || child.slug == 'bike',
         );
+    // When the catalogue opens directly on the Car/Bike folder, the tapped
+    // folder already tells us the vehicle kind. Keep the vehicle-details step,
+    // but do not send the customer to the folder's subcategory screen.
+    final isCarWashVehicleBranch =
+        (selectedCategory.slug == 'car' || selectedCategory.slug == 'bike') &&
+        selectedCategory.children.isNotEmpty;
 
-    if (isCarWashCategory) {
+    if (isCarWashCategory || isCarWashVehicleBranch) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
           builder: (_) => CarWashVehicleScreen(
-            vehicleTypeSteps: {
-              for (final child in selectedCategory.children)
-                if (child.slug == 'car' || child.slug == 'bike')
-                  child.slug: child.customerFlowSteps,
-            },
+            initialVehicleType:
+                isCarWashVehicleBranch ? selectedCategory.slug : null,
+            vehicleTypeSteps: isCarWashVehicleBranch
+                ? {selectedCategory.slug: selectedCategory.customerFlowSteps}
+                : {
+                    for (final child in selectedCategory.children)
+                      if (child.slug == 'car' || child.slug == 'bike')
+                        child.slug: child.customerFlowSteps,
+                  },
           ),
         ),
       );
@@ -155,16 +165,21 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     // Car Wash is a direct vehicle-to-service journey: once the customer
     // chooses Car/Bike and vehicle details, show all matching descendant
     // services instead of making them navigate through category screens.
-    if (isCarWashCategory) {
-      final vehicleSlug =
-          answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
+    if (isCarWashCategory || isCarWashVehicleBranch) {
+      final vehicleSlug = isCarWashVehicleBranch
+          ? selectedCategory.slug
+          : answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
               ? 'bike'
               : 'car';
-      Category? vehicleCategory;
-      for (final child in selectedCategory.children) {
-        if (child.slug == vehicleSlug) {
-          vehicleCategory = child;
-          break;
+      Category? vehicleCategory = isCarWashVehicleBranch
+          ? selectedCategory
+          : null;
+      if (vehicleCategory == null) {
+        for (final child in selectedCategory.children) {
+          if (child.slug == vehicleSlug) {
+            vehicleCategory = child;
+            break;
+          }
         }
       }
       if (vehicleCategory == null) {
