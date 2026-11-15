@@ -371,6 +371,16 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     if (key == 'bmw') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/BMW.svg/500px-BMW.svg.png';
     if (key == 'audi') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Audi_logo.svg/500px-Audi_logo.svg.png';
     if (key.contains('mercedes')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Mercedes-Benz_logo.svg/500px-Mercedes-Benz_logo.svg.png';
+    if (key.contains('maruti') || key.contains('suzuki')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Maruti_Suzuki_logo.svg/500px-Maruti_Suzuki_logo.svg.png';
+    if (key.contains('hyundai')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/33/Hyundai_logo.svg/500px-Hyundai_logo.svg.png';
+    if (key.contains('tata')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Tata_Motors_Logo.svg/500px-Tata_Motors_Logo.svg.png';
+    if (key.contains('honda')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Honda_Logo.svg/500px-Honda_Logo.svg.png';
+    if (key.contains('toyota')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/78/Toyota_Logo.svg/500px-Toyota_Logo.svg.png';
+    if (key.contains('kia')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2f/KIA_logo.svg/500px-KIA_logo.svg.png';
+    if (key.contains('mahindra')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/Mahindra_logo.svg/500px-Mahindra_logo.svg.png';
+    if (key.contains('volkswagen') || key == 'vw') return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Volkswagen_-_Logo.svg/250px-Volkswagen_-_Logo.svg.png';
+    if (key == 'mg' || key.contains('mgmotor')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c8/MG_Motor_2021_logo.svg/500px-MG_Motor_2021_logo.svg.png';
+    if (key.contains('renault')) return 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Renault_Logo.svg/500px-Renault_Logo.svg.png';
     return null;
   }
 
