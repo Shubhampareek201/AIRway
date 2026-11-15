@@ -91,6 +91,21 @@ urlpatterns = [
         name="address-detail",
     ),
     path(
+        "vehicles/",
+        CustomerVehicleListCreateView.as_view(),
+        name="customer-vehicle-list-create",
+    ),
+    path(
+        "vehicles/<int:vehicle_id>/set-default/",
+        SetDefaultCustomerVehicleView.as_view(),
+        name="customer-vehicle-set-default",
+    ),
+    path(
+        "vehicles/<int:vehicle_id>/",
+        CustomerVehicleDetailView.as_view(),
+        name="customer-vehicle-detail",
+    ),
+    path(
         "locations/search/",
         LocationSearchView.as_view(),
         name="location-search",
