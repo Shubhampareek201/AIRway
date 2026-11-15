@@ -362,10 +362,18 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             if ((item['variant_title'] ?? '').toString().isNotEmpty) Text(item['variant_title'].toString(), style: const TextStyle(fontSize: 12, color: sub)),
             if (item['category_answers'] is Map)
               for (final entry in (item['category_answers'] as Map).entries)
-                Text(
-                  '${entry.key.toString().replaceAll('_', ' ')}: ${entry.value}',
-                  style: const TextStyle(fontSize: 11, color: sub),
-                ),
+                if (!entry.key.toString().endsWith('_id') &&
+                    entry.key.toString() != 'vehicle_type' &&
+                    entry.value != null && entry.value.toString().isNotEmpty)
+                  Text(
+                    '${{
+                      'vehicle_kind': 'Vehicle',
+                      'vehicle_make': 'Company',
+                      'vehicle_model': 'Model',
+                      'vehicle_type_label': 'Vehicle size',
+                    }[entry.key.toString()] ?? entry.key.toString().replaceAll('_', ' ')}: ${entry.value}',
+                    style: const TextStyle(fontSize: 11, color: sub),
+                  ),
             Text(
               (item['service_unit_label']?.toString().isNotEmpty == true
                   ? item['quantity'].toString() + ' ' + item['service_unit_label'].toString()
