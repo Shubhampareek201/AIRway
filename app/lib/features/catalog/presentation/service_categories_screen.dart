@@ -148,6 +148,45 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     }
 
     if (!mounted) return;
+
+    // Car Wash is a direct vehicle-to-service journey: once the customer
+    // chooses Car/Bike and vehicle details, show all matching descendant
+    // services instead of making them navigate through category screens.
+    if (isCarWashCategory) {
+      final vehicleSlug =
+          answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
+              ? 'bike'
+              : 'car';
+      Category? vehicleCategory;
+      for (final child in selectedCategory.children) {
+        if (child.slug == vehicleSlug) {
+          vehicleCategory = child;
+          break;
+        }
+      }
+      if (vehicleCategory == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No matching vehicle services are configured yet.'),
+          ),
+        );
+        return;
+      }
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceListScreen(
+            categoryId: vehicleCategory!.id,
+            categoryTitle: vehicleCategory.title,
+            addressId: widget.addressId,
+            initialAnswers: answers,
+            includeDescendants: true,
+          ),
+        ),
+      );
+      return;
+    }
+
     if (selectedCategory.children.isNotEmpty) {
       var children = selectedCategory.children;
       final filterStep = selectedCategory.customerFlowSteps.where(
