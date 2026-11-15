@@ -845,9 +845,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
         answers = attrs.get("form_answers", instance.form_answers if instance else {})
         category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
-        if "_airway_issue_photo" in category_answers and (
-            instance is None or "_airway_issue_photo" not in (instance.category_answers or {})
-        ):
+        if "category_answers" in attrs and "_airway_issue_photo" in attrs["category_answers"]:
             raise serializers.ValidationError({
                 "category_answers": "Issue-photo metadata is managed by AIRway and cannot be supplied directly."
             })
