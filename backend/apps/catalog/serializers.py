@@ -204,10 +204,10 @@ class VehicleMakeSerializer(serializers.ModelSerializer):
         fields = ["id", "vehicle_type", "name", "logo", "sort_order"]
 
     def get_logo(self, obj):
-        if not obj.logo:
-            return None
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+        if obj.logo:
+            request = self.context.get("request")
+            return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+        return obj.logo_url or None
 
 
 class VehicleModelSerializer(serializers.ModelSerializer):
@@ -219,7 +219,7 @@ class VehicleModelSerializer(serializers.ModelSerializer):
         fields = ["id", "make", "make_name", "name", "image", "vehicle_class", "sort_order"]
 
     def get_image(self, obj):
-        if not obj.image:
-            return None
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.image.url) if request else obj.image.url
+        if obj.image:
+            request = self.context.get("request")
+            return request.build_absolute_uri(obj.image.url) if request else obj.image.url
+        return obj.image_url or None
