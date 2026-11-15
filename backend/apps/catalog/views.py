@@ -220,8 +220,7 @@ def _category_answer_service_ids(answers):
             if child_id in electrical_category_ids:
                 continue
             electrical_category_ids.add(child_id)
-            if not mapped_slugs or child["slug"].casefold() in mapped_slugs:
-                pending.append(child_id)
+            pending.append(child_id)
 
     if mapped_slugs:
         # Include descendants of each selected branch, but not sibling branches.
