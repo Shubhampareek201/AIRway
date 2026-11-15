@@ -127,8 +127,56 @@ def _category_answers_from_request(request):
 
 
 def _category_answer_service_ids(answers):
-    """Filter electrical services by the DB-configured work_type options."""
+    """Apply launch-category filters driven by the selected customer answers."""
+    vehicle_kind = answers.get("vehicle_kind") if isinstance(answers, dict) else None
     work_type = answers.get("work_type") if isinstance(answers, dict) else None
+    if vehicle_kind not in (None, ""):
+        selected = str(vehicle_kind).strip().casefold()
+        if selected not in ("car", "bike"):
+            raise ValidationError({"category_answers": "Choose Car or Bike."})
+        car_wash_roots = Category.objects.filter(
+            slug="car-wash", parent__isnull=True, is_active=True
+        ).values_list("id", flat=True)
+        root_ids = list(car_wash_roots)
+        if root_ids:
+            branch = Category.objects.filter(
+                parent_id__in=root_ids, slug=selected, is_active=True
+            ).first()
+            if branch:
+                branch_ids = {branch.id}
+                pending = [branch.id]
+                children = {}
+                for row in Category.objects.filter(is_active=True).values("id", "parent_id"):
+                    if row["parent_id"] is not None:
+                        children.setdefault(row["parent_id"], []).append(row["id"])
+                while pending:
+                    parent_id = pending.pop()
+                    for child_id in children.get(parent_id, []):
+                        if child_id not in branch_ids:
+                            branch_ids.add(child_id)
+                            pending.append(child_id)
+                matching = set(Service.objects.filter(
+                    is_active=True, category_id__in=branch_ids
+                ).values_list("id", flat=True))
+                outside_car_wash = set(Service.objects.filter(
+                    is_active=True, category__is_active=True
+                ).exclude(category_id__in=Category.objects.filter(
+                    parent_id__in=root_ids
+                ).values_list("id", flat=True)).values_list("id", flat=True))
+                # Exclude the opposite vehicle branch and retain unrelated launch services.
+                all_car_wash_ids = set()
+                for candidate in Category.objects.filter(parent_id__in=root_ids, is_active=True):
+                    all_car_wash_ids.add(candidate.id)
+                    stack = [candidate.id]
+                    while stack:
+                        parent_id = stack.pop()
+                        child_ids = list(Category.objects.filter(parent_id=parent_id, is_active=True).values_list("id", flat=True))
+                        all_car_wash_ids.update(child_ids)
+                        stack.extend(child_ids)
+                outside_car_wash = set(Service.objects.filter(
+                    is_active=True, category__is_active=True
+                ).exclude(category_id__in=all_car_wash_ids).values_list("id", flat=True))
+                return matching | outside_car_wash
     if work_type in (None, ""):
         return None
 
