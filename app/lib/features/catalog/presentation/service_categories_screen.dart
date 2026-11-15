@@ -93,7 +93,10 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
 
     final categoryIdentity = '${selectedCategory.slug} ${selectedCategory.title}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
     final isCarWashCategory = categoryIdentity.contains('car wash') ||
-        categoryIdentity.replaceAll(' ', '').contains('carwash');
+        categoryIdentity.replaceAll(' ', '').contains('carwash') ||
+        selectedCategory.children.any(
+          (child) => child.slug == 'car' || child.slug == 'bike',
+        );
 
     if (isCarWashCategory) {
       final selected = await Navigator.push<Map<String, dynamic>>(
