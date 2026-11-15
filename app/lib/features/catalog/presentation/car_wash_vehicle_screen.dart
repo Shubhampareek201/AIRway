@@ -132,7 +132,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     } else {
       setState(() => _loadingMakes = true);
       try {
-        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType);
+        final makes = await CatalogApi.listVehicleMakes(vehicle.vehicleType, vehicleClass: _vehicleClass);
         if (!mounted) return;
         setState(() {
           _makes = makes;
