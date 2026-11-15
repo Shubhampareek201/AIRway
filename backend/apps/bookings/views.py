@@ -1205,7 +1205,10 @@ class BookingIssuePhotoView(APIView):
         if not stored_path or not storage.exists(stored_path):
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
         content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
-        return FileResponse(storage.open(stored_path, "rb"), content_type=content_type)
+        response = FileResponse(storage.open(stored_path, "rb"), content_type=content_type)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 class CustomerCartView(APIView):
