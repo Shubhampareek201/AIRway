@@ -15,6 +15,7 @@ db.sqlite3
 
 # Uploaded files
 backend/media/
+backend/private_uploads/
 
 # Flutter / Dart
 .dart_tool/
