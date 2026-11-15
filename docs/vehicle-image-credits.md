@@ -26,5 +26,8 @@ The Flutter vehicle selector uses these Wikimedia Commons images as initial fall
 - Maruti Suzuki Swift: https://commons.wikimedia.org/wiki/File:Swift.jpg — Yathish annaram, CC BY-SA 4.0.
 - Hyundai Creta: https://commons.wikimedia.org/wiki/File:Hyundai_Creta_1.5_Plus_2024.jpg — RL GNZLZ, CC BY-SA 4.0.
 - Honda City: https://commons.wikimedia.org/wiki/File:0_Honda_City_(7th_generation)_sedan.jpg — Benespit, CC BY-SA 4.0.
+- Toyota Innova Crysta: https://commons.wikimedia.org/wiki/File:Toyota_Innova_Crysta.jpg — Abhishekptlbbk, CC BY-SA 4.0.
+- Tata Safari: https://commons.wikimedia.org/wiki/File:Tata_Safari.jpg — Corvettec6r, released into the public domain.
+- Toyota Fortuner Legender: https://commons.wikimedia.org/wiki/File:Toyota_Fortuner_4x2_Legender_2023_(7).jpg — Captainmorlypogi1959, CC BY-SA 4.0.
 
 The CC BY-SA photographs require attribution and share-alike compliance. These are starter fallbacks only, not a complete catalogue. Add and maintain the full set of make/model images through the AIRway admin catalogue before commercial launch.
