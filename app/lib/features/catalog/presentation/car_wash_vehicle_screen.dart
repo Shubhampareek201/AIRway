@@ -172,6 +172,7 @@ class _CarWashVehicleScreenState extends State<CarWashVehicleScreen> {
     final type = _vehicleType;
     if (type == null) return;
     setState(() {
+      _selectedSavedVehicleId = null;
       _vehicleClass = value;
       _make = null;
       _model = null;
