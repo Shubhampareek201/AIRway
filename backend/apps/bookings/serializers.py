@@ -801,13 +801,23 @@ class CartItemSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
+    category_answers = serializers.SerializerMethodField()
+    has_issue_photo = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
+
+    def get_category_answers(self, obj):
+        answers = dict(obj.category_answers or {})
+        answers.pop("_airway_issue_photo", None)
+        return answers
+
+    def get_has_issue_photo(self, obj):
+        return bool((obj.category_answers or {}).get("_airway_issue_photo"))
 
     class Meta:
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
-            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "notes",
+            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "notes",
             "pricing_snapshot", "line_total",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
@@ -951,13 +961,16 @@ class CartItemSerializer(serializers.ModelSerializer):
                 "unit_price": str(addon.price), "quantity": count, "total": str(total),
             })
 
+        visit_fee = Decimal(service.visit_fee) if service.booking_mode == "inspection" else Decimal("0")
+        unit_total = base + addon_total + visit_fee
         attrs["_cart_snapshot"] = {
             "base_title": base_title,
             "base_price": str(base),
+            "visit_fee": str(visit_fee),
             "addons": addon_rows,
             "addons_total": str(addon_total),
-            "unit_total": str(base + addon_total),
-            "line_total": str((base + addon_total) * quantity),
+            "unit_total": str(unit_total),
+            "line_total": str(unit_total * quantity),
         }
         return attrs
 
