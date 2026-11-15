@@ -100,7 +100,9 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
     final isCarWashVehicleBranch =
         selectedCategory.slug == 'car' || selectedCategory.slug == 'bike';
 
-    if (isCarWashCategory || isCarWashVehicleBranch) {
+    if ((isCarWashCategory || isCarWashVehicleBranch) &&
+        (answers['vehicle_kind'] == null ||
+            answers['vehicle_kind'].toString().trim().isEmpty)) {
       final selected = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
@@ -119,6 +121,25 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       );
       if (selected == null || !mounted) return;
       answers.addAll(selected);
+
+      // If this screen was opened at the Car Wash root, move into the
+      // selected vehicle branch. The next screen is its service categories.
+      if (isCarWashCategory) {
+        final vehicleSlug =
+            answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
+                ? 'bike'
+                : 'car';
+        final vehicleBranches = selectedCategory.children
+            .where((child) => child.slug.toLowerCase() == vehicleSlug)
+            .toList();
+        if (vehicleBranches.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No $vehicleSlug categories are configured yet.')),
+          );
+          return;
+        }
+        selectedCategory = vehicleBranches.first;
+      }
     } else if (selectedCategory.customerFlowSteps.isNotEmpty &&
         !(answers['vehicle_kind'] != null &&
             (selectedCategory.slug == 'car' || selectedCategory.slug == 'bike'))) {
@@ -158,57 +179,8 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
 
     if (!mounted) return;
 
-    // Car Wash is a direct vehicle-to-service journey: once the customer
-    // chooses Car/Bike and vehicle details, show all matching descendant
-    // services instead of making them navigate through category screens.
-    // Once the vehicle picker has returned a vehicle_kind, this is the
-    // vehicle-to-services transition regardless of which nested category
-    // level opened the picker. Do not route through the Car/Bike category card.
-    if (answers['vehicle_kind'] != null &&
-        answers['vehicle_kind'].toString().trim().isNotEmpty) {
-      final vehicleSlug =
-          answers['vehicle_kind']?.toString().toLowerCase() == 'bike'
-              ? 'bike'
-              : 'car';
-      Category? findVehicleCategory(List<Category> categories) {
-        for (final item in categories) {
-          if (item.slug.toLowerCase() == vehicleSlug) return item;
-          final nested = findVehicleCategory(item.children);
-          if (nested != null) return nested;
-        }
-        return null;
-      }
-
-      // The filtered API response can omit or reshape parent nodes after
-      // vehicle answers are applied. Search the refreshed tree first, then
-      // the original tree, so the customer never lands on "Car (N subcategories)".
-      final vehicleCategory =
-          findVehicleCategory([selectedCategory]) ??
-          findVehicleCategory(_categories);
-      if (vehicleCategory == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No matching vehicle services are configured yet.'),
-          ),
-        );
-        return;
-      }
-      final selectedVehicleCategory = vehicleCategory;
-      Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceListScreen(
-            categoryId: selectedVehicleCategory.id,
-            categoryTitle: selectedVehicleCategory.title,
-            addressId: widget.addressId,
-            initialAnswers: answers,
-            includeDescendants: true,
-          ),
-        ),
-      );
-      return;
-    }
-
+    // A vehicle choice narrows the backend catalogue, but the customer
+    // still chooses a service category before seeing individual services.
     if (selectedCategory.children.isNotEmpty) {
       var children = selectedCategory.children;
       final filterStep = selectedCategory.customerFlowSteps.where(
