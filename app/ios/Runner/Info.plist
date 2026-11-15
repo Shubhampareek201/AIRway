@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of the electrical issue so your AIRway professional can understand it.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo of the electrical issue to share with your AIRway professional.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
