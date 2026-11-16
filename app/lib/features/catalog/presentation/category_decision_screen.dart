@@ -5,11 +5,16 @@ import 'package:flutter/material.dart';
 class CategoryDecisionScreen extends StatefulWidget {
   final String categoryTitle;
   final List<Map<String, dynamic>> steps;
+  final Future<void> Function(
+    BuildContext context,
+    Map<String, dynamic> answers,
+  )? onContinue;
 
   const CategoryDecisionScreen({
     super.key,
     required this.categoryTitle,
     required this.steps,
+    this.onContinue,
   });
 
   @override
@@ -24,6 +29,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
 
   final _formKey = GlobalKey<FormState>();
   final Map<String, dynamic> _answers = {};
+  bool _submitting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +85,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
             ],
             const SizedBox(height: 8),
             FilledButton(
-              onPressed: _continue,
+              onPressed: _submitting ? null : _continue,
               style: FilledButton.styleFrom(
                 backgroundColor: green,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -212,7 +218,8 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: green, width: 1.5)),
   );
 
-  void _continue() {
+  Future<void> _continue() async {
+    if (_submitting) return;
     final missing = widget.steps.where((step) {
       if (step['required'] == false) return false;
       final key = step['key']?.toString() ?? '';
@@ -226,8 +233,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
     }
     final result = Map<String, dynamic>.from(_answers);
 
-    // A choice may explicitly point to its next category. Keep this routing
-    // metadata separate from customer answers so it is never sent with a booking.
+    // Keep Admin navigation metadata separate from booking answers.
     for (final step in widget.steps) {
       final key = step['key']?.toString();
       if (key == null) continue;
@@ -251,6 +257,18 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
         break;
       }
     }
-    Navigator.pop(context, result);
+
+    final handler = widget.onContinue;
+    if (handler == null) {
+      Navigator.pop(context, result);
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      // The decision page stays visible until the caller replaces this route.
+      await handler(context, result);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 }
