@@ -268,6 +268,51 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
+  Future<void> cancelService(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null || row['can_cancel'] != true) return;
+    final service = row['service'] is Map
+        ? (row['service']['service_title']?.toString() ?? 'this service')
+        : 'this service';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this service?'),
+        content: Text(
+          'Do you want to cancel $service? Any eligible captured payment will be sent for refund. Refund status will appear in this order.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep service'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cancel service'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await BookingApi.cancelBooking(bookingId, reason: 'Cancelled by customer');
+      if (!mounted) return;
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Service cancelled. Any eligible refund will be updated here.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel this service: $e')),
+      );
+    }
+  }
+
   Future<void> trackService(Map<String, dynamic> row) async {
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null) return;
@@ -693,10 +738,22 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         ],
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
-          onPressed: () => trackService(row),
+          onPressed: status == 'cancelled' ? null : () => trackService(row),
           icon: const Icon(Icons.location_searching_rounded, size: 17),
           label: const Text('Track this service'),
         )),
+        if (row['can_cancel'] == true) ...[
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => cancelService(row),
+            icon: const Icon(Icons.cancel_outlined, size: 17),
+            label: const Text('Cancel this service'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFB3261E),
+              side: const BorderSide(color: Color(0xFFE7B9B6)),
+            ),
+          )),
+        ],
         if (status == 'completed' && worker != null) ...[
           const SizedBox(height: 8),
           if (row['customer_has_rated'] == true)
