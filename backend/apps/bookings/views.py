@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, FormField, BookingWorkEvidence
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, FormField, BookingWorkEvidence
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
