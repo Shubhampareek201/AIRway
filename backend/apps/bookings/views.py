@@ -285,6 +285,16 @@ class BookingViewSet(viewsets.ModelViewSet):
         from apps.bookings.models import WorkerOffer
 
         booking = self.get_object()
+        recurring_plan = getattr(booking, "recurring_wash_plan", None)
+        if recurring_plan and recurring_plan.status in (
+            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+            RecurringWashPlan.Status.ACTIVE,
+            RecurringWashPlan.Status.PAUSED,
+        ):
+            return Response(
+                {"detail": "This booking belongs to a prepaid recurring plan. Cancel the recurring plan from its plan controls so all remaining visits and refunds are handled together."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = BookingCancelSerializer(data=request.data, context={"booking": booking})
         serializer.is_valid(raise_exception=True)
 
