@@ -286,6 +286,7 @@ class WorkerAssignmentDetail {
   final Map<String, dynamic>? quote;
   final bool canSubmitQuote;
   final List<Map<String, dynamic>> workEvidence;
+  final Map<String, dynamic>? recurringVisit;
   final WorkerAssignmentInfo assignment;
 
   WorkerAssignmentDetail({
@@ -314,6 +315,7 @@ class WorkerAssignmentDetail {
     this.quote,
     this.canSubmitQuote = false,
     this.workEvidence = const [],
+    this.recurringVisit,
     required this.assignment,
   });
 
@@ -344,6 +346,7 @@ class WorkerAssignmentDetail {
       quote: map['quote'] is Map ? Map<String, dynamic>.from(map['quote']) : null,
       canSubmitQuote: map['can_submit_quote'] == true,
       workEvidence: (map['work_evidence'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
+      recurringVisit: map['recurring_visit'] is Map ? Map<String, dynamic>.from(map['recurring_visit']) : null,
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
     );
   }
