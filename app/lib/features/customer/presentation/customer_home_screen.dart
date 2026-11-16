@@ -2306,7 +2306,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
                   child: _logoCrop(
                     widthFactor: 0.19,
                     heightFactor: 0.244,
-                    alignment: const Alignment(-0.4375, 0),
+                    alignment: const Alignment(-0.54, -0.003),
                   ),
                 ),
               ),
@@ -2319,7 +2319,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
                   child: _logoCrop(
                     widthFactor: 0.415,
                     heightFactor: 0.14,
-                    alignment: const Alignment(0.20, 0.03),
+                    alignment: const Alignment(0.29, 0.03),
                   ),
                 ),
               ),
