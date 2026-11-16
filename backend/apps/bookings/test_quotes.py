@@ -191,6 +191,15 @@ class InspectionQuoteLifecycleTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_worker_cannot_complete_inspection_before_customer_approves_quote(self):
+        response = self.worker_client.post(
+            f"/api/v1/workers/jobs/{self.assignment.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertIn("approve", response.data["detail"].lower())
+
     def test_quote_rejects_negative_or_malformed_prices(self):
         response = self.worker_client.post(
             f"/api/v1/workers/jobs/{self.assignment.id}/quote/",
