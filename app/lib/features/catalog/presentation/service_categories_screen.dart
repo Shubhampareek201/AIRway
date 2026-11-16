@@ -265,47 +265,40 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         );
         return;
       }
-      // Avoid an unnecessary intermediate screen when the selected branch
-      // contains exactly one leaf category and that category already has
-      // customer-visible services. Keep the category screen when there are
-      // multiple choices or when the child has its own subcategories.
-      if (children.length == 1 && children.first.children.isEmpty) {
-        final leafCategory = children.first;
-        try {
-          final leafServices = await CatalogApi.listServices(
-            category: leafCategory.id,
-            addressId: widget.addressId,
-            audience: answers['beauty_audience']?.toString(),
-            categoryAnswers: answers,
-          );
-          if (!mounted) return;
-          if (leafServices.isNotEmpty) {
-            Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ServiceListScreen(
-                  categoryId: leafCategory.id,
-                  categoryTitle: leafCategory.title,
-                  addressId: widget.addressId,
-                  initialAnswers: answers,
-                ),
-              ),
-            );
-            return;
-          }
-        } catch (_) {
-          // Preserve the existing category navigation if the look-ahead
-          // request fails; the destination screen can still load normally.
-        }
+      // Collapse redundant single-child category levels until the customer
+      // reaches a real choice, a category decision form, or a leaf whose
+      // services should be shown. This is data-driven; no category names are
+      // special-cased.
+      var destinationCategory = selectedCategory;
+      var nextCategories = children;
+      while (nextCategories.length == 1 &&
+          nextCategories.first.customerFlowSteps.isEmpty) {
+        destinationCategory = nextCategories.first;
+        nextCategories = destinationCategory.children;
+      }
+
+      if (nextCategories.isEmpty) {
+        Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ServiceListScreen(
+              categoryId: destinationCategory.id,
+              categoryTitle: destinationCategory.title,
+              addressId: widget.addressId,
+              initialAnswers: answers,
+            ),
+          ),
+        );
+        return;
       }
 
       Navigator.push<void>(
         context,
         MaterialPageRoute(
           builder: (_) => ServiceCategoriesScreen(
-            initialCategories: children,
+            initialCategories: nextCategories,
             addressId: widget.addressId,
-            title: selectedCategory.title,
+            title: destinationCategory.title,
             initialAnswers: answers,
           ),
         ),
