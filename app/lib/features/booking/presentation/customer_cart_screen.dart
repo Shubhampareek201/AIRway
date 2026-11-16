@@ -348,7 +348,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       backgroundColor: bg,
       foregroundColor: ink,
       titleSpacing: 20,
-      title: const Column(
+      title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('My Cart', style: AirwayText.titleLarge.copyWith(fontSize: 20, fontWeight: FontWeight.w800, color: ink)),
