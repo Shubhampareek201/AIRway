@@ -76,7 +76,7 @@ class ServiceAdmin(ModelAdmin):
         if obj.pricing_type == "quote" and obj.booking_mode == "inspection":
             return "Set inspection fee"
         if obj.pricing_type == "per_unit":
-            return "Unit pricing not supported yet"
+            return "Set unit label and a priced active unit rate"
         return "Add a priced active package"
     save_on_top = True
     fieldsets = (
