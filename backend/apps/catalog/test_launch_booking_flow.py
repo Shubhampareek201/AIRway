@@ -87,6 +87,27 @@ class LaunchBookingFlowConfigurationTests(TestCase):
             is_active=True,
         )
 
+    def test_car_wash_seed_includes_two_wheeler_exterior_packages_only(self):
+        call_command("seed_launch_catalogue", verbosity=0)
+
+        exterior = Service.objects.get(
+            category__slug="exterior-car-cleaning",
+            title="Exterior Car Wash",
+        )
+        interior = Service.objects.get(
+            category__slug="interior-car-cleaning",
+            title="Interior Car Cleaning",
+        )
+        self.assertTrue(
+            exterior.variants.filter(attributes__vehicle_type="Scooter").exists()
+        )
+        self.assertTrue(
+            exterior.variants.filter(attributes__vehicle_type="Motorcycle").exists()
+        )
+        self.assertFalse(
+            interior.variants.filter(attributes__vehicle_type__in=["Scooter", "Motorcycle"]).exists()
+        )
+
     def test_preview_rolls_back_all_configuration_changes(self):
         call_command("configure_launch_booking_flow", verbosity=0)
 
