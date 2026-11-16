@@ -4498,3 +4498,81 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             for visit in visits
         ]
         self.assertEqual(offsets, [0, 3, 7, 10, 14])
+
+
+    def test_paid_plan_materializes_future_bookings_idempotently_and_activates(self):
+        from apps.bookings.models import RecurringWashVisit
+        from apps.bookings.recurring import (
+            generate_recurring_wash_visit_ledger,
+            create_pending_recurring_visit_bookings,
+        )
+
+        generate_recurring_wash_visit_ledger(self.plan)
+        created = create_pending_recurring_visit_bookings(self.plan)
+        self.assertEqual(len(created), 4)
+        self.assertEqual(
+            RecurringWashVisit.objects.filter(
+                plan=self.plan,
+                status=RecurringWashVisit.Status.BOOKED,
+                booking__isnull=False,
+            ).count(),
+            4,
+        )
+        self.assertEqual(
+            Booking.objects.filter(
+                recurring_wash_visit__plan=self.plan
+            ).count(),
+            4,
+        )
+        self.assertEqual(create_pending_recurring_visit_bookings(self.plan), [])
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.status, RecurringWashPlan.Status.ACTIVE)
+        self.assertEqual(
+            sum(
+                (visit.prepaid_amount for visit in self.plan.visits.all()),
+                Decimal("0.00"),
+            ),
+            self.plan.quoted_total,
+        )
+
+    def test_recurring_visit_dispatch_uses_plan_prepaid_authorization_without_payment_row(self):
+        from apps.bookings.models import RecurringWashVisit, WorkerOffer
+        from apps.bookings.recurring import (
+            generate_recurring_wash_visit_ledger,
+            create_pending_recurring_visit_bookings,
+        )
+        from apps.bookings.dispatcher import DispatcherService
+
+        generate_recurring_wash_visit_ledger(self.plan)
+        create_pending_recurring_visit_bookings(self.plan)
+        visit = self.plan.visits.filter(booking__isnull=False).order_by("visit_number").last()
+        booking = visit.booking
+        worker_user = self._create_user("+919876543391")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+            rating_avg=4.8,
+        )
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker,
+                weekday=weekday,
+                start_time="00:00:00",
+                end_time="23:59:59",
+                is_active=True,
+            )
+
+        self.assertFalse(hasattr(booking, "payment"))
+        offers = DispatcherService.dispatch_offers(booking)
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].worker_id, worker.pk)
+        self.assertEqual(offers[0].status, WorkerOffer.Status.PENDING)
+        notice = Notification.objects.get(
+            user=worker_user,
+            data__recurring_visit_id=visit.pk,
+        )
+        self.assertEqual(notice.data["advance_received"], str(visit.prepaid_amount))
+        self.assertEqual(notice.data["remaining_balance"], "0.00")
