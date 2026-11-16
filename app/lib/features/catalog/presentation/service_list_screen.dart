@@ -215,7 +215,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
             .map((field) => field.key)
             .toSet();
-        formAnswers.removeWhere((key, _) => !visibleKeys.contains(key));
+        final hiddenKeys = formAnswers.keys
+            .where((key) => !visibleKeys.contains(key))
+            .toList();
+        for (final hiddenKey in hiddenKeys) {
+          formAnswers.remove(hiddenKey);
+          formControllers[hiddenKey]?.clear();
+        }
       });
     }
 
