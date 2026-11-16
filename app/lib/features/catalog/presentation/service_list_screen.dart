@@ -19,6 +19,7 @@ class _PackageSelection {
   final List<Map<String, dynamic>> addonSelections;
   final Map<String, dynamic> formAnswers;
   final File? issuePhoto;
+  final Map<String, File> formPhotos;
 
   const _PackageSelection.add(
     this.variant,
@@ -27,6 +28,7 @@ class _PackageSelection {
     this.addonSelections = const [],
     this.formAnswers = const {},
     this.issuePhoto,
+    this.formPhotos = const {},
   });
 }
 
@@ -196,6 +198,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     _packageNotesController.clear();
     final picker = ImagePicker();
     File? selectedPhoto;
+    final selectedFormPhotos = <String, File>{};
     ServiceVariant? selectedVariant;
     var quantity = 1;
     final selectedAddons = <int>{};
@@ -219,6 +222,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         for (final hiddenKey in hiddenKeys) {
           formAnswers.remove(hiddenKey);
           formControllers[hiddenKey]?.clear();
+          selectedFormPhotos.remove(hiddenKey);
         }
       });
     }
@@ -271,11 +275,66 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 );
               }
               if (field.fieldType == 'photo') {
+                final photo = selectedFormPhotos[field.key];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    '${field.label}: photo upload is not available in this booking form yet.',
-                    style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        field.isRequired ? '${field.label} *' : field.label,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AirwayColors.text),
+                      ),
+                      const SizedBox(height: 7),
+                      if (photo != null) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(photo, height: 130, width: double.infinity, fit: BoxFit.cover),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              selectedFormPhotos.remove(field.key);
+                              updateFormAnswer(field.key, null, setSheetState);
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Remove photo'),
+                          ),
+                        ),
+                      ] else
+                        Row(children: [
+                          Expanded(child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await picker.pickImage(
+                                source: ImageSource.camera, imageQuality: 82,
+                                maxWidth: 1600, maxHeight: 1600,
+                              );
+                              if (picked != null) {
+                                selectedFormPhotos[field.key] = File(picked.path);
+                                updateFormAnswer(field.key, 'uploaded', setSheetState);
+                              }
+                            },
+                            icon: const Icon(Icons.camera_alt_outlined),
+                            label: const Text('Camera'),
+                          )),
+                          const SizedBox(width: 8),
+                          Expanded(child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final picked = await picker.pickImage(
+                                source: ImageSource.gallery, imageQuality: 82,
+                                maxWidth: 1600, maxHeight: 1600,
+                              );
+                              if (picked != null) {
+                                selectedFormPhotos[field.key] = File(picked.path);
+                                updateFormAnswer(field.key, 'uploaded', setSheetState);
+                              }
+                            },
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Gallery'),
+                          )),
+                        ]),
+                    ],
                   ),
                 );
               }
@@ -562,6 +621,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                     addonSelections: selectedAddons.map((id) => {'id': id, 'quantity': 1}).toList(),
                                     formAnswers: Map<String, dynamic>.from(formAnswers),
                                     issuePhoto: selectedPhoto,
+                                    formPhotos: Map<String, File>.from(selectedFormPhotos),
                                   ),
                                 );
                               },
@@ -692,15 +752,24 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         notes: selection.notes,
       );
       final addedItemId = int.tryParse(updatedCart['added_item_id']?.toString() ?? '');
-      if (selection.issuePhoto != null) {
+      if (selection.issuePhoto != null || selection.formPhotos.isNotEmpty) {
         if (addedItemId == null) {
-          throw Exception('The service was added but its issue photo could not be attached.');
+          throw Exception('The service was added but its photos could not be attached.');
         }
         try {
-          await BookingApi.uploadCartItemIssuePhoto(
-            itemId: addedItemId,
-            photo: selection.issuePhoto!,
-          );
+          if (selection.issuePhoto != null) {
+            await BookingApi.uploadCartItemIssuePhoto(
+              itemId: addedItemId,
+              photo: selection.issuePhoto!,
+            );
+          }
+          for (final entry in selection.formPhotos.entries) {
+            await BookingApi.uploadCartItemFormPhoto(
+              itemId: addedItemId,
+              fieldKey: entry.key,
+              photo: entry.value,
+            );
+          }
         } catch (_) {
           try {
             await BookingApi.deleteCartItem(addedItemId);
@@ -708,7 +777,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           rethrow;
         }
       }
-      final latestCart = selection.issuePhoto == null
+      final latestCart = selection.issuePhoto == null && selection.formPhotos.isEmpty
           ? updatedCart
           : await BookingApi.getCart();
       CustomerCartState.updateFromCart(latestCart);
