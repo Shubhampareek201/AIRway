@@ -35,12 +35,14 @@ class ServiceDetailScreen extends StatefulWidget {
   final int serviceId;
   final int? addressId;
   final Map<String, dynamic> initialAnswers;
+  final bool openElectricalAddOnLoad;
 
   const ServiceDetailScreen({
     super.key,
     required this.serviceId,
     this.addressId,
     this.initialAnswers = const {},
+    this.openElectricalAddOnLoad = false,
   });
 
   @override
@@ -75,6 +77,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+    if (mounted && widget.openElectricalAddOnLoad && _service != null) {
+      await _addElectricalService(_service!);
     }
   }
 
@@ -467,6 +472,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       }
     } finally {
       notesController.dispose();
+      if (mounted && widget.openElectricalAddOnLoad) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
