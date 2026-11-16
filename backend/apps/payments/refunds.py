@@ -345,7 +345,12 @@ def request_recurring_plan_refund(plan):
             allocations.append((payment, line_total, wallet_part, gateway_part, item))
 
     captured_total = sum((row[1] for row in allocations), Decimal("0.00"))
-    refund_target = min(unused_total, captured_total).quantize(CENT)
+    if captured_total < unused_total:
+        raise ValueError(
+            "Captured payment allocations are lower than the unused prepaid visit balance. "
+            "Manual payment reconciliation is required before refunding."
+        )
+    refund_target = unused_total.quantize(CENT)
     if refund_target <= 0:
         raise ValueError(
             "No refundable captured payment allocation was found for the unused recurring visits."
