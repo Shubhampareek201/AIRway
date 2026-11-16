@@ -140,6 +140,13 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=WorkerOffer.Status.WITHDRAWN,
                 responded_at=timezone.now(),
             )
+            # Also close any pre-transition whole-order offer still pending.
+            WorkerOffer.objects.filter(
+                order=order, status=WorkerOffer.Status.PENDING
+            ).update(
+                status=WorkerOffer.Status.WITHDRAWN,
+                responded_at=timezone.now(),
+            )
             if active_remaining:
                 from apps.bookings.dispatcher import DispatcherService
                 DispatcherService.dispatch_order(order)
