@@ -330,30 +330,51 @@ def request_recurring_plan_refund(plan):
     if unused_total <= 0:
         return PaymentRefund.objects.none()
 
-    payments = Payment.objects.filter(
-        order_id=locked_plan.order_id,
-        status=Payment.Status.PAID,
-    ).order_by("created_at")
-    created_ids = []
-    allocated = Decimal("0.00")
+    payments = list(
+        Payment.objects.filter(
+            order_id=locked_plan.order_id,
+            status=Payment.Status.PAID,
+        ).order_by("created_at")
+    )
+    allocations = []
     for payment in payments:
-        line_total, _, _, item = _line_stage_amount(payment, locked_plan.source_booking)
-        if line_total <= 0:
-            continue
-        refund_amount = (
-            line_total * unused_total / Decimal(locked_plan.quoted_total)
-        ).quantize(CENT, rounding=ROUND_HALF_UP)
-        refund_amount = min(refund_amount, line_total)
-        if refund_amount <= 0:
-            continue
-        wallet_part, gateway_part = _component_allocation(
-            payment,
-            refund_amount,
-            payment.amount + payment.wallet_amount,
+        line_total, wallet_part, gateway_part, item = _line_stage_amount(
+            payment, locked_plan.source_booking
         )
-        amount = wallet_part + gateway_part
+        if line_total > 0:
+            allocations.append((payment, line_total, wallet_part, gateway_part, item))
+
+    captured_total = sum((row[1] for row in allocations), Decimal("0.00"))
+    refund_target = min(unused_total, captured_total).quantize(CENT)
+    if refund_target <= 0:
+        raise ValueError(
+            "No refundable captured payment allocation was found for the unused recurring visits."
+        )
+
+    created_ids = []
+    to_process = []
+    allocated = Decimal("0.00")
+    for index, (payment, line_total, wallet_captured, gateway_captured, item) in enumerate(allocations):
+        refund_amount = (
+            refund_target - allocated
+            if index == len(allocations) - 1
+            else (refund_target * line_total / captured_total).quantize(
+                CENT, rounding=ROUND_HALF_UP
+            )
+        )
+        refund_amount = min(refund_amount, line_total)
+        wallet_refund = (
+            refund_amount * wallet_captured / line_total
+        ).quantize(CENT, rounding=ROUND_HALF_UP)
+        wallet_refund = min(wallet_refund, wallet_captured)
+        gateway_refund = refund_amount - wallet_refund
+        if gateway_refund > gateway_captured:
+            gateway_refund = gateway_captured
+            wallet_refund = refund_amount - gateway_refund
+        amount = wallet_refund + gateway_refund
         if amount <= 0:
             continue
+
         with transaction.atomic():
             locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
             refund, was_created = PaymentRefund.objects.get_or_create(
@@ -362,25 +383,39 @@ def request_recurring_plan_refund(plan):
                 defaults={
                     "order_item": item,
                     "amount": amount,
-                    "wallet_amount": wallet_part,
-                    "gateway_amount": gateway_part,
+                    "wallet_amount": wallet_refund,
+                    "gateway_amount": gateway_refund,
                     "reason": PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION,
                     "status": PaymentRefund.Status.PENDING,
                 },
             )
-            if was_created:
-                created_ids.append(refund.pk)
-                allocated += amount
-            elif refund.reason != PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION:
+            if refund.reason != PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION:
                 raise ValueError(
                     "A different refund already exists for the recurring plan's source payment. "
                     "Manual refund reconciliation is required."
                 )
+            if (
+                refund.amount != amount
+                or refund.wallet_amount != wallet_refund
+                or refund.gateway_amount != gateway_refund
+            ):
+                raise ValueError(
+                    "The recurring plan already has a different refund allocation for this payment. "
+                    "Manual refund reconciliation is required."
+                )
+            allocated += amount
+            if was_created:
+                created_ids.append(refund.pk)
+            if refund.status == PaymentRefund.Status.PENDING:
+                to_process.append(refund.pk)
 
-    if not created_ids and allocated < unused_total:
-        raise ValueError(
-            "No refundable captured payment allocation was found for the unused recurring visits."
-        )
-    for refund_id in created_ids:
+    if allocated < refund_target:
+        raise ValueError("The captured recurring payment could not cover the unused visit refund.")
+
+    for refund_id in to_process:
         process_payment_refund(refund_id)
-    return PaymentRefund.objects.filter(pk__in=created_ids).order_by("created_at")
+    return PaymentRefund.objects.filter(
+        payment__order_id=locked_plan.order_id,
+        booking=locked_plan.source_booking,
+        reason=PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION,
+    ).order_by("created_at")
