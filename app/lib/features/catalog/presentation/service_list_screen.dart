@@ -410,6 +410,24 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _startAddFlow(Service service) async {
+    // Electrical uses the issue-details add popup from ServiceDetailScreen.
+    // Open it directly from the service card instead of the legacy
+    // BookingScheduledScreen wizard.
+    if (service.categoryRootSlug.toLowerCase() == 'electrical') {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ServiceDetailScreen(
+            serviceId: service.id,
+            addressId: widget.addressId,
+            initialAnswers: widget.initialAnswers,
+            openElectricalAddOnLoad: true,
+          ),
+        ),
+      );
+      return;
+    }
+
     // Beauty and Car Wash share the package-first add-to-cart experience.
     // Other service families retain their existing booking flow.
     final usesPackageCartFlow =
