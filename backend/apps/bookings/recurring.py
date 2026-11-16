@@ -130,6 +130,10 @@ def create_pending_recurring_visit_bookings(plan):
             visit.status = RecurringWashVisit.Status.BOOKED
             visit.save(update_fields=["status", "updated_at"])
             continue
+        if visit.scheduled_at <= timezone.now():
+            visit.admin_notes = "Scheduled time is in the past. Choose a future slot in Admin."
+            visit.save(update_fields=["admin_notes", "updated_at"])
+            continue
 
         try:
             check_service_available(locked.service, address=locked.address)
