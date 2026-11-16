@@ -109,7 +109,7 @@ def create_pending_recurring_visit_bookings(plan):
     This is safe to retry: each visit is locked and linked to at most one
     booking. Slot conflicts leave the visit pending for the next setup pass.
     """
-    locked = RecurringWashPlan.objects.select_for_update().select_related(
+    locked = RecurringWashPlan.objects.select_for_update(of=("self",)).select_related(
         "source_booking", "customer", "address__zone__city", "service", "variant"
     ).get(pk=plan.pk)
     if locked.status not in (
