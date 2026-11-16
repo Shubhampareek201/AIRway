@@ -309,7 +309,7 @@ class CatalogPackageIncludedTasksTest(TestCase):
             price="0.00",
         )
 
-        response = APIClient().get(f"/api/v1/catalog/services/{service.id}/")
+        response = APIClient().get(f"/api/v1/catalog/services/{service.id}/?for_worker=true")
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["variants"][0]["id"], variant.id)
@@ -355,7 +355,7 @@ class LaunchCatalogueScopeTest(TestCase):
         )
 
     def test_launch_categories_returns_only_four_approved_roots(self):
-        response = self.client.get("/api/v1/catalog/categories/?launch_only=true")
+        response = self.client.get("/api/v1/catalog/categories/?launch_only=true&for_worker=true")
         self.assertEqual(response.status_code, 200)
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
         self.assertEqual(
@@ -364,7 +364,7 @@ class LaunchCatalogueScopeTest(TestCase):
         )
 
     def test_launch_services_excludes_test_roots_and_keeps_subcategory_services(self):
-        response = self.client.get("/api/v1/catalog/services/?launch_only=true")
+        response = self.client.get("/api/v1/catalog/services/?launch_only=true&for_worker=true")
         self.assertEqual(response.status_code, 200)
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
         titles = {item["title"] for item in results}
