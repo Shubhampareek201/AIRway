@@ -134,7 +134,8 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
             order.save(update_fields=["status", "updated_at"])
             WorkerOffer.objects.filter(
-                order=order, status=WorkerOffer.Status.PENDING
+                booking=booking, order__isnull=True,
+                status=WorkerOffer.Status.PENDING
             ).update(
                 status=WorkerOffer.Status.WITHDRAWN,
                 responded_at=timezone.now(),
