@@ -429,6 +429,14 @@ def _process_verified_payment(
                     else Order.Status.PAID
                 )
                 parent_order.save(update_fields=["status", "updated_at"])
+                from apps.bookings.models import RecurringWashPlan
+                RecurringWashPlan.objects.filter(
+                    order=parent_order,
+                    status=RecurringWashPlan.Status.AWAITING_PAYMENT,
+                ).update(
+                    status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                    updated_at=timezone.now(),
+                )
                 message = f"Final balance for AIRway order #{parent_order.id} was received. Thank you."
             else:
                 # Preserve the old full-payment transition for orders created
