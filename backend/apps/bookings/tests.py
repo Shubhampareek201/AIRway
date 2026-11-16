@@ -4227,6 +4227,32 @@ class CustomerCartIssuePhotoAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(Decimal(snapshot["visit_fee"]), Decimal("125.00"))
         self.assertEqual(Decimal(snapshot["line_total"]), Decimal("625.00"))
 
+    def test_quantity_pricing_multiplies_package_and_addons_but_not_visit_fee(self):
+        addon = AddOn.objects.create(
+            service=self.service,
+            title="Extra point",
+            mrp=120,
+            price=100,
+        )
+        serializer = CartItemSerializer(
+            data={
+                "service": self.service.pk,
+                "variant": self.variant.pk,
+                "quantity": 2,
+                "addon_selections": [{"id": addon.pk, "quantity": 1}],
+                "form_answers": {},
+                "category_answers": {"room": "Bedroom"},
+                "notes": "",
+            },
+            context={"allow_incomplete": True},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        snapshot = serializer.validated_data["_cart_snapshot"]
+        self.assertEqual(Decimal(snapshot["base_subtotal"]), Decimal("1000.00"))
+        self.assertEqual(Decimal(snapshot["addons_subtotal"]), Decimal("200.00"))
+        self.assertEqual(Decimal(snapshot["visit_fee"]), Decimal("125.00"))
+        self.assertEqual(Decimal(snapshot["line_total"]), Decimal("1325.00"))
+
     def test_photo_is_private_and_survives_checkout_for_assigned_worker(self):
         upload = self.client.post(
             f"/api/v1/bookings/cart/items/{self.cart_item.pk}/issue-photo/",
