@@ -22,7 +22,7 @@ class CatalogSerializerFieldRegressionTest(TestCase):
         self.client = APIClient()
 
     def test_service_detail_includes_category_slug(self):
-        response = self.client.get(f"/api/v1/catalog/services/{self.service.id}/")
+        response = self.client.get(f"/api/v1/catalog/services/{self.service.id}/?for_worker=true")
 
         self.assertEqual(response.status_code, 200, response.data)
 
@@ -103,7 +103,7 @@ class CatalogServiceListFilterTest(TestCase):
 
     def test_list_with_category_filter(self):
         """category filter should return services from only that category."""
-        response = self.client.get(f"/api/v1/catalog/services/?category={self.beauty.id}")
+        response = self.client.get(f"/api/v1/catalog/services/?for_worker=true&category={self.beauty.id}")
         self.assertEqual(response.status_code, 200)
 
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
@@ -112,7 +112,7 @@ class CatalogServiceListFilterTest(TestCase):
 
     def test_list_combined_filters(self):
         """Multiple filters can be combined."""
-        response = self.client.get(f"/api/v1/catalog/services/?category={self.cleaning.id}&is_popular=true")
+        response = self.client.get(f"/api/v1/catalog/services/?for_worker=true&category={self.cleaning.id}&is_popular=true")
         self.assertEqual(response.status_code, 200)
 
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
@@ -144,18 +144,18 @@ class CatalogServiceDetailTest(TestCase):
 
     def test_detail_returns_200_for_active_service(self):
         """Active service should return 200 with full data."""
-        response = self.client.get(f"/api/v1/catalog/services/{self.active_service.id}/")
+        response = self.client.get(f"/api/v1/catalog/services/{self.active_service.id}/?for_worker=true")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["title"], "Active Service")
 
     def test_detail_returns_404_for_inactive_service(self):
         """Inactive service should return 404 (filtered by is_active=True)."""
-        response = self.client.get(f"/api/v1/catalog/services/{self.inactive_service.id}/")
+        response = self.client.get(f"/api/v1/catalog/services/{self.inactive_service.id}/?for_worker=true")
         self.assertEqual(response.status_code, 404)
 
     def test_detail_returns_404_for_nonexistent_service(self):
         """Non-existent service ID should return 404."""
-        response = self.client.get(f"/api/v1/catalog/services/{self.nonexistent_id}/")
+        response = self.client.get(f"/api/v1/catalog/services/{self.nonexistent_id}/?for_worker=true")
         self.assertEqual(response.status_code, 404)
 
 class WorkerEnrolledCatalogueVisibilityTest(TestCase):
