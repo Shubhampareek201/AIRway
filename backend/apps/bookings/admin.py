@@ -293,7 +293,7 @@ class RecurringWashVisitInline(TabularInline):
     can_delete = False
     readonly_fields = (
         "visit_number", "scheduled_at", "booking", "prepaid_amount",
-        "status", "created_at", "updated_at",
+        "status", "admin_notes", "created_at", "updated_at",
     )
     fields = readonly_fields
 
