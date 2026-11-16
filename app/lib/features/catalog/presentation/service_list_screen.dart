@@ -59,7 +59,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   bool _loading = true;
   String? _error;
   final _searchController = TextEditingController();
-  final _packageNotesController = TextEditingController();
   String _query = '';
 
   @override
@@ -71,7 +70,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _packageNotesController.dispose();
     super.dispose();
   }
 
@@ -195,7 +193,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     Service service,
     List<ServiceVariant> variants,
   ) async {
-    _packageNotesController.clear();
+    var packageNotes = '';
     final picker = ImagePicker();
     File? selectedPhoto;
     final selectedFormPhotos = <String, File>{};
@@ -203,7 +201,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     var quantity = 1;
     final selectedAddons = <int>{};
     final formAnswers = <String, dynamic>{};
-    final formControllers = <String, TextEditingController>{};
     final fieldKeys = <String, GlobalKey>{};
     final packageSelectionKey = GlobalKey();
     final invalidFields = <String>{};
@@ -254,7 +251,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         for (final hiddenKey in hiddenKeys) {
           formAnswers.remove(hiddenKey);
           invalidFields.remove(hiddenKey);
-          formControllers[hiddenKey]?.clear();
           selectedFormPhotos.remove(hiddenKey);
         }
       });
@@ -412,15 +408,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   ),
                 );
               }
-              final controller = formControllers.putIfAbsent(
-                field.key,
-                () => TextEditingController(text: current),
-              );
               return Padding(
                 key: fieldKeys.putIfAbsent(field.key, () => GlobalKey()),
                 padding: const EdgeInsets.only(bottom: 12),
-                child: TextField(
-                  controller: controller,
+                child: TextFormField(
+                  key: ValueKey('${field.key}:$current'),
+                  initialValue: current,
                   keyboardType: field.fieldType == 'number'
                       ? const TextInputType.numberWithOptions(decimal: true)
                       : TextInputType.text,
@@ -439,7 +432,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             final value = '${picked.year.toString().padLeft(4, '0')}-'
                                 '${picked.month.toString().padLeft(2, '0')}-'
                                 '${picked.day.toString().padLeft(2, '0')}';
-                            controller.text = value;
                             updateFormAnswer(field.key, value, setSheetState);
                           }
                         }
@@ -605,7 +597,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ),
                           const SizedBox(height: 7),
                           TextField(
-                            controller: _packageNotesController,
+                            onChanged: (value) => packageNotes = value,
                             minLines: 2,
                             maxLines: 4,
                             maxLength: 1000,
@@ -725,7 +717,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                   sheetContext,
                                   _PackageSelection.add(
                                     selectedVariant,
-                                    _packageNotesController.text.trim(),
+                                    packageNotes.trim(),
                                     quantity: quantity,
                                     addonSelections: selectedAddons.map((id) => {'id': id, 'quantity': 1}).toList(),
                                     formAnswers: Map<String, dynamic>.from(formAnswers),
@@ -752,12 +744,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         ),
       );
     } finally {
-      // Let the bottom-sheet route finish removing its TextField elements
-      // before disposing controllers that were attached to those fields.
-      await WidgetsBinding.instance.endOfFrame;
-      for (final controller in formControllers.values) {
-        controller.dispose();
-      }
+      // The modal route has completed before this method resumes.
+      // Dispose only the scroll controller; form fields own their internal state.
       sheetScrollController.dispose();
     }
   }
