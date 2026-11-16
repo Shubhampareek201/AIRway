@@ -58,12 +58,16 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     final date = dates[sourceId];
     final time = times[sourceId];
     if (date == null || time == null || !_slotConfirmed.contains(sourceId)) return;
+    final sourceItems = items.where((item) => item['id'] == sourceId).toList();
+    final sourceUsesPickupDrop = sourceItems.isNotEmpty && sourceItems.first['booking_mode'] == 'pickup_drop';
     setState(() {
       for (final item in items) {
         final id = item['id'] as int;
         dates[id] = date;
         times[id] = time;
-        if (dropTimes.containsKey(sourceId)) dropTimes[id] = dropTimes[sourceId]!;
+        if (sourceUsesPickupDrop && item['booking_mode'] == 'pickup_drop') {
+          dropTimes[id] = dropTimes[sourceId]!;
+        }
         _slotConfirmed.add(id);
       }
     });
