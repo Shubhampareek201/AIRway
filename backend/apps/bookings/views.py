@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote
+from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, FormField
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -1345,6 +1345,91 @@ class CustomerCartIssuePhotoView(APIView):
         return Response({"has_issue_photo": False}, status=status.HTTP_200_OK)
 
 
+class CustomerCartFormPhotoView(APIView):
+    """Secure upload/delete for Admin-configured service photo questions."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_item_and_field(self, request, item_id, field_key):
+        item = get_object_or_404(
+            CartItem.objects.select_related("cart", "service"),
+            pk=item_id,
+            cart__customer=request.user,
+        )
+        field = get_object_or_404(
+            FormField,
+            service=item.service,
+            key=field_key,
+            field_type=FormField.FieldType.PHOTO,
+            is_active=True,
+        )
+        return item, field
+
+    def post(self, request, item_id, field_key):
+        item, field = self._get_item_and_field(request, item_id, field_key)
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        photo = request.FILES.get("photo")
+        if photo is None:
+            return Response({"detail": "Choose a photo to upload."}, status=status.HTTP_400_BAD_REQUEST)
+        if photo.size > 5 * 1024 * 1024:
+            return Response({"detail": "Photo must be 5 MB or smaller."}, status=status.HTTP_400_BAD_REQUEST)
+        if photo.content_type not in ("image/jpeg", "image/png", "image/webp"):
+            return Response({"detail": "Upload a JPG, PNG or WEBP image."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from PIL import Image
+            image = Image.open(photo)
+            image_width, image_height = image.size
+            image_format = image.format
+            image.verify()
+            if image_format not in ("JPEG", "PNG", "WEBP"):
+                raise ValueError("Unsupported image format")
+        except Exception:
+            return Response({"detail": "The uploaded file is not a valid supported image."}, status=status.HTTP_400_BAD_REQUEST)
+        finally:
+            photo.seek(0)
+        if image_width > 6000 or image_height > 6000:
+            return Response({"detail": "Image dimensions must not exceed 6000 × 6000 pixels."}, status=status.HTTP_400_BAD_REQUEST)
+
+        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}[image_format]
+        stored_path = storage.save(
+            f"booking_form_photos/customer_{request.user.pk}/cart_item_{item.pk}/{field.key}/{uuid.uuid4().hex}{extension}",
+            photo,
+        )
+        answers = dict(item.category_answers or {})
+        photo_map = dict(answers.get("_airway_form_photos") or {})
+        previous_path = photo_map.get(field.key)
+        photo_map[field.key] = stored_path
+        answers["_airway_form_photos"] = photo_map
+        form_answers = dict(item.form_answers or {})
+        form_answers[field.key] = "uploaded"
+        item.category_answers = answers
+        item.form_answers = form_answers
+        item.save(update_fields=["category_answers", "form_answers", "updated_at"])
+        if previous_path and previous_path != stored_path:
+            storage.delete(previous_path)
+        return Response({"field_key": field.key, "uploaded": True}, status=status.HTTP_200_OK)
+
+    def delete(self, request, item_id, field_key):
+        item, field = self._get_item_and_field(request, item_id, field_key)
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        answers = dict(item.category_answers or {})
+        photo_map = dict(answers.get("_airway_form_photos") or {})
+        stored_path = photo_map.pop(field.key, None)
+        if photo_map:
+            answers["_airway_form_photos"] = photo_map
+        else:
+            answers.pop("_airway_form_photos", None)
+        form_answers = dict(item.form_answers or {})
+        form_answers.pop(field.key, None)
+        item.category_answers = answers
+        item.form_answers = form_answers
+        item.save(update_fields=["category_answers", "form_answers", "updated_at"])
+        if stored_path:
+            storage.delete(stored_path)
+        return Response({"field_key": field.key, "uploaded": False}, status=status.HTTP_200_OK)
+
+
 class BookingIssuePhotoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1363,7 +1448,20 @@ class BookingIssuePhotoView(APIView):
         if not allowed:
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        stored_path = (booking.customer_answers or {}).get("_airway_issue_photo")
+        field_key = str(request.query_params.get("field_key", "")).strip()
+        if field_key:
+            photo_map = (booking.customer_answers or {}).get("_airway_form_photos", {})
+            stored_path = photo_map.get(field_key) if isinstance(photo_map, dict) else None
+            field_exists = FormField.objects.filter(
+                service=booking.service,
+                key=field_key,
+                field_type=FormField.FieldType.PHOTO,
+                is_active=True,
+            ).exists()
+            if not field_exists:
+                return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            stored_path = (booking.customer_answers or {}).get("_airway_issue_photo")
         if not stored_path or not storage.exists(stored_path):
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
         content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
