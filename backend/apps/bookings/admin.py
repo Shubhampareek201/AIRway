@@ -361,7 +361,10 @@ class RecurringWashPlanAdmin(ModelAdmin):
                 if not visit.booking_id or visit.booking.scheduled_at == visit.scheduled_at:
                     continue
                 booking = visit.booking
-                if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+                if (
+                    booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                    or hasattr(booking, "assignment")
+                ):
                     raise ValidationError(
                         "An assigned, started, completed or cancelled visit cannot be rescheduled from this Admin inline."
                     )
@@ -394,6 +397,7 @@ class RecurringWashPlanAdmin(ModelAdmin):
                     booking=booking,
                     status__in=(
                         WorkerOffer.Status.PENDING,
+                        WorkerOffer.Status.ACCEPTED,
                         WorkerOffer.Status.DECLINED,
                         WorkerOffer.Status.EXPIRED,
                     ),
