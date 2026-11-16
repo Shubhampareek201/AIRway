@@ -826,6 +826,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       ));
     } catch (e) {
       if (mounted) {
+        try {
+          await loadOrder(showLoader: false);
+        } catch (_) {}
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not update estimate: $e')),
         );
