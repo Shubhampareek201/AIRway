@@ -265,11 +265,20 @@ class DispatcherService:
             )
             from apps.payments.models import Payment
             if order or payment_order:
+                from decimal import Decimal
                 payment_context = order or payment_order
                 allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
-                customer_total = str(payment_context.total_amount)
-                advance_received = str(allocation.get("advance_total", "0"))
-                remaining_balance = str(allocation.get("balance_total", "0"))
+                order_item = getattr(booking, "order_item", None)
+                advance_row = next(
+                    (row for row in allocation.get("advance", [])
+                     if order_item and row.get("order_item_id") == order_item.id),
+                    {},
+                )
+                customer_total = str(order_item.line_total if order_item else payment_context.total_amount)
+                advance_received = str(advance_row.get("amount", "0.00")) if order_item else str(allocation.get("advance_total", "0"))
+                remaining_balance = str(max(
+                    Decimal(customer_total) - Decimal(advance_received), Decimal("0.00")
+                ))
                 address_text = payment_context.address.full_address
             else:
                 from decimal import Decimal
