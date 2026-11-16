@@ -19,6 +19,7 @@ from .models import (
     BookingQuote,
     BookingWorkEvidence,
     RecurringWashPlan,
+    RecurringWashVisit,
 )
 
 
