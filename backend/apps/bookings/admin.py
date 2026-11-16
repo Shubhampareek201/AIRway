@@ -352,7 +352,10 @@ class RecurringWashPlanAdmin(ModelAdmin):
     def save_formset(self, request, form, formset, change):
         instances = formset.save()
         if formset.model is RecurringWashVisit:
-            from apps.bookings.services import check_service_available, check_slot_availability
+            from apps.bookings.services import (
+                check_service_available, check_slot_availability,
+                SlotConflictError, ServiceUnavailableError,
+            )
 
             for visit in instances:
                 if not visit.booking_id or visit.booking.scheduled_at == visit.scheduled_at:
@@ -385,7 +388,7 @@ class RecurringWashPlanAdmin(ModelAdmin):
                             else None
                         ),
                     )
-                except Exception as exc:
+                except (SlotConflictError, ServiceUnavailableError) as exc:
                     raise ValidationError(str(exc)) from exc
                 WorkerOffer.objects.filter(
                     booking=booking,
