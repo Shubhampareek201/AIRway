@@ -110,6 +110,31 @@ class Booking(TimeStampedModel):
         return self.status in [self.Status.PENDING, self.Status.CONFIRMED, self.Status.ASSIGNED]
 
 
+class BookingWorkEvidence(TimeStampedModel):
+    """Private before/after work photos uploaded by the assigned professional."""
+
+    class Stage(models.TextChoices):
+        BEFORE = "before", "Before work"
+        AFTER = "after", "After work"
+
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="work_evidence"
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile", on_delete=models.PROTECT, related_name="work_evidence"
+    )
+    stage = models.CharField(max_length=8, choices=Stage.choices, db_index=True)
+    image_path = models.CharField(max_length=500)
+    note = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [models.Index(fields=["booking", "stage"], name="booking_evidence_stage_idx")]
+
+    def __str__(self):
+        return f"{self.get_stage_display()} evidence for booking #{self.booking_id}"
+
+
 class BookingQuote(TimeStampedModel):
     """Worker-submitted inspection estimate requiring explicit customer approval."""
 
