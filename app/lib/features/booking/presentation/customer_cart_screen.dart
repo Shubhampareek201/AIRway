@@ -640,6 +640,35 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             ]),
           ),
         ),
+        if (item['has_issue_photo'] == true || item['has_form_photos'] == true)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 0, 13, 11),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 5, right: 9),
+                  child: Icon(Icons.photo_library_outlined, color: violet, size: 17),
+                ),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (item['has_issue_photo'] == true)
+                        _cartPhotoPreview(itemId: id, fieldKey: null, issuePhoto: true),
+                      for (final key in (item['form_photo_keys'] as List? ?? const []))
+                        _cartPhotoPreview(
+                          itemId: id,
+                          fieldKey: key.toString(),
+                          issuePhoto: false,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
           child: InkWell(
@@ -684,28 +713,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 Padding(padding: const EdgeInsets.only(top: 5), child: Text('Inspection / visit charge: ₹' + number(snapshot['visit_fee']).toStringAsFixed(0) + ' (included once)', style: const TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w700))),
               if (item['notes']?.toString().trim().isNotEmpty == true)
                 Padding(padding: const EdgeInsets.only(top: 7), child: Text('Issue description: ' + item['notes'].toString(), style: const TextStyle(fontSize: 11, color: sub))),
-              if (item['has_issue_photo'] == true || item['has_form_photos'] == true) ...[
-                const SizedBox(height: 10),
-                const Text('ATTACHED PHOTOS', style: TextStyle(
-                  fontSize: 9, fontWeight: FontWeight.w900,
-                  color: sub, letterSpacing: .8,
-                )),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 9,
-                  runSpacing: 9,
-                  children: [
-                    if (item['has_issue_photo'] == true)
-                      _cartPhotoPreview(itemId: id, fieldKey: null, issuePhoto: true),
-                    for (final key in (item['form_photo_keys'] as List? ?? const []))
-                      _cartPhotoPreview(
-                        itemId: id,
-                        fieldKey: key.toString(),
-                        issuePhoto: false,
-                      ),
-                  ],
-                ),
-              ],
+
               if (addons.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 const Text('ADD-ONS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 9, color: sub, letterSpacing: .8)),
