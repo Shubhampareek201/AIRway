@@ -17,7 +17,7 @@ from apps.workers.models import (
     WorkerZone,
     WorkerSchedule,
 )
-from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem, RecurringWashPlan
+from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem, RecurringWashPlan, RecurringWashVisit
 from django.contrib.auth.hashers import make_password
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
@@ -4462,6 +4462,69 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             vehicle_quantity=1,
             quoted_total=Decimal("1000.00"),
             status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+        )
+
+    def test_customer_can_reschedule_an_unassigned_recurring_visit(self):
+        from apps.bookings.views import CustomerRecurringWashVisitRescheduleView
+
+        visits = __import__(
+            "apps.bookings.recurring", fromlist=["generate_recurring_wash_visit_ledger"]
+        ).generate_recurring_wash_visit_ledger(self.plan)
+        visit = visits[1]
+        new_time = timezone.now() + timedelta(days=10)
+        client = APIClient()
+        client.force_authenticate(user=self.customer)
+        with patch("apps.bookings.views.check_service_available"), patch(
+            "apps.bookings.views.check_slot_availability"
+        ):
+            response = client.post(
+                f"/api/v1/bookings/recurring-visits/{visit.pk}/reschedule/",
+                {"scheduled_at": new_time.isoformat()},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        visit.refresh_from_db()
+        self.assertEqual(visit.scheduled_at, new_time)
+        self.assertEqual(visit.status, RecurringWashVisit.Status.PENDING_SETUP)
+        self.assertEqual(visit.admin_notes, "")
+
+    def test_customer_can_cancel_plan_and_preserve_completed_visits(self):
+        from apps.bookings.views import CustomerRecurringWashPlanCancelView
+        from apps.bookings.recurring import generate_recurring_wash_visit_ledger
+
+        visits = generate_recurring_wash_visit_ledger(self.plan)
+        client = APIClient()
+        client.force_authenticate(user=self.customer)
+        response = client.post(
+            f"/api/v1/bookings/recurring-plans/{self.plan.pk}/cancel/",
+            {"reason": "No longer required"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.status, RecurringWashPlan.Status.CANCELLED)
+        visits[0].refresh_from_db()
+        visits[1].refresh_from_db()
+        self.assertEqual(visits[0].status, RecurringWashVisit.Status.COMPLETED)
+        self.assertEqual(visits[1].status, RecurringWashVisit.Status.CANCELLED)
+
+    def test_recurring_celery_tasks_are_scheduled_in_beat(self):
+        from config.celery import app
+        from apps.bookings.tasks import (
+            setup_recurring_wash_visit_bookings,
+            dispatch_due_recurring_wash_visits,
+        )
+
+        schedule = app.conf.beat_schedule
+        self.assertIn("setup-recurring-wash-visits-every-five-minutes", schedule)
+        self.assertIn("dispatch-due-recurring-wash-visits-every-minute", schedule)
+        self.assertEqual(
+            schedule["setup-recurring-wash-visits-every-five-minutes"]["task"],
+            setup_recurring_wash_visit_bookings.name,
+        )
+        self.assertEqual(
+            schedule["dispatch-due-recurring-wash-visits-every-minute"]["task"],
+            dispatch_due_recurring_wash_visits.name,
         )
 
     def test_paid_plan_generates_idempotent_daily_visit_ledger_and_allocates_prepaid_value(self):
