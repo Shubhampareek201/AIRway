@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
@@ -16,6 +19,7 @@ class _PackageSelection {
   final int quantity;
   final List<Map<String, dynamic>> addonSelections;
   final Map<String, dynamic> formAnswers;
+  final File? issuePhoto;
 
   const _PackageSelection.add(
     this.variant,
@@ -23,6 +27,7 @@ class _PackageSelection {
     this.quantity = 1,
     this.addonSelections = const [],
     this.formAnswers = const {},
+    this.issuePhoto,
   }) : openDetails = false;
 
   const _PackageSelection.openDetails()
@@ -31,6 +36,7 @@ class _PackageSelection {
         quantity = 1,
         addonSelections = const [],
         formAnswers = const {},
+        issuePhoto = null,
         openDetails = true;
 }
 
@@ -198,6 +204,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     List<ServiceVariant> variants,
   ) async {
     _packageNotesController.clear();
+    final picker = ImagePicker();
+    File? selectedPhoto;
     ServiceVariant? selectedVariant;
     var quantity = 1;
     final selectedAddons = <int>{};
@@ -476,9 +484,55 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               contentPadding: const EdgeInsets.all(13),
                             ),
                           ),
+                          if (service.categoryRootSlug.toLowerCase() == 'electrical') ...[
+                            const SizedBox(height: 12),
+                            const Text('Issue photo (optional)', style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text,
+                            )),
+                            const SizedBox(height: 7),
+                            if (selectedPhoto != null) ...[
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.file(selectedPhoto!, height: 140, width: double.infinity, fit: BoxFit.cover),
+                              ),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: () => setSheetState(() => selectedPhoto = null),
+                                  icon: const Icon(Icons.delete_outline),
+                                  label: const Text('Remove photo'),
+                                ),
+                              ),
+                            ] else
+                              Row(children: [
+                                Expanded(child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final picked = await picker.pickImage(
+                                      source: ImageSource.camera, imageQuality: 82,
+                                      maxWidth: 1600, maxHeight: 1600,
+                                    );
+                                    if (picked != null) setSheetState(() => selectedPhoto = File(picked.path));
+                                  },
+                                  icon: const Icon(Icons.camera_alt_outlined),
+                                  label: const Text('Camera'),
+                                )),
+                                const SizedBox(width: 8),
+                                Expanded(child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final picked = await picker.pickImage(
+                                      source: ImageSource.gallery, imageQuality: 82,
+                                      maxWidth: 1600, maxHeight: 1600,
+                                    );
+                                    if (picked != null) setSheetState(() => selectedPhoto = File(picked.path));
+                                  },
+                                  icon: const Icon(Icons.photo_library_outlined),
+                                  label: const Text('Gallery'),
+                                )),
+                              ]),
+                          ],
                           if (service.bookingMode == 'inspection' && service.visitFee > 0) ...[
                             const SizedBox(height: 10),
-                            Text('Inspection / visit charge: ₹${service.visitFee.toStringAsFixed(0)}',
+                            Text('Inspection / visit charge: ₹${service.visitFee.toStringAsFixed(0)} (charged once)',
                               style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
                           ],
                         ],
@@ -517,6 +571,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                     quantity: quantity,
                                     addonSelections: selectedAddons.map((id) => {'id': id, 'quantity': 1}).toList(),
                                     formAnswers: Map<String, dynamic>.from(formAnswers),
+                                    issuePhoto: selectedPhoto,
                                   ),
                                 );
                               },
@@ -618,31 +673,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _startAddFlow(Service service) async {
-    // Electrical uses the issue-details add popup from ServiceDetailScreen.
-    // Open it directly from the service card instead of the legacy
-    // BookingScheduledScreen wizard.
-    if (service.categoryRootSlug.toLowerCase() == 'electrical') {
-      await Navigator.of(context).push<void>(
-        PageRouteBuilder<void>(
-          opaque: false,
-          barrierColor: Colors.transparent,
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-          pageBuilder: (_, __, ___) => ServiceDetailScreen(
-            serviceId: service.id,
-            addressId: widget.addressId,
-            initialAnswers: widget.initialAnswers,
-            initialService: service,
-            openElectricalAddOnLoad: true,
-          ),
-        ),
-      );
-      return;
-    }
-
-    // All non-Electrical services use the same package-first add popup.
-    // Electrical keeps its dedicated issue/photo popup above. Scheduling and
-    // address selection happen later in the shared checkout flow, not on ADD.
+    // Every category uses one Admin-driven add popup. Electrical adds its
+    // optional issue photo and inspection context inside the same experience.
+    // Scheduling and address selection remain in shared checkout.
 
     final availableVariants = service.variants.where((variant) {
       if (variant.attributes.isEmpty) return true;
@@ -673,6 +706,23 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         categoryAnswers: widget.initialAnswers,
         notes: selection.notes,
       );
+      final addedItemId = int.tryParse(updatedCart['added_item_id']?.toString() ?? '');
+      if (selection.issuePhoto != null) {
+        if (addedItemId == null) {
+          throw Exception('The service was added but its issue photo could not be attached.');
+        }
+        try {
+          await BookingApi.uploadCartItemIssuePhoto(
+            itemId: addedItemId,
+            photo: selection.issuePhoto!,
+          );
+        } catch (_) {
+          try {
+            await BookingApi.deleteCartItem(addedItemId);
+          } catch (_) {}
+          rethrow;
+        }
+      }
       CustomerCartState.updateFromCart(updatedCart);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
