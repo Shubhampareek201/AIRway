@@ -15,7 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -47,6 +47,199 @@ def _schedule_booking_refund(booking_id):
         logging.getLogger(__name__).exception(
             "Could not schedule cancellation refund for booking %s", booking_id
         )
+
+
+def _schedule_recurring_plan_refund(plan_id):
+    import logging
+    from apps.payments.refunds import request_recurring_plan_refund
+
+    try:
+        plan = RecurringWashPlan.objects.get(pk=plan_id)
+        request_recurring_plan_refund(plan)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Could not schedule unused recurring plan refund for plan %s", plan_id
+        )
+
+
+class CustomerRecurringWashPlanCancelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, plan_id):
+        plan = get_object_or_404(
+            RecurringWashPlan.objects.select_for_update(),
+            pk=plan_id,
+            customer=request.user,
+        )
+        if plan.status not in (
+            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+            RecurringWashPlan.Status.ACTIVE,
+            RecurringWashPlan.Status.PAUSED,
+        ):
+            return Response(
+                {"detail": "This recurring plan cannot be cancelled in its current state."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reason = str(request.data.get("reason", "")).strip()
+        if len(reason) > 500:
+            return Response({"reason": "Keep the cancellation reason under 500 characters."}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        for visit in plan.visits.select_for_update().select_related("booking").order_by("visit_number"):
+            if visit.status in (
+                RecurringWashVisit.Status.COMPLETED,
+                RecurringWashVisit.Status.IN_PROGRESS,
+            ):
+                continue
+            booking = visit.booking if visit.booking_id else None
+            if booking and booking.status in (
+                Booking.Status.PENDING,
+                Booking.Status.CONFIRMED,
+                Booking.Status.ASSIGNED,
+            ):
+                old_status = booking.status
+                assignment = getattr(booking, "assignment", None)
+                if assignment:
+                    Notification.objects.create(
+                        user=assignment.worker.user,
+                        type=Notification.Type.WORKER_OFFER_WITHDRAWN,
+                        title="Recurring visit cancelled",
+                        body=f"Recurring Car Wash visit #{visit.visit_number} for plan #{plan.pk} was cancelled by the customer.",
+                        channel=Notification.Channel.IN_APP,
+                        data={"booking_id": booking.pk, "recurring_visit_id": visit.pk},
+                    )
+                    assignment.delete()
+                WorkerOffer.objects.filter(
+                    booking=booking,
+                    status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+                ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+                booking.status = Booking.Status.CANCELLED
+                booking.cancelled_at = now
+                booking.cancelled_by = request.user
+                booking.cancellation_reason = reason or "Recurring Car Wash plan cancelled."
+                booking.save(update_fields=[
+                    "status", "cancelled_at", "cancelled_by",
+                    "cancellation_reason", "updated_at",
+                ])
+                BookingStatusHistory.objects.create(
+                    booking=booking,
+                    from_status=old_status,
+                    to_status=Booking.Status.CANCELLED,
+                    changed_by=request.user,
+                    note=f"Recurring plan #{plan.pk} cancelled. {reason}".strip(),
+                )
+            visit.status = RecurringWashVisit.Status.CANCELLED
+            visit.admin_notes = "Cancelled with recurring plan by customer."
+            visit.save(update_fields=["status", "admin_notes", "updated_at"])
+
+        plan.status = RecurringWashPlan.Status.CANCELLED
+        plan.cancelled_at = now
+        if reason:
+            plan.admin_notes = (plan.admin_notes + "\nCustomer cancellation: " + reason).strip()
+        plan.save(update_fields=["status", "cancelled_at", "admin_notes", "updated_at"])
+        Notification.objects.create(
+            user=request.user,
+            type=Notification.Type.BOOKING_CANCELLED,
+            title="Recurring Car Wash plan cancelled",
+            body="Your remaining recurring visits have been cancelled. Any unused prepaid amount is being reviewed for refund.",
+            channel=Notification.Channel.IN_APP,
+            data={"recurring_plan_id": plan.pk},
+        )
+        transaction.on_commit(lambda plan_id=plan.pk: _schedule_recurring_plan_refund(plan_id))
+        return Response({
+            "detail": "Recurring plan cancelled. Refund processing for undelivered prepaid visits will be handled separately.",
+            "status": plan.status,
+        })
+
+
+class CustomerRecurringWashVisitRescheduleView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, visit_id):
+        visit = get_object_or_404(
+            RecurringWashVisit.objects.select_for_update().select_related(
+                "plan__service", "plan__variant", "plan__address", "booking"
+            ),
+            pk=visit_id,
+            plan__customer=request.user,
+        )
+        plan = visit.plan
+        if plan.status not in (
+            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+            RecurringWashPlan.Status.ACTIVE,
+        ):
+            return Response({"detail": "Only an active recurring plan can be rescheduled."}, status=status.HTTP_400_BAD_REQUEST)
+        if visit.status not in (
+            RecurringWashVisit.Status.PENDING_SETUP,
+            RecurringWashVisit.Status.BOOKED,
+        ):
+            return Response({"detail": "This visit can no longer be rescheduled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.utils.dateparse import parse_datetime
+        raw_value = request.data.get("scheduled_at")
+        new_time = parse_datetime(str(raw_value)) if raw_value else None
+        if new_time is None or timezone.is_naive(new_time):
+            return Response({"scheduled_at": "Provide a valid timezone-aware ISO 8601 date and time."}, status=status.HTTP_400_BAD_REQUEST)
+        if new_time <= timezone.now():
+            return Response({"scheduled_at": "Choose a future date and time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        booking = visit.booking if visit.booking_id else None
+        if booking and booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+            return Response({"detail": "A visit already assigned to a worker or already started cannot be rescheduled online. Contact AIRway support."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            check_service_available(plan.service, address=plan.address)
+            duration = (
+                plan.variant.duration_minutes
+                if plan.variant_id and plan.variant.duration_minutes
+                else plan.service.duration_minutes
+            ) or 60
+            quantity = max(int(plan.vehicle_quantity or 1), 1)
+            check_slot_availability(
+                service=plan.service,
+                scheduled_at=new_time,
+                duration_minutes=duration * (
+                    1 if plan.service.pricing_type == "per_unit" else quantity
+                ),
+                booking_mode=Booking.BookingMode.SCHEDULED,
+            )
+        except (SlotConflictError, ServiceUnavailableError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+        old_time = visit.scheduled_at
+        visit.scheduled_at = new_time
+        visit.admin_notes = ""
+        visit.save(update_fields=["scheduled_at", "admin_notes", "updated_at"])
+        if booking:
+            WorkerOffer.objects.filter(
+                booking=booking,
+                status=WorkerOffer.Status.PENDING,
+            ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=timezone.now())
+            booking.scheduled_at = new_time
+            booking.save(update_fields=["scheduled_at", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                from_status=booking.status,
+                to_status=booking.status,
+                changed_by=request.user,
+                note=f"Recurring visit rescheduled from {old_time.isoformat()} to {new_time.isoformat()} by customer.",
+            )
+        Notification.objects.create(
+            user=request.user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Recurring visit rescheduled",
+            body=f"Visit #{visit.visit_number} is now scheduled for {timezone.localtime(new_time).strftime('%d %b %Y, %I:%M %p')}.",
+            channel=Notification.Channel.IN_APP,
+            data={"recurring_plan_id": plan.pk, "recurring_visit_id": visit.pk},
+        )
+        return Response({
+            "detail": "Recurring visit rescheduled successfully.",
+            "visit_id": visit.pk,
+            "scheduled_at": visit.scheduled_at.isoformat(),
+            "status": visit.status,
+        })
 
 
 class BookingViewSet(viewsets.ModelViewSet):
