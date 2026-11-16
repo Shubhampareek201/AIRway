@@ -1607,6 +1607,8 @@ class CustomerCartItemView(APIView):
 
     def patch(self, request, item_id):
         item = self.get_item(request, item_id)
+        old_photo_map = (item.category_answers or {}).get("_airway_form_photos", {})
+        old_photo_paths = set(old_photo_map.values()) if isinstance(old_photo_map, dict) else set()
         serializer = CartItemSerializer(
             item, data=request.data, partial=True, context={"request": request, "allow_incomplete": True}
         )
@@ -1620,7 +1622,12 @@ class CustomerCartItemView(APIView):
                 )
             except ServiceUnavailableError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        updated_item = serializer.save()
+        new_photo_map = (updated_item.category_answers or {}).get("_airway_form_photos", {})
+        new_photo_paths = set(new_photo_map.values()) if isinstance(new_photo_map, dict) else set()
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        for stored_path in old_photo_paths - new_photo_paths:
+            storage.delete(stored_path)
         return Response(CustomerCartSerializer(item.cart, context={"request": request}).data)
 
     def delete(self, request, item_id):
