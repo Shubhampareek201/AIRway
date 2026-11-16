@@ -1287,7 +1287,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
         ).select_related(
-            "booking__service", "booking__variant", "booking__address", "worker__user", "order"
+            "booking__service", "booking__variant", "booking__address", "booking__order_item__order", "worker__user", "order"
         ).prefetch_related(
             "booking__form_responses__form_field",
             "booking__booking_addons__addon",
@@ -1526,7 +1526,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                         BookingAssignment.objects.filter(booking_id=booking_id).exists()
                         for booking_id in active_ids
                     ):
-                        order.status = Order.Status.AWAITING_PAYMENT
+                        order.status = (
+                            Order.Status.PARTIALLY_CANCELLED
+                            if order.items.filter(booking__status=Booking.Status.CANCELLED).exists()
+                            else Order.Status.AWAITING_PAYMENT
+                        )
                         order.save(update_fields=["status", "updated_at"])
 
         response_data = {
