@@ -84,7 +84,11 @@ def retry_failed_dispatches():
     standalone = Booking.objects.filter(
         status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED],
         order_item__isnull=True,
-    ).exclude(assignment__isnull=False)
+    ).exclude(
+        assignment__isnull=False,
+    ).exclude(
+        recurring_wash_visit__isnull=False,
+    )
     for booking in standalone:
         if WorkerOffer.objects.filter(
             booking=booking, order__isnull=True,
@@ -269,3 +273,59 @@ def timeout_pending_payments():
 
     logger.info(f"Timeout batch: timed out {count} payments")
     return count
+
+
+
+@shared_task
+def setup_recurring_wash_visit_bookings():
+    """Retry creation of real bookings for paid recurring wash visit rows."""
+    from apps.bookings.models import RecurringWashPlan
+    from apps.bookings.recurring import create_pending_recurring_visit_bookings
+
+    plans = RecurringWashPlan.objects.filter(
+        status__in=(
+            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+            RecurringWashPlan.Status.ACTIVE,
+        ),
+        visits__status="pending_setup",
+    ).distinct().order_by("created_at")
+    created = 0
+    for plan in plans.iterator():
+        try:
+            created += len(create_pending_recurring_visit_bookings(plan))
+        except Exception:
+            logger.exception("Recurring visit booking setup failed for plan %s", plan.pk)
+    logger.info("Created %s recurring visit bookings", created)
+    return created
+
+
+@shared_task
+def dispatch_due_recurring_wash_visits():
+    """Offer recurring visits to workers 24 hours before their scheduled time."""
+    from apps.bookings.models import Booking, RecurringWashPlan, RecurringWashVisit, WorkerOffer
+    from apps.bookings.dispatcher import DispatcherService
+
+    now = timezone.now()
+    visits = RecurringWashVisit.objects.filter(
+        status=RecurringWashVisit.Status.BOOKED,
+        scheduled_at__gt=now,
+        scheduled_at__lte=now + timedelta(hours=24),
+        plan__status__in=(
+            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+            RecurringWashPlan.Status.ACTIVE,
+        ),
+        booking__status__in=(Booking.Status.PENDING, Booking.Status.CONFIRMED),
+    ).select_related("booking").order_by("scheduled_at")
+    dispatched = 0
+    for visit in visits.iterator():
+        if WorkerOffer.objects.filter(
+            booking=visit.booking,
+            status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+        ).exists():
+            continue
+        try:
+            dispatched += len(DispatcherService.dispatch_offers(visit.booking))
+        except Exception:
+            logger.exception("Recurring visit dispatch failed for visit %s", visit.pk)
+    logger.info("Dispatched %s offers for recurring visits", dispatched)
+    return dispatched
