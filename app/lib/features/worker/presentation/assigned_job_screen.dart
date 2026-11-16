@@ -534,7 +534,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 child: FilledButton.icon(
                   onPressed: _isActionInProgress ? null : () => _submitInspectionQuote(job),
                   icon: const Icon(Icons.request_quote_outlined),
-                  label: Text(quoteStatus == 'rejected' ? 'Submit revised estimate' : 'Prepare estimate'),
+                  label: Text(
+                    quoteStatus == 'rejected' || quoteStatus == 'expired'
+                        ? 'Submit revised estimate'
+                        : 'Prepare estimate',
+                  ),
                 ),
               ),
             ],
