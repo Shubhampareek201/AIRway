@@ -3787,7 +3787,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertIn("parent order", response.data["detail"].lower())
         self.assertFalse(WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True).exists())
 
-    def test_checkout_rejects_overlapping_service_windows_before_creating_order(self):
+    def test_checkout_allows_same_time_services_in_one_order(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
         CityService.objects.update_or_create(
@@ -3796,14 +3796,10 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             defaults={"is_active": True},
         )
         second_item = CartItem.objects.create(
-            cart=self.cart,
-            service=second_service,
-            variant=second_variant,
-            quantity=1,
-            pricing_snapshot={"line_total": "500.00"},
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
         same_time = (timezone.now() + timedelta(days=2)).isoformat()
-
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
@@ -3812,129 +3808,126 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             ]},
             format="json",
         )
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        self.assertEqual(order.items.count(), 2)
+        self.assertEqual(
+            set(order.items.values_list("booking__scheduled_at", flat=True)),
+            {order.items.first().booking.scheduled_at},
+        )
 
-        self.assertEqual(response.status_code, 400, response.data)
-        self.assertEqual(response.data["code"], "order_schedule_overlap")
-        self.assertFalse(Order.objects.filter(customer=self.customer).exists())
-        self.assertFalse(Booking.objects.filter(customer=self.customer).exists())
-        self.assertEqual(self.cart.items.count(), 2)
-
-    def test_multi_service_dispatch_only_offers_worker_eligible_for_every_line(self):
+    def test_multi_service_order_dispatches_each_line_to_its_own_eligible_workers(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
-        partial_user = self._create_user("+919876543281")
-        full_user = self._create_user("+919876543282")
-        partial_worker = WorkerProfile.objects.create(
-            user=partial_user, status=WorkerProfile.Status.APPROVED, is_online=True
-        )
-        full_worker = WorkerProfile.objects.create(
-            user=full_user, status=WorkerProfile.Status.APPROVED, is_online=True
-        )
-        for worker, services in (
-            (partial_worker, [self.service]),
-            (full_worker, [self.service, second_service]),
-        ):
+        workers = []
+        for phone, service in (("+919876543281", self.service), ("+919876543282", second_service)):
+            user = self._create_user(phone)
+            worker = WorkerProfile.objects.create(
+                user=user, status=WorkerProfile.Status.APPROVED, is_online=True
+            )
             WorkerZone.objects.create(worker=worker, zone=self.address.zone)
-            for service in services:
-                WorkerService.objects.create(worker=worker, service=service)
+            WorkerService.objects.create(worker=worker, service=service)
             for weekday in range(7):
                 WorkerSchedule.objects.create(
                     worker=worker, weekday=weekday, is_active=True,
                     start_time=time(0, 0), end_time=time(23, 59),
                 )
+            workers.append(worker)
         second_item = CartItem.objects.create(
             cart=self.cart, service=second_service, variant=second_variant,
             quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
-        first_time = timezone.make_aware(
+        same_time = timezone.make_aware(
             datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
-        )
-        second_time = timezone.make_aware(
-            datetime.combine(timezone.localdate() + timedelta(days=3), time(12, 0))
         )
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
-                {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
-                {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+                {"cart_item_id": self.cart_item.id, "scheduled_at": same_time.isoformat()},
+                {"cart_item_id": second_item.id, "scheduled_at": same_time.isoformat()},
             ]},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.data)
         order = Order.objects.get(pk=response.data["order_id"])
-        self.assertFalse(WorkerOffer.objects.filter(order=order).exists())
         from apps.payments.models import Payment
         Payment.objects.create(
-            order=order,
-            customer=self.customer,
+            order=order, customer=self.customer,
             stage=Payment.Stage.ADVANCE,
             amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
-            method=Payment.Method.RAZORPAY,
-            status=Payment.Status.PAID,
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
         )
         from apps.bookings.dispatcher import DispatcherService
         DispatcherService.dispatch_order(order)
-        offers = WorkerOffer.objects.filter(order=order)
-        self.assertEqual(offers.count(), 1)
-        self.assertEqual(offers.get().worker, full_worker)
-        self.assertFalse(WorkerOffer.objects.filter(order=order, worker=partial_worker).exists())
+        booking_ids = list(order.items.values_list("booking_id", flat=True))
+        self.assertEqual(WorkerOffer.objects.filter(order__isnull=True, booking_id__in=booking_ids).count(), 2)
+        self.assertEqual(
+            set(WorkerOffer.objects.filter(booking_id=booking_ids[0]).values_list("worker_id", flat=True)),
+            {workers[0].pk},
+        )
+        self.assertEqual(
+            set(WorkerOffer.objects.filter(booking_id=booking_ids[1]).values_list("worker_id", flat=True)),
+            {workers[1].pk},
+        )
 
-    def test_one_worker_accepts_and_is_assigned_to_every_order_line(self):
+    def test_different_workers_can_accept_different_lines_of_one_order(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
-        worker_user = self._create_user("+919876543283")
-        worker = WorkerProfile.objects.create(
-            user=worker_user, status=WorkerProfile.Status.APPROVED, is_online=True
-        )
-        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
-        for service in (self.service, second_service):
-            WorkerService.objects.create(worker=worker, service=service)
-        for weekday in range(7):
-            WorkerSchedule.objects.create(
-                worker=worker, weekday=weekday, is_active=True,
-                start_time=time(0, 0), end_time=time(23, 59),
+        workers = []
+        for phone, service in (("+919876543283", self.service), ("+919876543284", second_service)):
+            user = self._create_user(phone)
+            worker = WorkerProfile.objects.create(
+                user=user, status=WorkerProfile.Status.APPROVED, is_online=True
             )
+            WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+            WorkerService.objects.create(worker=worker, service=service)
+            for weekday in range(7):
+                WorkerSchedule.objects.create(
+                    worker=worker, weekday=weekday, is_active=True,
+                    start_time=time(0, 0), end_time=time(23, 59),
+                )
+            workers.append((user, worker))
         second_item = CartItem.objects.create(
             cart=self.cart, service=second_service, variant=second_variant,
             quantity=1, pricing_snapshot={"line_total": "500.00"},
         )
-        first_time = timezone.make_aware(
+        same_time = timezone.make_aware(
             datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
-        )
-        second_time = timezone.make_aware(
-            datetime.combine(timezone.localdate() + timedelta(days=3), time(12, 0))
         )
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [
-                {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
-                {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+                {"cart_item_id": self.cart_item.id, "scheduled_at": same_time.isoformat()},
+                {"cart_item_id": second_item.id, "scheduled_at": same_time.isoformat()},
             ]},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.data)
         order = Order.objects.get(pk=response.data["order_id"])
-        self.assertFalse(WorkerOffer.objects.filter(order=order).exists())
         from apps.payments.models import Payment
         Payment.objects.create(
-            order=order,
-            customer=self.customer,
+            order=order, customer=self.customer,
             stage=Payment.Stage.ADVANCE,
             amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
-            method=Payment.Method.RAZORPAY,
-            status=Payment.Status.PAID,
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
         )
         from apps.bookings.dispatcher import DispatcherService
         DispatcherService.dispatch_order(order)
-        offer = WorkerOffer.objects.get(order=order, worker=worker)
-        worker_client = APIClient()
-        worker_client.force_authenticate(user=worker_user)
-        accepted = worker_client.post(f"/api/v1/workers/offers/{offer.pk}/accept/", {}, format="json")
-        self.assertEqual(accepted.status_code, 200, accepted.data)
-        self.assertEqual(BookingAssignment.objects.filter(booking__order_item__order=order).count(), 2)
+        for booking_id, (user, worker) in zip(
+            order.items.order_by("created_at").values_list("booking_id", flat=True), workers
+        ):
+            offer = WorkerOffer.objects.get(booking_id=booking_id, worker=worker, order__isnull=True)
+            worker_client = APIClient()
+            worker_client.force_authenticate(user=user)
+            accepted = worker_client.post(
+                f"/api/v1/workers/offers/{offer.pk}/accept/", {}, format="json"
+            )
+            self.assertEqual(accepted.status_code, 200, accepted.data)
+        assignments = BookingAssignment.objects.filter(booking__order_item__order=order)
+        self.assertEqual(assignments.count(), 2)
         self.assertEqual(
-            set(BookingAssignment.objects.filter(booking__order_item__order=order).values_list("worker_id", flat=True)),
-            {worker.pk},
+            set(assignments.values_list("worker_id", flat=True)),
+            {worker.pk for _, worker in workers},
         )
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
