@@ -417,6 +417,26 @@ class BookingApi {
     );
   }
 
+  static Future<void> cancelRecurringPlan(int planId, {String? reason}) async {
+    await request(
+      '/api/v1/bookings/recurring-plans/$planId/cancel/',
+      method: 'POST',
+      data: {'reason': reason ?? ''},
+    );
+  }
+
+  static Future<Map<String, dynamic>> rescheduleRecurringVisit({
+    required int visitId,
+    required DateTime scheduledAt,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/recurring-visits/$visitId/reschedule/',
+      method: 'POST',
+      data: {'scheduled_at': scheduledAt.toUtc().toIso8601String()},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> createRazorpayOrder(int bookingId) async {
     final result = await request(
       '/api/v1/payments/create-order/',
