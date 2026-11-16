@@ -15,7 +15,6 @@ import 'package:airway/features/booking/data/booking_api.dart';
 class _PackageSelection {
   final ServiceVariant? variant;
   final String notes;
-  final bool openDetails;
   final int quantity;
   final List<Map<String, dynamic>> addonSelections;
   final Map<String, dynamic> formAnswers;
@@ -28,16 +27,7 @@ class _PackageSelection {
     this.addonSelections = const [],
     this.formAnswers = const {},
     this.issuePhoto,
-  }) : openDetails = false;
-
-  const _PackageSelection.openDetails()
-      : variant = null,
-        notes = '',
-        quantity = 1,
-        addonSelections = const [],
-        formAnswers = const {},
-        issuePhoto = null,
-        openDetails = true;
+  });
 }
 
 /// Backend-driven service listing. Service photography uses the same canonical
@@ -589,7 +579,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 ),
               ),
             ),
-          ),
+          },
         ),
       );
     } finally {
@@ -691,11 +681,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
 
     final selection = await _showBeautyPackageSheet(service, availableVariants);
     if (!mounted || selection == null) return;
-    if (selection.openDetails) {
-      _openService(service);
-      return;
-    }
-
     try {
       final updatedCart = await BookingApi.addCartItem(
         serviceId: service.id,
