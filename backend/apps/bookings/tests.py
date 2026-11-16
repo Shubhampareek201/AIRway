@@ -3672,6 +3672,35 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(booking_addon.quantity, 3)
         self.assertEqual(booking_addon.total_price, Decimal("300.00"))
 
+    def test_checkout_charges_inspection_visit_fee_once_for_multiple_units(self):
+        self.service.booking_mode = Service.BookingMode.INSPECTION
+        self.service.visit_fee = Decimal("125.00")
+        self.service.save(update_fields=["booking_mode", "visit_fee", "updated_at"])
+        addon = AddOn.objects.create(
+            service=self.service,
+            title="Extra room",
+            mrp=150,
+            price=100,
+        )
+        self.cart_item.addon_selections = [{"id": addon.id, "quantity": 3}]
+        self.cart_item.save(update_fields=["addon_selections", "updated_at"])
+
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [{
+                "cart_item_id": self.cart_item.id,
+                "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+            }]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order_item = OrderItem.objects.get(order_id=response.data["order_id"])
+        # (₹1,000 package + 3 x ₹100 add-on) x 2 units + one ₹125 visit fee.
+        self.assertEqual(order_item.line_subtotal, Decimal("2725.00"))
+        self.assertEqual(order_item.tax_amount, Decimal("490.50"))
+        self.assertEqual(order_item.line_total, Decimal("3215.50"))
+
     def test_parent_order_booking_line_cannot_be_confirmed_independently(self):
         scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
         checkout = self.client.post(
