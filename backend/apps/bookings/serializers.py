@@ -985,12 +985,12 @@ class CartItemSerializer(serializers.ModelSerializer):
             })
 
         visit_fee = Decimal(service.visit_fee) if service.booking_mode == "inspection" else Decimal("0")
-        # The service/package rate is multiplied by its selected quantity.
-        # Add-ons are charged at their explicitly selected add-on quantities,
-        # while an inspection/visit fee is charged once per cart line, not once
-        # for every room, item or square-foot unit.
+        # Package and selected add-ons apply to each requested service unit.
+        # The inspection/visit fee is a one-time charge for the cart line and
+        # must never be multiplied by rooms, items or measured units.
         base_subtotal = base * quantity
-        line_total = base_subtotal + addon_total + visit_fee
+        addons_subtotal = addon_total * quantity
+        line_total = base_subtotal + addons_subtotal + visit_fee
         attrs["_cart_snapshot"] = {
             "base_title": base_title,
             "base_price": str(base),
@@ -999,6 +999,7 @@ class CartItemSerializer(serializers.ModelSerializer):
             "visit_fee": str(visit_fee),
             "addons": addon_rows,
             "addons_total": str(addon_total),
+            "addons_subtotal": str(addons_subtotal),
             "line_total": str(line_total),
         }
         return attrs
