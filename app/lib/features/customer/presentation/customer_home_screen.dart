@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:airway/core/theme/airway_colors.dart';
@@ -2236,8 +2237,7 @@ class _PulseBlockState extends State<_PulseBlock>
 }
 
 
-/// Compact customer header brand. The original artwork is cropped in-memory,
-/// so no duplicate/missing logo files are required in the Flutter assets.
+/// Compact AIRway brand built only from the supplied original logo artwork.
 class _AnimatedAirwayBrand extends StatefulWidget {
   const _AnimatedAirwayBrand();
 
@@ -2249,13 +2249,12 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1900),
+    duration: const Duration(milliseconds: 2100),
   );
 
   @override
   void initState() {
     super.initState();
-    // A single subtle brand reveal whenever the customer home opens.
     _controller.forward();
   }
 
@@ -2265,7 +2264,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
     super.dispose();
   }
 
-  Widget _logoCrop({
+  Widget _crop({
     required double widthFactor,
     required double heightFactor,
     required Alignment alignment,
@@ -2289,110 +2288,61 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 150,
-      height: 60,
+      width: 154,
+      height: 58,
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
+          final t = Curves.easeInOutCubic.transform(_controller.value);
+          final leafT = Curves.easeInOutCubic.transform(
+            ((_controller.value - 0.08) / 0.92).clamp(0.0, 1.0),
+          );
+          final leafX = 17 + (112 * leafT);
+          final leafY = 39 - (19 * math.sin(math.pi * leafT));
           return Stack(
             clipBehavior: Clip.none,
             children: [
               Positioned(
                 left: 0,
-                top: 1,
-                child: SizedBox(
-                  width: 46,
-                  height: 59,
-                  child: _logoCrop(
-                    widthFactor: 0.19,
-                    heightFactor: 0.244,
-                    alignment: const Alignment(-0.54, -0.003),
-                  ),
+                top: 0,
+                width: 45,
+                height: 58,
+                child: _crop(
+                  widthFactor: 0.19,
+                  heightFactor: 0.244,
+                  alignment: const Alignment(-0.54, -0.003),
                 ),
               ),
               Positioned(
                 left: 53,
-                top: 15,
-                child: SizedBox(
-                  width: 94,
-                  height: 32,
-                  child: _logoCrop(
-                    widthFactor: 0.415,
-                    heightFactor: 0.14,
-                    alignment: const Alignment(0.29, 0.03),
-                  ),
+                top: 14,
+                width: 98,
+                height: 33,
+                child: _crop(
+                  widthFactor: 0.415,
+                  heightFactor: 0.14,
+                  alignment: const Alignment(0.29, 0.03),
                 ),
               ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _AirwayLeafRevealPainter(_controller.value),
+              if (_controller.isAnimating || _controller.isCompleted)
+                Positioned(
+                  left: leafX,
+                  top: leafY,
+                  width: 15 + (3 * t),
+                  height: 17 + (3 * t),
+                  child: Transform.rotate(
+                    angle: -0.45 + (0.18 * leafT),
+                    child: _crop(
+                      widthFactor: 0.055,
+                      heightFactor: 0.06,
+                      alignment: const Alignment(-0.43, 0.06),
+                    ),
                   ),
                 ),
-              ),
             ],
           );
         },
       ),
     );
   }
-}
-
-class _AirwayLeafRevealPainter extends CustomPainter {
-  const _AirwayLeafRevealPainter(this.progress);
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress <= 0) return;
-
-    final eased = Curves.easeInOutCubic.transform(progress.clamp(0.0, 1.0));
-    // The leaf grows from its natural position inside the house emblem,
-    // then sweeps in a gentle arc over the AIRway wordmark.
-    final path = Path()
-      ..moveTo(18, 39)
-      ..cubicTo(35, 13, 91, 5, 132, 18);
-    final metric = path.computeMetrics().first;
-    final tangent = metric.getTangentForOffset(metric.length * eased);
-    if (tangent == null) return;
-
-    final scale = 0.16 + (0.84 * Curves.easeOut.transform(progress));
-    canvas.save();
-    canvas.translate(tangent.position.dx, tangent.position.dy);
-    canvas.rotate(tangent.angle - 0.42);
-    canvas.scale(scale);
-
-    final leafPath = Path()
-      ..moveTo(-1, 0)
-      ..cubicTo(-1, -9, 8, -15, 17, -14)
-      ..cubicTo(17, -5, 10, 2, -1, 0)
-      ..close();
-    canvas.drawPath(
-      leafPath,
-      Paint()..color = const Color(0xFF71866A),
-    );
-    canvas.drawPath(
-      leafPath,
-      Paint()
-        ..color = const Color(0xFF171512)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.15,
-    );
-    final vein = Path()
-      ..moveTo(0, -1)
-      ..quadraticBezierTo(7, -7, 15, -13);
-    canvas.drawPath(
-      vein,
-      Paint()
-        ..color = const Color(0xFF171512)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.9,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _AirwayLeafRevealPainter oldDelegate) =>
-      oldDelegate.progress != progress;
 }
