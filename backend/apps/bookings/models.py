@@ -107,6 +107,11 @@ class Booking(TimeStampedModel):
 
     @property
     def can_cancel(self):
+        recurring_plan = getattr(self, "recurring_wash_plan", None)
+        if recurring_plan and recurring_plan.status in (
+            "paid_pending_setup", "active", "paused",
+        ):
+            return False
         return self.status in [self.Status.PENDING, self.Status.CONFIRMED, self.Status.ASSIGNED]
 
 
