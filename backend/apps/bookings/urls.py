@@ -11,6 +11,7 @@ from .views import (
     CustomerCartIssuePhotoView,
     CustomerCartFormPhotoView,
     BookingIssuePhotoView,
+    BookingWorkEvidencePhotoView,
 )
 
 router = DefaultRouter()
@@ -25,5 +26,6 @@ urlpatterns = [
     path("cart/items/<int:item_id>/issue-photo/", CustomerCartIssuePhotoView.as_view(), name="customer-cart-issue-photo"),
     path("cart/items/<int:item_id>/form-photos/<slug:field_key>/", CustomerCartFormPhotoView.as_view(), name="customer-cart-form-photo"),
     path("issue-photos/<int:booking_id>/", BookingIssuePhotoView.as_view(), name="booking-issue-photo"),
+    path("work-evidence/<int:evidence_id>/photo/", BookingWorkEvidencePhotoView.as_view(), name="booking-work-evidence-photo"),
     path("", include(router.urls)),
 ]
