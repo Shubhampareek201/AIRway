@@ -4475,27 +4475,34 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             order=self.order,
             customer=self.customer,
             stage=Payment.Stage.BALANCE,
-            amount=Decimal("0.00"),
-            wallet_amount=Decimal("1000.00"),
-            method=Payment.Method.WALLET,
+            amount=Decimal("700.00"),
+            wallet_amount=Decimal("300.00"),
+            method=Payment.Method.RAZORPAY,
             status=Payment.Status.PAID,
+            razorpay_payment_id="pay_recurring_refund_test",
             raw_response={
                 "service_allocation_v1": [{
                     "booking_id": self.source_booking.pk,
                     "total": "1000.00",
-                    "wallet_amount": "1000.00",
-                    "gateway_amount": "0.00",
+                    "wallet_amount": "300.00",
+                    "gateway_amount": "700.00",
                 }]
             },
         )
-        refunds = request_recurring_plan_refund(self.plan)
+        with patch("apps.payments.refunds.razorpay.Client") as gateway:
+            gateway.return_value.payment.refund.return_value = {
+                "id": "rfnd_recurring_test",
+                "status": "processed",
+            }
+            refunds = request_recurring_plan_refund(self.plan)
         self.assertEqual(refunds.count(), 1)
         refund = refunds.get(payment=payment)
         self.assertEqual(refund.amount, Decimal("800.00"))
-        self.assertEqual(refund.wallet_amount, Decimal("800.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("240.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("560.00"))
         self.assertEqual(refund.status, PaymentRefund.Status.PROCESSED)
         wallet = Wallet.objects.get(user=self.customer)
-        self.assertEqual(wallet.balance, Decimal("800.00"))
+        self.assertEqual(wallet.balance, Decimal("240.00"))
         self.assertTrue(WalletTransaction.objects.filter(
             reference_id=f"payment-refund:{refund.pk}:wallet",
             status=WalletTransaction.Status.COMPLETED,
