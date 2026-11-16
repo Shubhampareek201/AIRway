@@ -506,6 +506,16 @@ def _worker_payment_label(booking):
     """Return a worker-safe summary of the payment stage for this assigned job."""
     from apps.payments.models import Payment
 
+    recurring_visit = getattr(booking, "recurring_wash_visit", None)
+    if recurring_visit and recurring_visit.plan.status in (
+        recurring_visit.plan.Status.PAID_PENDING_SETUP,
+        recurring_visit.plan.Status.ACTIVE,
+    ):
+        return (
+            f"Prepaid recurring Car Wash plan #{recurring_visit.plan_id}; "
+            f"visit {recurring_visit.visit_number} is covered. No payment to collect."
+        )
+
     order_item = getattr(booking, "order_item", None)
     if order_item:
         order = order_item.order
@@ -569,6 +579,16 @@ class WorkerJobListView(APIView):
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
                 "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
                 "payment_label": payment_label,
+                "recurring_visit": (
+                    {
+                        "plan_id": booking.recurring_wash_visit.plan_id,
+                        "visit_id": booking.recurring_wash_visit.pk,
+                        "visit_number": booking.recurring_wash_visit.visit_number,
+                        "status": booking.recurring_wash_visit.status,
+                        "prepaid_amount": str(booking.recurring_wash_visit.prepaid_amount),
+                    }
+                    if hasattr(booking, "recurring_wash_visit") else None
+                ),
                 "worker_notes": booking.worker_notes or None,
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
             })
@@ -815,6 +835,17 @@ class WorkerJobDetailView(APIView):
                 "expires_at": latest_quote.expires_at.isoformat() if latest_quote.expires_at else None,
                 "responded_at": latest_quote.responded_at.isoformat() if latest_quote.responded_at else None,
             }
+        recurring_visit = getattr(booking, "recurring_wash_visit", None)
+        recurring_visit_data = (
+            {
+                "plan_id": recurring_visit.plan_id,
+                "visit_id": recurring_visit.pk,
+                "visit_number": recurring_visit.visit_number,
+                "status": recurring_visit.status,
+                "prepaid_amount": str(recurring_visit.prepaid_amount),
+            }
+            if recurring_visit else None
+        )
         customer_answers = dict(booking.customer_answers or {})
         has_issue_photo = bool(customer_answers.pop("_airway_issue_photo", None))
         form_photo_paths = customer_answers.pop("_airway_form_photos", {})
@@ -842,6 +873,8 @@ class WorkerJobDetailView(APIView):
             "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+            "payment_label": payment_label,
+            "recurring_visit": recurring_visit_data,
             "variant_title": booking.variant.title if booking.variant_id else None,
             "service_unit_label": booking.service.unit_label,
             "quantity": (
