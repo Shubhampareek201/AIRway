@@ -102,7 +102,9 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
       if (item is Map) {
         final option = Map<String, dynamic>.from(item);
         final value = option['value']?.toString() ?? option['label']?.toString() ?? '';
+        // Preserve Admin-authored navigation metadata as well as display fields.
         return {
+          ...option,
           'value': value,
           'label': option['label']?.toString() ?? value,
           'image': option['image']?.toString(),
@@ -222,6 +224,33 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
       );
       return;
     }
-    Navigator.pop(context, Map<String, dynamic>.from(_answers));
+    final result = Map<String, dynamic>.from(_answers);
+
+    // A choice may explicitly point to its next category. Keep this routing
+    // metadata separate from customer answers so it is never sent with a booking.
+    for (final step in widget.steps) {
+      final key = step['key']?.toString();
+      if (key == null) continue;
+      final selectedValue = _answers[key]?.toString();
+      if (selectedValue == null || selectedValue.isEmpty) continue;
+      final options = step['options'] as List? ?? const [];
+      for (final rawOption in options) {
+        if (rawOption is! Map) continue;
+        final option = Map<String, dynamic>.from(rawOption);
+        final value = option['value']?.toString() ??
+            option['label']?.toString() ?? '';
+        if (value != selectedValue) continue;
+        final nextSlug = option['next_category_slug']?.toString().trim();
+        final nextId = int.tryParse(
+          option['next_category_id']?.toString() ?? '',
+        );
+        if (nextSlug != null && nextSlug.isNotEmpty) {
+          result['__next_category_slug'] = nextSlug;
+        }
+        if (nextId != null) result['__next_category_id'] = nextId;
+        break;
+      }
+    }
+    Navigator.pop(context, result);
   }
 }
