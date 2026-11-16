@@ -110,6 +110,57 @@ class Booking(TimeStampedModel):
         return self.status in [self.Status.PENDING, self.Status.CONFIRMED, self.Status.ASSIGNED]
 
 
+class BookingQuote(TimeStampedModel):
+    """Worker-submitted inspection estimate requiring explicit customer approval."""
+
+    class Status(models.TextChoices):
+        PENDING_CUSTOMER = "pending_customer", "Awaiting customer approval"
+        ACCEPTED = "accepted", "Accepted"
+        REJECTED = "rejected", "Rejected"
+        SUPERSEDED = "superseded", "Superseded by a revised quote"
+
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="quotes"
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile", on_delete=models.PROTECT, related_name="booking_quotes"
+    )
+    version = models.PositiveIntegerField(default=1)
+    line_items = models.JSONField(
+        default=list,
+        help_text="Worker estimate rows: labour, material or other with description, quantity and unit price.",
+    )
+    labour_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    material_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    other_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=24, choices=Status.choices,
+        default=Status.PENDING_CUSTOMER, db_index=True,
+    )
+    customer_response_note = models.TextField(blank=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-version", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking", "version"], name="unique_booking_quote_version"
+            ),
+            models.UniqueConstraint(
+                fields=["booking"],
+                condition=models.Q(status="pending_customer"),
+                name="one_pending_quote_per_booking",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Quote v{self.version} for booking #{self.booking_id} ({self.status})"
+
+
 class BookingAddOn(TimeStampedModel):
     booking = models.ForeignKey(
         Booking,
