@@ -4464,6 +4464,43 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
         )
 
+    def test_cancelling_plan_refunds_only_unused_prepaid_visits_to_wallet(self):
+        from apps.payments.models import Payment, PaymentRefund
+        from apps.payments.refunds import request_recurring_plan_refund
+        from apps.wallet.models import Wallet, WalletTransaction
+        from apps.bookings.recurring import generate_recurring_wash_visit_ledger
+
+        generate_recurring_wash_visit_ledger(self.plan)
+        payment = Payment.objects.create(
+            order=self.order,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("0.00"),
+            wallet_amount=Decimal("1000.00"),
+            method=Payment.Method.WALLET,
+            status=Payment.Status.PAID,
+            raw_response={
+                "service_allocation_v1": [{
+                    "booking_id": self.source_booking.pk,
+                    "total": "1000.00",
+                    "wallet_amount": "1000.00",
+                    "gateway_amount": "0.00",
+                }]
+            },
+        )
+        refunds = request_recurring_plan_refund(self.plan)
+        self.assertEqual(refunds.count(), 1)
+        refund = refunds.get(payment=payment)
+        self.assertEqual(refund.amount, Decimal("800.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("800.00"))
+        self.assertEqual(refund.status, PaymentRefund.Status.PROCESSED)
+        wallet = Wallet.objects.get(user=self.customer)
+        self.assertEqual(wallet.balance, Decimal("800.00"))
+        self.assertTrue(WalletTransaction.objects.filter(
+            reference_id=f"payment-refund:{refund.pk}:wallet",
+            status=WalletTransaction.Status.COMPLETED,
+        ).exists())
+
     def test_customer_can_reschedule_an_unassigned_recurring_visit(self):
         from apps.bookings.views import CustomerRecurringWashVisitRescheduleView
 
