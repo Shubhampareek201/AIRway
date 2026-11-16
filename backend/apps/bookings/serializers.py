@@ -422,11 +422,12 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         visit_fee = service.visit_fee if booking_mode == Booking.BookingMode.INSPECTION else 0
         pricing["visit_fee"] = str(visit_fee)
 
-        # Calculate totals
+        # Package and add-ons scale with quantity; inspection is one visit
+        # for the booking and must be charged only once.
         from decimal import Decimal
-        unit_subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total)) + Decimal(str(visit_fee))
-        subtotal = unit_subtotal * quantity
-        tax = subtotal * Decimal("0.18")  # 18% GST
+        unit_subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total))
+        subtotal = (unit_subtotal * quantity) + Decimal(str(visit_fee))
+        tax = subtotal * Decimal("0.18")
         total = subtotal + tax
 
         pricing["quantity"] = quantity
