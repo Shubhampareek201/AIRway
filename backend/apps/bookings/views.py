@@ -587,6 +587,11 @@ class BookingViewSet(viewsets.ModelViewSet):
         old_status = booking.status
         booking.status = Booking.Status.IN_PROGRESS
         booking.save()
+        from apps.bookings.models import RecurringWashVisit
+        RecurringWashVisit.objects.filter(
+            booking=booking,
+            status=RecurringWashVisit.Status.BOOKED,
+        ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=timezone.now())
 
         BookingStatusHistory.objects.create(
             booking=booking,
