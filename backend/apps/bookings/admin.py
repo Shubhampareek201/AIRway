@@ -17,6 +17,7 @@ from .models import (
     BookingCompletionOTP,
     WorkerOffer,
     BookingQuote,
+    BookingWorkEvidence,
 )
 
 
@@ -183,6 +184,24 @@ class BookingAdmin(ModelAdmin):
     readonly_fields = ("created_at", "updated_at", "pricing_snapshot")
     inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline]
     actions = [mark_unfulfillable_and_refund]
+
+
+@admin.register(BookingWorkEvidence)
+class BookingWorkEvidenceAdmin(ModelAdmin):
+    list_display = ("id", "booking", "worker", "stage", "created_at")
+    list_filter = ("stage", "created_at")
+    search_fields = ("booking__id", "booking__customer__phone", "worker__user__phone")
+    readonly_fields = ("booking", "worker", "stage", "image_path", "note", "created_at", "updated_at")
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(BookingQuote)
