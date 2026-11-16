@@ -563,18 +563,18 @@ class ConfigureLaunchCatalogueDemoPricingTest(TestCase):
 class CarWashVehicleCatalogueApiTest(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.car_make = VehicleMake.objects.create(vehicle_type="car", name="Maruti Suzuki")
-        self.bike_make = VehicleMake.objects.create(vehicle_type="bike", name="Honda")
+        self.car_make = VehicleMake.objects.create(vehicle_type="car", name="AIRway Test Car Make")
+        self.bike_make = VehicleMake.objects.create(vehicle_type="bike", name="AIRway Test Bike Make")
         self.car_model = VehicleModel.objects.create(
-            make=self.car_make, name="Swift", vehicle_class="Hatchback"
+            make=self.car_make, name="AIRway Test Car", vehicle_class="AIRway Hatchback"
         )
-        VehicleModel.objects.create(make=self.bike_make, name="Activa")
+        VehicleModel.objects.create(make=self.bike_make, name="AIRway Test Bike")
 
     def test_vehicle_makes_are_filtered_by_type(self):
-        response = self.client.get("/api/v1/catalog/vehicle-makes/?vehicle_type=car")
+        response = self.client.get("/api/v1/catalog/vehicle-makes/?vehicle_type=car&search=AIRway%20Test%20Car%20Make")
         self.assertEqual(response.status_code, 200)
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
-        self.assertEqual([item["name"] for item in results], ["Maruti Suzuki"])
+        self.assertEqual([item["name"] for item in results], ["AIRway Test Car Make"])
 
     def test_vehicle_models_are_filtered_by_make_and_type(self):
         response = self.client.get(
@@ -582,8 +582,8 @@ class CarWashVehicleCatalogueApiTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
-        self.assertEqual([item["name"] for item in results], ["Swift"])
-        self.assertEqual(results[0]["vehicle_class"], "Hatchback")
+        self.assertEqual([item["name"] for item in results], ["AIRway Test Car"])
+        self.assertEqual(results[0]["vehicle_class"], "AIRway Hatchback")
 
 
 class CarWashVehicleBranchFilterTest(TestCase):
@@ -631,17 +631,17 @@ class CarWashVehicleBranchFilterTest(TestCase):
 class VehicleCatalogueClassFilterTest(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.maruti = VehicleMake.objects.create(vehicle_type="car", name="Maruti Suzuki")
-        self.hyundai = VehicleMake.objects.create(vehicle_type="car", name="Hyundai")
-        self.honda_bike = VehicleMake.objects.create(vehicle_type="bike", name="Honda")
-        VehicleModel.objects.create(make=self.maruti, name="Swift", vehicle_class="Hatchback")
-        VehicleModel.objects.create(make=self.maruti, name="Brezza", vehicle_class="SUV")
-        VehicleModel.objects.create(make=self.hyundai, name="i20", vehicle_class="Hatchback")
-        VehicleModel.objects.create(make=self.honda_bike, name="Activa", vehicle_class="Scooter")
+        self.maruti = VehicleMake.objects.create(vehicle_type="car", name="AIRway Test Maruti")
+        self.hyundai = VehicleMake.objects.create(vehicle_type="car", name="AIRway Test Hyundai")
+        self.honda_bike = VehicleMake.objects.create(vehicle_type="bike", name="AIRway Test Honda Bike")
+        VehicleModel.objects.create(make=self.maruti, name="AIRway Test Swift", vehicle_class="AIRway Hatchback")
+        VehicleModel.objects.create(make=self.maruti, name="AIRway Test Brezza", vehicle_class="AIRway SUV")
+        VehicleModel.objects.create(make=self.hyundai, name="AIRway Test i20", vehicle_class="AIRway Hatchback")
+        VehicleModel.objects.create(make=self.honda_bike, name="AIRway Test Activa", vehicle_class="AIRway Scooter")
 
     def test_manufacturers_are_filtered_by_selected_vehicle_class(self):
         response = self.client.get(
-            "/api/v1/catalog/vehicle-makes/?vehicle_type=car&vehicle_class=Hatchback"
+            "/api/v1/catalog/vehicle-makes/?vehicle_type=car&vehicle_class=AIRway%20Hatchback&search=AIRway%20Test"
         )
         self.assertEqual(response.status_code, 200, response.data)
         results = response.data if isinstance(response.data, list) else response.data["results"]
@@ -649,7 +649,7 @@ class VehicleCatalogueClassFilterTest(TestCase):
 
     def test_models_are_filtered_by_class_and_search(self):
         response = self.client.get(
-            f"/api/v1/catalog/vehicle-models/?make={self.maruti.id}&vehicle_type=car&vehicle_class=Hatchback&search=sw"
+            f"/api/v1/catalog/vehicle-models/?make={self.maruti.id}&vehicle_type=car&vehicle_class=AIRway%20Hatchback&search=AIRway%20Test%20Swift"
         )
         self.assertEqual(response.status_code, 200, response.data)
         results = response.data if isinstance(response.data, list) else response.data["results"]
