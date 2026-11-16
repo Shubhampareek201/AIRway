@@ -448,7 +448,7 @@ class CategoryAudienceOptionsApiTest(TestCase):
             is_active=False,
         )
 
-        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true")
+        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true&for_worker=true")
 
         self.assertEqual(response.status_code, 200, response.data)
         result = next(item for item in response.data["results"] if item["slug"] == "beauty")
