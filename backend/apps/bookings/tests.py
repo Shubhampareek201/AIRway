@@ -17,7 +17,7 @@ from apps.workers.models import (
     WorkerZone,
     WorkerSchedule,
 )
-from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem
+from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem, RecurringWashPlan
 from django.contrib.auth.hashers import make_password
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
@@ -3618,6 +3618,65 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(order_item.booking.address, self.address)
         self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
         self.assertFalse(self.cart.items.exists())
+
+    def test_checkout_creates_recurring_wash_plan_from_customer_answers(self):
+        category = Category.objects.create(
+            title="Monthly Car Wash Plans",
+            slug="monthly-car-wash-plans",
+        )
+        service = self._create_service(category, title="Monthly Car Wash Plan")
+        service.booking_mode = Service.BookingMode.INSPECTION
+        service.pricing_type = Service.PricingType.QUOTE
+        service.visit_fee = Decimal("100.00")
+        service.duration_minutes = 30
+        service.save(update_fields=[
+            "booking_mode", "pricing_type", "visit_fee",
+            "duration_minutes", "updated_at",
+        ])
+        answers = {
+            "vehicle_type": "SUV",
+            "vehicle_quantity": 2,
+            "wash_frequency": "Twice a week",
+            "subscription_duration": "3 months",
+            "plan_start_date": (timezone.localdate() + timedelta(days=3)).isoformat(),
+            "preferred_time_window": "Morning",
+        }
+        field_specs = [
+            ("vehicle_type", "Vehicle type", FormField.FieldType.SELECT, ["SUV"], True),
+            ("vehicle_quantity", "Number of vehicles", FormField.FieldType.NUMBER, [], True),
+            ("wash_frequency", "Preferred wash frequency", FormField.FieldType.SELECT, ["Daily", "Alternate day", "Twice a week", "Weekly", "Fortnightly"], True),
+            ("subscription_duration", "Plan duration", FormField.FieldType.SELECT, ["15 days", "1 month", "3 months", "6 months"], True),
+            ("plan_start_date", "Preferred plan start date", FormField.FieldType.DATE, [], True),
+            ("preferred_time_window", "Preferred wash time", FormField.FieldType.SELECT, ["Morning", "Afternoon", "Evening"], False),
+        ]
+        for key, label, field_type, options, required in field_specs:
+            FormField.objects.create(
+                service=service, key=key, label=label, field_type=field_type,
+                options=options, is_required=required, is_active=True,
+            )
+        cart_item = CartItem.objects.create(
+            cart=self.cart, service=service, form_answers=answers,
+            pricing_snapshot={"line_total": "118.00"},
+        )
+
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {"items": [{
+                "cart_item_id": cart_item.id,
+                "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+            }]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        plan = RecurringWashPlan.objects.get(order_id=response.data["order_id"])
+        self.assertEqual(plan.source_booking_id, response.data["items"][0]["booking_id"])
+        self.assertEqual(plan.frequency, RecurringWashPlan.Frequency.TWICE_WEEKLY)
+        self.assertEqual(plan.duration_days, 90)
+        self.assertEqual(plan.vehicle_type, "SUV")
+        self.assertEqual(plan.vehicle_quantity, 2)
+        self.assertEqual(plan.status, RecurringWashPlan.Status.AWAITING_QUOTE)
+        self.assertEqual(plan.ends_on - plan.starts_on, timedelta(days=89))
 
     def test_checkout_requires_schedule_for_every_cart_item(self):
         response = self.client.post(
