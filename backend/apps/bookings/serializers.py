@@ -153,9 +153,15 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         category_answers = attrs.get("category_answers", {})
         if not isinstance(category_answers, dict):
             raise serializers.ValidationError({"category_answers": "Answers must be an object."})
-        if "_airway_issue_photo" in category_answers and not self.context.get("allow_issue_photo_metadata"):
+        private_photo_keys = {"_airway_issue_photo", "_airway_form_photos"}
+        if private_photo_keys.intersection(category_answers) and not self.context.get("allow_issue_photo_metadata"):
             raise serializers.ValidationError({
-                "category_answers": "Issue-photo metadata is managed by AIRway and cannot be supplied directly."
+                "category_answers": "Private photo metadata is managed by AIRway and cannot be supplied directly."
+            })
+        form_photo_metadata = category_answers.get("_airway_form_photos", {})
+        if not isinstance(form_photo_metadata, dict):
+            raise serializers.ValidationError({
+                "category_answers": "Private form photo metadata is invalid."
             })
         try:
             validate_beauty_audience(service, category_answers)
@@ -333,6 +339,17 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "form_responses": f"Field '{field.label}' is required."
                 })
+            if field.field_type == FormField.FieldType.PHOTO:
+                stored_photo = form_photo_metadata.get(field.key)
+                if field.is_required and not stored_photo:
+                    raise serializers.ValidationError({
+                        "form_responses": f"Upload a photo for '{field.label}'."
+                    })
+                if value not in (None, "", "uploaded") and not stored_photo:
+                    raise serializers.ValidationError({
+                        "form_responses": f"Photo for '{field.label}' must be uploaded through AIRway."
+                    })
+                continue
             if value in (None, ""):
                 continue
             if field.field_type == FormField.FieldType.DATE and not _is_valid_iso_date(value):
