@@ -117,6 +117,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
     Future<_ElectricalAddSelection?> showElectricalSheet() {
       ServiceVariant? selectedVariant;
+      var showVariantError = false;
       return showModalBottomSheet<_ElectricalAddSelection>(
         context: context,
         isScrollControlled: true,
@@ -137,7 +138,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   maxWidth: 1600,
                   maxHeight: 1600,
                 );
-                if (picked != null) {
+                if (picked != null && sheetContext.mounted) {
                   setSheetState(() => selectedPhoto = File(picked.path));
                 }
               } catch (error) {
@@ -219,7 +220,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                               ),
                             for (final variant in variants) ...[
                               InkWell(
-                                onTap: () => setSheetState(() => selectedVariant = variant),
+                                onTap: () => setSheetState(() {
+                                  selectedVariant = variant;
+                                  showVariantError = false;
+                                }),
                                 borderRadius: BorderRadius.circular(15),
                                 child: Container(
                                   padding: const EdgeInsets.all(13),
@@ -299,6 +303,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                               ),
                               const SizedBox(height: 9),
                             ],
+                            if (showVariantError)
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  'Please select an option to continue.',
+                                  style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                              ),
                             if (service.pricingType == 'quote' || service.bookingMode == 'inspection' || service.visitFee > 0) ...[
                               const SizedBox(height: 5),
                               Container(
@@ -414,16 +426,20 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: variants.isNotEmpty && selectedVariant == null
-                            ? null
-                            : () => Navigator.pop(
-                                  sheetContext,
-                                  _ElectricalAddSelection(
-                                    variant: selectedVariant,
-                                    notes: _electricalNotesController.text.trim(),
-                                    photo: selectedPhoto,
-                                  ),
-                                ),
+                        onPressed: () {
+                          if (variants.isNotEmpty && selectedVariant == null) {
+                            setSheetState(() => showVariantError = true);
+                            return;
+                          }
+                          Navigator.pop(
+                            sheetContext,
+                            _ElectricalAddSelection(
+                              variant: selectedVariant,
+                              notes: _electricalNotesController.text.trim(),
+                              photo: selectedPhoto,
+                            ),
+                          );
+                        },
                         icon: const Icon(Icons.shopping_bag_outlined, size: 18),
                         label: const Text('Add to Cart'),
                         style: FilledButton.styleFrom(
@@ -469,14 +485,68 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         }
         CustomerCartState.updateFromCart(cart);
         if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${service.title} added to cart'),
-            action: SnackBarAction(
-              label: 'VIEW CART',
-              onPressed: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            padding: EdgeInsets.zero,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            duration: const Duration(seconds: 3),
+            content: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+              decoration: BoxDecoration(
+                color: const Color(0xFF18352A),
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(color: _Ui.violet.withOpacity(0.45)),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x26000000), blurRadius: 18, offset: Offset(0, 7)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: _Ui.violet.withOpacity(0.20),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check_rounded, color: Colors.white, size: 21),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Added to cart', style: TextStyle(
+                          color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800,
+                        )),
+                        Text(service.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Color(0xFFDCE8DF), fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                      minimumSize: Size.zero,
+                    ),
+                    child: const Text('VIEW CART', style: TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3,
+                    )),
+                  ),
+                ],
               ),
             ),
           ),
