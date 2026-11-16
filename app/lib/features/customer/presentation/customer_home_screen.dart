@@ -863,15 +863,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             padding: const EdgeInsets.only(bottom: 12),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: ClipRect(
-                child: SizedBox(
-                  width: 154,
-                  height: 58,
-                  child: Image.asset(
-                    'assets/images/airway_logo.png',
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                    errorBuilder: (_, __, ___) => const Text(
+              child: Container(
+                width: 154,
+                height: 64,
+                color: const Color(0xFFE7E6DD),
+                clipBehavior: Clip.hardEdge,
+                child: Image.asset(
+                  'assets/images/airway_logo.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Text(
                       'AIRway',
                       style: TextStyle(
                         color: _Ui.ink,
