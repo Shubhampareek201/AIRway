@@ -8,6 +8,12 @@ import 'package:airway/features/booking/data/booking_models.dart';
 class BookingApi {
   BookingApi._();
 
+  static Future<Map<String, String>> getAuthHeaders() async {
+    final session = await SecureSessionStorage.readSession();
+    if (session == null) throw Exception('Please sign in again.');
+    return {HttpHeaders.authorizationHeader: 'Bearer ${session.accessToken}'};
+  }
+
   static Future<dynamic> request(
     String path, {
     String method = 'GET',
