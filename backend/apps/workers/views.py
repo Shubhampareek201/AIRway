@@ -1,7 +1,10 @@
 import logging
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
@@ -16,7 +19,7 @@ from django.utils import timezone
 from apps.accounts.models import Address, User
 from apps.catalog.models import Service
 from apps.core.models import Zone
-from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote
+from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence
 from apps.notifications.models import Notification
 from apps.wallet.models import WalletTransaction
 
@@ -571,6 +574,85 @@ class WorkerJobListView(APIView):
         return Response(results)
 
 
+class WorkerJobEvidenceView(APIView):
+    """Append private before/after photos to the assigned worker's active job."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if booking.status != Booking.Status.IN_PROGRESS:
+            return Response({"detail": "Work evidence can be added only while the job is in progress."}, status=status.HTTP_400_BAD_REQUEST)
+
+        stage = str(request.data.get("stage", "")).strip().lower()
+        if stage not in (BookingWorkEvidence.Stage.BEFORE, BookingWorkEvidence.Stage.AFTER):
+            return Response({"stage": ["Choose before or after."]}, status=status.HTTP_400_BAD_REQUEST)
+        if stage == BookingWorkEvidence.Stage.AFTER and (
+            booking.booking_mode == Booking.BookingMode.INSPECTION
+            or booking.service.pricing_type == Service.PricingType.QUOTE
+        ) and not booking.quotes.filter(status=BookingQuote.Status.ACCEPTED).exists():
+            return Response({"detail": "The customer must approve the estimate before after-work evidence can be submitted."}, status=status.HTTP_409_CONFLICT)
+        if booking.work_evidence.filter(stage=stage).count() >= 10:
+            return Response({"detail": "A maximum of 10 photos is allowed for each work stage."}, status=status.HTTP_400_BAD_REQUEST)
+
+        photo = request.FILES.get("photo")
+        if photo is None:
+            return Response({"detail": "Choose a photo to upload."}, status=status.HTTP_400_BAD_REQUEST)
+        if photo.size > 5 * 1024 * 1024:
+            return Response({"detail": "Photo must be 5 MB or smaller."}, status=status.HTTP_400_BAD_REQUEST)
+        if photo.content_type not in ("image/jpeg", "image/png", "image/webp"):
+            return Response({"detail": "Upload a JPG, PNG or WEBP image."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from PIL import Image
+            image = Image.open(photo)
+            width, height = image.size
+            image_format = image.format
+            image.verify()
+            if image_format not in ("JPEG", "PNG", "WEBP"):
+                raise ValueError("Unsupported image format")
+        except Exception:
+            return Response({"detail": "The uploaded file is not a valid supported image."}, status=status.HTTP_400_BAD_REQUEST)
+        finally:
+            photo.seek(0)
+        if width > 6000 or height > 6000:
+            return Response({"detail": "Image dimensions must not exceed 6000 × 6000 pixels."}, status=status.HTTP_400_BAD_REQUEST)
+
+        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}[image_format]
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        image_path = storage.save(
+            f"booking_work_evidence/booking_{booking.id}/{stage}/{uuid.uuid4().hex}{extension}",
+            photo,
+        )
+        note = str(request.data.get("note", "")).strip()
+        if len(note) > 500:
+            storage.delete(image_path)
+            return Response({"note": ["Note must not exceed 500 characters."]}, status=status.HTTP_400_BAD_REQUEST)
+        evidence = BookingWorkEvidence.objects.create(
+            booking=booking,
+            worker=profile,
+            stage=stage,
+            image_path=image_path,
+            note=note,
+        )
+        photo_url = request.build_absolute_uri(
+            f"/api/v1/bookings/work-evidence/{evidence.id}/photo/"
+        )
+        return Response({
+            "id": evidence.id,
+            "stage": evidence.stage,
+            "note": evidence.note,
+            "photo_url": photo_url,
+            "created_at": evidence.created_at.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+
+
 class WorkerJobQuoteView(APIView):
     """Create a versioned inspection quote for the worker's own active job."""
 
@@ -787,6 +869,18 @@ class WorkerJobDetailView(APIView):
                     ),
                 }
                 for fr in booking.form_responses.select_related("form_field").all()
+            ],
+            "work_evidence": [
+                {
+                    "id": evidence.id,
+                    "stage": evidence.stage,
+                    "note": evidence.note,
+                    "photo_url": request.build_absolute_uri(
+                        f"/api/v1/bookings/work-evidence/{evidence.id}/photo/"
+                    ),
+                    "created_at": evidence.created_at.isoformat(),
+                }
+                for evidence in booking.work_evidence.select_related("worker").all()
             ],
             "assignment": {
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
