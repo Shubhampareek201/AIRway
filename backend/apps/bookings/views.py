@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, FormField
+from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, FormField, BookingWorkEvidence
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -1488,6 +1488,28 @@ class BookingIssuePhotoView(APIView):
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
         content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
         response = FileResponse(storage.open(stored_path, "rb"), content_type=content_type)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+class BookingWorkEvidencePhotoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, evidence_id):
+        evidence = get_object_or_404(
+            BookingWorkEvidence.objects.select_related(
+                "booking__customer", "worker__user"
+            ),
+            pk=evidence_id,
+        )
+        if request.user.pk not in (evidence.booking.customer_id, evidence.worker.user_id):
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        if not storage.exists(evidence.image_path):
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        content_type = mimetypes.guess_type(evidence.image_path)[0] or "application/octet-stream"
+        response = FileResponse(storage.open(evidence.image_path, "rb"), content_type=content_type)
         response["Cache-Control"] = "private, no-store"
         response["X-Content-Type-Options"] = "nosniff"
         return response
