@@ -213,6 +213,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           formAnswers[fieldKey] = value;
         }
         final visibleKeys = service.formFields
+            .where((field) => !widget.initialAnswers.containsKey(field.key))
             .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
             .map((field) => field.key)
             .toSet();
@@ -235,6 +236,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         builder: (sheetContext) => StatefulBuilder(
           builder: (context, setSheetState) {
             final visibleFields = service.formFields
+                .where((field) => !widget.initialAnswers.containsKey(field.key))
                 .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
                 .toList();
             final basePrice = selectedVariant?.price ?? 0.0;
