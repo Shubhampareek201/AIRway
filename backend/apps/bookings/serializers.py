@@ -908,6 +908,21 @@ class CartItemSerializer(serializers.ModelSerializer):
     def get_line_total(self, obj):
         return str(obj.line_total)
 
+    def update(self, instance, validated_data):
+        old_photo_map = (instance.category_answers or {}).get("_airway_form_photos", {})
+        old_paths = set(old_photo_map.values()) if isinstance(old_photo_map, dict) else set()
+        updated = super().update(instance, validated_data)
+        new_photo_map = (updated.category_answers or {}).get("_airway_form_photos", {})
+        new_paths = set(new_photo_map.values()) if isinstance(new_photo_map, dict) else set()
+        removed_paths = old_paths - new_paths
+        if removed_paths:
+            from django.conf import settings
+            from django.core.files.storage import FileSystemStorage
+            storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+            for path in removed_paths:
+                storage.delete(path)
+        return updated
+
     def validate(self, attrs):
         instance = self.instance
         service = attrs.get("service", instance.service if instance else None)
@@ -928,13 +943,11 @@ class CartItemSerializer(serializers.ModelSerializer):
                 }
                 category_answers = {**attrs["category_answers"], **existing_private}
                 attrs["category_answers"] = category_answers
+        existing_photo_map = {}
         if instance:
-            existing_photo_map = (instance.category_answers or {}).get("_airway_form_photos", {})
-            if isinstance(existing_photo_map, dict) and existing_photo_map:
-                answers = dict(answers)
-                for photo_key in existing_photo_map:
-                    answers[photo_key] = "uploaded"
-                attrs["form_answers"] = answers
+            raw_photo_map = (instance.category_answers or {}).get("_airway_form_photos", {})
+            if isinstance(raw_photo_map, dict):
+                existing_photo_map = dict(raw_photo_map)
 
         try:
             validate_beauty_audience(service, category_answers)
@@ -1000,6 +1013,19 @@ class CartItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "form_answers": "An answer was supplied for a question that is not applicable."
             })
+        if existing_photo_map:
+            retained_photo_map = {
+                key: value for key, value in existing_photo_map.items()
+                if key in visible_keys
+            }
+            for photo_key in retained_photo_map:
+                answers.setdefault(photo_key, "uploaded")
+            if retained_photo_map:
+                category_answers["_airway_form_photos"] = retained_photo_map
+            else:
+                category_answers.pop("_airway_form_photos", None)
+            attrs["category_answers"] = category_answers
+            attrs["form_answers"] = answers
         for field in visible_fields:
             value = answers.get(field.key)
             if (
