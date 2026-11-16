@@ -361,7 +361,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 source: ImageSource.camera, imageQuality: 82,
                                 maxWidth: 1600, maxHeight: 1600,
                               );
-                              if (picked != null) {
+                              if (picked != null && sheetContext.mounted) {
                                 selectedFormPhotos[field.key] = File(picked.path);
                                 updateFormAnswer(field.key, 'uploaded', setSheetState);
                               }
@@ -376,7 +376,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 source: ImageSource.gallery, imageQuality: 82,
                                 maxWidth: 1600, maxHeight: 1600,
                               );
-                              if (picked != null) {
+                              if (picked != null && sheetContext.mounted) {
                                 selectedFormPhotos[field.key] = File(picked.path);
                                 updateFormAnswer(field.key, 'uploaded', setSheetState);
                               }
@@ -420,7 +420,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             firstDate: DateTime.now(),
                             lastDate: DateTime.now().add(const Duration(days: 3650)),
                           );
-                          if (picked != null) {
+                          if (picked != null && sheetContext.mounted) {
                             final value = '${picked.year.toString().padLeft(4, '0')}-'
                                 '${picked.month.toString().padLeft(2, '0')}-'
                                 '${picked.day.toString().padLeft(2, '0')}';
@@ -876,7 +876,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           content: Container(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
             decoration: BoxDecoration(
-              color: const Color(0xFF241B3D),
+              color: const Color(0xFF18352A),
               borderRadius: BorderRadius.circular(17),
               border: Border.all(color: AirwayColors.primary.withOpacity(0.45)),
               boxShadow: const [
@@ -904,7 +904,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                         color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800,
                       )),
                       Text(service.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Color(0xFFD7D0E8), fontSize: 11)),
+                        style: const TextStyle(color: Color(0xFFDCE8DF), fontSize: 11)),
                     ],
                   ),
                 ),
