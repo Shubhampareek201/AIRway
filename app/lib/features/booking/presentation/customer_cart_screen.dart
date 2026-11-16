@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/core/theme/airway_spacing.dart';
 import 'package:airway/core/theme/airway_typography.dart';
+import 'package:airway/core/network/auth_api.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
@@ -546,6 +547,51 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     );
   }
 
+  Widget _cartPhotoPreview({
+    required int itemId,
+    required String? fieldKey,
+    required bool issuePhoto,
+  }) {
+    final path = issuePhoto
+        ? '/api/v1/bookings/cart/items/$itemId/issue-photo/'
+        : '/api/v1/bookings/cart/items/$itemId/form-photos/${Uri.encodeComponent(fieldKey ?? '')}/';
+    return FutureBuilder<Map<String, String>>(
+      future: BookingApi.getAuthHeaders(),
+      builder: (context, snapshot) {
+        Widget child;
+        if (!snapshot.hasData) {
+          child = const Center(child: SizedBox(
+            width: 18, height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: violet),
+          ));
+        } else {
+          child = Image.network(
+            '${AuthApi.baseUrl}$path',
+            headers: snapshot.data,
+            fit: BoxFit.contain,
+            width: 112,
+            height: 112,
+            errorBuilder: (_, __, ___) => const Center(
+              child: Icon(Icons.broken_image_outlined, color: sub, size: 25),
+            ),
+          );
+        }
+        return Container(
+          width: 116,
+          height: 116,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AirwayColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: line),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        );
+      },
+    );
+  }
+
   Widget itemCard(Map<String, dynamic> item) {
     final id = item['id'] as int;
     final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
@@ -638,10 +684,28 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 Padding(padding: const EdgeInsets.only(top: 5), child: Text('Inspection / visit charge: ₹' + number(snapshot['visit_fee']).toStringAsFixed(0) + ' (included once)', style: const TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w700))),
               if (item['notes']?.toString().trim().isNotEmpty == true)
                 Padding(padding: const EdgeInsets.only(top: 7), child: Text('Issue description: ' + item['notes'].toString(), style: const TextStyle(fontSize: 11, color: sub))),
-              if (item['has_issue_photo'] == true)
-                const Padding(padding: EdgeInsets.only(top: 7), child: Row(children: [Icon(Icons.image_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Issue photo attached', style: TextStyle(fontSize: 11, color: sub))])),
-              if (item['has_form_photos'] == true)
-                const Padding(padding: EdgeInsets.only(top: 6), child: Row(children: [Icon(Icons.photo_library_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Service photos attached', style: TextStyle(fontSize: 11, color: sub))])),
+              if (item['has_issue_photo'] == true || item['has_form_photos'] == true) ...[
+                const SizedBox(height: 10),
+                const Text('ATTACHED PHOTOS', style: TextStyle(
+                  fontSize: 9, fontWeight: FontWeight.w900,
+                  color: sub, letterSpacing: .8,
+                )),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 9,
+                  runSpacing: 9,
+                  children: [
+                    if (item['has_issue_photo'] == true)
+                      _cartPhotoPreview(itemId: id, fieldKey: null, issuePhoto: true),
+                    for (final key in (item['form_photo_keys'] as List? ?? const []))
+                      _cartPhotoPreview(
+                        itemId: id,
+                        fieldKey: key.toString(),
+                        issuePhoto: false,
+                      ),
+                  ],
+                ),
+              ],
               if (addons.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 const Text('ADD-ONS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 9, color: sub, letterSpacing: .8)),
