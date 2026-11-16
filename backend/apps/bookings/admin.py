@@ -64,9 +64,20 @@ class OrderItemInline(TabularInline):
     model = OrderItem
     extra = 0
     readonly_fields = (
-        "booking", "quantity", "service_snapshot", "pricing_snapshot",
+        "booking", "scheduled_service_time", "quantity", "service_snapshot", "pricing_snapshot",
         "line_subtotal", "tax_amount", "line_total", "created_at",
     )
+
+    @admin.display(description="Service schedule")
+    def scheduled_service_time(self, obj):
+        booking = getattr(obj, "booking", None)
+        if booking is None or booking.scheduled_at is None:
+            return "Not scheduled"
+        scheduled = timezone.localtime(booking.scheduled_at).strftime("%d %b %Y, %I:%M %p")
+        if booking.drop_scheduled_at:
+            drop = timezone.localtime(booking.drop_scheduled_at).strftime("%d %b %Y, %I:%M %p")
+            return f"Service: {scheduled} | Drop-off: {drop}"
+        return scheduled
 
 
 @admin.register(Order)
