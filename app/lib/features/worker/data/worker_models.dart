@@ -281,6 +281,10 @@ class WorkerAssignmentDetail {
   final String? serviceUnitLabel;
   final int quantity;
   final List<Map<String, dynamic>> addons;
+  final String bookingMode;
+  final String pricingType;
+  final Map<String, dynamic>? quote;
+  final bool canSubmitQuote;
   final WorkerAssignmentInfo assignment;
 
   WorkerAssignmentDetail({
@@ -304,6 +308,10 @@ class WorkerAssignmentDetail {
     this.serviceUnitLabel,
     this.quantity = 1,
     this.addons = const [],
+    this.bookingMode = 'scheduled',
+    this.pricingType = 'fixed',
+    this.quote,
+    this.canSubmitQuote = false,
     required this.assignment,
   });
 
@@ -329,6 +337,10 @@ class WorkerAssignmentDetail {
       serviceUnitLabel: map['service_unit_label']?.toString(),
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
+      bookingMode: map['booking_mode']?.toString() ?? 'scheduled',
+      pricingType: map['pricing_type']?.toString() ?? 'fixed',
+      quote: map['quote'] is Map ? Map<String, dynamic>.from(map['quote']) : null,
+      canSubmitQuote: map['can_submit_quote'] == true,
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
     );
   }
