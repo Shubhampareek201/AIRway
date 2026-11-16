@@ -308,10 +308,39 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
               const SizedBox(height: 6),
               for (final answer in job.formResponses)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '${answer['label'] ?? answer['key']}: ${answer['value']}',
-                    style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${answer['label'] ?? answer['key']}: ${answer['value']}',
+                        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                      ),
+                      if (answer['photo_url']?.toString().isNotEmpty == true)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 7),
+                          child: FutureBuilder<Map<String, String>>(
+                            future: WorkerApi.getAuthHeaders(),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()));
+                              }
+                              if (snapshot.hasError) return const Text('Could not authorize photo access.');
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(
+                                  answer['photo_url'].toString(),
+                                  headers: snapshot.data,
+                                  height: 150,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Text('Photo is unavailable.'),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
                   ),
                 ),
             ],
