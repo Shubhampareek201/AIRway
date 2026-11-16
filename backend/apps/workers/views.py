@@ -798,7 +798,12 @@ class WorkerJobDetailView(APIView):
             quote_data = {
                 "id": latest_quote.id,
                 "version": latest_quote.version,
-                "status": latest_quote.status,
+                "status": (
+                    "expired"
+                    if latest_quote.status == BookingQuote.Status.PENDING_CUSTOMER
+                    and latest_quote.expires_at and latest_quote.expires_at <= timezone.now()
+                    else latest_quote.status
+                ),
                 "line_items": latest_quote.line_items,
                 "labour_amount": str(latest_quote.labour_amount),
                 "material_amount": str(latest_quote.material_amount),
@@ -826,7 +831,10 @@ class WorkerJobDetailView(APIView):
                 booking.status == Booking.Status.IN_PROGRESS
                 and (booking.booking_mode == Booking.BookingMode.INSPECTION or booking.service.pricing_type == Service.PricingType.QUOTE)
                 and not booking.quotes.filter(status=BookingQuote.Status.ACCEPTED).exists()
-                and not booking.quotes.filter(status=BookingQuote.Status.PENDING_CUSTOMER).exists()
+                and not booking.quotes.filter(
+                    status=BookingQuote.Status.PENDING_CUSTOMER,
+                    expires_at__gt=timezone.now(),
+                ).exists()
             ),
             "service_title": booking.service.title,
             "customer_name": booking.customer.name or "AIRway Customer",
