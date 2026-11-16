@@ -1018,6 +1018,11 @@ class WorkerJobStartView(APIView):
         old = booking.status
         booking.status = Booking.Status.IN_PROGRESS
         booking.save(update_fields=["status"])
+        from apps.bookings.models import RecurringWashVisit
+        RecurringWashVisit.objects.filter(
+            booking=booking,
+            status=RecurringWashVisit.Status.BOOKED,
+        ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=timezone.now())
 
         BookingStatusHistory.objects.create(
             booking=booking,
@@ -1388,7 +1393,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     ).exists()
                     has_allocation = bool((order.metadata or {}).get("payment_allocation_v1"))
                 else:
-                    paid_advance = Payment.objects.filter(
+                    recurring_visit = getattr(standalone_booking, "recurring_wash_visit", None)
+                    prepaid_recurring = bool(
+                        recurring_visit
+                        and recurring_visit.status == recurring_visit.Status.BOOKED
+                        and recurring_visit.plan.status in (
+                            recurring_visit.plan.Status.PAID_PENDING_SETUP,
+                            recurring_visit.plan.Status.ACTIVE,
+                        )
+                    )
+                    paid_advance = prepaid_recurring or Payment.objects.filter(
                         booking=standalone_booking, stage=Payment.Stage.ADVANCE,
                         status=Payment.Status.PAID,
                     ).exists()
