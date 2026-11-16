@@ -80,7 +80,7 @@ class ServicePricingReadinessTests(TestCase):
         self.assertTrue(service_pricing_ready(self.per_unit))
 
     def test_customer_service_api_hides_unpriced_and_unsupported_services(self):
-        response = APIClient().get("/api/v1/catalog/services/?launch_only=true&priced_only=true")
+        response = APIClient().get("/api/v1/catalog/services/?launch_only=true&for_worker=true&priced_only=true")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         ids = {row["id"] for row in rows}
@@ -96,7 +96,7 @@ class ServicePricingReadinessTests(TestCase):
             price=Decimal("0.00"),
         )
         response = APIClient().get(
-            f"/api/v1/catalog/services/{self.fixed_priced.id}/?launch_only=true&priced_only=true"
+            f"/api/v1/catalog/services/{self.fixed_priced.id}/?launch_only=true&for_worker=true&priced_only=true"
         )
         self.assertEqual(response.status_code, 200, response.data)
         visible_ids = {row["id"] for row in response.data["variants"]}
@@ -111,7 +111,7 @@ class ServicePricingReadinessTests(TestCase):
             price=Decimal("0.00"),
         )
         response = APIClient().get(
-            f"/api/v1/catalog/services/{self.quote_with_fee.id}/?launch_only=true&priced_only=true"
+            f"/api/v1/catalog/services/{self.quote_with_fee.id}/?launch_only=true&for_worker=true&priced_only=true"
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIn(quote_variant.id, {row["id"] for row in response.data["variants"]})
@@ -121,14 +121,14 @@ class ServicePricingReadinessTests(TestCase):
             service=self.per_unit, title="Rate per sq ft",
             mrp=Decimal("18.00"), price=Decimal("15.00"),
         )
-        response = APIClient().get("/api/v1/catalog/services/?launch_only=true")
+        response = APIClient().get("/api/v1/catalog/services/?launch_only=true&for_worker=true")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         self.assertIn(self.per_unit.id, {row["id"] for row in rows})
 
     def test_worker_catalogue_can_still_see_unpriced_services_for_enrolment(self):
         response = APIClient().get(
-            "/api/v1/catalog/services/?launch_only=true&for_worker=true"
+            "/api/v1/catalog/services/?launch_only=true&for_worker=true&for_worker=true"
         )
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
@@ -151,7 +151,7 @@ class ServicePricingReadinessTests(TestCase):
             )
 
         men_response = APIClient().get(
-            "/api/v1/catalog/services/?launch_only=true&audience=men"
+            "/api/v1/catalog/services/?launch_only=true&for_worker=true&audience=men"
         )
         men_rows = men_response.data if isinstance(men_response.data, list) else men_response.data.get("results", [])
         men_ids = {row["id"] for row in men_rows}
@@ -159,7 +159,7 @@ class ServicePricingReadinessTests(TestCase):
         self.assertNotIn(womens.id, men_ids)
 
         women_response = APIClient().get(
-            "/api/v1/catalog/services/?launch_only=true&audience=women"
+            "/api/v1/catalog/services/?launch_only=true&for_worker=true&audience=women"
         )
         women_rows = women_response.data if isinstance(women_response.data, list) else women_response.data.get("results", [])
         women_ids = {row["id"] for row in women_rows}
@@ -190,7 +190,7 @@ class ServicePricingReadinessTests(TestCase):
 
         answers = urlencode({"category_answers": json.dumps({"work_type": "Repair"})})
         response = APIClient().get(
-            f"/api/v1/catalog/services/?launch_only=true&category={fans.id}&{answers}"
+            f"/api/v1/catalog/services/?launch_only=true&for_worker=true&category={fans.id}&{answers}"
         )
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
@@ -219,7 +219,7 @@ class ServicePricingReadinessTests(TestCase):
         )
 
         answers = urlencode({"category_answers": json.dumps({"work_type": "Repair"})})
-        response = APIClient().get(f"/api/v1/catalog/categories/?launch_only=true&priced_only=true&{answers}")
+        response = APIClient().get(f"/api/v1/catalog/categories/?launch_only=true&for_worker=true&priced_only=true&{answers}")
         self.assertEqual(response.status_code, 200, response.data)
         roots = response.data if isinstance(response.data, list) else response.data.get("results", [])
         electrical_row = next(row for row in roots if row["slug"] == "electrical")
@@ -246,7 +246,7 @@ class ServicePricingReadinessTests(TestCase):
             is_required=True,
         )
         answers = urlencode({"category_answers": json.dumps({"work_type": "Maintenance"})})
-        response = APIClient().get(f"/api/v1/catalog/services/?{answers}")
+        response = APIClient().get(f"/api/v1/catalog/services/?for_worker=true&{answers}")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         electrical_ids = {
@@ -257,12 +257,12 @@ class ServicePricingReadinessTests(TestCase):
 
     def test_electrical_work_type_rejects_malformed_category_answers(self):
         response = APIClient().get(
-            "/api/v1/catalog/services/?launch_only=true&category_answers=not-json"
+            "/api/v1/catalog/services/?launch_only=true&for_worker=true&category_answers=not-json"
         )
         self.assertEqual(response.status_code, 400)
 
     def test_customer_categories_hide_roots_without_priced_services(self):
-        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true&priced_only=true")
+        response = APIClient().get("/api/v1/catalog/categories/?launch_only=true&for_worker=true&priced_only=true")
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
         self.assertEqual([row["slug"] for row in rows], ["beauty"])
