@@ -876,17 +876,22 @@ class CartItemSerializer(serializers.ModelSerializer):
     booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     has_issue_photo = serializers.SerializerMethodField()
+    has_form_photos = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
     def get_has_issue_photo(self, obj):
         return bool((obj.category_answers or {}).get("_airway_issue_photo"))
 
+    def get_has_form_photos(self, obj):
+        photo_map = (obj.category_answers or {}).get("_airway_form_photos", {})
+        return bool(photo_map) if isinstance(photo_map, dict) else False
+
     class Meta:
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
-            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "notes",
+            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "has_form_photos", "notes",
             "pricing_snapshot", "line_total",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
@@ -896,6 +901,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         category_answers = data.get("category_answers")
         if isinstance(category_answers, dict):
             category_answers.pop("_airway_issue_photo", None)
+            category_answers.pop("_airway_form_photos", None)
         return data
 
     def get_line_total(self, obj):
@@ -909,10 +915,25 @@ class CartItemSerializer(serializers.ModelSerializer):
         addons = attrs.get("addon_selections", instance.addon_selections if instance else [])
         answers = attrs.get("form_answers", instance.form_answers if instance else {})
         category_answers = attrs.get("category_answers", instance.category_answers if instance else {})
-        if "category_answers" in attrs and "_airway_issue_photo" in attrs["category_answers"]:
-            raise serializers.ValidationError({
-                "category_answers": "Issue-photo metadata is managed by AIRway and cannot be supplied directly."
-            })
+        if "category_answers" in attrs:
+            if {"_airway_issue_photo", "_airway_form_photos"}.intersection(attrs["category_answers"]):
+                raise serializers.ValidationError({
+                    "category_answers": "Private photo metadata is managed by AIRway and cannot be supplied directly."
+                })
+            if instance:
+                existing_private = {
+                    key: value for key, value in (instance.category_answers or {}).items()
+                    if key in {"_airway_issue_photo", "_airway_form_photos"}
+                }
+                category_answers = {**attrs["category_answers"], **existing_private}
+                attrs["category_answers"] = category_answers
+        if instance:
+            existing_photo_map = (instance.category_answers or {}).get("_airway_form_photos", {})
+            if isinstance(existing_photo_map, dict) and existing_photo_map:
+                answers = dict(answers)
+                for photo_key in existing_photo_map:
+                    answers[photo_key] = "uploaded"
+                attrs["form_answers"] = answers
 
         try:
             validate_beauty_audience(service, category_answers)
@@ -986,6 +1007,18 @@ class CartItemSerializer(serializers.ModelSerializer):
                 and not self.context.get("allow_incomplete", False)
             ):
                 raise serializers.ValidationError({"form_answers": f"{field.label} is required."})
+            if field.field_type == "photo":
+                photo_map = category_answers.get("_airway_form_photos", {})
+                has_photo = isinstance(photo_map, dict) and bool(photo_map.get(field.key))
+                if value == "uploaded" and not has_photo:
+                    raise serializers.ValidationError({
+                        "form_answers": f"Upload the photo for {field.label} again."
+                    })
+                if field.is_required and not has_photo and not self.context.get("allow_incomplete", False):
+                    raise serializers.ValidationError({
+                        "form_answers": f"Upload a photo for {field.label}."
+                    })
+                continue
             if value in (None, ""):
                 continue
 
