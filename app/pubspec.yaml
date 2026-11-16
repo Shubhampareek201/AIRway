@@ -76,7 +76,6 @@ flutter:
 
   assets:
     - assets/images/airway_logo.png
-    - assets/images/airway_logo_cropped.png
     - assets/images/google_logo.png
   # To add assets to your application, add an assets section, like this:
   # assets:
