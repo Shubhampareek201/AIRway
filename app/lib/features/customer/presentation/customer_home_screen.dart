@@ -864,14 +864,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Container(
-                width: 154,
+                width: 156,
                 height: 64,
-                color: const Color(0xFFE7E6DD),
-                clipBehavior: Clip.hardEdge,
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE7E6DD),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                clipBehavior: Clip.antiAlias,
                 child: Image.asset(
-                  'assets/images/airway_logo.png',
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
+                  'assets/images/airway_logo_cropped.png',
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
                   errorBuilder: (_, __, ___) => const Center(
                     child: Text(
                       'AIRway',
