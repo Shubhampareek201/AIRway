@@ -31,6 +31,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   bool walletLoading = true;
   bool loading = true;
   bool paying = false;
+  bool _quoteResponding = false;
   String _currentPaymentStage = 'advance';
   String? error;
   Timer? refreshTimer;
@@ -547,6 +548,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           Text('${row['quantity']} ${snapshot['unit_label']}', style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 6),
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
+        if (row['quote'] is Map) ...[
+          const SizedBox(height: 12),
+          _quoteCard(row),
+        ],
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 12),
@@ -619,6 +624,124 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         ],
       ]),
     );
+  }
+
+  Widget _quoteCard(Map<String, dynamic> row) {
+    final quote = Map<String, dynamic>.from(row['quote'] as Map);
+    final quoteStatus = quote['status']?.toString() ?? '';
+    final lineItems = (quote['line_items'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: pale,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Expanded(child: Text('Inspection estimate', style: TextStyle(fontWeight: FontWeight.w900, color: ink))),
+            Text('v${quote['version']}', style: const TextStyle(color: sub, fontSize: 11)),
+          ]),
+          const SizedBox(height: 7),
+          for (final item in lineItems)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(children: [
+                Expanded(child: Text('${item['description']} • ${item['type']}',
+                    style: const TextStyle(color: sub, fontSize: 12))),
+                Text('₹${amount(item['line_total']).toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: ink, fontSize: 12)),
+              ]),
+            ),
+          const Divider(height: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('Estimate including tax', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+            Text('₹${amount(quote['total_amount']).toStringAsFixed(2)}',
+                style: const TextStyle(fontWeight: FontWeight.w900, color: violet, fontSize: 16)),
+          ]),
+          if (quote['notes']?.toString().isNotEmpty == true) ...[
+            const SizedBox(height: 6),
+            Text(quote['notes'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
+          ],
+          const SizedBox(height: 7),
+          Text(
+            quoteStatus == 'pending_customer'
+                ? 'Please review this estimate and choose whether to approve it or request a revision.'
+                : quoteStatus == 'accepted'
+                    ? 'You approved this estimate.'
+                    : quoteStatus == 'rejected'
+                        ? 'You requested a revised estimate.'
+                        : 'Estimate status: ${quoteStatus.replaceAll('_', ' ')}',
+            style: const TextStyle(color: sub, fontSize: 12),
+          ),
+          if (quoteStatus == 'pending_customer' && row['booking_status'] == 'in_progress') ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: OutlinedButton(
+                onPressed: _quoteResponding ? null : () => respondToQuote(row, 'reject'),
+                child: const Text('Request revision'),
+              )),
+              const SizedBox(width: 8),
+              Expanded(child: FilledButton(
+                onPressed: _quoteResponding ? null : () => respondToQuote(row, 'accept'),
+                child: _quoteResponding
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Approve estimate'),
+              )),
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> respondToQuote(Map<String, dynamic> row, String decision) async {
+    if (_quoteResponding) return;
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    if (decision == 'reject') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Request a revised estimate?'),
+          content: const Text('The professional will be asked to review your feedback and submit a revised estimate.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep quote')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Request revision')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    setState(() => _quoteResponding = true);
+    try {
+      await BookingApi.request(
+        '/api/v1/bookings/$bookingId/quote/respond/',
+        method: 'POST',
+        data: {'decision': decision},
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(decision == 'accept'
+            ? 'Estimate approved. Your order total has been updated.'
+            : 'Revision request sent to the professional.'),
+      ));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update estimate: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _quoteResponding = false);
+    }
   }
 
   Future<void> rateProfessional(Map<String, dynamic> row) async {
