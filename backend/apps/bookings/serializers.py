@@ -50,11 +50,29 @@ class BookingFormResponseSerializer(serializers.ModelSerializer):
     field_label_hi = serializers.CharField(source="form_field.label_hi", read_only=True)
     field_type = serializers.CharField(source="form_field.field_type", read_only=True)
     field_options = serializers.JSONField(source="form_field.options", read_only=True)
+    value = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = BookingFormResponse
-        fields = ["id", "form_field", "field_key", "field_label", "field_label_hi", "field_type", "field_options", "value"]
+        fields = ["id", "form_field", "field_key", "field_label", "field_label_hi", "field_type", "field_options", "value", "photo_url"]
         read_only_fields = ["form_field"]
+
+    def get_value(self, obj):
+        if obj.form_field.field_type == "photo":
+            photo_map = (obj.booking.customer_answers or {}).get("_airway_form_photos", {})
+            return "Photo attached" if isinstance(photo_map, dict) and photo_map.get(obj.form_field.key) else None
+        return obj.value
+
+    def get_photo_url(self, obj):
+        if obj.form_field.field_type != "photo":
+            return None
+        photo_map = (obj.booking.customer_answers or {}).get("_airway_form_photos", {})
+        if not isinstance(photo_map, dict) or not photo_map.get(obj.form_field.key):
+            return None
+        request = self.context.get("request")
+        path = f"/api/v1/bookings/issue-photos/{obj.booking_id}/?field_key={obj.form_field.key}"
+        return request.build_absolute_uri(path) if request else path
 
 
 class BookingStatusHistorySerializer(serializers.ModelSerializer):
