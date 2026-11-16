@@ -591,6 +591,16 @@ class WorkerJobQuoteView(APIView):
             return Response({"detail": "Start the assigned inspection job before submitting its estimate."}, status=status.HTTP_400_BAD_REQUEST)
         if BookingQuote.objects.filter(booking=booking, status=BookingQuote.Status.ACCEPTED).exists():
             return Response({"detail": "The customer has already accepted a quote for this booking."}, status=status.HTTP_409_CONFLICT)
+        now = timezone.now()
+        BookingQuote.objects.filter(
+            booking=booking,
+            status=BookingQuote.Status.PENDING_CUSTOMER,
+            expires_at__lte=now,
+        ).update(
+            status=BookingQuote.Status.REJECTED,
+            customer_response_note="Quote expired before customer response.",
+            responded_at=now,
+        )
         if BookingQuote.objects.filter(booking=booking, status=BookingQuote.Status.PENDING_CUSTOMER).exists():
             return Response({"detail": "A quote is already waiting for customer approval."}, status=status.HTTP_409_CONFLICT)
 
