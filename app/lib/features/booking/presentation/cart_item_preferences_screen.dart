@@ -47,6 +47,8 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
   final ImagePicker picker = ImagePicker();
   File? selectedPhoto;
   bool removeExistingPhoto = false;
+  final Map<String, File> selectedFormPhotos = {};
+  final Set<String> removedFormPhotos = {};
 
   @override
   void initState() {
@@ -101,12 +103,37 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
         if (stale.isNotEmpty) {
           for (final key in stale) {
             answers.remove(key);
+            selectedFormPhotos.remove(key);
             controllers.remove(key)?.dispose();
           }
           changed = true;
         }
       }
     });
+  }
+
+  Future<void> _pickFormPhoto(String fieldKey, ImageSource source) async {
+    try {
+      final picked = await picker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked != null && mounted) {
+        setState(() {
+          selectedFormPhotos[fieldKey] = File(picked.path);
+          removedFormPhotos.remove(fieldKey);
+          answers[fieldKey] = 'uploaded';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not select photo: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _pickIssuePhoto(ImageSource source) async {
@@ -135,7 +162,16 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
   Future<void> _save() async {
     for (final field in visibleFields) {
       final value = answers[field.key];
-      if (field.isRequired && (value == null || value.toString().trim().isEmpty)) {
+      final hasSelectedPhoto = selectedFormPhotos.containsKey(field.key);
+      if (field.fieldType == 'photo' && field.isRequired &&
+          !hasSelectedPhoto && value?.toString() != 'uploaded') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please upload: ${field.label}')),
+        );
+        return;
+      }
+      if (field.fieldType != 'photo' && field.isRequired &&
+          (value == null || value.toString().trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Please complete: ${field.label}')),
         );
@@ -148,6 +184,20 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
     );
     setState(() => saving = true);
     try {
+      // Upload replacements first so required photo fields already have valid
+      // server-side metadata when the cart answers are validated.
+      for (final entry in selectedFormPhotos.entries) {
+        await BookingApi.uploadCartItemFormPhoto(
+          itemId: widget.cartItemId,
+          fieldKey: entry.key,
+          photo: entry.value,
+        );
+      }
+      for (final fieldKey in removedFormPhotos) {
+        if (!selectedFormPhotos.containsKey(fieldKey)) {
+          await BookingApi.removeCartItemFormPhoto(widget.cartItemId, fieldKey);
+        }
+      }
       await BookingApi.updateCartItem(
         itemId: widget.cartItemId,
         data: {
@@ -343,6 +393,67 @@ class _CartItemPreferencesScreenState extends State<CartItemPreferencesScreen> {
           value: option.key, child: Text(option.value),
         )).toList(),
         onChanged: (value) => _setAnswer(field.key, value),
+      );
+    }
+    if (field.fieldType == 'photo') {
+      final selected = selectedFormPhotos[field.key];
+      final attached = answers[field.key]?.toString() == 'uploaded' &&
+          !removedFormPhotos.contains(field.key);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(field.isRequired ? '${field.label} *' : field.label,
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          if (selected != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(selected, height: 140, width: double.infinity, fit: BoxFit.cover),
+            )
+          else if (attached)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F6F3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(children: [
+                Icon(Icons.check_circle_outline, color: green),
+                SizedBox(width: 8),
+                Expanded(child: Text('Photo attached securely')),
+              ]),
+            ),
+          if (selected != null || attached)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: saving ? null : () {
+                  setState(() {
+                    selectedFormPhotos.remove(field.key);
+                    removedFormPhotos.add(field.key);
+                    answers.remove(field.key);
+                  });
+                },
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Remove photo'),
+              ),
+            )
+          else
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: saving ? null : () => _pickFormPhoto(field.key, ImageSource.camera),
+                icon: const Icon(Icons.camera_alt_outlined),
+                label: const Text('Camera'),
+              )),
+              const SizedBox(width: 8),
+              Expanded(child: OutlinedButton.icon(
+                onPressed: saving ? null : () => _pickFormPhoto(field.key, ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Gallery'),
+              )),
+            ]),
+        ],
       );
     }
     if (field.fieldType == 'date') {
