@@ -1348,6 +1348,18 @@ class CustomerOrderDetailView(APIView):
                     "vehicle_type": recurring_plan.vehicle_type,
                     "vehicle_quantity": recurring_plan.vehicle_quantity,
                     "quoted_total": str(recurring_plan.quoted_total),
+                    "visits": [
+                        {
+                            "id": visit.pk,
+                            "visit_number": visit.visit_number,
+                            "scheduled_at": visit.scheduled_at.isoformat(),
+                            "status": visit.status,
+                            "prepaid_amount": str(visit.prepaid_amount),
+                            "booking_id": visit.booking_id,
+                            "booking_status": visit.booking.status if visit.booking_id else None,
+                        }
+                        for visit in recurring_plan.visits.select_related("booking").order_by("visit_number")
+                    ],
                 }
                 if recurring_plan else None
             ),
