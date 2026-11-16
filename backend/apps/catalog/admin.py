@@ -54,7 +54,7 @@ class CategoryAdmin(ModelAdmin):
     inlines = [CategoryAudienceOptionInline]
     fieldsets = (
         ("Category details", {"fields": ("title", "title_hi", "slug", "parent", "image")}),
-        ("Customer flow", {"fields": ("flow_steps",), "description": "Configure pre-service questions as a JSON list. Leave empty when the category only needs subcategory selection."}),
+        ("Customer flow", {"fields": ("flow_steps",), "description": "Configure pre-service questions as JSON. Each choice can include next_category_slug (or next_category_id) to open its configured child directly. Or use filter_children=true with child_slugs mapping each option value to one or more child slugs. Example: {\"key\":\"home_type\",\"title\":\"Choose home type\",\"type\":\"select\",\"filter_children\":true,\"child_slugs\":{\"Full Home\":[\"1-bhk\",\"2-bhk\",\"3-bhk\"],\"Specific Area\":[\"kitchen\",\"bathroom\"],\"Item\":[\"sofa\",\"carpet\"]},\"options\":[{\"label\":\"Full Home\",\"value\":\"Full Home\"},{\"label\":\"Specific Area\",\"value\":\"Specific Area\"},{\"label\":\"Item\",\"value\":\"Item\"}]}. Child categories and their services must be created below the appropriate parent."}),
         ("Display & availability", {"fields": ("sort_order", "is_active")}),
     )
 
