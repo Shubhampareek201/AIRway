@@ -4,7 +4,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.utils import timezone
 
-from .models import RecurringWashPlan, RecurringWashVisit
+from .models import (
+    Booking, BookingAddOn, BookingFormResponse, BookingStatusHistory,
+    RecurringWashPlan, RecurringWashVisit,
+)
+from .services import check_service_available, check_slot_availability, SlotConflictError, ServiceUnavailableError
 
 
 def _visit_offsets(frequency, duration_days):
@@ -41,8 +45,7 @@ def generate_recurring_wash_visit_ledger(plan):
     Create the plan's prepaid visit calendar exactly once.
 
     Visit one reuses the already-paid source booking. Future rows remain
-    PENDING_SETUP until booking creation, slot validation and worker dispatch
-    are implemented; the plan is deliberately not activated here.
+    PENDING_SETUP until their real booking records have been created.
     """
     locked = RecurringWashPlan.objects.select_for_update().get(pk=plan.pk)
     existing = list(locked.visits.select_related("booking").order_by("visit_number"))
@@ -80,9 +83,9 @@ def generate_recurring_wash_visit_ledger(plan):
         if index == 1:
             booking_status = (
                 RecurringWashVisit.Status.COMPLETED
-                if booking.status == "completed"
+                if booking.status == Booking.Status.COMPLETED
                 else RecurringWashVisit.Status.CANCELLED
-                if booking.status == "cancelled"
+                if booking.status == Booking.Status.CANCELLED
                 else RecurringWashVisit.Status.BOOKED
             )
         else:
@@ -96,3 +99,119 @@ def generate_recurring_wash_visit_ledger(plan):
             status=booking_status,
         ))
     return visits
+
+
+@transaction.atomic
+def create_pending_recurring_visit_bookings(plan):
+    """
+    Materialize future ledger rows as ordinary AIRway bookings.
+
+    This is safe to retry: each visit is locked and linked to at most one
+    booking. Slot conflicts leave the visit pending for the next setup pass.
+    """
+    locked = RecurringWashPlan.objects.select_for_update().select_related(
+        "source_booking", "customer", "address__zone__city", "service", "variant"
+    ).get(pk=plan.pk)
+    if locked.status not in (
+        RecurringWashPlan.Status.PAID_PENDING_SETUP,
+        RecurringWashPlan.Status.ACTIVE,
+    ):
+        return []
+
+    created = []
+    pending_visits = list(
+        locked.visits.select_for_update()
+        .filter(status=RecurringWashVisit.Status.PENDING_SETUP)
+        .order_by("visit_number")
+    )
+    source = locked.source_booking
+    for visit in pending_visits:
+        if visit.booking_id:
+            visit.status = RecurringWashVisit.Status.BOOKED
+            visit.save(update_fields=["status", "updated_at"])
+            continue
+
+        try:
+            check_service_available(locked.service, address=locked.address)
+            duration = (
+                locked.variant.duration_minutes
+                if locked.variant_id and locked.variant.duration_minutes
+                else locked.service.duration_minutes
+            ) or 60
+            quantity = max(int(locked.vehicle_quantity or 1), 1)
+            check_slot_availability(
+                service=locked.service,
+                scheduled_at=visit.scheduled_at,
+                duration_minutes=duration * (
+                    1 if locked.service.pricing_type == "per_unit" else quantity
+                ),
+                booking_mode=Booking.BookingMode.SCHEDULED,
+            )
+        except (SlotConflictError, ServiceUnavailableError) as exc:
+            visit.admin_notes = str(exc)
+            visit.save(update_fields=["admin_notes", "updated_at"])
+            continue
+
+        total = Decimal(visit.prepaid_amount).quantize(Decimal("0.01"))
+        subtotal = (total / Decimal("1.18")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        tax = total - subtotal
+        pricing = dict(source.pricing_snapshot or {})
+        pricing.update({
+            "recurring_plan_id": locked.pk,
+            "recurring_visit_id": visit.pk,
+            "recurring_visit_number": visit.visit_number,
+            "quantity": quantity,
+            "subtotal": str(subtotal),
+            "tax": str(tax),
+            "total": str(total),
+            "currency": "INR",
+            "prepaid": True,
+            "prepaid_amount": str(total),
+        })
+        booking = Booking.objects.create(
+            customer=locked.customer,
+            address=locked.address,
+            service=locked.service,
+            variant=locked.variant,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=visit.scheduled_at,
+            status=Booking.Status.PENDING,
+            pricing_snapshot=pricing,
+            notes=source.notes,
+            customer_answers=source.customer_answers,
+        )
+        for addon in source.booking_addons.all():
+            BookingAddOn.objects.create(
+                booking=booking,
+                addon=addon.addon,
+                quantity=addon.quantity,
+                unit_price=addon.unit_price,
+                total_price=addon.total_price,
+            )
+        for response in source.form_responses.all():
+            BookingFormResponse.objects.create(
+                booking=booking,
+                form_field=response.form_field,
+                value=response.value,
+            )
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status="",
+            to_status=Booking.Status.PENDING,
+            changed_by=None,
+            note=f"Recurring Car Wash plan #{locked.pk}, visit {visit.visit_number}; prepaid by plan.",
+        )
+        visit.booking = booking
+        visit.status = RecurringWashVisit.Status.BOOKED
+        visit.admin_notes = ""
+        visit.save(update_fields=["booking", "status", "admin_notes", "updated_at"])
+        created.append(booking)
+
+    remaining = locked.visits.filter(
+        status=RecurringWashVisit.Status.PENDING_SETUP
+    ).exists()
+    if not remaining and locked.status == RecurringWashPlan.Status.PAID_PENDING_SETUP:
+        locked.status = RecurringWashPlan.Status.ACTIVE
+        locked.activated_at = timezone.now()
+        locked.save(update_fields=["status", "activated_at", "updated_at"])
+    return created
