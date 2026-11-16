@@ -89,7 +89,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const AirwayColors.surfaceVariant,
+        color: AirwayColors.surfaceVariant,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: line),
       ),
@@ -449,7 +449,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           border: const Border(top: BorderSide(color: line)),
-          boxShadow: [BoxShadow(color: const AirwayColors.ink.withOpacity(.06), blurRadius: 18, offset: const Offset(0, -5))],
+          boxShadow: [BoxShadow(color: AirwayColors.ink.withOpacity(.06), blurRadius: 18, offset: const Offset(0, -5))],
         ),
         child: SafeArea(top: false, child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -507,7 +507,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(AirwaySpacing.cardRadius),
         border: Border.all(color: line),
-        boxShadow: [BoxShadow(color: const AirwayColors.ink.withOpacity(.035), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: AirwayColors.ink.withOpacity(.035), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Row(children: [
         Container(
@@ -563,7 +563,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(21),
         border: Border.all(color: line),
-        boxShadow: [BoxShadow(color: const AirwayColors.ink.withOpacity(.035), blurRadius: 13, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: AirwayColors.ink.withOpacity(.035), blurRadius: 13, offset: const Offset(0, 5))],
       ),
       child: Column(children: [
         InkWell(
@@ -602,18 +602,18 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
               decoration: BoxDecoration(
-                color: scheduled ? const AirwayColors.primarySoft : const AirwayColors.warningSoft,
+                color: scheduled ? AirwayColors.primarySoft : AirwayColors.warningSoft,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: scheduled ? const AirwayColors.borderStrong : const AirwayColors.borderStrong),
+                border: Border.all(color: scheduled ? AirwayColors.borderStrong : AirwayColors.borderStrong),
               ),
               child: Row(children: [
-                Icon(scheduled ? Icons.event_available_rounded : Icons.add_circle_outline_rounded, color: scheduled ? violet : const AirwayColors.warning, size: 19),
+                Icon(scheduled ? Icons.event_available_rounded : Icons.add_circle_outline_rounded, color: scheduled ? violet : AirwayColors.warning, size: 19),
                 const SizedBox(width: 9),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(scheduled ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context) : 'Choose date & time',
-                    style: TextStyle(color: scheduled ? ink : const AirwayColors.warning, fontWeight: FontWeight.w800, fontSize: 12)),
+                    style: TextStyle(color: scheduled ? ink : AirwayColors.warning, fontWeight: FontWeight.w800, fontSize: 12)),
                   Text(scheduled ? 'Tap to change your schedule' : 'Select a convenient service slot',
-                    style: TextStyle(color: scheduled ? sub : const AirwayColors.textSecondary, fontSize: 10)),
+                    style: TextStyle(color: scheduled ? sub : AirwayColors.textSecondary, fontSize: 10)),
                 ])),
                 Text(scheduled ? 'CHANGE' : 'SCHEDULE', style: const TextStyle(color: violet, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .5)),
                 const SizedBox(width: 3),
