@@ -415,6 +415,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           ),
           const SizedBox(height: 14),
           orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
+          const SizedBox(height: 14),
+          scheduleOverview(rows),
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
@@ -534,6 +536,52 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     ]);
   }
 
+
+  Widget scheduleOverview(List<Map<String, dynamic>> rows) {
+    final groups = <String, List<String>>{};
+    for (final row in rows) {
+      final raw = row['scheduled_at']?.toString();
+      if (raw == null || raw.isEmpty) continue;
+      final service = row['service'] is Map
+          ? (row['service']['service_title']?.toString() ?? 'Service')
+          : 'Service';
+      groups.putIfAbsent(raw, () => <String>[]).add(service);
+    }
+    if (groups.isEmpty) return const SizedBox.shrink();
+    final entries = groups.entries.toList()
+      ..sort((a, b) => DateTime.tryParse(a.key)?.compareTo(DateTime.tryParse(b.key) ?? DateTime(9999)) ?? 0);
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.calendar_month_rounded, color: violet, size: 19),
+          SizedBox(width: 8),
+          Text('Your service schedule', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+        ]),
+        const SizedBox(height: 5),
+        const Text('Services sharing the same appointment are grouped together.', style: TextStyle(color: sub, fontSize: 12)),
+        const SizedBox(height: 10),
+        for (var i = 0; i < entries.length; i++) ...[
+          if (i > 0) const Divider(height: 16),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 28, height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(9)),
+              child: Text('${i + 1}', style: const TextStyle(color: violet, fontWeight: FontWeight.w900)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(DateFormatForOrder.format(entries[i].key), style: const TextStyle(color: ink, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 3),
+              Text(entries[i].value.join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+            ])),
+          ]),
+        ],
+      ]),
+    );
+  }
 
   Widget orderProgress(List<Map<String, dynamic>> rows, bool paid, bool advancePaid, bool staged, int advancePercentage, bool acceptedInspectionQuote) {
     final balancePercentage = 100 - advancePercentage;
@@ -721,7 +769,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ]),
           ),
         ],
-        if (scheduled.isNotEmpty) Text(scheduled, style: const TextStyle(color: sub, fontSize: 12)),
+        if (scheduled.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            const Icon(Icons.event_available_rounded, size: 15, color: violet),
+            const SizedBox(width: 6),
+            Expanded(child: Text('Service time: $scheduled', style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w600))),
+          ]),
+        ],
+        if (row['drop_scheduled_at']?.toString().isNotEmpty == true)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 21),
+            child: Text('Expected drop-off: ${DateFormatForOrder.format(row['drop_scheduled_at'].toString())}', style: const TextStyle(color: sub, fontSize: 12)),
+          ),
         if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
         if (row['advance_amount'] != null && row['balance_amount'] != null) ...[
           const SizedBox(height: 7),
