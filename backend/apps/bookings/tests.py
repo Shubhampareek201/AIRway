@@ -4576,3 +4576,23 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         )
         self.assertEqual(notice.data["advance_received"], str(visit.prepaid_amount))
         self.assertEqual(notice.data["remaining_balance"], "0.00")
+
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offers[0].pk}/accept/",
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        visit.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+        self.assertEqual(visit.status, RecurringWashVisit.Status.BOOKED)
+
+        started = worker_client.post(
+            f"/api/v1/bookings/{booking.pk}/start/",
+            format="json",
+        )
+        self.assertEqual(started.status_code, 200, started.data)
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, RecurringWashVisit.Status.IN_PROGRESS)
