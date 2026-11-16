@@ -191,7 +191,10 @@ class CustomerRecurringWashVisitRescheduleView(APIView):
             )
 
         booking = visit.booking if visit.booking_id else None
-        if booking and booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+        if booking and (
+            booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+            or hasattr(booking, "assignment")
+        ):
             return Response({"detail": "A visit already assigned to a worker or already started cannot be rescheduled online. Contact AIRway support."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -222,6 +225,7 @@ class CustomerRecurringWashVisitRescheduleView(APIView):
                 booking=booking,
                 status__in=(
                     WorkerOffer.Status.PENDING,
+                    WorkerOffer.Status.ACCEPTED,
                     WorkerOffer.Status.DECLINED,
                     WorkerOffer.Status.EXPIRED,
                 ),
