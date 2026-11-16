@@ -184,6 +184,11 @@ class CustomerRecurringWashVisitRescheduleView(APIView):
             return Response({"scheduled_at": "Provide a valid timezone-aware ISO 8601 date and time."}, status=status.HTTP_400_BAD_REQUEST)
         if new_time <= timezone.now():
             return Response({"scheduled_at": "Choose a future date and time."}, status=status.HTTP_400_BAD_REQUEST)
+        if plan.visits.exclude(pk=visit.pk).filter(scheduled_at=new_time).exists():
+            return Response(
+                {"scheduled_at": "Another visit in this plan already uses that date and time."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         booking = visit.booking if visit.booking_id else None
         if booking and booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
