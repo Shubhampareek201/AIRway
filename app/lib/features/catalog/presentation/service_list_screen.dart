@@ -723,7 +723,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           rethrow;
         }
       }
-      CustomerCartState.updateFromCart(updatedCart);
+      final latestCart = selection.issuePhoto == null
+          ? updatedCart
+          : await BookingApi.getCart();
+      CustomerCartState.updateFromCart(latestCart);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
