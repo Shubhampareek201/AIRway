@@ -314,9 +314,9 @@ class RecurringWashPlanAdmin(ModelAdmin):
         "frequency", "duration_days", "starts_on", "ends_on",
         "preferred_time_window", "vehicle_type", "vehicle_quantity",
         "quoted_total", "plan_snapshot", "quote_accepted_at", "activated_at",
-        "paused_at", "cancelled_at", "created_at", "updated_at",
+        "paused_at", "cancelled_at", "status", "created_at", "updated_at",
     )
-    fields = readonly_fields + ("status", "admin_notes")
+    fields = readonly_fields + ("admin_notes",)
     inlines = [RecurringWashVisitInline]
 
 
