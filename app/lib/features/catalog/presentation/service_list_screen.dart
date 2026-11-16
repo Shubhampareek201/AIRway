@@ -204,9 +204,20 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     final formAnswers = <String, dynamic>{};
     final formControllers = <String, TextEditingController>{};
 
-    final visibleFields = service.formFields
-        .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
-        .toList();
+    void updateFormAnswer(String fieldKey, dynamic value, StateSetter setSheetState) {
+      setSheetState(() {
+        if (value == null || value.toString().trim().isEmpty) {
+          formAnswers.remove(fieldKey);
+        } else {
+          formAnswers[fieldKey] = value;
+        }
+        final visibleKeys = service.formFields
+            .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
+            .map((field) => field.key)
+            .toSet();
+        formAnswers.removeWhere((key, _) => !visibleKeys.contains(key));
+      });
+    }
 
     try {
       return await showModalBottomSheet<_PackageSelection>(
@@ -251,13 +262,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       value: option['value'],
                       child: Text(option['label']!),
                     )).toList(),
-                    onChanged: (value) => setSheetState(() {
-                      if (value == null) {
-                        formAnswers.remove(field.key);
-                      } else {
-                        formAnswers[field.key] = value;
-                      }
-                    }),
+                    onChanged: (value) => updateFormAnswer(field.key, value, setSheetState),
                   ),
                 );
               }
@@ -297,17 +302,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 '${picked.month.toString().padLeft(2, '0')}-'
                                 '${picked.day.toString().padLeft(2, '0')}';
                             controller.text = value;
-                            setSheetState(() => formAnswers[field.key] = value);
+                            updateFormAnswer(field.key, value, setSheetState);
                           }
                         }
                       : null,
-                  onChanged: (value) => setSheetState(() {
-                    if (value.trim().isEmpty) {
-                      formAnswers.remove(field.key);
-                    } else {
-                      formAnswers[field.key] = value.trim();
-                    }
-                  }),
+                  onChanged: (value) => updateFormAnswer(field.key, value.trim(), setSheetState),
                   decoration: InputDecoration(
                     labelText: field.isRequired ? '${field.label} *' : field.label,
                     hintText: field.fieldType == 'date' ? 'Select date' : null,
