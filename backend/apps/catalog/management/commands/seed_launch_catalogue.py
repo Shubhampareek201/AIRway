@@ -236,11 +236,13 @@ class Command(BaseCommand):
                  "options": ["Daily", "Alternate day", "Twice a week", "Weekly", "Fortnightly"], "required": True},
                 {"key": "subscription_duration", "label": "Plan duration", "field_type": "select",
                  "options": ["15 days", "1 month", "3 months", "6 months"], "required": True},
-                {"key": "plan_start_date", "label": "Preferred plan start date", "field_type": "date", "required": True},
-                {"key": "preferred_time_window", "label": "Preferred wash time", "field_type": "select",
-                 "options": ["Morning", "Afternoon", "Evening"], "required": False},
             ],
         )
+        # Visit date/time is selected for each service in the final cart scheduler.
+        FormField.objects.filter(
+            service=monthly,
+            key__in=["plan_start_date", "preferred_time_window"],
+        ).update(is_active=False)
         for title in ["Daily Wash Plan", "Alternate Day Wash Plan", "Weekly Wash Plan", "15-Day Plan", "Monthly Wash Plan"]:
             b.package(monthly, title, "Recurring wash frequency; final schedule and quote confirmed by AIRway.", [], 30)
 
