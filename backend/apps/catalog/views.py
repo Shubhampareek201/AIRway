@@ -304,8 +304,11 @@ class CategoryListView(generics.ListAPIView):
             service_ids = None
         else:
             service_ids = _enrolled_service_ids()
-            if self.request.query_params.get("priced_only", "").lower() == "true":
-                service_ids &= _customer_priced_service_ids()
+        # priced_only is an explicit catalogue constraint and applies to
+        # customer and worker catalogue requests alike.
+        if self.request.query_params.get("priced_only", "").lower() == "true":
+            priced_ids = _customer_priced_service_ids()
+            service_ids = priced_ids if service_ids is None else service_ids & priced_ids
 
         audience_ids = _audience_service_ids(self.request.query_params.get("audience"))
         if audience_ids is not None:
@@ -360,10 +363,7 @@ class ServiceListView(generics.ListAPIView):
         )
         if self.request.query_params.get("launch_only", "").lower() == "true":
             queryset = _launch_catalogue_filter(queryset)
-        if (
-            not _is_worker_catalogue_request(self.request)
-            and self.request.query_params.get("priced_only", "").lower() == "true"
-        ):
+        if self.request.query_params.get("priced_only", "").lower() == "true":
             queryset = queryset.filter(pk__in=_customer_priced_service_ids())
 
         visible_service_ids = (
