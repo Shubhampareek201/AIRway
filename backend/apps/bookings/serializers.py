@@ -571,6 +571,7 @@ class BookingListSerializer(serializers.ModelSerializer):
     def get_customer_answers(self, obj):
         answers = dict(obj.customer_answers or {})
         answers.pop("_airway_issue_photo", None)
+        answers.pop("_airway_form_photos", None)
         return answers
 
     def get_service_image(self, obj):
