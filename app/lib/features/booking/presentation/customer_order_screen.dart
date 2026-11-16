@@ -548,6 +548,46 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           Text('${row['quantity']} ${snapshot['unit_label']}', style: const TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 6),
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
+        if (row['form_responses'] is List && (row['form_responses'] as List).isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const Text('Service details', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+          const SizedBox(height: 6),
+          for (final answer in (row['form_responses'] as List).whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${answer['label'] ?? answer['key']}: ${answer['value'] ?? ''}',
+                      style: const TextStyle(color: sub, fontSize: 12)),
+                  if (answer['photo_url']?.toString().isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: FutureBuilder<Map<String, String>>(
+                        future: BookingApi.getAuthHeaders(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const SizedBox(height: 55, child: Center(child: CircularProgressIndicator()));
+                          }
+                          if (snapshot.hasError) return const Text('Could not load the attached photo.');
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              answer['photo_url'].toString(),
+                              headers: snapshot.data,
+                              height: 130,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Text('Attached photo is unavailable.'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
         if (row['quote'] is Map) ...[
           const SizedBox(height: 12),
           _quoteCard(row),
