@@ -739,6 +739,28 @@ class BookingViewSet(viewsets.ModelViewSet):
             if worker_notes:
                 locked_booking.worker_notes = worker_notes
             locked_booking.save(update_fields=["status", "completed_at", "worker_notes", "updated_at"])
+            from apps.bookings.models import RecurringWashVisit, RecurringWashPlan
+            recurring_visit = RecurringWashVisit.objects.select_for_update().filter(
+                booking=locked_booking
+            ).select_related("plan").first()
+            if recurring_visit:
+                recurring_visit.status = RecurringWashVisit.Status.COMPLETED
+                recurring_visit.save(update_fields=["status", "updated_at"])
+                unfinished = recurring_visit.plan.visits.exclude(
+                    status__in=(
+                        RecurringWashVisit.Status.COMPLETED,
+                        RecurringWashVisit.Status.CANCELLED,
+                        RecurringWashVisit.Status.SKIPPED,
+                    )
+                ).exists()
+                if not unfinished:
+                    RecurringWashPlan.objects.filter(
+                        pk=recurring_visit.plan_id,
+                        status=RecurringWashPlan.Status.ACTIVE,
+                    ).update(
+                        status=RecurringWashPlan.Status.COMPLETED,
+                        updated_at=now,
+                    )
             assignment.completed_at = now
             assignment.save(update_fields=["completed_at", "updated_at"])
             BookingStatusHistory.objects.create(
