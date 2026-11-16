@@ -20,7 +20,7 @@ from django.utils import timezone
 from apps.accounts.models import Address, User
 from apps.catalog.models import Service
 from apps.core.models import Zone
-from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence
+from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem
 from apps.notifications.models import Notification
 from apps.wallet.models import WalletTransaction
 
@@ -1325,10 +1325,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             # Lock the parent order before any offer rows. This consistent lock
             # order prevents deadlocks when two workers accept different offers
             # for the same order at nearly the same time.
+            order_offer = bool(offer.order_id)
             order = None
-            if offer.order_id:
-                from apps.bookings.models import Order
+            if order_offer:
                 order = Order.objects.select_for_update().get(pk=offer.order_id)
+            else:
+                parent_order_id = OrderItem.objects.filter(
+                    booking_id=offer.booking_id
+                ).values_list("order_id", flat=True).first()
+                if parent_order_id:
+                    order = Order.objects.select_for_update().get(pk=parent_order_id)
             offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
             if worker.user_id != request.user.id:
@@ -1350,7 +1356,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
                 return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
 
-            if order:
+            if order_offer:
                 if offer.status != WorkerOffer.Status.PENDING:
                     return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
@@ -1365,9 +1371,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
                 from apps.payments.models import Payment
                 if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-                    order=order,
-                    stage=Payment.Stage.ADVANCE,
-                    status=Payment.Status.PAID,
+                    order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID,
                 ).exists():
                     return Response(
                         {"detail": "The customer's 30% advance must be verified before accepting this order."},
@@ -1378,18 +1382,25 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 standalone_booking = Booking.objects.select_for_update(of=("self",)).select_related(
                     "service__category", "variant", "address__zone__city"
                 ).get(pk=offer.booking_id)
-                if not Payment.objects.filter(
-                    booking=standalone_booking,
-                    stage=Payment.Stage.ADVANCE,
-                    status=Payment.Status.PAID,
-                ).exists():
+                if order:
+                    paid_advance = Payment.objects.filter(
+                        order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID,
+                    ).exists()
+                    has_allocation = bool((order.metadata or {}).get("payment_allocation_v1"))
+                else:
+                    paid_advance = Payment.objects.filter(
+                        booking=standalone_booking, stage=Payment.Stage.ADVANCE,
+                        status=Payment.Status.PAID,
+                    ).exists()
+                    has_allocation = True
+                if not paid_advance or not has_allocation:
                     return Response(
-                        {"detail": "The customer's 30% advance must be verified before accepting this booking."},
+                        {"detail": "The customer's verified 30% advance is required before accepting this service."},
                         status=status.HTTP_409_CONFLICT,
                     )
                 bookings = [standalone_booking]
 
-            if order:
+            if order_offer:
                 from apps.bookings.dispatcher import DispatcherService
                 if not DispatcherService.order_schedule_is_compatible(bookings):
                     return Response({"detail": "The service times in this order overlap. Please reschedule the order before worker assignment."}, status=status.HTTP_409_CONFLICT)
@@ -1486,7 +1497,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             offer.accepted_at = now
             offer.responded_at = now
             offer.save(update_fields=["status", "accepted_at", "responded_at", "updated_at"])
-            if order:
+            if order_offer:
                 WorkerOffer.objects.filter(
                     order=order, status=WorkerOffer.Status.PENDING
                 ).exclude(pk=offer.pk).update(
@@ -1499,20 +1510,28 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
                 order.save(update_fields=["status", "updated_at"])
             else:
-                # A single-booking acceptance also invalidates other pending
-                # offers. If this assignment is later suspended before start,
-                # dispatch can safely reopen these system-withdrawn offers.
+                # Each service line has its own offer and worker assignment.
                 WorkerOffer.objects.filter(
-                    booking=bookings[0],
-                    order__isnull=True,
+                    booking=bookings[0], order__isnull=True,
                     status=WorkerOffer.Status.PENDING,
                 ).exclude(pk=offer.pk).update(
                     status=WorkerOffer.Status.WITHDRAWN, responded_at=now
                 )
+                if order:
+                    active_ids = list(
+                        order.items.exclude(booking__status=Booking.Status.CANCELLED)
+                        .values_list("booking_id", flat=True)
+                    )
+                    if active_ids and all(
+                        BookingAssignment.objects.filter(booking_id=booking_id).exists()
+                        for booking_id in active_ids
+                    ):
+                        order.status = Order.Status.AWAITING_PAYMENT
+                        order.save(update_fields=["status", "updated_at"])
 
         response_data = {
             "status": "accepted",
-            "detail": "Complete order accepted successfully." if order else "Offer accepted successfully.",
+            "detail": "Complete order accepted successfully." if order_offer else "Offer accepted successfully.",
             "booking_status": bookings[0].status,
             "assignment_id": assignments[0].pk,
             "assigned_booking_ids": [booking.pk for booking in bookings],
