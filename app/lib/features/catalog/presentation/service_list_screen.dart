@@ -253,6 +253,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             .toList();
         for (final hiddenKey in hiddenKeys) {
           formAnswers.remove(hiddenKey);
+          invalidFields.remove(hiddenKey);
           formControllers[hiddenKey]?.clear();
           selectedFormPhotos.remove(hiddenKey);
         }
