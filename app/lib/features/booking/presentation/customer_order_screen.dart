@@ -588,6 +588,45 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               ),
             ),
         ],
+        if (row['work_evidence'] is List && (row['work_evidence'] as List).isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const Text('Work progress photos', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+          const SizedBox(height: 7),
+          for (final evidence in (row['work_evidence'] as List).whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    evidence['stage'] == 'before' ? 'Before work' : 'After work',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: sub),
+                  ),
+                  if (evidence['note']?.toString().isNotEmpty == true)
+                    Text(evidence['note'].toString(), style: const TextStyle(fontSize: 12, color: sub)),
+                  const SizedBox(height: 5),
+                  FutureBuilder<Map<String, String>>(
+                    future: BookingApi.getAuthHeaders(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox(height: 55, child: Center(child: CircularProgressIndicator()));
+                      if (snapshot.hasError) return const Text('Could not load work photo.');
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          evidence['photo_url'].toString(),
+                          headers: snapshot.data,
+                          height: 130,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Text('Work photo unavailable.'),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+        ],
         if (row['quote'] is Map) ...[
           const SizedBox(height: 12),
           _quoteCard(row),
