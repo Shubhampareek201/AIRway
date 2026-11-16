@@ -9,6 +9,7 @@ from .views import (
     CustomerOrderDetailView,
     CustomerOrderListView,
     CustomerCartIssuePhotoView,
+    CustomerCartFormPhotoView,
     BookingIssuePhotoView,
 )
 
@@ -22,6 +23,7 @@ urlpatterns = [
     path("orders/<int:order_id>/", CustomerOrderDetailView.as_view(), name="customer-order-detail"),
     path("cart/items/<int:item_id>/", CustomerCartItemView.as_view(), name="customer-cart-item"),
     path("cart/items/<int:item_id>/issue-photo/", CustomerCartIssuePhotoView.as_view(), name="customer-cart-issue-photo"),
+    path("cart/items/<int:item_id>/form-photos/<slug:field_key>/", CustomerCartFormPhotoView.as_view(), name="customer-cart-form-photo"),
     path("issue-photos/<int:booking_id>/", BookingIssuePhotoView.as_view(), name="booking-issue-photo"),
     path("", include(router.urls)),
 ]
