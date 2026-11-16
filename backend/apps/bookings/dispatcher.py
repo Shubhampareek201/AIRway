@@ -108,6 +108,7 @@ class DispatcherService:
             booking=booking, order=None, workers=candidates,
             batch_number=batch_number, expiry_minutes=expiry_minutes,
             service_titles=[booking.service.title],
+            payment_order=parent_order,
         )
 
     @classmethod
@@ -216,7 +217,7 @@ class DispatcherService:
         return True
 
     @classmethod
-    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles):
+    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None):
         from datetime import timedelta
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
@@ -257,12 +258,13 @@ class DispatcherService:
                 f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
             )
             from apps.payments.models import Payment
-            if order:
-                allocation = (order.metadata or {}).get("payment_allocation_v1", {})
-                customer_total = str(order.total_amount)
+            if order or payment_order:
+                payment_context = order or payment_order
+                allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
+                customer_total = str(payment_context.total_amount)
                 advance_received = str(allocation.get("advance_total", "0"))
                 remaining_balance = str(allocation.get("balance_total", "0"))
-                address_text = order.address.full_address
+                address_text = payment_context.address.full_address
             else:
                 from decimal import Decimal
                 snapshot = booking.pricing_snapshot or {}
@@ -298,8 +300,8 @@ class DispatcherService:
                 "booking_id": booking.pk,
                 "quantity": service_quantity,
                 "service_unit_label": service_unit_label,
-                "order_id": order.pk if order else None,
-                "service_ids": list(order.items.values_list("booking__service_id", flat=True)) if order else [booking.service_id],
+                "order_id": (order or payment_order).pk if (order or payment_order) else None,
+                "service_ids": list((order or payment_order).items.values_list("booking__service_id", flat=True)) if (order or payment_order) else [booking.service_id],
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "address": address_text,
