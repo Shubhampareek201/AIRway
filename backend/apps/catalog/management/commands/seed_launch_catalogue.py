@@ -501,6 +501,12 @@ class Command(BaseCommand):
             "Bedroom Cleaning": ["Wardrobe Interior", "Mattress Cleaning", "Curtain Cleaning", "Window Cleaning", "Fan Cleaning"],
             "Living Room & Dining Room": ["Sofa Cleaning", "Dining Chair Cleaning", "Window Cleaning", "Glass Cleaning"],
             "Carpet & Rug Cleaning": ["Stain Removal", "Odour Treatment"],
+            "Full Home Cleaning": [
+                "Extra Bathroom", "Extra Balcony", "Kitchen Chimney Cleaning",
+                "Refrigerator Interior Cleaning", "Oven Interior Cleaning",
+                "Sofa Cleaning", "Carpet Cleaning", "Window Glass Cleaning",
+                "Fan Cleaning", "Wardrobe Interior Cleaning",
+            ],
         }
         for group_name, package_list in packages.items():
             service = b.service(
@@ -541,6 +547,12 @@ class Command(BaseCommand):
                 b.field(service, "property_size", "Approximate property size", "text", required=False)
                 b.field(service, "cleaning_type", "Cleaning type", "select",
                         ["Regular", "Deep", "Move-in", "Move-out"], required=True)
+                b.field(service, "home_occupancy", "Home occupancy", "select",
+                        ["Occupied", "Vacant", "Partially furnished"], required=True)
+                b.field(service, "material_preference", "Cleaning material preference", "select",
+                        ["Use professional supplies", "I will provide supplies", "Discuss before service"], required=True)
+                b.field(service, "special_attention", "Areas needing special attention", "textarea", required=False)
+                b.field(service, "cleaning_photos", "Upload home photos", "photo", required=False)
             else:
                 b.field(service, "area_notes", "Area size / details", "textarea", required=False)
                 b.field(service, "cleaning_photos", "Upload area photos", "photo", required=False)
