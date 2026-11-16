@@ -18,6 +18,7 @@ from .models import (
     WorkerOffer,
     BookingQuote,
     BookingWorkEvidence,
+    RecurringWashPlan,
 )
 
 
@@ -272,3 +273,21 @@ class BookingCompletionOTPAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(RecurringWashPlan)
+class RecurringWashPlanAdmin(ModelAdmin):
+    list_display = (
+        "id", "customer", "service", "vehicle_type", "vehicle_quantity",
+        "frequency", "starts_on", "ends_on", "quoted_total", "status",
+    )
+    list_filter = ("status", "frequency", "starts_on")
+    search_fields = ("customer__phone", "customer__name", "vehicle_type", "order__id")
+    readonly_fields = (
+        "order", "source_booking", "customer", "address", "service", "variant",
+        "frequency", "duration_days", "starts_on", "ends_on",
+        "preferred_time_window", "vehicle_type", "vehicle_quantity",
+        "quoted_total", "plan_snapshot", "quote_accepted_at", "activated_at",
+        "paused_at", "cancelled_at", "created_at", "updated_at",
+    )
+    fields = readonly_fields + ("status", "admin_notes")
