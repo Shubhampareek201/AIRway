@@ -1550,6 +1550,11 @@ class CustomerOrderDetailView(APIView):
                     "vehicle_type": recurring_plan.vehicle_type,
                     "vehicle_quantity": recurring_plan.vehicle_quantity,
                     "quoted_total": str(recurring_plan.quoted_total),
+                    "can_cancel": recurring_plan.status in (
+                        RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                        RecurringWashPlan.Status.ACTIVE,
+                        RecurringWashPlan.Status.PAUSED,
+                    ),
                     "visits": [
                         {
                             "id": visit.pk,
@@ -1559,6 +1564,23 @@ class CustomerOrderDetailView(APIView):
                             "prepaid_amount": str(visit.prepaid_amount),
                             "booking_id": visit.booking_id,
                             "booking_status": visit.booking.status if visit.booking_id else None,
+                            "can_reschedule": (
+                                recurring_plan.status in (
+                                    RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                                    RecurringWashPlan.Status.ACTIVE,
+                                )
+                                and visit.status in (
+                                    RecurringWashVisit.Status.PENDING_SETUP,
+                                    RecurringWashVisit.Status.BOOKED,
+                                )
+                                and (
+                                    not visit.booking_id
+                                    or visit.booking.status in (
+                                        Booking.Status.PENDING,
+                                        Booking.Status.CONFIRMED,
+                                    )
+                                )
+                            ),
                         }
                         for visit in recurring_plan.visits.select_related("booking").order_by("visit_number")
                     ],
