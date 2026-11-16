@@ -411,6 +411,15 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               Text('Issue photo attached', style: TextStyle(fontSize: 12, color: sub)),
             ]),
           ),
+        if (item['has_form_photos'] == true)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Row(children: [
+              Icon(Icons.photo_library_outlined, size: 15, color: violet),
+              SizedBox(width: 5),
+              Text('Service photos attached', style: TextStyle(fontSize: 12, color: sub)),
+            ]),
+          ),
         if (addons.isNotEmpty) ...[
           const Divider(height: 20),
           const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: sub)),
