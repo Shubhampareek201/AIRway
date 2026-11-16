@@ -102,6 +102,7 @@ class PaymentRefund(TimeStampedModel):
     class Reason(models.TextChoices):
         CUSTOMER_CANCELLATION = "customer_cancellation", "Customer cancellation"
         PLATFORM_UNFULFILLED = "platform_unfulfilled", "AIRway unable to fulfil"
+        RECURRING_PLAN_CANCELLATION = "recurring_plan_cancellation", "Unused recurring plan visits"
 
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="refunds"
