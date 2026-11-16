@@ -16,6 +16,7 @@ from .models import (
     DispatchConfiguration,
     BookingCompletionOTP,
     WorkerOffer,
+    BookingQuote,
 )
 
 
@@ -182,6 +183,32 @@ class BookingAdmin(ModelAdmin):
     readonly_fields = ("created_at", "updated_at", "pricing_snapshot")
     inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline]
     actions = [mark_unfulfillable_and_refund]
+
+
+@admin.register(BookingQuote)
+class BookingQuoteAdmin(ModelAdmin):
+    list_display = (
+        "id", "booking", "worker", "version", "status",
+        "total_amount", "expires_at", "responded_at",
+    )
+    list_filter = ("status", "created_at")
+    search_fields = ("booking__id", "booking__customer__phone", "worker__user__phone")
+    readonly_fields = (
+        "booking", "worker", "version", "line_items", "labour_amount",
+        "material_amount", "other_amount", "tax_amount", "total_amount",
+        "notes", "status", "customer_response_note", "expires_at",
+        "responded_at", "created_at", "updated_at",
+    )
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(BookingAssignment)
