@@ -729,6 +729,7 @@ class WorkerJobDetailView(APIView):
             }
         customer_answers = dict(booking.customer_answers or {})
         has_issue_photo = bool(customer_answers.pop("_airway_issue_photo", None))
+        form_photo_paths = customer_answers.pop("_airway_form_photos", {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
         return Response({
@@ -773,7 +774,18 @@ class WorkerJobDetailView(APIView):
                 for row in booking.booking_addons.select_related("addon").all()
             ],
             "form_responses": [
-                {"key": fr.form_field.key, "label": fr.form_field.label, "value": fr.value}
+                {
+                    "key": fr.form_field.key,
+                    "label": fr.form_field.label,
+                    "value": "Photo attached" if fr.form_field.field_type == "photo" and form_photo_paths.get(fr.form_field.key) else fr.value,
+                    "photo_url": (
+                        request.build_absolute_uri(
+                            f"/api/v1/bookings/issue-photos/{booking.id}/?field_key={fr.form_field.key}"
+                        )
+                        if fr.form_field.field_type == "photo" and form_photo_paths.get(fr.form_field.key)
+                        else None
+                    ),
+                }
                 for fr in booking.form_responses.select_related("form_field").all()
             ],
             "assignment": {
