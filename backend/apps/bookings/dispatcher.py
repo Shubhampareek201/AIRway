@@ -51,8 +51,18 @@ class DispatcherService:
         config = DispatchConfiguration.get_solo()
         if not config.is_enabled or booking.status not in (booking.Status.PENDING, booking.Status.CONFIRMED):
             return []
-        # Parent-order lines share one verified 30% advance, but dispatch
-        # independently so each service can be assigned to a suitable worker.
+        recurring_visit = getattr(booking, "recurring_wash_visit", None)
+        prepaid_recurring = bool(
+            recurring_visit
+            and recurring_visit.status == recurring_visit.Status.BOOKED
+            and recurring_visit.plan.status in (
+                recurring_visit.plan.Status.PAID_PENDING_SETUP,
+                recurring_visit.plan.Status.ACTIVE,
+            )
+        )
+        # Parent-order and standalone bookings require their own verified
+        # advance. A recurring visit is authorized by its already-paid plan;
+        # do not create a synthetic Payment row for it.
         from apps.payments.models import Payment
         if parent_order is not None:
             if not (parent_order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
@@ -60,7 +70,7 @@ class DispatcherService:
                 status=Payment.Status.PAID,
             ).exists():
                 return []
-        elif not Payment.objects.filter(
+        elif not prepaid_recurring and not Payment.objects.filter(
             booking=booking, stage=Payment.Stage.ADVANCE,
             status=Payment.Status.PAID,
         ).exists():
@@ -109,6 +119,7 @@ class DispatcherService:
             batch_number=batch_number, expiry_minutes=expiry_minutes,
             service_titles=[booking.service.title],
             payment_order=parent_order,
+            recurring_visit=recurring_visit if prepaid_recurring else None,
         )
 
     @classmethod
@@ -223,7 +234,7 @@ class DispatcherService:
         return True
 
     @classmethod
-    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None):
+    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None, recurring_visit=None):
         from datetime import timedelta
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
@@ -264,7 +275,13 @@ class DispatcherService:
                 f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
             )
             from apps.payments.models import Payment
-            if order or payment_order:
+            if recurring_visit:
+                from decimal import Decimal
+                customer_total = str(recurring_visit.prepaid_amount)
+                advance_received = str(recurring_visit.prepaid_amount)
+                remaining_balance = "0.00"
+                address_text = booking.address.full_address
+            elif order or payment_order:
                 from decimal import Decimal
                 payment_context = order or payment_order
                 allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
@@ -315,8 +332,14 @@ class DispatcherService:
                 "booking_id": booking.pk,
                 "quantity": service_quantity,
                 "service_unit_label": service_unit_label,
-                "order_id": (order or payment_order).pk if (order or payment_order) else None,
+                "order_id": (
+                    (order or payment_order).pk if (order or payment_order)
+                    else recurring_visit.plan.order_id if recurring_visit else None
+                ),
                 "service_ids": list((order or payment_order).items.values_list("booking__service_id", flat=True)) if (order or payment_order) else [booking.service_id],
+                "recurring_plan_id": recurring_visit.plan_id if recurring_visit else None,
+                "recurring_visit_id": recurring_visit.pk if recurring_visit else None,
+                "recurring_visit_number": recurring_visit.visit_number if recurring_visit else None,
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "address": address_text,
