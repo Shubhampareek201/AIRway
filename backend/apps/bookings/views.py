@@ -1320,6 +1320,8 @@ class CustomerOrderDetailView(APIView):
             row["completion_verified"] for row in active_rows
         )
         ready_for_balance = bool(advance_payment and all_services_verified and not balance_payment)
+        from apps.bookings.models import RecurringWashPlan
+        recurring_plan = RecurringWashPlan.objects.filter(order=order).first()
 
         return Response({
             "id": order.id,
@@ -1344,6 +1346,21 @@ class CustomerOrderDetailView(APIView):
             "ready_for_legacy_payment": legacy_ready,
             "ready_for_payment": ready_for_balance or legacy_ready,
             "all_services_verified": all_services_verified,
+            "recurring_wash_plan": (
+                {
+                    "id": recurring_plan.id,
+                    "status": recurring_plan.status,
+                    "frequency": recurring_plan.frequency,
+                    "duration_days": recurring_plan.duration_days,
+                    "starts_on": recurring_plan.starts_on.isoformat(),
+                    "ends_on": recurring_plan.ends_on.isoformat(),
+                    "preferred_time_window": recurring_plan.preferred_time_window,
+                    "vehicle_type": recurring_plan.vehicle_type,
+                    "vehicle_quantity": recurring_plan.vehicle_quantity,
+                    "quoted_total": str(recurring_plan.quoted_total),
+                }
+                if recurring_plan else None
+            ),
             "items": items,
         })
 
