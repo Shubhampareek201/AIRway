@@ -97,6 +97,46 @@ class DynamicServicePhotoUploadTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_hiding_a_conditional_photo_question_removes_its_private_file(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import FileSystemStorage
+        from apps.bookings.serializers import CartItemSerializer
+
+        choice = FormField.objects.create(
+            service=self.service,
+            key="room_type",
+            label="Room type",
+            field_type=FormField.FieldType.SELECT,
+            options=[{"label": "Kitchen", "value": "kitchen"}, {"label": "Bathroom", "value": "bathroom"}],
+            is_required=True,
+        )
+        self.photo_field.visibility_rules = [
+            {"field": "room_type", "operator": "equals", "value": "kitchen"}
+        ]
+        self.photo_field.save(update_fields=["visibility_rules", "updated_at"])
+
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
+            storage = FileSystemStorage(location=private_root)
+            stored_path = storage.save(
+                "booking_form_photos/customer/cart_item/room_photo/test.jpg",
+                ContentFile(valid_jpeg()),
+            )
+            self.item.form_answers = {"room_type": "kitchen", "room_photo": "uploaded"}
+            self.item.category_answers = {"_airway_form_photos": {"room_photo": stored_path}}
+            self.item.save(update_fields=["form_answers", "category_answers", "updated_at"])
+
+            serializer = CartItemSerializer(
+                self.item,
+                data={"form_answers": {"room_type": "bathroom"}, "category_answers": {}},
+                partial=True,
+                context={"allow_incomplete": True},
+            )
+            self.assertTrue(serializer.is_valid(), serializer.errors)
+            updated = serializer.save()
+            self.assertNotIn("room_photo", updated.form_answers)
+            self.assertNotIn("_airway_form_photos", updated.category_answers)
+            self.assertFalse(storage.exists(stored_path))
+
     def test_private_photo_url_is_available_only_to_booking_customer_or_assigned_worker(self):
         with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
             from django.core.files.storage import FileSystemStorage
