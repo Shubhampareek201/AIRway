@@ -684,9 +684,9 @@ class CustomerSavedVehicleApiTest(APITestCase):
         self.user = User.objects.create_user(phone="+919876543211", name="Vehicle User")
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        self.make = VehicleMake.objects.create(vehicle_type="car", name="Hyundai")
+        self.make = VehicleMake.objects.create(vehicle_type="car", name="AIRway Test Hyundai")
         self.model = VehicleModel.objects.create(
-            make=self.make, name="i20", vehicle_class="Hatchback"
+            make=self.make, name="AIRway Test i20", vehicle_class="AIRway Hatchback"
         )
 
     def test_customer_can_save_vehicle_as_default(self):
@@ -697,7 +697,7 @@ class CustomerSavedVehicleApiTest(APITestCase):
         }, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertTrue(response.data["is_default"])
-        self.assertEqual(response.data["vehicle_model_detail"]["name"], "i20")
+        self.assertEqual(response.data["vehicle_model_detail"]["name"], "AIRway Test i20")
 
     def test_only_one_default_vehicle_is_kept_per_customer(self):
         first = CustomerVehicle.objects.create(
