@@ -81,6 +81,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   Future<void> _openCategory(Category category) async {
     var selectedCategory = category;
     final answers = Map<String, dynamic>.from(widget.initialAnswers);
+    var followsExplicitAdminRoute = false;
 
     if (category.slug == 'beauty' && answers['beauty_audience'] == null) {
       final audience = await BeautyAudienceScreen.choose(
@@ -176,13 +177,16 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           return;
         }
         selectedCategory = target.first;
+        followsExplicitAdminRoute = true;
       }
     }
 
-    // The backend owns the category/service relationship. Reload its filtered
-    // tree after each decision so choices such as Electrical > Repair only show
-    // relevant subcategories instead of relying on title matching in Flutter.
-    if (answers.isNotEmpty) {
+    // An explicit Admin next_category_slug/id is an authoritative hierarchy
+    // transition. Keep the already-loaded child tree for that branch instead
+    // of re-querying the root catalogue with branch answers (which can rebuild
+    // the tree at the wrong level). Other flows still refresh their filtered
+    // catalogue, e.g. Electrical work-type selection.
+    if (answers.isNotEmpty && !followsExplicitAdminRoute) {
       try {
         final filteredRoots = await CatalogApi.listCategories(
           addressId: widget.addressId,
