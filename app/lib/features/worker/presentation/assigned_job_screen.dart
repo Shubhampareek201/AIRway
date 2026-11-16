@@ -408,6 +408,15 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('Service time: ${_formatDateTime(job.scheduledAt)}'),
+            if (job.recurringVisit != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Recurring Car Wash • Visit #${job.recurringVisit!['visit_number'] ?? ''}',
+                style: const TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary),
+              ),
+              const SizedBox(height: 2),
+              Text('Prepaid under plan #${job.recurringVisit!['plan_id'] ?? ''}'),
+            ],
             if (job.dropScheduledAt != null) ...[
               const SizedBox(height: 4),
               Text('Expected drop-off: ${_formatDateTime(job.dropScheduledAt!)}'),
@@ -424,7 +433,10 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       child: ListTile(
         leading: const Icon(Icons.person),
         title: Text(job.customerName),
-        subtitle: const Text('Customer contact details are protected by AIRway.'),
+        subtitle: Text(
+          job.paymentLabel ?? 'Customer contact details are protected by AIRway.',
+          style: const TextStyle(fontSize: 12),
+        ),
         trailing: Text(
           '₹${job.amount.toStringAsFixed(0)}',
           style: const TextStyle(fontWeight: FontWeight.bold),
