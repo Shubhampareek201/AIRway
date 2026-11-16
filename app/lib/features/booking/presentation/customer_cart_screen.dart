@@ -351,7 +351,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       title: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('My Cart', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: ink)),
+          Text('My Cart', style: AirwayText.titleLarge.copyWith(fontSize: 20, fontWeight: FontWeight.w800, color: ink)),
           Text('Review your services', style: TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w500)),
         ],
       ),
@@ -386,7 +386,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               decoration: BoxDecoration(
                 gradient: AirwayColors.heroGradient,
                 borderRadius: BorderRadius.circular(AirwaySpacing.cardRadius),
-                boxShadow: [BoxShadow(color: violet.withOpacity(.20), blurRadius: 22, offset: const Offset(0, 10))],
+                boxShadow: [BoxShadow(color: violet.withValues(alpha: .10), blurRadius: 22, offset: const Offset(0, 10))],
               ),
               child: Stack(children: [
                 Positioned(right: -12, top: -18, child: Icon(Icons.shopping_bag_rounded, size: 105, color: AirwayColors.primary.withValues(alpha: .08))),
@@ -512,7 +512,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       child: Row(children: [
         Container(
           height: 46, width: 46,
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF0ECFF), AirwayColors.primarySoft]), borderRadius: BorderRadius.circular(15)),
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [AirwayColors.primarySoft, AirwayColors.primarySoft]), borderRadius: BorderRadius.circular(15)),
           child: const Icon(Icons.location_on_rounded, color: violet, size: 23),
         ),
         const SizedBox(width: 12),
