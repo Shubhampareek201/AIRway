@@ -12,6 +12,8 @@ from .views import (
     CustomerCartFormPhotoView,
     BookingIssuePhotoView,
     BookingWorkEvidencePhotoView,
+    CustomerRecurringWashPlanCancelView,
+    CustomerRecurringWashVisitRescheduleView,
 )
 
 router = DefaultRouter()
@@ -22,6 +24,8 @@ urlpatterns = [
     path("cart/checkout/", CustomerCheckoutView.as_view(), name="customer-cart-checkout"),
     path("orders/", CustomerOrderListView.as_view(), name="customer-order-list"),
     path("orders/<int:order_id>/", CustomerOrderDetailView.as_view(), name="customer-order-detail"),
+    path("recurring-plans/<int:plan_id>/cancel/", CustomerRecurringWashPlanCancelView.as_view(), name="recurring-plan-cancel"),
+    path("recurring-visits/<int:visit_id>/reschedule/", CustomerRecurringWashVisitRescheduleView.as_view(), name="recurring-visit-reschedule"),
     path("cart/items/<int:item_id>/", CustomerCartItemView.as_view(), name="customer-cart-item"),
     path("cart/items/<int:item_id>/issue-photo/", CustomerCartIssuePhotoView.as_view(), name="customer-cart-issue-photo"),
     path("cart/items/<int:item_id>/form-photos/<slug:field_key>/", CustomerCartFormPhotoView.as_view(), name="customer-cart-form-photo"),
