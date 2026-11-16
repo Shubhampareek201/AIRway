@@ -162,6 +162,7 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.assertEqual(self.order.total_amount, Decimal("708.00"))
         allocation = self.order.metadata["payment_allocation_v1"]
         self.assertEqual(Decimal(allocation["advance_total"]), Decimal("35.40"))
+        self.assertEqual(Decimal(allocation["percentage"]), Decimal("5.00"))
         self.assertEqual(Decimal(allocation["balance_total"]), Decimal("672.60"))
         self.assertEqual(Decimal(allocation["balance"][0]["amount"]), Decimal("672.60"))
 
