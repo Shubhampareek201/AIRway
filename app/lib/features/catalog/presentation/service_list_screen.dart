@@ -432,38 +432,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       return;
     }
 
-    // Beauty and Car Wash share the package-first add-to-cart experience.
-    // Other service families retain their existing booking flow.
-    final usesPackageCartFlow =
-        widget.initialAnswers['beauty_audience'] != null ||
-        widget.initialAnswers['vehicle_kind'] != null;
-    if (!usesPackageCartFlow) {
-      final added = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => BookingScheduledScreen(
-            serviceId: service.id,
-            serviceTitle: service.title,
-            addressId: widget.addressId,
-            initialCategoryAnswers: widget.initialAnswers,
-          ),
-        ),
-      );
-      if (!mounted || added != true) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${service.title} added to cart'),
-          action: SnackBarAction(
-            label: 'VIEW CART',
-            onPressed: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
-            ),
-          ),
-        ),
-      );
-      return;
-    }
+    // All non-Electrical services use the same package-first add popup.
+    // Electrical keeps its dedicated issue/photo popup above. Scheduling and
+    // address selection happen later in the shared checkout flow, not on ADD.
 
     final availableVariants = service.variants.where((variant) {
       if (variant.attributes.isEmpty) return true;
