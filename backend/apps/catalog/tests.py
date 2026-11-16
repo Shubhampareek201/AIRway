@@ -35,7 +35,7 @@ class CatalogSerializerFieldRegressionTest(TestCase):
         self.assertEqual(response.data["category_slug"], "home-cleaning")
 
     def test_service_list_includes_category_slug(self):
-        response = self.client.get("/api/v1/catalog/services/")
+        response = self.client.get("/api/v1/catalog/services/?for_worker=true")
 
         self.assertEqual(response.status_code, 200, response.data)
 
@@ -82,7 +82,7 @@ class CatalogServiceListFilterTest(TestCase):
 
     def test_list_only_active_services(self):
         """Inactive services should be excluded from list."""
-        response = self.client.get("/api/v1/catalog/services/")
+        response = self.client.get("/api/v1/catalog/services/?for_worker=true")
         self.assertEqual(response.status_code, 200)
 
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
@@ -94,7 +94,7 @@ class CatalogServiceListFilterTest(TestCase):
 
     def test_list_with_popular_filter(self):
         """is_popular=true filter should return only popular services."""
-        response = self.client.get("/api/v1/catalog/services/?is_popular=true")
+        response = self.client.get("/api/v1/catalog/services/?for_worker=true&is_popular=true")
         self.assertEqual(response.status_code, 200)
 
         results = response.data if isinstance(response.data, list) else response.data.get("results", [])
