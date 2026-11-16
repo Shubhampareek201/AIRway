@@ -100,7 +100,6 @@ class DynamicServicePhotoUploadTests(TestCase):
     def test_hiding_a_conditional_photo_question_removes_its_private_file(self):
         from django.core.files.base import ContentFile
         from django.core.files.storage import FileSystemStorage
-        from apps.bookings.serializers import CartItemSerializer
 
         choice = FormField.objects.create(
             service=self.service,
@@ -128,16 +127,17 @@ class DynamicServicePhotoUploadTests(TestCase):
             self.item.category_answers = {"_airway_form_photos": {"room_photo": stored_path}}
             self.item.save(update_fields=["form_answers", "category_answers", "updated_at"])
 
-            serializer = CartItemSerializer(
-                self.item,
-                data={"variant": variant.id, "form_answers": {"room_type": "bathroom"}, "category_answers": {}},
-                partial=True,
-                context={"allow_incomplete": True},
+            self.item.variant = variant
+            self.item.save(update_fields=["variant", "updated_at"])
+            response = self.client.patch(
+                f"/api/v1/bookings/cart/items/{self.item.id}/",
+                {"form_answers": {"room_type": "bathroom"}, "category_answers": {}},
+                format="json",
             )
-            self.assertTrue(serializer.is_valid(), serializer.errors)
-            updated = serializer.save()
-            self.assertNotIn("room_photo", updated.form_answers)
-            self.assertNotIn("_airway_form_photos", updated.category_answers)
+            self.assertEqual(response.status_code, 200, response.data)
+            self.item.refresh_from_db()
+            self.assertNotIn("room_photo", self.item.form_answers)
+            self.assertNotIn("_airway_form_photos", self.item.category_answers)
             self.assertFalse(storage.exists(stored_path))
 
     def test_private_photo_url_is_available_only_to_booking_customer_or_assigned_worker(self):
