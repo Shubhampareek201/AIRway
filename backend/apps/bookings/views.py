@@ -761,7 +761,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                 if not unfinished:
                     RecurringWashPlan.objects.filter(
                         pk=recurring_visit.plan_id,
-                        status=RecurringWashPlan.Status.ACTIVE,
+                        status__in=(
+                            RecurringWashPlan.Status.ACTIVE,
+                            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                        ),
                     ).update(
                         status=RecurringWashPlan.Status.COMPLETED,
                         updated_at=now,
