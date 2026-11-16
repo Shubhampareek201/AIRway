@@ -3406,6 +3406,7 @@ class CustomerOrderReadIntegrityTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["status"], Order.Status.CANCELLED)
         self.assertFalse(response.data["ready_for_payment"])
+        self.assertFalse(response.data["items"][0]["can_cancel"])
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.CANCELLED)
 
@@ -3417,6 +3418,8 @@ class CustomerOrderReadIntegrityTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["status"], Order.Status.AWAITING_ASSIGNMENT)
         self.assertFalse(response.data["ready_for_payment"])
+        self.assertTrue(response.data["items"][0]["can_cancel"])
+        self.assertEqual(response.data["items"][0]["booking_id"], order.items.get().booking_id)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
 
