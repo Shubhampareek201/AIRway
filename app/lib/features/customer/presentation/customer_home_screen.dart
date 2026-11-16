@@ -859,35 +859,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Container(
-                width: 156,
-                height: 64,
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE7E6DD),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Image.asset(
-                  'assets/images/airway_logo_cropped.png',
-                  fit: BoxFit.contain,
-                  alignment: Alignment.centerLeft,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Text(
-                      'AIRway',
-                      style: TextStyle(
-                        color: _Ui.ink,
-                        fontSize: 25,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              child: _AnimatedAirwayBrand(),
             ),
           ),
           Row(
@@ -2257,4 +2233,166 @@ class _PulseBlockState extends State<_PulseBlock>
       ),
     );
   }
+}
+
+
+/// Compact customer header brand. The original artwork is cropped in-memory,
+/// so no duplicate/missing logo files are required in the Flutter assets.
+class _AnimatedAirwayBrand extends StatefulWidget {
+  const _AnimatedAirwayBrand();
+
+  @override
+  State<_AnimatedAirwayBrand> createState() => _AnimatedAirwayBrandState();
+}
+
+class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1900),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    // A single subtle brand reveal whenever the customer home opens.
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _logoCrop({
+    required double widthFactor,
+    required double heightFactor,
+    required Alignment alignment,
+  }) {
+    return ClipRect(
+      child: Align(
+        alignment: alignment,
+        widthFactor: widthFactor,
+        heightFactor: heightFactor,
+        child: Image.asset(
+          'assets/images/airway_logo.png',
+          width: 240,
+          height: 240,
+          fit: BoxFit.fill,
+          filterQuality: FilterQuality.high,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 150,
+      height: 60,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: 0,
+                top: 1,
+                child: SizedBox(
+                  width: 46,
+                  height: 59,
+                  child: _logoCrop(
+                    widthFactor: 0.19,
+                    heightFactor: 0.244,
+                    alignment: const Alignment(-0.4375, 0),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 53,
+                top: 15,
+                child: SizedBox(
+                  width: 94,
+                  height: 32,
+                  child: _logoCrop(
+                    widthFactor: 0.415,
+                    heightFactor: 0.14,
+                    alignment: const Alignment(0.20, 0.03),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _AirwayLeafRevealPainter(_controller.value),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AirwayLeafRevealPainter extends CustomPainter {
+  const _AirwayLeafRevealPainter(this.progress);
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+
+    final eased = Curves.easeInOutCubic.transform(progress.clamp(0.0, 1.0));
+    // The leaf grows from its natural position inside the house emblem,
+    // then sweeps in a gentle arc over the AIRway wordmark.
+    final path = Path()
+      ..moveTo(18, 39)
+      ..cubicTo(35, 13, 91, 5, 132, 18);
+    final metric = path.computeMetrics().first;
+    final tangent = metric.getTangentForOffset(metric.length * eased);
+    if (tangent == null) return;
+
+    final scale = 0.16 + (0.84 * Curves.easeOut.transform(progress));
+    canvas.save();
+    canvas.translate(tangent.position.dx, tangent.position.dy);
+    canvas.rotate(tangent.angle - 0.42);
+    canvas.scale(scale);
+
+    final leafPath = Path()
+      ..moveTo(-1, 0)
+      ..cubicTo(-1, -9, 8, -15, 17, -14)
+      ..cubicTo(17, -5, 10, 2, -1, 0)
+      ..close();
+    canvas.drawPath(
+      leafPath,
+      Paint()..color = const Color(0xFF71866A),
+    );
+    canvas.drawPath(
+      leafPath,
+      Paint()
+        ..color = const Color(0xFF171512)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.15,
+    );
+    final vein = Path()
+      ..moveTo(0, -1)
+      ..quadraticBezierTo(7, -7, 15, -13);
+    canvas.drawPath(
+      vein,
+      Paint()
+        ..color = const Color(0xFF171512)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.9,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _AirwayLeafRevealPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
