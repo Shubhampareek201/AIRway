@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/theme/airway_colors.dart';
+import 'package:airway/core/theme/airway_spacing.dart';
+import 'package:airway/core/theme/airway_typography.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
@@ -13,12 +16,12 @@ class CustomerCartScreen extends StatefulWidget {
 }
 
 class _CustomerCartScreenState extends State<CustomerCartScreen> {
-  static const violet = Color(0xFF6C4CEB);
-  static const ink = Color(0xFF211B36);
-  static const sub = Color(0xFF77718A);
-  static const bg = Color(0xFFF7F5FC);
-  static const pale = Color(0xFFF0ECFF);
-  static const line = Color(0xFFEAE6F3);
+  static const violet = AirwayColors.primary;
+  static const ink = AirwayColors.text;
+  static const sub = AirwayColors.textSecondary;
+  static const bg = AirwayColors.background;
+  static const pale = AirwayColors.primarySoft;
+  static const line = AirwayColors.border;
 
   Map<String, dynamic>? cart;
   bool loading = true;
@@ -86,7 +89,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F5F0),
+        color: const AirwayColors.surfaceVariant,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: line),
       ),
@@ -381,28 +384,24 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF7657F2), Color(0xFF5434C8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
+                gradient: AirwayColors.heroGradient,
+                borderRadius: BorderRadius.circular(AirwaySpacing.cardRadius),
                 boxShadow: [BoxShadow(color: violet.withOpacity(.20), blurRadius: 22, offset: const Offset(0, 10))],
               ),
               child: Stack(children: [
-                Positioned(right: -12, top: -18, child: Icon(Icons.shopping_bag_rounded, size: 105, color: Colors.white.withOpacity(.09))),
+                Positioned(right: -12, top: -18, child: Icon(Icons.shopping_bag_rounded, size: 105, color: AirwayColors.primary.withValues(alpha: .08))),
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(.17), borderRadius: BorderRadius.circular(30)),
+                    decoration: BoxDecoration(color: AirwayColors.primarySoft, borderRadius: BorderRadius.circular(30)),
                     child: Text(items.length.toString() + (items.length == 1 ? ' SERVICE ADDED' : ' SERVICES ADDED'),
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                      style: const TextStyle(color: AirwayColors.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
                   ),
                   const SizedBox(height: 13),
-                  const Text('Your home,\nyour services.', style: TextStyle(color: Colors.white, fontSize: 25, height: 1.12, fontWeight: FontWeight.w900)),
+                  const Text('Your home,\nyour services.', style: TextStyle(color: AirwayColors.text, fontSize: 25, height: 1.12, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 7),
                   Text('A few quick details and we’ll take it from here.',
-                    style: TextStyle(color: Colors.white.withOpacity(.82), fontSize: 12)),
+                    style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
                   const SizedBox(height: 17),
                   Row(children: [
                     _heroMetric(Icons.calendar_month_rounded, scheduledCount.toString() + '/' + items.length.toString(), 'Scheduled'),
@@ -450,7 +449,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           border: const Border(top: BorderSide(color: line)),
-          boxShadow: [BoxShadow(color: const Color(0xFF30204F).withOpacity(.06), blurRadius: 18, offset: const Offset(0, -5))],
+          boxShadow: [BoxShadow(color: const AirwayColors.ink.withOpacity(.06), blurRadius: 18, offset: const Offset(0, -5))],
         ),
         child: SafeArea(top: false, child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -487,11 +486,11 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
     decoration: BoxDecoration(color: Colors.white.withOpacity(.14), borderRadius: BorderRadius.circular(13)),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, color: Colors.white, size: 17),
+      Icon(icon, color: AirwayColors.primary, size: 17),
       const SizedBox(width: 7),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(.78), fontSize: 9)),
+        Text(value, style: const TextStyle(color: AirwayColors.primary, fontWeight: FontWeight.w900, fontSize: 13)),
+        Text(label, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 9)),
       ]),
     ]),
   );
@@ -506,14 +505,14 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AirwaySpacing.cardRadius),
         border: Border.all(color: line),
-        boxShadow: [BoxShadow(color: const Color(0xFF30204F).withOpacity(.035), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: const AirwayColors.ink.withOpacity(.035), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Row(children: [
         Container(
           height: 46, width: 46,
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF0ECFF), Color(0xFFE5DEFF)]), borderRadius: BorderRadius.circular(15)),
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF0ECFF), AirwayColors.primarySoft]), borderRadius: BorderRadius.circular(15)),
           child: const Icon(Icons.location_on_rounded, color: violet, size: 23),
         ),
         const SizedBox(width: 12),
@@ -564,7 +563,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(21),
         border: Border.all(color: line),
-        boxShadow: [BoxShadow(color: const Color(0xFF30204F).withOpacity(.035), blurRadius: 13, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: const AirwayColors.ink.withOpacity(.035), blurRadius: 13, offset: const Offset(0, 5))],
       ),
       child: Column(children: [
         InkWell(
@@ -575,7 +574,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             child: Row(children: [
               Container(
                 width: 54, height: 54,
-                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF2EEFF), Color(0xFFE8E1FF)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(17)),
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [AirwayColors.primarySoft, AirwayColors.surfaceVariant], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(17)),
                 child: const Icon(Icons.home_repair_service_rounded, color: violet, size: 26),
               ),
               const SizedBox(width: 12),
@@ -589,7 +588,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               IconButton(
                 tooltip: 'Remove service',
                 onPressed: busy ? null : () => removeItem(id),
-                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFD45D70), size: 21),
+                icon: const Icon(Icons.delete_outline_rounded, color: AirwayColors.error, size: 21),
               ),
               Icon(expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, color: sub),
             ]),
@@ -603,18 +602,18 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
               decoration: BoxDecoration(
-                color: scheduled ? const Color(0xFFF1EDFF) : const Color(0xFFFFF7E9),
+                color: scheduled ? const AirwayColors.primarySoft : const AirwayColors.warningSoft,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: scheduled ? const Color(0xFFE4DCFF) : const Color(0xFFF6E7C8)),
+                border: Border.all(color: scheduled ? const AirwayColors.borderStrong : const AirwayColors.borderStrong),
               ),
               child: Row(children: [
-                Icon(scheduled ? Icons.event_available_rounded : Icons.add_circle_outline_rounded, color: scheduled ? violet : const Color(0xFFAA7925), size: 19),
+                Icon(scheduled ? Icons.event_available_rounded : Icons.add_circle_outline_rounded, color: scheduled ? violet : const AirwayColors.warning, size: 19),
                 const SizedBox(width: 9),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(scheduled ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context) : 'Choose date & time',
-                    style: TextStyle(color: scheduled ? ink : const Color(0xFF8A641F), fontWeight: FontWeight.w800, fontSize: 12)),
+                    style: TextStyle(color: scheduled ? ink : const AirwayColors.warning, fontWeight: FontWeight.w800, fontSize: 12)),
                   Text(scheduled ? 'Tap to change your schedule' : 'Select a convenient service slot',
-                    style: TextStyle(color: scheduled ? sub : const Color(0xFF9A7B48), fontSize: 10)),
+                    style: TextStyle(color: scheduled ? sub : const AirwayColors.textSecondary, fontSize: 10)),
                 ])),
                 Text(scheduled ? 'CHANGE' : 'SCHEDULE', style: const TextStyle(color: violet, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .5)),
                 const SizedBox(width: 3),
@@ -656,7 +655,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 onPressed: busy ? null : () => editPreferences(item),
                 icon: const Icon(Icons.tune_rounded, size: 17),
                 label: const Text('Edit service preferences'),
-                style: OutlinedButton.styleFrom(foregroundColor: violet, side: const BorderSide(color: Color(0xFFDCD3FF)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: OutlinedButton.styleFrom(foregroundColor: violet, side: const BorderSide(color: AirwayColors.borderStrong), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               )),
               if (scheduled && items.length > 1)
                 Align(alignment: Alignment.centerLeft, child: TextButton.icon(
