@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
@@ -250,6 +253,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             _buildPaymentInfo(job),
             const SizedBox(height: 16),
             _buildQuoteCard(job),
+            const SizedBox(height: 16),
+            _buildEvidenceCard(job),
             const SizedBox(height: 16),
             _buildActions(job),
           ],
@@ -631,6 +636,117 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not submit estimate: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  Widget _buildEvidenceCard(WorkerAssignmentDetail job) {
+    if (job.workEvidence.isEmpty && job.status != BookingStatus.inProgress) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Work photos', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 6),
+            Text('Capture the service condition before work and the completed result after work.',
+                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+            for (final stage in ['before', 'after']) ...[
+              const SizedBox(height: 12),
+              Text(stage == 'before' ? 'Before work' : 'After work',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 7),
+              for (final evidence in job.workEvidence.where((row) => row['stage'] == stage))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (evidence['note']?.toString().isNotEmpty == true)
+                        Text(evidence['note'].toString(), style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+                      FutureBuilder<Map<String, String>>(
+                        future: WorkerApi.getAuthHeaders(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) return const SizedBox(height: 70, child: Center(child: CircularProgressIndicator()));
+                          if (snapshot.hasError) return const Text('Could not authorize evidence photo.');
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              evidence['photo_url'].toString(),
+                              headers: snapshot.data,
+                              height: 150,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Text('Evidence photo unavailable.'),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              if (job.status == BookingStatus.inProgress)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _isActionInProgress ? null : () => _addWorkEvidence(job, stage),
+                    icon: const Icon(Icons.add_a_photo_outlined),
+                    label: Text(stage == 'before' ? 'Add before photo' : 'Add after photo'),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addWorkEvidence(WorkerAssignmentDetail job, String stage) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt_outlined),
+            title: const Text('Take photo'),
+            onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Choose from gallery'),
+            onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+          ),
+        ]),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 82,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _isActionInProgress = true);
+    try {
+      await WorkerApi.uploadJobEvidence(
+        job.assignmentId,
+        stage: stage,
+        photo: File(picked.path),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(stage == 'before' ? 'Before-work photo saved.' : 'After-work photo saved.'),
+      ));
+      await _loadAssignedJob();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not upload work photo: $e')));
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
