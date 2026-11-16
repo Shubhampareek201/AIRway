@@ -760,7 +760,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
     quantity = serializers.SerializerMethodField()
     order_services = serializers.SerializerMethodField()
-    order_id = serializers.IntegerField(read_only=True)
+    order_id = serializers.SerializerMethodField()
     customer_total = serializers.SerializerMethodField()
     advance_received = serializers.SerializerMethodField()
     remaining_balance = serializers.SerializerMethodField()
@@ -785,9 +785,18 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_order_id(self, obj):
+        if obj.order_id:
+            return obj.order_id
+        order_item = getattr(obj.booking, "order_item", None)
+        return order_item.order_id if order_item else None
+
     def get_customer_total(self, obj):
         if obj.order_id:
             return str(obj.order.total_amount)
+        order_item = getattr(obj.booking, "order_item", None)
+        if order_item:
+            return str(order_item.line_total)
         return str((obj.booking.pricing_snapshot or {}).get("total", obj.booking.total_amount))
 
     def get_advance_received(self, obj):
@@ -797,11 +806,20 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 order=obj.order, stage=Payment.Stage.ADVANCE,
                 status=Payment.Status.PAID,
             ).first()
-        else:
-            payment = Payment.objects.filter(
-                booking=obj.booking, stage=Payment.Stage.ADVANCE,
-                status=Payment.Status.PAID,
-            ).first()
+            return str(payment.amount + payment.wallet_amount) if payment else "0.00"
+        order_item = getattr(obj.booking, "order_item", None)
+        if order_item:
+            allocation = (order_item.order.metadata or {}).get("payment_allocation_v1", {})
+            row = next(
+                (entry for entry in allocation.get("advance", [])
+                 if entry.get("order_item_id") == order_item.id),
+                None,
+            )
+            return str(row.get("amount", "0.00")) if row else "0.00"
+        payment = Payment.objects.filter(
+            booking=obj.booking, stage=Payment.Stage.ADVANCE,
+            status=Payment.Status.PAID,
+        ).first()
         return str(payment.amount + payment.wallet_amount) if payment else "0.00"
 
     def get_remaining_balance(self, obj):
