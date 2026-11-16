@@ -914,21 +914,6 @@ class CartItemSerializer(serializers.ModelSerializer):
     def get_line_total(self, obj):
         return str(obj.line_total)
 
-    def update(self, instance, validated_data):
-        old_photo_map = (instance.category_answers or {}).get("_airway_form_photos", {})
-        old_paths = set(old_photo_map.values()) if isinstance(old_photo_map, dict) else set()
-        updated = super().update(instance, validated_data)
-        new_photo_map = (updated.category_answers or {}).get("_airway_form_photos", {})
-        new_paths = set(new_photo_map.values()) if isinstance(new_photo_map, dict) else set()
-        removed_paths = old_paths - new_paths
-        if removed_paths:
-            from django.conf import settings
-            from django.core.files.storage import FileSystemStorage
-            storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
-            for path in removed_paths:
-                storage.delete(path)
-        return updated
-
     def validate(self, attrs):
         instance = self.instance
         service = attrs.get("service", instance.service if instance else None)
