@@ -13,10 +13,25 @@ class _PackageSelection {
   final ServiceVariant? variant;
   final String notes;
   final bool openDetails;
+  final int quantity;
+  final List<Map<String, dynamic>> addonSelections;
+  final Map<String, dynamic> formAnswers;
 
-  const _PackageSelection.add(this.variant, this.notes) : openDetails = false;
+  const _PackageSelection.add(
+    this.variant,
+    this.notes, {
+    this.quantity = 1,
+    this.addonSelections = const [],
+    this.formAnswers = const {},
+  }) : openDetails = false;
+
   const _PackageSelection.openDetails()
-      : variant = null, notes = '', openDetails = true;
+      : variant = null,
+        notes = '',
+        quantity = 1,
+        addonSelections = const [],
+        formAnswers = const {},
+        openDetails = true;
 }
 
 /// Backend-driven service listing. Service photography uses the same canonical
@@ -183,17 +198,129 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     List<ServiceVariant> variants,
   ) async {
     _packageNotesController.clear();
-    return showModalBottomSheet<_PackageSelection>(
+    ServiceVariant? selectedVariant;
+    var quantity = 1;
+    final selectedAddons = <int>{};
+    final formAnswers = <String, dynamic>{};
+    final formControllers = <String, TextEditingController>{};
+
+    final visibleFields = service.formFields
+        .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
+        .toList();
+
+    try {
+      return await showModalBottomSheet<_PackageSelection>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (sheetContext) {
-          ServiceVariant? selectedVariant;
-          return StatefulBuilder(
-            builder: (context, setSheetState) => SafeArea(
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final visibleFields = service.formFields
+                .where((field) => field.isVisibleFor({...widget.initialAnswers, ...formAnswers}))
+                .toList();
+            final basePrice = selectedVariant?.price ?? 0.0;
+            final addonsTotal = service.addons
+                .where((addon) => selectedAddons.contains(addon.id))
+                .fold<double>(0, (sum, addon) => sum + addon.price);
+            final visitFee = service.bookingMode == 'inspection' ? service.visitFee : 0.0;
+            final estimatedTotal = (basePrice * quantity) + addonsTotal + visitFee;
+
+            Widget buildFormField(CatalogFormField field) {
+              final current = formAnswers[field.key]?.toString() ?? '';
+              if (field.fieldType == 'select') {
+                final options = field.options.map((option) {
+                  if (option is Map) {
+                    return {
+                      'label': (option['label'] ?? option['value'] ?? '').toString(),
+                      'value': (option['value'] ?? option['label'] ?? '').toString(),
+                    };
+                  }
+                  return {'label': option.toString(), 'value': option.toString()};
+                }).where((option) => option['value']!.isNotEmpty).toList();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: DropdownButtonFormField<String>(
+                    value: options.any((option) => option['value'] == current)
+                        ? current
+                        : null,
+                    decoration: InputDecoration(
+                      labelText: field.isRequired ? '${field.label} *' : field.label,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    items: options.map((option) => DropdownMenuItem<String>(
+                      value: option['value'],
+                      child: Text(option['label']!),
+                    )).toList(),
+                    onChanged: (value) => setSheetState(() {
+                      if (value == null) {
+                        formAnswers.remove(field.key);
+                      } else {
+                        formAnswers[field.key] = value;
+                      }
+                    }),
+                  ),
+                );
+              }
+              if (field.fieldType == 'photo') {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    '${field.label}: photo upload is not available in this booking form yet.',
+                    style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                  ),
+                );
+              }
+              final controller = formControllers.putIfAbsent(
+                field.key,
+                () => TextEditingController(text: current),
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextField(
+                  controller: controller,
+                  keyboardType: field.fieldType == 'number'
+                      ? const TextInputType.numberWithOptions(decimal: true)
+                      : TextInputType.text,
+                  minLines: field.fieldType == 'textarea' ? 2 : 1,
+                  maxLines: field.fieldType == 'textarea' ? 4 : 1,
+                  readOnly: field.fieldType == 'date',
+                  onTap: field.fieldType == 'date'
+                      ? () async {
+                          final picked = await showDatePicker(
+                            context: sheetContext,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(const Duration(days: 3650)),
+                          );
+                          if (picked != null) {
+                            final value = '${picked.year.toString().padLeft(4, '0')}-'
+                                '${picked.month.toString().padLeft(2, '0')}-'
+                                '${picked.day.toString().padLeft(2, '0')}';
+                            controller.text = value;
+                            setSheetState(() => formAnswers[field.key] = value);
+                          }
+                        }
+                      : null,
+                  onChanged: (value) => setSheetState(() {
+                    if (value.trim().isEmpty) {
+                      formAnswers.remove(field.key);
+                    } else {
+                      formAnswers[field.key] = value.trim();
+                    }
+                  }),
+                  decoration: InputDecoration(
+                    labelText: field.isRequired ? '${field.label} *' : field.label,
+                    hintText: field.fieldType == 'date' ? 'Select date' : null,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              );
+            }
+
+            return SafeArea(
               child: Container(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.90,
                 ),
                 padding: EdgeInsets.fromLTRB(
                   18, 12, 18, 16 + MediaQuery.viewInsetsOf(context).bottom,
@@ -222,8 +349,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             color: AirwayColors.text,
                           )),
                           const SizedBox(height: 4),
-                          const Text('Choose the package that suits you best',
-                            style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                          Text(
+                            service.pricingType == 'per_unit'
+                                ? 'Choose quantity, package and optional extras'
+                                : 'Choose the package and service details',
+                            style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                          ),
                         ],
                       )),
                       const Icon(Icons.auto_awesome_rounded, color: AirwayColors.primary, size: 25),
@@ -231,6 +362,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     const SizedBox(height: 14),
                     Flexible(child: SingleChildScrollView(
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (variants.isEmpty)
                             Container(
@@ -240,9 +372,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 color: AirwayColors.primarySoft,
                                 borderRadius: BorderRadius.circular(14),
                               ),
-                              child: const Text(
-                                'This service will be added at its listed price. Our team will confirm any service-specific details.',
-                                style: TextStyle(fontSize: 12, height: 1.4, color: AirwayColors.text),
+                              child: Text(
+                                service.pricingType == 'quote'
+                                    ? 'The professional will confirm the final service cost after assessment.'
+                                    : 'This service will be added at its listed price.',
+                                style: const TextStyle(fontSize: 12, height: 1.4, color: AirwayColors.text),
                               ),
                             ),
                           for (final variant in variants) ...[
@@ -253,6 +387,60 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               onTap: () => setSheetState(() => selectedVariant = variant),
                             ),
                             const SizedBox(height: 9),
+                          ],
+                          if (service.pricingType == 'per_unit') ...[
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(child: Text(
+                                'Quantity (${service.unitLabel.isEmpty ? 'units' : service.unitLabel})',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text),
+                              )),
+                              IconButton(
+                                onPressed: quantity > 1 ? () => setSheetState(() => quantity--) : null,
+                                icon: const Icon(Icons.remove_circle_outline),
+                              ),
+                              Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w900)),
+                              IconButton(
+                                onPressed: quantity < 10000 ? () => setSheetState(() => quantity++) : null,
+                                icon: const Icon(Icons.add_circle_outline),
+                              ),
+                            ]),
+                          ],
+                          if (service.addons.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text('Optional add-ons', style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text,
+                            )),
+                            const SizedBox(height: 7),
+                            for (final addon in service.addons) ...[
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                value: selectedAddons.contains(addon.id),
+                                onChanged: (checked) => setSheetState(() {
+                                  if (checked == true) {
+                                    selectedAddons.add(addon.id);
+                                  } else {
+                                    selectedAddons.remove(addon.id);
+                                  }
+                                }),
+                                title: Text(addon.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                                subtitle: addon.description?.isNotEmpty == true
+                                    ? Text(addon.description!, style: const TextStyle(fontSize: 11))
+                                    : null,
+                                secondary: Text('₹${addon.price.toStringAsFixed(0)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.primary)),
+                              ),
+                            ],
+                          ],
+                          if (visibleFields.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text('A few service details', style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text,
+                            )),
+                            const SizedBox(height: 8),
+                            for (final field in visibleFields) buildFormField(field),
                           ],
                           const SizedBox(height: 5),
                           const Align(
@@ -265,7 +453,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             controller: _packageNotesController,
                             minLines: 2,
                             maxLines: 4,
-                            maxLength: 300,
+                            maxLength: 1000,
                             textCapitalization: TextCapitalization.sentences,
                             decoration: InputDecoration(
                               hintText: 'Add a request or special instruction (optional)',
@@ -283,36 +471,50 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               contentPadding: const EdgeInsets.all(13),
                             ),
                           ),
-                          TextButton.icon(
-                            onPressed: () => Navigator.of(sheetContext).push<void>(
-                              MaterialPageRoute(
-                                builder: (_) => ServiceDetailScreen(
-                                  serviceId: service.id,
-                                  addressId: widget.addressId,
-                                  initialAnswers: widget.initialAnswers,
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.info_outline_rounded, size: 18),
-                            label: const Text('View full service details'),
-                            style: TextButton.styleFrom(foregroundColor: AirwayColors.primary),
-                          ),
+                          if (service.bookingMode == 'inspection' && service.visitFee > 0) ...[
+                            const SizedBox(height: 10),
+                            Text('Inspection / visit charge: ₹${service.visitFee.toStringAsFixed(0)}',
+                              style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                          ],
                         ],
                       ),
                     )),
                     const SizedBox(height: 8),
+                    if (service.pricingType != 'quote')
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'Estimated total: ₹${estimatedTotal.toStringAsFixed(0)}',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AirwayColors.primary),
+                        ),
+                      ),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: variants.isNotEmpty && selectedVariant == null
                             ? null
-                            : () => Navigator.pop(
-                                sheetContext,
-                                _PackageSelection.add(
-                                  selectedVariant,
-                                  _packageNotesController.text.trim(),
-                                ),
-                              ),
+                            : () {
+                                final requiredMissing = visibleFields.any((field) =>
+                                    field.isRequired &&
+                                    (formAnswers[field.key] == null ||
+                                     formAnswers[field.key].toString().trim().isEmpty));
+                                if (requiredMissing) {
+                                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                    const SnackBar(content: Text('Please complete all required service details.')),
+                                  );
+                                  return;
+                                }
+                                Navigator.pop(
+                                  sheetContext,
+                                  _PackageSelection.add(
+                                    selectedVariant,
+                                    _packageNotesController.text.trim(),
+                                    quantity: quantity,
+                                    addonSelections: selectedAddons.map((id) => {'id': id, 'quantity': 1}).toList(),
+                                    formAnswers: Map<String, dynamic>.from(formAnswers),
+                                  ),
+                                );
+                              },
                         icon: const Icon(Icons.shopping_bag_outlined, size: 18),
                         label: const Text('Add to Cart'),
                         style: FilledButton.styleFrom(
@@ -327,9 +529,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 ),
               ),
             ),
-          );
-        },
+          ),
+        ),
       );
+    } finally {
+      for (final controller in formControllers.values) {
+        controller.dispose();
+      }
+    }
   }
 
   Widget _buildPackageOption(
@@ -458,8 +665,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       final updatedCart = await BookingApi.addCartItem(
         serviceId: service.id,
         variantId: selection.variant?.id,
-        addonSelections: const [],
-        formAnswers: const {},
+        quantity: selection.quantity,
+        addonSelections: selection.addonSelections,
+        formAnswers: selection.formAnswers,
         categoryAnswers: widget.initialAnswers,
         notes: selection.notes,
       );
