@@ -564,6 +564,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     assignment = BookingAssignmentSerializer(read_only=True)
     can_cancel = serializers.BooleanField(read_only=True)
     refunds = serializers.SerializerMethodField()
+    quote = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -574,7 +575,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "address_detail", "pricing_snapshot", "notes", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
             "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
-            "refunds", "created_at", "updated_at"
+            "refunds", "quote", "created_at", "updated_at"
         ]
 
     def get_customer_answers(self, obj):
@@ -588,6 +589,26 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.service.image.url)
         return None
+
+    def get_quote(self, obj):
+        quote = obj.quotes.order_by("-version").first()
+        if quote is None:
+            return None
+        return {
+            "id": quote.id,
+            "version": quote.version,
+            "status": quote.status,
+            "line_items": quote.line_items,
+            "labour_amount": str(quote.labour_amount),
+            "material_amount": str(quote.material_amount),
+            "other_amount": str(quote.other_amount),
+            "tax_amount": str(quote.tax_amount),
+            "total_amount": str(quote.total_amount),
+            "notes": quote.notes,
+            "customer_response_note": quote.customer_response_note,
+            "expires_at": quote.expires_at,
+            "responded_at": quote.responded_at,
+        }
 
     def get_refunds(self, obj):
         from apps.payments.models import PaymentRefund
