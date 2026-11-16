@@ -306,3 +306,81 @@ def _notify_refund_attention(refund, customer_message):
                 "data": payload,
             },
         )
+
+
+
+def request_recurring_plan_refund(plan):
+    """Refund only the prepaid value of visits that were never delivered."""
+    from apps.bookings.models import RecurringWashVisit, RecurringWashPlan
+
+    locked_plan = RecurringWashPlan.objects.select_for_update().get(pk=plan.pk)
+    unused_total = sum(
+        (
+            visit.prepaid_amount
+            for visit in locked_plan.visits.exclude(
+                status__in=(
+                    RecurringWashVisit.Status.COMPLETED,
+                    RecurringWashVisit.Status.IN_PROGRESS,
+                )
+            )
+        ),
+        Decimal("0.00"),
+    )
+    unused_total = min(Decimal(locked_plan.quoted_total), unused_total).quantize(CENT)
+    if unused_total <= 0:
+        return PaymentRefund.objects.none()
+
+    payments = Payment.objects.filter(
+        order_id=locked_plan.order_id,
+        status=Payment.Status.PAID,
+    ).order_by("created_at")
+    created_ids = []
+    allocated = Decimal("0.00")
+    for payment in payments:
+        line_total, _, _, item = _line_stage_amount(payment, locked_plan.source_booking)
+        if line_total <= 0:
+            continue
+        refund_amount = (
+            line_total * unused_total / Decimal(locked_plan.quoted_total)
+        ).quantize(CENT, rounding=ROUND_HALF_UP)
+        refund_amount = min(refund_amount, line_total)
+        if refund_amount <= 0:
+            continue
+        wallet_part, gateway_part = _component_allocation(
+            payment,
+            refund_amount,
+            payment.amount + payment.wallet_amount,
+        )
+        amount = wallet_part + gateway_part
+        if amount <= 0:
+            continue
+        with transaction.atomic():
+            locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
+            refund, was_created = PaymentRefund.objects.get_or_create(
+                payment=locked_payment,
+                booking=locked_plan.source_booking,
+                defaults={
+                    "order_item": item,
+                    "amount": amount,
+                    "wallet_amount": wallet_part,
+                    "gateway_amount": gateway_part,
+                    "reason": PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION,
+                    "status": PaymentRefund.Status.PENDING,
+                },
+            )
+            if was_created:
+                created_ids.append(refund.pk)
+                allocated += amount
+            elif refund.reason != PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION:
+                raise ValueError(
+                    "A different refund already exists for the recurring plan's source payment. "
+                    "Manual refund reconciliation is required."
+                )
+
+    if not created_ids and allocated < unused_total:
+        raise ValueError(
+            "No refundable captured payment allocation was found for the unused recurring visits."
+        )
+    for refund_id in created_ids:
+        process_payment_refund(refund_id)
+    return PaymentRefund.objects.filter(pk__in=created_ids).order_by("created_at")
