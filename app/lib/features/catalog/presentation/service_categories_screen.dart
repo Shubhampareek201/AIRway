@@ -178,6 +178,22 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         }
         selectedCategory = target.first;
         followsExplicitAdminRoute = true;
+
+        // Resolve the configured branch from a fresh, unfiltered category
+        // tree. The current screen may have been opened with a partial/stale
+        // tree, while an answer-filtered request can prune sibling/child nodes.
+        try {
+          final fullRoots = await CatalogApi.listCategories(
+            addressId: widget.addressId,
+            audience: answers['beauty_audience']?.toString(),
+          );
+          final refreshedTarget = _findCategoryById(fullRoots, target.first.id);
+          if (refreshedTarget != null) {
+            selectedCategory = refreshedTarget;
+          }
+        } catch (_) {
+          // Keep the exact Admin-selected child already resolved above.
+        }
       }
     }
 
