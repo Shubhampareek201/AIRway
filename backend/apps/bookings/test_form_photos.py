@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
 from apps.bookings.models import Booking, CartItem, CustomerCart
-from apps.catalog.models import Category, FormField, Service
+from apps.catalog.models import Category, FormField, Service, ServiceVariant
 from apps.core.models import City, Zone
 
 
@@ -115,6 +115,9 @@ class DynamicServicePhotoUploadTests(TestCase):
         ]
         self.photo_field.save(update_fields=["visibility_rules", "updated_at"])
 
+        variant = ServiceVariant.objects.create(
+            service=self.service, title="Standard", mrp="100.00", price="100.00"
+        )
         with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
             storage = FileSystemStorage(location=private_root)
             stored_path = storage.save(
@@ -127,7 +130,7 @@ class DynamicServicePhotoUploadTests(TestCase):
 
             serializer = CartItemSerializer(
                 self.item,
-                data={"form_answers": {"room_type": "bathroom"}, "category_answers": {}},
+                data={"variant": variant.id, "form_answers": {"room_type": "bathroom"}, "category_answers": {}},
                 partial=True,
                 context={"allow_incomplete": True},
             )
