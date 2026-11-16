@@ -1550,6 +1550,18 @@ class CustomerOrderDetailView(APIView):
                     "vehicle_type": recurring_plan.vehicle_type,
                     "vehicle_quantity": recurring_plan.vehicle_quantity,
                     "quoted_total": str(recurring_plan.quoted_total),
+                    "refunds": [
+                        {
+                            "id": refund.pk,
+                            "amount": str(refund.amount),
+                            "status": refund.status,
+                            "failure_reason": refund.failure_reason,
+                            "created_at": refund.created_at.isoformat(),
+                        }
+                        for refund in recurring_plan.source_booking.payment_refunds.filter(
+                            reason="recurring_plan_cancellation"
+                        ).order_by("-created_at")
+                    ],
                     "can_cancel": recurring_plan.status in (
                         RecurringWashPlan.Status.PAID_PENDING_SETUP,
                         RecurringWashPlan.Status.ACTIVE,
