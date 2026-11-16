@@ -916,6 +916,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     has_issue_photo = serializers.SerializerMethodField()
     has_form_photos = serializers.SerializerMethodField()
+    form_photo_keys = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
@@ -926,11 +927,15 @@ class CartItemSerializer(serializers.ModelSerializer):
         photo_map = (obj.category_answers or {}).get("_airway_form_photos", {})
         return bool(photo_map) if isinstance(photo_map, dict) else False
 
+    def get_form_photo_keys(self, obj):
+        photo_map = (obj.category_answers or {}).get("_airway_form_photos", {})
+        return list(photo_map.keys()) if isinstance(photo_map, dict) else []
+
     class Meta:
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
-            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "has_form_photos", "notes",
+            "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "has_form_photos", "form_photo_keys", "notes",
             "pricing_snapshot", "line_total",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
