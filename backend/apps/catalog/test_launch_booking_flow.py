@@ -4,7 +4,7 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from apps.catalog.models import (
-    Category, CategoryAudienceOption, FormField, Service, ServiceVariant,
+    AddOn, Category, CategoryAudienceOption, FormField, Service, ServiceVariant,
 )
 
 
@@ -106,6 +106,40 @@ class LaunchBookingFlowConfigurationTests(TestCase):
         )
         self.assertFalse(
             interior.variants.filter(attributes__vehicle_type__in=["Scooter", "Motorcycle"]).exists()
+        )
+
+    def test_full_home_seed_captures_occupancy_materials_and_optional_scope(self):
+        call_command("seed_launch_catalogue", verbosity=0)
+
+        service = Service.objects.get(
+            category__slug="full-home-cleaning",
+            title="Full Home Cleaning",
+        )
+        fields = {
+            field.key: field
+            for field in service.form_fields.filter(is_active=True)
+        }
+        self.assertEqual(
+            fields["home_occupancy"].options,
+            ["Occupied", "Vacant", "Partially furnished"],
+        )
+        self.assertTrue(fields["home_occupancy"].is_required)
+        self.assertEqual(
+            fields["material_preference"].options,
+            [
+                "Use professional supplies",
+                "I will provide supplies",
+                "Discuss before service",
+            ],
+        )
+        self.assertTrue(fields["material_preference"].is_required)
+        self.assertEqual(fields["special_attention"].field_type, FormField.FieldType.TEXTAREA)
+        self.assertEqual(fields["cleaning_photos"].field_type, FormField.FieldType.PHOTO)
+        self.assertTrue(
+            AddOn.objects.filter(
+                service=service,
+                title__in=["Extra Bathroom", "Sofa Cleaning", "Window Glass Cleaning"],
+            ).count() == 3
         )
 
     def test_preview_rolls_back_all_configuration_changes(self):
