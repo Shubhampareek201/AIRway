@@ -3654,6 +3654,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
                 service=service, key=key, label=label, field_type=field_type,
                 options=options, is_required=required, is_active=True,
             )
+        self.cart_item.delete()
         cart_item = CartItem.objects.create(
             cart=self.cart, service=service, form_answers=answers,
             pricing_snapshot={"line_total": "118.00"},
