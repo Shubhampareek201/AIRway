@@ -128,6 +128,12 @@ class DispatcherService:
                 order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID
             ).exists():
                 return []
+            # Let any legacy whole-order offer finish before creating line offers.
+            if WorkerOffer.objects.filter(
+                order=order,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).exists():
+                return []
 
             bookings = list(
                 Booking.objects.filter(order_item__order=order)
