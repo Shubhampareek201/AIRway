@@ -3400,6 +3400,9 @@ class CustomerOrderReadIntegrityTest(BookingAPITestMixin, TestCase):
 
     def test_order_detail_does_not_reopen_terminal_order(self):
         order = self._create_order(Order.Status.CANCELLED)
+        booking = order.items.get().booking
+        booking.status = Booking.Status.CANCELLED
+        booking.save(update_fields=["status", "updated_at"])
 
         response = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
 
