@@ -859,6 +859,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ClipRect(
+                child: SizedBox(
+                  width: 154,
+                  height: 58,
+                  child: Image.asset(
+                    'assets/images/airway_logo.png',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    errorBuilder: (_, __, ___) => const Text(
+                      'AIRway',
+                      style: TextStyle(
+                        color: _Ui.ink,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
           Row(
             children: [
               const Icon(
