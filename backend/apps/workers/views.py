@@ -1450,7 +1450,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 ).filter(pk=worker.pk).exists()
                 if not eligible:
                     return Response(
-                        {"detail": "You are no longer eligible or available for every service in this order." if order else "You are no longer eligible or available for this booking time."},
+                        {"detail": "You are no longer eligible or available for every service in this order." if order_offer else "You are no longer eligible or available for this booking time."},
                         status=status.HTTP_409_CONFLICT,
                     )
 
@@ -1466,7 +1466,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 BookingStatusHistory.objects.create(
                     booking=booking, from_status=old_status,
                     to_status=Booking.Status.ASSIGNED, changed_by=worker.user,
-                    note="Worker accepted complete order offer" if order else "Worker accepted job offer",
+                    note="Worker accepted complete order offer" if order_offer else "Worker accepted service line from parent order" if order else "Worker accepted job offer",
                 )
                 assignment_payload = {
                     "booking_id": booking.pk,
