@@ -79,7 +79,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   }
 
   Future<void> _openCategory(Category category) async {
-    debugPrint('[AIRWAY_CATEGORY_TRACE] TAP id=${category.id} slug=${category.slug} title=${category.title} children=${category.children.map((e) => '${e.id}:${e.slug}').toList()} flowSteps=${category.customerFlowSteps}');
     var selectedCategory = category;
     final answers = Map<String, dynamic>.from(widget.initialAnswers);
     var followsExplicitAdminRoute = false;
@@ -155,7 +154,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         ),
       );
       if (selected == null || !mounted) return;
-      debugPrint('[AIRWAY_CATEGORY_TRACE] DECISION_RESULT category=${selectedCategory.id}:${selectedCategory.slug} result=$selected');
       final nextCategorySlug = selected.remove('__next_category_slug')?.toString();
       final nextCategoryId = int.tryParse(
         selected.remove('__next_category_id')?.toString() ?? '',
@@ -166,7 +164,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       // an option can name its next child explicitly. Otherwise the parent's
       // child_slugs mapping below selects the permitted next-level children.
       if (nextCategoryId != null || (nextCategorySlug?.isNotEmpty ?? false)) {
-        debugPrint('[AIRWAY_CATEGORY_TRACE] ROUTE slug=$nextCategorySlug id=$nextCategoryId parent=${selectedCategory.id}:${selectedCategory.slug} children=${selectedCategory.children.map((e) => '${e.id}:${e.slug}').toList()}');
         final target = selectedCategory.children.where((child) {
           if (nextCategoryId != null) return child.id == nextCategoryId;
           return child.slug.toLowerCase() == nextCategorySlug!.toLowerCase();
@@ -180,7 +177,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           return;
         }
         selectedCategory = target.first;
-        debugPrint('[AIRWAY_CATEGORY_TRACE] TARGET_MATCH id=${selectedCategory.id} slug=${selectedCategory.slug} children=${selectedCategory.children.map((e) => '${e.id}:${e.slug}').toList()}');
         followsExplicitAdminRoute = true;
 
         // Resolve the configured branch from a fresh, unfiltered category
@@ -192,7 +188,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
             audience: answers['beauty_audience']?.toString(),
           );
           final refreshedTarget = _findCategoryById(fullRoots, target.first.id);
-          debugPrint('[AIRWAY_CATEGORY_TRACE] FRESH_TREE roots=${fullRoots.map((e) => '${e.id}:${e.slug}').toList()} targetFound=${refreshedTarget != null} targetChildren=${refreshedTarget?.children.map((e) => '${e.id}:${e.slug}').toList()}');
           if (refreshedTarget != null) {
             selectedCategory = refreshedTarget;
           }
@@ -229,7 +224,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
 
     // A vehicle choice narrows the backend catalogue, but the customer
     // still chooses a service category before seeing individual services.
-    debugPrint('[AIRWAY_CATEGORY_TRACE] FINAL category=${selectedCategory.id}:${selectedCategory.slug} children=${selectedCategory.children.map((e) => '${e.id}:${e.slug}').toList()} answers=$answers');
     if (selectedCategory.children.isNotEmpty) {
       var children = selectedCategory.children;
       final filterStep = selectedCategory.customerFlowSteps.where(
@@ -271,7 +265,6 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         );
         return;
       }
-      debugPrint('[AIRWAY_CATEGORY_TRACE] PUSH title=${selectedCategory.title} categoryCards=${children.map((e) => '${e.id}:${e.slug}').toList()}');
       Navigator.push<void>(
         context,
         MaterialPageRoute(
