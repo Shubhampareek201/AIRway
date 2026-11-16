@@ -157,7 +157,15 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     try {
       final value = await BookingApi.deleteCartItem(id);
       CustomerCartState.updateFromCart(value);
-      if (mounted) setState(() { cart = value; busy = false; });
+      if (mounted) setState(() {
+        cart = value;
+        dates.remove(id);
+        times.remove(id);
+        dropTimes.remove(id);
+        _slotConfirmed.remove(id);
+        _expandedItems.remove(id);
+        busy = false;
+      });
     } catch (e) {
       if (mounted) setState(() { busy = false; error = e.toString(); });
     }
