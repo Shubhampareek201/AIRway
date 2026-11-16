@@ -369,7 +369,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ]),
           ),
           const SizedBox(height: 14),
-          orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round()),
+          orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
@@ -490,8 +490,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
-  Widget orderProgress(List<Map<String, dynamic>> rows, bool paid, bool advancePaid, bool staged, int advancePercentage) {
+  Widget orderProgress(List<Map<String, dynamic>> rows, bool paid, bool advancePaid, bool staged, int advancePercentage, bool acceptedInspectionQuote) {
     final balancePercentage = 100 - advancePercentage;
+    final firstPaymentLabel = acceptedInspectionQuote ? 'Initial payment' : '$advancePercentage% advance';
+    final remainingLabel = acceptedInspectionQuote ? 'Remaining balance' : 'Remaining $balancePercentage%';
     final activeRows = rows
         .where((row) => row['booking_status']?.toString() != 'cancelled')
         .toList();
@@ -504,10 +506,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final steps = staged
         ? <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
-            ('$advancePercentage% advance', advancePaid ? 'Advance payment verified.' : 'Pay $advancePercentage% to start worker matching.', advancePaid),
+            (firstPaymentLabel, advancePaid ? 'Initial payment verified.' : 'Pay the initial amount to start worker matching.', advancePaid),
             ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
             ('Service completion', completed ? 'All services are verified with customer OTP.' : 'Each service is verified after the customer shares a code.', completed),
-            ('Remaining $balancePercentage%', paid ? 'Final balance paid. Order complete.' : completed ? 'Final balance is now due.' : 'Unlocked after all active services are verified.', paid),
+            (remainingLabel, paid ? 'Final balance paid. Order complete.' : completed ? 'Final balance is now due.' : 'Unlocked after all active services are verified.', paid),
           ]
         : <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
