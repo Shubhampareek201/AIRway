@@ -647,6 +647,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         ),
       );
     } finally {
+      // Let the bottom-sheet route finish removing its TextField elements
+      // before disposing controllers that were attached to those fields.
+      await WidgetsBinding.instance.endOfFrame;
       for (final controller in formControllers.values) {
         controller.dispose();
       }
