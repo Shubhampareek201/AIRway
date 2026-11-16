@@ -41,6 +41,89 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
 
   double number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 
+  Map<String, List<Map<String, dynamic>>> get scheduleGroups {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      final id = item['id'] as int;
+      final date = dates[id];
+      final time = times[id];
+      if (!_slotConfirmed.contains(id) || date == null || time == null) continue;
+      final slot = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      groups.putIfAbsent(slot.toIso8601String(), () => []).add(item);
+    }
+    return groups;
+  }
+
+  void applyScheduleToAll(int sourceId) {
+    final date = dates[sourceId];
+    final time = times[sourceId];
+    if (date == null || time == null || !_slotConfirmed.contains(sourceId)) return;
+    setState(() {
+      for (final item in items) {
+        final id = item['id'] as int;
+        dates[id] = date;
+        times[id] = time;
+        if (dropTimes.containsKey(sourceId)) dropTimes[id] = dropTimes[sourceId]!;
+        _slotConfirmed.add(id);
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This date and time has been applied to every service. Availability will be checked for each service at checkout.')),
+    );
+  }
+
+  Widget scheduleOverviewCard() {
+    final groups = scheduleGroups;
+    if (groups.isEmpty) return const SizedBox.shrink();
+    final entries = groups.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F5F0),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.event_available_rounded, color: violet),
+            const SizedBox(width: 9),
+            const Expanded(child: Text('Your schedule', style: TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 15))),
+            Text('${groups.length} time slots', style: const TextStyle(color: violet, fontWeight: FontWeight.w800, fontSize: 12)),
+          ]),
+          const SizedBox(height: 5),
+          Text('${_slotConfirmed.length} of ${items.length} services scheduled', style: const TextStyle(color: sub, fontSize: 12)),
+          const SizedBox(height: 10),
+          for (final entry in entries) ...[
+            const Divider(height: 12, color: line),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.schedule_rounded, color: violet, size: 18),
+              const SizedBox(width: 9),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    DateFormat('EEE, dd MMM').format(DateTime.parse(entry.key)) +
+                    ' · ' + TimeOfDay.fromDateTime(DateTime.parse(entry.key)).format(context),
+                    style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 12),
+                  ),
+                  Text(
+                    entry.value.map((item) => item['service_title']?.toString() ?? 'Service').join(' · '),
+                    style: const TextStyle(color: sub, fontSize: 11),
+                  ),
+                ],
+              )),
+              Text('${entry.value.length}', style: const TextStyle(color: violet, fontWeight: FontWeight.w900)),
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> loadCart() async {
     setState(() { loading = true; error = null; });
     try {
@@ -266,7 +349,10 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           addressCard(),
           const SizedBox(height: 16),
           Text(items.length.toString() + ' services in your cart', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
+          const SizedBox(height: 5),
+          const Text('Choose one time for all services or schedule each service separately.', style: TextStyle(fontSize: 12, color: sub)),
           const SizedBox(height: 12),
+          scheduleOverviewCard(),
           for (final item in items) ...[itemCard(item), const SizedBox(height: 12)],
           Container(
             padding: const EdgeInsets.all(16),
@@ -460,6 +546,16 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             ],
           ),
         ),
+        if (_slotConfirmed.contains(id) && items.length > 1)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: busy ? null : () => applyScheduleToAll(id),
+              icon: const Icon(Icons.copy_all_rounded, size: 16),
+              label: const Text('Use this time for all services'),
+              style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact),
+            ),
+          ),
         if (item['booking_mode'] == 'pickup_drop' && _slotConfirmed.contains(id))
           Padding(
             padding: const EdgeInsets.only(top: 7),
