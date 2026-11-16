@@ -446,6 +446,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList();
+    final refunds = (plan['refunds'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
     String label(String value) {
       switch (value) {
         case 'pending_setup': return 'Schedule setup pending';
@@ -484,6 +488,18 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           ),
           const SizedBox(height: 4),
           Text('Plan status: ${label(plan['status']?.toString() ?? '')}', style: const TextStyle(color: sub, fontSize: 13)),
+          for (final refund in refunds)
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text(
+                'Unused balance refund ₹${amount(refund['amount']).toStringAsFixed(2)} • ${label(refund['status']?.toString() ?? '')}',
+                style: TextStyle(
+                  color: refund['status'] == 'processed' ? const Color(0xFF16834A) : sub,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           const SizedBox(height: 10),
           for (final visit in visits)
             Padding(
