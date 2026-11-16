@@ -586,7 +586,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   )),
                   if (variant.includedTasks.isNotEmpty) ...[
                     const SizedBox(height: 7),
-                    for (final task in variant.includedTasks.take(4))
+                    for (final task in variant.includedTasks)
                       Padding(
                         padding: const EdgeInsets.only(top: 3),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -597,9 +597,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ))),
                         ]),
                       ),
-                    if (variant.includedTasks.length > 4)
-                      Text('+ ${variant.includedTasks.length - 4} more included',
-                        style: const TextStyle(fontSize: 10.5, color: AirwayColors.primary, fontWeight: FontWeight.w700)),
                   ],
                   if (variant.durationMinutes != null && variant.durationMinutes! > 0)
                     Padding(
