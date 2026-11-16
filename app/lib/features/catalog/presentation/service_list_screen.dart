@@ -242,7 +242,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 .where((addon) => selectedAddons.contains(addon.id))
                 .fold<double>(0, (sum, addon) => sum + addon.price);
             final visitFee = service.bookingMode == 'inspection' ? service.visitFee : 0.0;
-            final estimatedTotal = ((basePrice + addonsTotal) * quantity) + visitFee;
+            final estimatedSubtotal = ((basePrice + addonsTotal) * quantity) + visitFee;
+            final estimatedTax = estimatedSubtotal * 0.18;
+            final estimatedTotal = estimatedSubtotal + estimatedTax;
 
             Widget buildFormField(CatalogFormField field) {
               final current = formAnswers[field.key]?.toString() ?? '';
@@ -592,7 +594,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: Text(
-                          'Estimated total: ₹${estimatedTotal.toStringAsFixed(0)}',
+                          'Estimated total incl. GST: ₹${estimatedTotal.toStringAsFixed(0)}',
                           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AirwayColors.primary),
                         ),
                       ),
