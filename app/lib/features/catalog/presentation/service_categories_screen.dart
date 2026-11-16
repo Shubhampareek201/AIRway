@@ -215,14 +215,16 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         final selected = key == null ? null : answers[key]?.toString();
         if (selected != null && selected.isNotEmpty) {
           final configuredMap = step['child_slugs'];
-          final configuredSlugs = configuredMap is Map
-              ? configuredMap.entries
-                  .where((entry) =>
-                      entry.key.toString().trim().toLowerCase() ==
-                      selected.trim().toLowerCase())
-                  .map((entry) => entry.value)
-                  .firstOrNull
-              : null;
+          dynamic configuredSlugs;
+          if (configuredMap is Map) {
+            for (final entry in configuredMap.entries) {
+              if (entry.key.toString().trim().toLowerCase() ==
+                  selected.trim().toLowerCase()) {
+                configuredSlugs = entry.value;
+                break;
+              }
+            }
+          }
           if (configuredSlugs is List && configuredSlugs.isNotEmpty) {
             final allowedSlugs = configuredSlugs.map((slug) => slug.toString()).toSet();
             children = children.where((child) => allowedSlugs.contains(child.slug)).toList();
