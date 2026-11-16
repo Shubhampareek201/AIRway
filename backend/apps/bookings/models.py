@@ -602,3 +602,54 @@ class RecurringWashPlan(TimeStampedModel):
 
     def __str__(self):
         return f"Recurring wash plan #{self.pk} for order #{self.order_id}"
+
+
+class RecurringWashVisit(TimeStampedModel):
+    """One prepaid occurrence in a recurring wash plan's visit ledger."""
+
+    class Status(models.TextChoices):
+        PENDING_SETUP = "pending_setup", "Pending booking setup"
+        BOOKED = "booked", "Booking created"
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+        SKIPPED = "skipped", "Skipped"
+
+    plan = models.ForeignKey(
+        RecurringWashPlan, on_delete=models.PROTECT, related_name="visits"
+    )
+    visit_number = models.PositiveSmallIntegerField()
+    scheduled_at = models.DateTimeField(db_index=True)
+    booking = models.OneToOneField(
+        Booking, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="recurring_wash_visit",
+    )
+    prepaid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(
+        max_length=20, choices=Status.choices,
+        default=Status.PENDING_SETUP, db_index=True,
+    )
+    admin_notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["scheduled_at", "visit_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "visit_number"],
+                name="unique_wash_plan_visit_number",
+            ),
+            models.UniqueConstraint(
+                fields=["plan", "scheduled_at"],
+                name="unique_wash_plan_visit_time",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(visit_number__gte=1),
+                name="wash_visit_number_gte_1",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"], name="wash_visit_status_time_idx"),
+        ]
+
+    def __str__(self):
+        return f"Plan #{self.plan_id} visit {self.visit_number} ({self.status})"
