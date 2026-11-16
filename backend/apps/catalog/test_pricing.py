@@ -128,7 +128,7 @@ class ServicePricingReadinessTests(TestCase):
 
     def test_worker_catalogue_can_still_see_unpriced_services_for_enrolment(self):
         response = APIClient().get(
-            "/api/v1/catalog/services/?launch_only=true&for_worker=true&for_worker=true"
+            "/api/v1/catalog/services/?launch_only=true&for_worker=true"
         )
         self.assertEqual(response.status_code, 200, response.data)
         rows = response.data if isinstance(response.data, list) else response.data.get("results", [])
