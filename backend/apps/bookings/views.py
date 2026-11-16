@@ -1093,12 +1093,31 @@ class CustomerOrderDetailView(APIView):
                         completion_expires_at = otp_record.expires_at.isoformat()
             service_snapshot = dict(row.service_snapshot or {})
             service_snapshot.setdefault("unit_label", booking.service.unit_label)
+            latest_quote = booking.quotes.order_by("-version").first()
+            quote_data = None
+            if latest_quote:
+                quote_data = {
+                    "id": latest_quote.id,
+                    "version": latest_quote.version,
+                    "status": latest_quote.status,
+                    "line_items": latest_quote.line_items,
+                    "labour_amount": str(latest_quote.labour_amount),
+                    "material_amount": str(latest_quote.material_amount),
+                    "other_amount": str(latest_quote.other_amount),
+                    "tax_amount": str(latest_quote.tax_amount),
+                    "total_amount": str(latest_quote.total_amount),
+                    "notes": latest_quote.notes,
+                    "customer_response_note": latest_quote.customer_response_note,
+                    "expires_at": latest_quote.expires_at.isoformat() if latest_quote.expires_at else None,
+                    "responded_at": latest_quote.responded_at.isoformat() if latest_quote.responded_at else None,
+                }
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
                 "service": service_snapshot,
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
+                "quote": quote_data,
                 "worker": (
                     {
                         "id": assignment.worker_id,
