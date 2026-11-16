@@ -13,12 +13,12 @@ class CustomerCartScreen extends StatefulWidget {
 }
 
 class _CustomerCartScreenState extends State<CustomerCartScreen> {
-  static const violet = Color(0xFF987451);
-  static const ink = Color(0xFF1E2923);
-  static const sub = Color(0xFF748078);
-  static const bg = Color(0xFFFFFFFF);
-  static const pale = Color(0xFFEAF1EA);
-  static const line = Color(0xFFEAE6DE);
+  static const violet = Color(0xFF6C4CEB);
+  static const ink = Color(0xFF211B36);
+  static const sub = Color(0xFF77718A);
+  static const bg = Color(0xFFF7F5FC);
+  static const pale = Color(0xFFF0ECFF);
+  static const line = Color(0xFFEAE6F3);
 
   Map<String, dynamic>? cart;
   bool loading = true;
@@ -340,83 +340,192 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: bg,
     appBar: AppBar(
-      title: const Text('Your Cart'),
+      elevation: 0,
+      scrolledUnderElevation: 0,
       backgroundColor: bg,
-      actions: [IconButton(onPressed: loading ? null : loadCart, icon: const Icon(Icons.refresh_rounded))],
+      foregroundColor: ink,
+      titleSpacing: 20,
+      title: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('My Cart', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: ink)),
+          Text('Review your services', style: TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w500)),
+        ],
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'Refresh cart',
+          onPressed: loading ? null : loadCart,
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+        const SizedBox(width: 6),
+      ],
     ),
     body: loading
       ? const Center(child: CircularProgressIndicator(color: violet))
       : error != null
-        ? emptyState('Could not load your cart', error!, Icons.error_outline, loadCart)
+        ? emptyState('Could not load your cart', error!, Icons.error_outline_rounded, loadCart)
         : items.isEmpty
-          ? emptyState('Your cart is empty', 'Add a service to get started.', Icons.shopping_bag_outlined, () => Navigator.pop(context))
+          ? emptyState('Your cart is empty', 'Find a service you need and add it here.', Icons.shopping_bag_outlined, () => Navigator.pop(context))
           : cartBody(),
   );
 
   Widget cartBody() {
     final subtotal = number(cart?['subtotal']);
+    final scheduledCount = _slotConfirmed.where((id) => items.any((item) => item['id'] == id)).length;
     return Column(children: [
-      Expanded(child: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          addressCard(),
-          const SizedBox(height: 16),
-          Text(items.length.toString() + ' services in your cart', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
-          const SizedBox(height: 5),
-          const Text('Choose one time for all services or schedule each service separately.', style: TextStyle(fontSize: 12, color: sub)),
-          const SizedBox(height: 12),
-          scheduleOverviewCard(),
-          for (final item in items) ...[itemCard(item), const SizedBox(height: 12)],
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(18)),
-            child: Column(children: [
-              priceRow('Subtotal', '₹' + subtotal.toStringAsFixed(0)),
-              priceRow('Taxes', 'Calculated at checkout'),
-              const Divider(height: 20),
-              priceRow('Payment', '30% advance now · 70% after verified completion'),
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 22),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF7657F2), Color(0xFF5434C8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: violet.withOpacity(.20), blurRadius: 22, offset: const Offset(0, 10))],
+              ),
+              child: Stack(children: [
+                Positioned(right: -12, top: -18, child: Icon(Icons.shopping_bag_rounded, size: 105, color: Colors.white.withOpacity(.09))),
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(.17), borderRadius: BorderRadius.circular(30)),
+                    child: Text(items.length.toString() + (items.length == 1 ? ' SERVICE ADDED' : ' SERVICES ADDED'),
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                  ),
+                  const SizedBox(height: 13),
+                  const Text('Your home,\nyour services.', style: TextStyle(color: Colors.white, fontSize: 25, height: 1.12, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 7),
+                  Text('A few quick details and we’ll take it from here.',
+                    style: TextStyle(color: Colors.white.withOpacity(.82), fontSize: 12)),
+                  const SizedBox(height: 17),
+                  Row(children: [
+                    _heroMetric(Icons.calendar_month_rounded, scheduledCount.toString() + '/' + items.length.toString(), 'Scheduled'),
+                    const SizedBox(width: 10),
+                    _heroMetric(Icons.currency_rupee_rounded, subtotal.toStringAsFixed(0), 'Cart value'),
+                  ]),
+                ]),
+              ]),
+            ),
+            const SizedBox(height: 18),
+            addressCard(),
+            const SizedBox(height: 22),
+            Row(children: [
+              const Expanded(child: Text('Your services', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: ink))),
+              Text(items.length.toString() + ' items', style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w700)),
             ]),
-          ),
-        ],
-      )),
+            const SizedBox(height: 5),
+            const Text('Tap a service to view details or update your preferences.', style: TextStyle(fontSize: 12, color: sub)),
+            const SizedBox(height: 13),
+            scheduleOverviewCard(),
+            for (final item in items) ...[itemCard(item), const SizedBox(height: 13)],
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: line)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Row(children: [
+                  Icon(Icons.receipt_long_rounded, color: violet, size: 20),
+                  SizedBox(width: 9),
+                  Text('Price summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+                ]),
+                const SizedBox(height: 16),
+                priceRow('Service subtotal', '₹' + subtotal.toStringAsFixed(0)),
+                priceRow('Taxes & applicable charges', 'Calculated at checkout'),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(color: line)),
+                const Text('Payment is split for your convenience', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: ink)),
+                const SizedBox(height: 5),
+                const Text('30% advance to begin worker matching · 70% after every service is completed and verified.', style: TextStyle(fontSize: 11, height: 1.4, color: sub)),
+              ]),
+            ),
+          ],
+        ),
+      ),
       Container(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-        decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: line))),
+        padding: const EdgeInsets.fromLTRB(18, 13, 18, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: const Border(top: BorderSide(color: line)),
+          boxShadow: [BoxShadow(color: const Color(0xFF30204F).withOpacity(.06), blurRadius: 18, offset: const Offset(0, -5))],
+        ),
         child: SafeArea(top: false, child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            const Text('Cart subtotal', style: TextStyle(color: sub, fontSize: 12)),
-            Text('₹' + subtotal.toStringAsFixed(0), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: ink)),
+            const Text('TOTAL AMOUNT', style: TextStyle(color: sub, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            const SizedBox(height: 2),
+            Text('₹' + subtotal.toStringAsFixed(0), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: ink)),
           ])),
-          Expanded(child: FilledButton(
-            onPressed: busy ? null : checkout,
-            child: busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Place Order'),
+          const SizedBox(width: 12),
+          Expanded(flex: 2, child: SizedBox(
+            height: 52,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: violet,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              onPressed: busy ? null : checkout,
+              child: busy
+                ? const SizedBox(height: 19, width: 19, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Text('Continue to checkout', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    SizedBox(width: 7),
+                    Icon(Icons.arrow_forward_rounded, size: 18),
+                  ]),
+            ),
           )),
         ])),
       ),
     ]);
   }
 
+  Widget _heroMetric(IconData icon, String value, String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+    decoration: BoxDecoration(color: Colors.white.withOpacity(.14), borderRadius: BorderRadius.circular(13)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, color: Colors.white, size: 17),
+      const SizedBox(width: 7),
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+        Text(label, style: TextStyle(color: Colors.white.withOpacity(.78), fontSize: 9)),
+      ]),
+    ]),
+  );
+
   Widget addressCard() {
     final selectedId = cart?['address'] is int ? cart!['address'] as int : int.tryParse(cart?['address']?.toString() ?? '');
     final selected = addresses.where((a) => a['id'] == selectedId).toList();
     final label = selected.isEmpty
-        ? (selectedId == null ? 'No address selected' : 'Saved address #' + selectedId.toString())
-        : (selected.first['label']?.toString() ?? 'Service address') + ' • ' +
-            (selected.first['full_address']?.toString() ?? '');
+      ? (selectedId == null ? 'Choose where your service is needed' : 'Saved address #' + selectedId.toString())
+      : (selected.first['label']?.toString() ?? 'Service address') + ' • ' + (selected.first['full_address']?.toString() ?? '');
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: line)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: line),
+        boxShadow: [BoxShadow(color: const Color(0xFF30204F).withOpacity(.035), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
       child: Row(children: [
-        const CircleAvatar(backgroundColor: pale, child: Icon(Icons.location_on_outlined, color: violet)),
+        Container(
+          height: 46, width: 46,
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF0ECFF), Color(0xFFE5DEFF)]), borderRadius: BorderRadius.circular(15)),
+          child: const Icon(Icons.location_on_rounded, color: violet, size: 23),
+        ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Service address', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
-          Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: sub, fontSize: 12)),
+          const Text('SERVICE LOCATION', style: TextStyle(color: sub, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4),
+          Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: ink, fontSize: 12, height: 1.35, fontWeight: FontWeight.w700)),
         ])),
         if (addresses.isNotEmpty)
           PopupMenuButton<int>(
             tooltip: 'Change address',
-            icon: const Icon(Icons.edit_location_alt_outlined, color: violet),
+            icon: const Icon(Icons.edit_location_alt_rounded, color: violet),
             onSelected: (id) async {
               setState(() { busy = true; _slotConfirmed.clear(); });
               try {
@@ -431,14 +540,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             },
             itemBuilder: (context) => addresses.map((a) => PopupMenuItem<int>(
               value: a['id'] as int,
-              child: SizedBox(
-                width: 230,
-                child: Text(
-                  (a['label']?.toString() ?? 'Address') + ' — ' + (a['full_address']?.toString() ?? ''),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              child: SizedBox(width: 230, child: Text((a['label']?.toString() ?? 'Address') + ' — ' + (a['full_address']?.toString() ?? ''), maxLines: 2, overflow: TextOverflow.ellipsis)),
             )).toList(),
           ),
       ]),
@@ -458,71 +560,111 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     final quantityLabel = unit.isNotEmpty ? '$quantity $unit' : 'Qty $quantity';
     final amountLabel = '₹' + number(item['line_total']).toStringAsFixed(0);
     return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: line)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(21),
+        border: Border.all(color: line),
+        boxShadow: [BoxShadow(color: const Color(0xFF30204F).withOpacity(.035), blurRadius: 13, offset: const Offset(0, 5))],
+      ),
       child: Column(children: [
         InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(21),
           onTap: () => setState(() { if (expanded) { _expandedItems.remove(id); } else { _expandedItems.add(id); } }),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 8, 12),
+            padding: const EdgeInsets.fromLTRB(14, 15, 10, 13),
             child: Row(children: [
-              Container(width: 44, height: 44, decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.home_repair_service_outlined, color: violet)),
-              const SizedBox(width: 11),
+              Container(
+                width: 54, height: 54,
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFF2EEFF), Color(0xFFE8E1FF)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(17)),
+                child: const Icon(Icons.home_repair_service_rounded, color: violet, size: 26),
+              ),
+              const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item['service_title']?.toString() ?? 'Service', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
-                if ((item['variant_title'] ?? '').toString().isNotEmpty) Text(item['variant_title'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: sub)),
-                const SizedBox(height: 3),
-                Text('$quantityLabel  •  $amountLabel', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: violet)),
+                Text(item['service_title']?.toString() ?? 'Service', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, color: ink, fontSize: 14, height: 1.2)),
+                if ((item['variant_title'] ?? '').toString().isNotEmpty)
+                  Padding(padding: const EdgeInsets.only(top: 4), child: Text(item['variant_title'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: sub))),
+                const SizedBox(height: 6),
+                Text(quantityLabel + '  ·  ' + amountLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: violet)),
               ])),
-              IconButton(tooltip: 'Remove service', onPressed: busy ? null : () => removeItem(id), icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent)),
+              IconButton(
+                tooltip: 'Remove service',
+                onPressed: busy ? null : () => removeItem(id),
+                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFD45D70), size: 21),
+              ),
               Icon(expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, color: sub),
             ]),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 13),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-            decoration: BoxDecoration(color: scheduled ? pale : const Color(0xFFFFF7E8), borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              Icon(scheduled ? Icons.event_available_rounded : Icons.calendar_month_rounded, color: scheduled ? violet : const Color(0xFF9A6A16), size: 19),
-              const SizedBox(width: 8),
-              Expanded(child: Text(scheduled ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context) : 'Date & time not selected', style: TextStyle(color: scheduled ? ink : const Color(0xFF8A641F), fontWeight: FontWeight.w700, fontSize: 12))),
-              TextButton(onPressed: busy ? null : () => chooseSchedule(id), style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)), child: Text(scheduled ? 'Change' : 'Schedule')),
-            ]),
+          padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: busy ? null : () => chooseSchedule(id),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: BoxDecoration(
+                color: scheduled ? const Color(0xFFF1EDFF) : const Color(0xFFFFF7E9),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: scheduled ? const Color(0xFFE4DCFF) : const Color(0xFFF6E7C8)),
+              ),
+              child: Row(children: [
+                Icon(scheduled ? Icons.event_available_rounded : Icons.add_circle_outline_rounded, color: scheduled ? violet : const Color(0xFFAA7925), size: 19),
+                const SizedBox(width: 9),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(scheduled ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context) : 'Choose date & time',
+                    style: TextStyle(color: scheduled ? ink : const Color(0xFF8A641F), fontWeight: FontWeight.w800, fontSize: 12)),
+                  Text(scheduled ? 'Tap to change your schedule' : 'Select a convenient service slot',
+                    style: TextStyle(color: scheduled ? sub : const Color(0xFF9A7B48), fontSize: 10)),
+                ])),
+                Text(scheduled ? 'CHANGE' : 'SCHEDULE', style: const TextStyle(color: violet, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .5)),
+                const SizedBox(width: 3),
+                const Icon(Icons.chevron_right_rounded, color: violet, size: 18),
+              ]),
+            ),
           ),
         ),
         AnimatedCrossFade(
-          duration: const Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 200),
           crossFadeState: expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           firstChild: const SizedBox(width: double.infinity),
           secondChild: Padding(
-            padding: const EdgeInsets.fromLTRB(15, 0, 15, 15),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Divider(height: 12),
+              const Divider(color: line, height: 12),
               if (item['category_answers'] is Map)
                 for (final entry in (item['category_answers'] as Map).entries)
                   if (!entry.key.toString().endsWith('_id') && entry.key.toString() != 'vehicle_type' && entry.value != null && entry.value.toString().isNotEmpty)
-                    Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(entry.key.toString().replaceAll('_', ' ') + ': ' + entry.value.toString(), style: const TextStyle(fontSize: 12, color: sub))),
+                    Padding(padding: const EdgeInsets.only(bottom: 5), child: Text(entry.key.toString().replaceAll('_', ' ') + ': ' + entry.value.toString(), style: const TextStyle(fontSize: 11, color: sub))),
               if (number(snapshot['visit_fee']) > 0)
-                Padding(padding: const EdgeInsets.only(top: 5), child: Text('Inspection / visit charge: ₹' + number(snapshot['visit_fee']).toStringAsFixed(0) + ' (included once)', style: const TextStyle(fontSize: 12, color: sub, fontWeight: FontWeight.w700))),
+                Padding(padding: const EdgeInsets.only(top: 5), child: Text('Inspection / visit charge: ₹' + number(snapshot['visit_fee']).toStringAsFixed(0) + ' (included once)', style: const TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w700))),
               if (item['notes']?.toString().trim().isNotEmpty == true)
-                Padding(padding: const EdgeInsets.only(top: 7), child: Text('Issue description: ' + item['notes'].toString(), style: const TextStyle(fontSize: 12, color: sub))),
+                Padding(padding: const EdgeInsets.only(top: 7), child: Text('Issue description: ' + item['notes'].toString(), style: const TextStyle(fontSize: 11, color: sub))),
               if (item['has_issue_photo'] == true)
-                const Padding(padding: EdgeInsets.only(top: 7), child: Row(children: [Icon(Icons.image_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Issue photo attached', style: TextStyle(fontSize: 12, color: sub))])),
+                const Padding(padding: EdgeInsets.only(top: 7), child: Row(children: [Icon(Icons.image_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Issue photo attached', style: TextStyle(fontSize: 11, color: sub))])),
               if (item['has_form_photos'] == true)
-                const Padding(padding: EdgeInsets.only(top: 6), child: Row(children: [Icon(Icons.photo_library_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Service photos attached', style: TextStyle(fontSize: 12, color: sub))])),
+                const Padding(padding: EdgeInsets.only(top: 6), child: Row(children: [Icon(Icons.photo_library_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Service photos attached', style: TextStyle(fontSize: 11, color: sub))])),
               if (addons.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: sub)),
-                for (final addon in addons) Padding(padding: const EdgeInsets.only(top: 3), child: Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 12, color: ink))),
+                const Text('ADD-ONS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 9, color: sub, letterSpacing: .8)),
+                for (final addon in addons)
+                  Padding(padding: const EdgeInsets.only(top: 4), child: Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 11, color: ink))),
               ],
               if (item['booking_mode'] == 'pickup_drop' && scheduled)
-                Padding(padding: const EdgeInsets.only(top: 8), child: Text('Drop-off time: ' + (dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context), style: const TextStyle(color: sub, fontSize: 12))),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(onPressed: busy ? null : () => editPreferences(item), icon: const Icon(Icons.tune_rounded, size: 18), label: const Text('Edit service preferences'), style: OutlinedButton.styleFrom(foregroundColor: violet)),
+                Padding(padding: const EdgeInsets.only(top: 8), child: Text('Drop-off time: ' + (dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context), style: const TextStyle(color: sub, fontSize: 11))),
+              const SizedBox(height: 12),
+              SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                onPressed: busy ? null : () => editPreferences(item),
+                icon: const Icon(Icons.tune_rounded, size: 17),
+                label: const Text('Edit service preferences'),
+                style: OutlinedButton.styleFrom(foregroundColor: violet, side: const BorderSide(color: Color(0xFFDCD3FF)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              )),
               if (scheduled && items.length > 1)
-                Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: busy ? null : () => applyScheduleToAll(id), icon: const Icon(Icons.copy_all_rounded, size: 16), label: const Text('Apply this time to all services'), style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact))),
+                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+                  onPressed: busy ? null : () => applyScheduleToAll(id),
+                  icon: const Icon(Icons.copy_all_rounded, size: 16),
+                  label: const Text('Apply this time to all services'),
+                  style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact),
+                )),
             ]),
           ),
         ),
