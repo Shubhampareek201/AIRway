@@ -313,7 +313,7 @@ def request_recurring_plan_refund(plan):
     """Refund only the prepaid value of visits that were never delivered."""
     from apps.bookings.models import RecurringWashVisit, RecurringWashPlan
 
-    locked_plan = RecurringWashPlan.objects.select_for_update().get(pk=plan.pk)
+    locked_plan = RecurringWashPlan.objects.get(pk=plan.pk)
     unused_total = sum(
         (
             visit.prepaid_amount
