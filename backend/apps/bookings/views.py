@@ -1682,6 +1682,22 @@ class CustomerCartIssuePhotoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
+    def get(self, request, item_id):
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        item = get_object_or_404(
+            CartItem.objects.select_related("cart"),
+            pk=item_id,
+            cart__customer=request.user,
+        )
+        stored_path = (item.category_answers or {}).get("_airway_issue_photo")
+        if not stored_path or not storage.exists(stored_path):
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
+        response = FileResponse(storage.open(stored_path, "rb"), content_type=content_type)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
     def post(self, request, item_id):
         storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
         item = get_object_or_404(
@@ -1762,6 +1778,19 @@ class CustomerCartFormPhotoView(APIView):
             is_active=True,
         )
         return item, field
+
+    def get(self, request, item_id, field_key):
+        item, field = self._get_item_and_field(request, item_id, field_key)
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        photo_map = (item.category_answers or {}).get("_airway_form_photos", {})
+        stored_path = photo_map.get(field.key) if isinstance(photo_map, dict) else None
+        if not stored_path or not storage.exists(stored_path):
+            return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
+        content_type = mimetypes.guess_type(stored_path)[0] or "application/octet-stream"
+        response = FileResponse(storage.open(stored_path, "rb"), content_type=content_type)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
     def post(self, request, item_id, field_key):
         item, field = self._get_item_and_field(request, item_id, field_key)
