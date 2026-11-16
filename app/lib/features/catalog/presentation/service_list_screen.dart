@@ -238,7 +238,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 .where((addon) => selectedAddons.contains(addon.id))
                 .fold<double>(0, (sum, addon) => sum + addon.price);
             final visitFee = service.bookingMode == 'inspection' ? service.visitFee : 0.0;
-            final estimatedTotal = (basePrice * quantity) + addonsTotal + visitFee;
+            final estimatedTotal = ((basePrice + addonsTotal) * quantity) + visitFee;
 
             Widget buildFormField(CatalogFormField field) {
               final current = formAnswers[field.key]?.toString() ?? '';
