@@ -516,3 +516,88 @@ class BookingCompletionOTP(TimeStampedModel):
 
     def __str__(self):
         return f"Completion OTP for booking #{self.booking_id}"
+
+
+class RecurringWashPlan(TimeStampedModel):
+    """Customer's quoted recurring car-wash agreement, linked to its inspection order."""
+
+    class Frequency(models.TextChoices):
+        DAILY = "daily", "Daily"
+        ALTERNATE_DAY = "alternate_day", "Alternate day"
+        TWICE_WEEKLY = "twice_weekly", "Twice a week"
+        WEEKLY = "weekly", "Weekly"
+        FORTNIGHTLY = "fortnightly", "Fortnightly"
+
+    class Status(models.TextChoices):
+        AWAITING_QUOTE = "awaiting_quote", "Awaiting quote"
+        AWAITING_PAYMENT = "awaiting_payment", "Awaiting payment"
+        ACTIVE = "active", "Active"
+        PAUSED = "paused", "Paused"
+        CANCELLED = "cancelled", "Cancelled"
+        COMPLETED = "completed", "Completed"
+
+    class TimeWindow(models.TextChoices):
+        MORNING = "Morning", "Morning"
+        AFTERNOON = "Afternoon", "Afternoon"
+        EVENING = "Evening", "Evening"
+
+    order = models.OneToOneField(
+        Order, on_delete=models.PROTECT, related_name="recurring_wash_plan"
+    )
+    source_booking = models.OneToOneField(
+        Booking, on_delete=models.PROTECT, related_name="recurring_wash_plan"
+    )
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="recurring_wash_plans",
+    )
+    address = models.ForeignKey(
+        Address, on_delete=models.PROTECT, related_name="recurring_wash_plans"
+    )
+    service = models.ForeignKey(
+        Service, on_delete=models.PROTECT, related_name="recurring_wash_plans"
+    )
+    variant = models.ForeignKey(
+        ServiceVariant, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="recurring_wash_plans",
+    )
+    frequency = models.CharField(max_length=20, choices=Frequency.choices)
+    duration_days = models.PositiveSmallIntegerField()
+    starts_on = models.DateField()
+    ends_on = models.DateField()
+    preferred_time_window = models.CharField(
+        max_length=12, choices=TimeWindow.choices, blank=True
+    )
+    vehicle_type = models.CharField(max_length=40)
+    vehicle_quantity = models.PositiveSmallIntegerField(default=1)
+    quoted_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(
+        max_length=20, choices=Status.choices,
+        default=Status.AWAITING_QUOTE, db_index=True,
+    )
+    plan_snapshot = models.JSONField(default=dict, blank=True)
+    quote_accepted_at = models.DateTimeField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    admin_notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "starts_on"], name="wash_plan_status_start_idx"),
+            models.Index(fields=["customer", "status"], name="wash_plan_customer_status_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(vehicle_quantity__gte=1),
+                name="wash_plan_vehicle_qty_gte_1",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(ends_on__gte=models.F("starts_on")),
+                name="wash_plan_end_after_start",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Recurring wash plan #{self.pk} for order #{self.order_id}"
