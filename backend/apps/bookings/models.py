@@ -531,6 +531,7 @@ class RecurringWashPlan(TimeStampedModel):
     class Status(models.TextChoices):
         AWAITING_QUOTE = "awaiting_quote", "Awaiting quote"
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting payment"
+        PAID_PENDING_SETUP = "paid_pending_setup", "Paid - schedule setup pending"
         ACTIVE = "active", "Active"
         PAUSED = "paused", "Paused"
         CANCELLED = "cancelled", "Cancelled"
