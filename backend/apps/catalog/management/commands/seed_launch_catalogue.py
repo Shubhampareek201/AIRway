@@ -224,8 +224,13 @@ class Command(BaseCommand):
             fields=[
                 vehicle_field,
                 {"key": "vehicle_quantity", "label": "Number of vehicles", "field_type": "number", "required": True},
+                {"key": "wash_frequency", "label": "Preferred wash frequency", "field_type": "select",
+                 "options": ["Daily", "Alternate day", "Twice a week", "Weekly", "Fortnightly"], "required": True},
                 {"key": "subscription_duration", "label": "Plan duration", "field_type": "select",
                  "options": ["15 days", "1 month", "3 months", "6 months"], "required": True},
+                {"key": "plan_start_date", "label": "Preferred plan start date", "field_type": "date", "required": True},
+                {"key": "preferred_time_window", "label": "Preferred wash time", "field_type": "select",
+                 "options": ["Morning", "Afternoon", "Evening"], "required": False},
             ],
         )
         for title in ["Daily Wash Plan", "Alternate Day Wash Plan", "Weekly Wash Plan", "15-Day Plan", "Monthly Wash Plan"]:
