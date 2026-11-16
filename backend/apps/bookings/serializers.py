@@ -10,6 +10,7 @@ from .models import (
     BookingFormResponse,
     BookingStatusHistory,
     BookingAssignment,
+    BookingQuote,
     Order,
     OrderItem,
 )
