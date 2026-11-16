@@ -204,6 +204,19 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     final selectedAddons = <int>{};
     final formAnswers = <String, dynamic>{};
     final formControllers = <String, TextEditingController>{};
+    final fieldKeys = <String, GlobalKey>{};
+    final invalidFields = <String>{};
+    final sheetScrollController = ScrollController();
+    var validationAttempted = false;
+
+    bool isFieldMissing(CatalogFormField field) {
+      if (!field.isRequired) return false;
+      if (field.fieldType == 'photo') {
+        return !selectedFormPhotos.containsKey(field.key);
+      }
+      final value = formAnswers[field.key];
+      return value == null || value.toString().trim().isEmpty;
+    }
 
     void updateFormAnswer(String fieldKey, dynamic value, StateSetter setSheetState) {
       setSheetState(() {
@@ -211,6 +224,22 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           formAnswers.remove(fieldKey);
         } else {
           formAnswers[fieldKey] = value;
+        }
+        if (validationAttempted) {
+          CatalogFormField? changedField;
+          for (final item in service.formFields) {
+            if (item.key == fieldKey) {
+              changedField = item;
+              break;
+            }
+          }
+          if (changedField != null) {
+            if (isFieldMissing(changedField)) {
+              invalidFields.add(fieldKey);
+            } else {
+              invalidFields.remove(fieldKey);
+            }
+          }
         }
         final visibleKeys = service.formFields
             .where((field) => !widget.initialAnswers.containsKey(field.key))
@@ -263,11 +292,15 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: DropdownButtonFormField<String>(
+                    key: fieldKeys.putIfAbsent(field.key, () => GlobalKey()),
                     value: options.any((option) => option['value'] == current)
                         ? current
                         : null,
                     decoration: InputDecoration(
                       labelText: field.isRequired ? '${field.label} *' : field.label,
+                      errorText: invalidFields.contains(field.key)
+                          ? 'Please select ${field.label.toLowerCase()}'
+                          : null,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     items: options.map((option) => DropdownMenuItem<String>(
@@ -281,19 +314,33 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
               if (field.fieldType == 'photo') {
                 final photo = selectedFormPhotos[field.key];
                 return Padding(
+                  key: fieldKeys.putIfAbsent(field.key, () => GlobalKey()),
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         field.isRequired ? '${field.label} *' : field.label,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AirwayColors.text),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: invalidFields.contains(field.key) ? Colors.red.shade700 : AirwayColors.text,
+                        ),
                       ),
                       const SizedBox(height: 7),
                       if (photo != null) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.file(photo, height: 130, width: double.infinity, fit: BoxFit.cover),
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: invalidFields.contains(field.key) ? Colors.red.shade600 : Colors.transparent,
+                              width: invalidFields.contains(field.key) ? 1.4 : 0,
+                            ),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(photo, height: 130, width: double.infinity, fit: BoxFit.cover),
+                          ),
                         ),
                         Align(
                           alignment: Alignment.centerRight,
@@ -338,6 +385,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             label: const Text('Gallery'),
                           )),
                         ]),
+                      if (invalidFields.contains(field.key))
+                        const Padding(
+                          padding: EdgeInsets.only(top: 5),
+                          child: Text(
+                            'Please upload this required photo.',
+                            style: TextStyle(color: Colors.red, fontSize: 12),
+                          ),
+                        ),
                     ],
                   ),
                 );
@@ -347,6 +402,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 () => TextEditingController(text: current),
               );
               return Padding(
+                key: fieldKeys.putIfAbsent(field.key, () => GlobalKey()),
                 padding: const EdgeInsets.only(bottom: 12),
                 child: TextField(
                   controller: controller,
@@ -377,6 +433,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   decoration: InputDecoration(
                     labelText: field.isRequired ? '${field.label} *' : field.label,
                     hintText: field.fieldType == 'date' ? 'Select date' : null,
+                    errorText: invalidFields.contains(field.key)
+                        ? 'Please enter ${field.label.toLowerCase()}'
+                        : null,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -427,6 +486,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     ]),
                     const SizedBox(height: 14),
                     Flexible(child: SingleChildScrollView(
+                      controller: sheetScrollController,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -606,14 +666,28 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                         onPressed: variants.isNotEmpty && selectedVariant == null
                             ? null
                             : () {
-                                final requiredMissing = visibleFields.any((field) =>
-                                    field.isRequired &&
-                                    (formAnswers[field.key] == null ||
-                                     formAnswers[field.key].toString().trim().isEmpty));
-                                if (requiredMissing) {
-                                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                    const SnackBar(content: Text('Please complete all required service details.')),
-                                  );
+                                final missingFields = visibleFields
+                                    .where(isFieldMissing)
+                                    .toList();
+                                if (missingFields.isNotEmpty) {
+                                  setSheetState(() {
+                                    validationAttempted = true;
+                                    invalidFields
+                                      ..clear()
+                                      ..addAll(missingFields.map((field) => field.key));
+                                  });
+                                  final firstKey = fieldKeys[missingFields.first.key];
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    final targetContext = firstKey?.currentContext;
+                                    if (targetContext != null && sheetScrollController.hasClients) {
+                                      Scrollable.ensureVisible(
+                                        targetContext,
+                                        alignment: 0.18,
+                                        duration: const Duration(milliseconds: 280),
+                                        curve: Curves.easeOutCubic,
+                                      );
+                                    }
+                                  });
                                   return;
                                 }
                                 Navigator.pop(
@@ -653,6 +727,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       for (final controller in formControllers.values) {
         controller.dispose();
       }
+      sheetScrollController.dispose();
     }
   }
 
@@ -789,14 +864,68 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           : await BookingApi.getCart();
       CustomerCartState.updateFromCart(latestCart);
       if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${service.title} added to cart'),
-          action: SnackBarAction(
-            label: 'VIEW CART',
-            onPressed: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          padding: EdgeInsets.zero,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          duration: const Duration(seconds: 3),
+          content: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFF241B3D),
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: AirwayColors.primary.withOpacity(0.45)),
+              boxShadow: const [
+                BoxShadow(color: Color(0x26000000), blurRadius: 18, offset: Offset(0, 7)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: AirwayColors.primary.withOpacity(0.20),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 21),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Added to cart', style: TextStyle(
+                        color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800,
+                      )),
+                      Text(service.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Color(0xFFD7D0E8), fontSize: 11)),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                    minimumSize: Size.zero,
+                  ),
+                  child: const Text('VIEW CART', style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3,
+                  )),
+                ),
+              ],
             ),
           ),
         ),
