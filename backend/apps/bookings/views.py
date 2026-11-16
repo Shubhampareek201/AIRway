@@ -855,49 +855,8 @@ class CustomerCheckoutView(APIView):
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
 
-        # A parent order is fulfilled by one worker. Reject overlapping
-        # service windows before creating any booking/order records; otherwise
-        # checkout could succeed but no worker could ever accept the order.
-        from apps.bookings.services import _booking_intervals, _intervals_overlap
-        occupied_order_intervals = []
-        for item, serializer in prepared:
-            attrs = serializer.validated_data
-            service = attrs["service"]
-            variant = attrs.get("variant")
-            duration = (
-                variant.duration_minutes
-                if variant and variant.duration_minutes
-                else service.duration_minutes
-            ) or 60
-            quantity = attrs.get("quantity", 1)
-            intervals = _booking_intervals(
-                attrs["scheduled_at"],
-                duration * (
-                    1 if service.pricing_type == "per_unit" else quantity
-                ),
-                service.buffer_minutes,
-                attrs.get("drop_scheduled_at")
-                if attrs.get("booking_mode") == Booking.BookingMode.PICKUP_DROP
-                else None,
-            )
-            if any(
-                _intervals_overlap(candidate, occupied)
-                for candidate in intervals
-                for occupied in occupied_order_intervals
-            ):
-                return Response(
-                    {
-                        "detail": (
-                            "Services in one order must have non-overlapping appointment "
-                            "times, including service buffer and pickup/drop windows. "
-                            "Please choose different times."
-                        ),
-                        "code": "order_schedule_overlap",
-                        "cart_item_id": item.id,
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            occupied_order_intervals.extend(intervals)
+        # Each cart line is an independently scheduled service. Overlapping
+        # start times are allowed; dispatch assigns each line to an eligible worker.
 
         order = Order.objects.create(
             customer=request.user,
@@ -999,16 +958,16 @@ class CustomerCheckoutView(APIView):
                 }.get(answers.get("wash_frequency"))
                 try:
                     vehicle_quantity = int(answers.get("vehicle_quantity", 0))
-                    starts_on = date.fromisoformat(answers.get("plan_start_date", ""))
+                    starts_on = timezone.localtime(booking.scheduled_at).date()
                 except (TypeError, ValueError):
                     raise serializers.ValidationError({
-                        "items": "The recurring wash plan needs a valid start date and vehicle quantity."
+                        "items": "The recurring wash plan needs a valid first-visit date and vehicle quantity."
                     })
                 vehicle_type = category_answers.get("vehicle_type") or answers.get("vehicle_type")
                 time_window = answers.get("preferred_time_window", "")
                 if (
                     not duration_days or not frequency or vehicle_quantity < 1
-                    or not vehicle_type or starts_on < timezone.localdate()
+                    or not vehicle_type
                     or time_window not in ("", "Morning", "Afternoon", "Evening")
                 ):
                     raise serializers.ValidationError({
