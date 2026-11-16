@@ -329,10 +329,20 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ? 'balance_due'
             : 'legacy_payment_due';
     final dueNow = amount(order == null ? null : order![dueNowKey]);
-    final advancePercentage = int.tryParse(order?['advance_percentage']?.toString() ?? '30') ?? 30;
-    final balancePercentage = 100 - advancePercentage;
-    final stageLabel = advanceReady ? '$advancePercentage% advance'
-        : balanceReady ? 'Final $balancePercentage% balance' : 'Full payment';
+    final advancePercentage = double.tryParse(order?['advance_percentage']?.toString() ?? '30') ?? 30.0;
+    final balancePercentage = 100.0 - advancePercentage;
+    final acceptedInspectionQuote = rows.any((row) =>
+        row['quote'] is Map && row['quote']['status'] == 'accepted');
+    final advancePercentLabel = advancePercentage == advancePercentage.roundToDouble()
+        ? advancePercentage.toStringAsFixed(0)
+        : advancePercentage.toStringAsFixed(1);
+    final balancePercentLabel = balancePercentage == balancePercentage.roundToDouble()
+        ? balancePercentage.toStringAsFixed(0)
+        : balancePercentage.toStringAsFixed(1);
+    final initialPaymentLabel = acceptedInspectionQuote ? 'initial payment' : '$advancePercentLabel% advance';
+    final stageLabel = advanceReady ? initialPaymentLabel
+        : balanceReady ? (acceptedInspectionQuote ? 'Remaining balance' : 'Final $balancePercentLabel% balance')
+        : 'Full payment';
     return Column(children: [
       Expanded(child: ListView(
         padding: const EdgeInsets.all(18),
@@ -347,19 +357,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               Text(paid ? 'Your order is fully paid.' : balanceReady
                   ? 'Every active service is verified. Pay the remaining balance to close your order.'
                   : advancePaid
-                      ? 'Your $advancePercentage% advance is received. Worker matching and service progress will appear here.'
+                      ? 'Your $initialPaymentLabel is received. Worker matching and service progress will appear here.'
                       : advanceReady
-                          ? 'Pay $advancePercentage% now to start worker matching. The remaining $balancePercentage% is due only after all services are completed and verified.'
+                          ? 'Pay $initialPaymentLabel now to start worker matching. The remaining balance is due only after all services are completed and verified.'
                           : legacyReady
                               ? 'This order was created before staged payments. Complete the remaining full payment to confirm it.'
-                              : 'Pay the $advancePercentage% advance to start worker matching. This page refreshes automatically.',
+                              : 'Pay the $initialPaymentLabel to start worker matching. This page refreshes automatically.',
                   style: const TextStyle(color: sub, height: 1.4)),
               const SizedBox(height: 12),
               Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
           const SizedBox(height: 14),
-          orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage),
+          orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round()),
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
