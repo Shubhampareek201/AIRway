@@ -602,6 +602,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     can_cancel = serializers.BooleanField(read_only=True)
     refunds = serializers.SerializerMethodField()
     quote = serializers.SerializerMethodField()
+    recurring_visit = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -612,7 +613,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "address_detail", "pricing_snapshot", "notes", "worker_notes",
             "cancelled_at", "cancellation_reason", "completed_at",
             "addons", "form_responses", "customer_answers", "status_history", "assignment", "can_cancel",
-            "refunds", "quote", "created_at", "updated_at"
+            "refunds", "quote", "recurring_visit", "created_at", "updated_at"
         ]
 
     def get_customer_answers(self, obj):
@@ -626,6 +627,19 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.service.image.url)
         return None
+
+    def get_recurring_visit(self, obj):
+        visit = getattr(obj, "recurring_wash_visit", None)
+        if visit is None:
+            return None
+        return {
+            "plan_id": visit.plan_id,
+            "visit_id": visit.pk,
+            "visit_number": visit.visit_number,
+            "status": visit.status,
+            "scheduled_at": visit.scheduled_at,
+            "prepaid_amount": str(visit.prepaid_amount),
+        }
 
     def get_quote(self, obj):
         quote = obj.quotes.order_by("-version").first()
