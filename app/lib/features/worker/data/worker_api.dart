@@ -171,6 +171,19 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
+  static Future<Map<String, dynamic>> submitInspectionQuote(
+    int assignmentId, {
+    required List<Map<String, dynamic>> lineItems,
+    String notes = '',
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/quote/',
+      method: 'POST',
+      data: {'line_items': lineItems, 'notes': notes},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<List<Map<String, dynamic>>> getEarnings() async {
     final result = await _request('/api/v1/workers/earnings/');
     if (result is! List) {
