@@ -354,7 +354,18 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ),
                         ),
                       ] else
-                        Row(children: [
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: invalidFields.contains(field.key)
+                                  ? Colors.red.shade600
+                                  : Colors.transparent,
+                              width: invalidFields.contains(field.key) ? 1.2 : 0,
+                            ),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Row(children: [
                           Expanded(child: OutlinedButton.icon(
                             onPressed: () async {
                               final picked = await picker.pickImage(
@@ -384,7 +395,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             icon: const Icon(Icons.photo_library_outlined),
                             label: const Text('Gallery'),
                           )),
-                        ]),
+                          ]),
+                        ),
                       if (invalidFields.contains(field.key))
                         const Padding(
                           padding: EdgeInsets.only(top: 5),
