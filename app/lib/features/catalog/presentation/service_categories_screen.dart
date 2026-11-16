@@ -154,6 +154,38 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       );
       if (selected == null || !mounted) return;
       answers.addAll(selected);
+
+      // Some catalogues represent the same choice twice: once as a
+      // customerFlowStep (for example Full Home / Specific Area / Item) and
+      // again as the root category's immediate children. If the selected
+      // answer identifies one of those children, enter that branch directly
+      // instead of showing the same three choices a second time.
+      if (selectedCategory.children.isNotEmpty) {
+        String normalise(String value) =>
+            value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final matchingChildren = <Category>[];
+        for (final step in selectedCategory.customerFlowSteps) {
+          final key = step['key']?.toString();
+          final answer = key == null ? null : answers[key]?.toString();
+          if (answer == null || answer.trim().isEmpty) continue;
+          final choice = normalise(answer);
+          final matches = selectedCategory.children.where((child) {
+            final title = normalise(child.title);
+            final slug = normalise(child.slug);
+            return title == choice ||
+                slug == choice ||
+                title.startsWith(choice) ||
+                slug.startsWith(choice);
+          });
+          matchingChildren.addAll(matches);
+        }
+        final uniqueMatches = {
+          for (final child in matchingChildren) child.id: child,
+        };
+        if (uniqueMatches.length == 1) {
+          selectedCategory = uniqueMatches.values.first;
+        }
+      }
     }
 
     // The backend owns the category/service relationship. Reload its filtered
