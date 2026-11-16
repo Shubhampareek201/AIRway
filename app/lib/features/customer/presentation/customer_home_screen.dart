@@ -2249,7 +2249,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2100),
+    duration: const Duration(milliseconds: 2700),
   );
 
   @override
@@ -2264,85 +2264,268 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
     super.dispose();
   }
 
-  Widget _crop({
-    required double widthFactor,
-    required double heightFactor,
-    required Alignment alignment,
-  }) {
-    return ClipRect(
-      child: Align(
-        alignment: alignment,
-        widthFactor: widthFactor,
-        heightFactor: heightFactor,
-        child: Image.asset(
-          'assets/images/airway_logo.png',
-          width: 240,
-          height: 240,
-          fit: BoxFit.fill,
-          filterQuality: FilterQuality.high,
-        ),
-      ),
+  double _leafProgress(double startMs) {
+    final start = startMs / 2700;
+    final end = (startMs + 600) / 2700;
+    return Curves.easeOut.transform(
+      Interval(start, end, curve: Curves.easeOut).transform(_controller.value),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 154,
-      height: 58,
+      width: double.infinity,
+      height: 80,
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          final t = Curves.easeInOutCubic.transform(_controller.value);
-          final leafT = Curves.easeInOutCubic.transform(
-            ((_controller.value - 0.08) / 0.92).clamp(0.0, 1.0),
+          final vineProgress = Curves.easeOutCubic.transform(
+            Interval(0.4 / 2.7, 2.6 / 2.7).transform(_controller.value),
           );
-          final leafX = 17 + (112 * leafT);
-          final leafY = 39 - (19 * math.sin(math.pi * leafT));
           return Stack(
-            clipBehavior: Clip.none,
+            fit: StackFit.expand,
+            clipBehavior: Clip.hardEdge,
             children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                width: 45,
-                height: 58,
-                child: _crop(
-                  widthFactor: 0.19,
-                  heightFactor: 0.244,
-                  alignment: const Alignment(-0.54, -0.003),
-                ),
-              ),
-              Positioned(
-                left: 53,
-                top: 14,
-                width: 98,
-                height: 33,
-                child: _crop(
-                  widthFactor: 0.415,
-                  heightFactor: 0.14,
-                  alignment: const Alignment(0.29, 0.03),
-                ),
-              ),
-              if (_controller.isAnimating || _controller.isCompleted)
-                Positioned(
-                  left: leafX,
-                  top: leafY,
-                  width: 15 + (3 * t),
-                  height: 17 + (3 * t),
-                  child: Transform.rotate(
-                    angle: -0.45 + (0.18 * leafT),
-                    child: _crop(
-                      widthFactor: 0.055,
-                      heightFactor: 0.06,
-                      alignment: const Alignment(-0.43, 0.06),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: 48,
+                  height: 54,
+                  child: CustomPaint(
+                    painter: _AirwaySymbolPainter(
+                      innerLeafProgress: _leafProgress(200),
                     ),
                   ),
                 ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'AIRway',
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontFamily: 'Georgia',
+                      fontSize: 32,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                      height: 1,
+                      color: Color(0xFF1A1917),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _AirwayVinePainter(
+                      vineProgress: vineProgress,
+                      leaf2Progress: _leafProgress(1300),
+                      leaf3Progress: _leafProgress(1700),
+                      leaf4Progress: _leafProgress(2100),
+                    ),
+                  ),
+                ),
+              ),
             ],
           );
         },
       ),
     );
   }
+}
+
+class _AirwaySymbolPainter extends CustomPainter {
+  const _AirwaySymbolPainter({required this.innerLeafProgress});
+
+  final double innerLeafProgress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 100, size.height / 110);
+
+    final ink = Paint()
+      ..color = const Color(0xFF1A1917)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeJoin = StrokeJoin.round;
+    final brown = Paint()..color = const Color(0xFFA88468);
+    final green = Paint()
+      ..color = const Color(0xFF6F8669)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 7;
+    final fineInk = Paint()
+      ..color = const Color(0xFF1A1917)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeJoin = StrokeJoin.round;
+
+    final roof = Path()
+      ..moveTo(10, 35)
+      ..lineTo(50, 10)
+      ..lineTo(90, 35)
+      ..lineTo(85, 42)
+      ..lineTo(50, 20)
+      ..lineTo(15, 42)
+      ..close();
+    canvas.drawPath(roof, brown);
+    canvas.drawPath(roof, ink);
+
+    for (final rect in <Rect>[
+      const Rect.fromLTWH(16, 38, 12, 54),
+      const Rect.fromLTWH(72, 38, 12, 54),
+    ]) {
+      canvas.drawRect(rect, brown);
+      canvas.drawRect(rect, ink);
+    }
+
+    final outerArch = Path()
+      ..moveTo(28, 92)
+      ..lineTo(28, 52)
+      ..arcToPoint(const Offset(72, 52), radius: const Radius.circular(22))
+      ..lineTo(72, 92);
+    canvas.drawPath(outerArch, green);
+    canvas.drawPath(outerArch, fineInk);
+
+    final innerArch = Path()
+      ..moveTo(35, 92)
+      ..lineTo(35, 53)
+      ..arcToPoint(const Offset(65, 53), radius: const Radius.circular(15))
+      ..lineTo(65, 92);
+    canvas.drawPath(innerArch, fineInk);
+
+    final sill = Rect.fromLTWH(16, 92, 68, 10);
+    canvas.drawRect(sill, brown);
+    canvas.drawRect(sill, ink);
+
+    final stem = Path()
+      ..moveTo(40, 92)
+      ..quadraticBezierTo(40, 72, 54, 66);
+    canvas.drawPath(
+      stem,
+      Paint()
+        ..color = const Color(0xFF1A1917)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    canvas.save();
+    canvas.translate(51, 69);
+    canvas.scale(0.2 + (0.8 * innerLeafProgress));
+    final leaf = Path()
+      ..moveTo(-7, 7)
+      ..cubicTo(-7, -5, 7, -7, 7, -7)
+      ..cubicTo(7, -7, 7, 7, -7, 7)
+      ..close();
+    canvas.drawPath(leaf, Paint()..color = const Color(0xFF7C9674));
+    canvas.drawPath(
+      leaf,
+      Paint()
+        ..color = const Color(0xFF1A1917)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+    canvas.restore();
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _AirwaySymbolPainter oldDelegate) =>
+      oldDelegate.innerLeafProgress != innerLeafProgress;
+}
+
+class _AirwayVinePainter extends CustomPainter {
+  const _AirwayVinePainter({
+    required this.vineProgress,
+    required this.leaf2Progress,
+    required this.leaf3Progress,
+    required this.leaf4Progress,
+  });
+
+  final double vineProgress;
+  final double leaf2Progress;
+  final double leaf3Progress;
+  final double leaf4Progress;
+
+  void _drawLeaf(
+    Canvas canvas,
+    Offset origin,
+    double progress,
+    double rotation,
+    Path shape,
+  ) {
+    if (progress <= 0) return;
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.rotate(rotation);
+    canvas.scale(0.2 + (0.8 * progress));
+    canvas.drawPath(shape, Paint()..color = const Color(0xFF7C9674));
+    canvas.drawPath(
+      shape,
+      Paint()
+        ..color = const Color(0xFF1A1917)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    canvas.restore();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 310, size.height / 80);
+
+    final vine = Path()
+      ..moveTo(22, 55)
+      ..cubicTo(70, 60, 120, 20, 175, 45)
+      ..cubicTo(210, 62, 235, 15, 265, 42)
+      ..cubicTo(285, 58, 298, 35, 304, 28);
+
+    final metric = vine.computeMetrics().first;
+    final visibleVine = metric.extractPath(
+      0,
+      metric.length * vineProgress.clamp(0.0, 1.0),
+    );
+    canvas.drawPath(
+      visibleVine,
+      Paint()
+        ..color = const Color(0xFF5C7A54)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final leaf2 = Path()
+      ..moveTo(178, 43)
+      ..cubicTo(174, 30, 190, 26, 190, 26)
+      ..cubicTo(190, 26, 192, 42, 178, 43)
+      ..close();
+    final leaf3 = Path()
+      ..moveTo(235, 30)
+      ..cubicTo(235, 16, 250, 16, 250, 16)
+      ..cubicTo(250, 16, 248, 31, 235, 30)
+      ..close();
+    final leaf4 = Path()
+      ..moveTo(286, 43)
+      ..cubicTo(292, 30, 306, 33, 306, 33)
+      ..cubicTo(306, 33, 298, 46, 286, 43)
+      ..close();
+
+    _drawLeaf(canvas, const Offset(0, 0), 0, 0, Path());
+    _drawLeaf(canvas, const Offset(0, 0), leaf2Progress, 0, leaf2);
+    _drawLeaf(canvas, const Offset(0, 0), leaf3Progress, 0, leaf3);
+    _drawLeaf(canvas, const Offset(0, 0), leaf4Progress, 0, leaf4);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _AirwayVinePainter oldDelegate) =>
+      oldDelegate.vineProgress != vineProgress ||
+      oldDelegate.leaf2Progress != leaf2Progress ||
+      oldDelegate.leaf3Progress != leaf3Progress ||
+      oldDelegate.leaf4Progress != leaf4Progress;
 }
