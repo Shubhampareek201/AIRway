@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, FormField, BookingWorkEvidence
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -28,6 +28,7 @@ from .services import check_slot_availability, check_service_available, create_w
 from apps.notifications.models import Notification
 from apps.accounts.models import Address
 from apps.catalog.audience import validate_beauty_audience
+from apps.catalog.models import FormField
 
 
 def _schedule_booking_refund(booking_id):
