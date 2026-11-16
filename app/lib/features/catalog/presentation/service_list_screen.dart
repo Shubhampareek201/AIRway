@@ -205,9 +205,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     final formAnswers = <String, dynamic>{};
     final formControllers = <String, TextEditingController>{};
     final fieldKeys = <String, GlobalKey>{};
+    final packageSelectionKey = GlobalKey();
     final invalidFields = <String>{};
     final sheetScrollController = ScrollController();
     var validationAttempted = false;
+    var variantValidationAttempted = false;
 
     bool isFieldMissing(CatalogFormField field) {
       if (!field.isRequired) return false;
@@ -517,12 +519,26 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 style: const TextStyle(fontSize: 12, height: 1.4, color: AirwayColors.text),
                               ),
                             ),
+                          if (variantValidationAttempted)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'Please select a package to continue.',
+                                style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
                           for (final variant in variants) ...[
-                            _buildPackageOption(
-                              variant,
-                              selected: selectedVariant?.id == variant.id,
-                              description: _packageDescription(variant),
-                              onTap: () => setSheetState(() => selectedVariant = variant),
+                            KeyedSubtree(
+                              key: variant == variants.first ? packageSelectionKey : null,
+                              child: _buildPackageOption(
+                                variant,
+                                selected: selectedVariant?.id == variant.id,
+                                description: _packageDescription(variant),
+                                onTap: () => setSheetState(() {
+                                  selectedVariant = variant;
+                                  variantValidationAttempted = false;
+                                }),
+                              ),
                             ),
                             const SizedBox(height: 9),
                           ],
@@ -675,20 +691,22 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: variants.isNotEmpty && selectedVariant == null
-                            ? null
-                            : () {
+                        onPressed: () {
                                 final missingFields = visibleFields
                                     .where(isFieldMissing)
                                     .toList();
-                                if (missingFields.isNotEmpty) {
+                                final missingVariant = variants.isNotEmpty && selectedVariant == null;
+                                if (missingFields.isNotEmpty || missingVariant) {
                                   setSheetState(() {
                                     validationAttempted = true;
+                                    variantValidationAttempted = missingVariant;
                                     invalidFields
                                       ..clear()
                                       ..addAll(missingFields.map((field) => field.key));
                                   });
-                                  final firstKey = fieldKeys[missingFields.first.key];
+                                  final firstKey = missingVariant
+                                      ? packageSelectionKey
+                                      : fieldKeys[missingFields.first.key];
                                   WidgetsBinding.instance.addPostFrameCallback((_) {
                                     final targetContext = firstKey?.currentContext;
                                     if (targetContext != null && sheetScrollController.hasClients) {
