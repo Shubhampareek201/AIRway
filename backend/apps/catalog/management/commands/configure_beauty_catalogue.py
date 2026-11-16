@@ -78,7 +78,7 @@ BEAUTY_CATALOGUE = {
             "questions": [
                 ("event_date", "When is the wedding?", "date", [], True),
                 ("groom_event_type", "What are you preparing for?", "select", ["Wedding day", "Engagement", "Pre-wedding function", "Other"], True),
-                ("reference_photos", "Any reference style? Share a photo URL with the team.", "photo", [], False),
+                ("reference_photos", "Upload a reference style photo (optional).", "photo", [], False),
             ],
         },
     ],
@@ -139,7 +139,7 @@ BEAUTY_CATALOGUE = {
             "description": "Discuss the bridal look, event schedule, skin sensitivities and trial requirements before a quote is prepared.",
             "duration": 30,
             "packages": [("Bridal Consultation", ["Discuss event schedule", "Discuss makeup style", "Discuss trial and preparation"], 30)],
-            "questions": [("event_date", "Wedding date", "text", [], True), ("event_venue", "Event venue or area", "text", [], True), ("makeup_style", "Preferred makeup style", "select", ["Natural", "Soft glam", "Traditional", "HD", "Not sure"], False), ("reference_photos", "Reference look photo URL", "photo", [], False)],
+            "questions": [("event_date", "Wedding date", "text", [], True), ("event_venue", "Event venue or area", "text", [], True), ("makeup_style", "Preferred makeup style", "select", ["Natural", "Soft glam", "Traditional", "HD", "Not sure"], False), ("reference_photos", "Upload reference makeup look photo", "photo", [], False)],
         },
         {
             "title": "Bridal Hairstyle",
@@ -147,7 +147,7 @@ BEAUTY_CATALOGUE = {
             "description": "Bridal hairstyle consultation and styling. Final style and timing are agreed before confirmation.",
             "duration": 90,
             "packages": [("Bridal Hairstyle", ["Hair preparation", "Selected bridal hairstyle", "Finishing"], 90)],
-            "questions": [("event_date", "Event date", "text", [], True), ("hair_length", "Hair length", "select", ["Short", "Shoulder length", "Mid-back", "Long"], True), ("reference_photos", "Reference hairstyle photo URL", "photo", [], False)],
+            "questions": [("event_date", "Event date", "text", [], True), ("hair_length", "Hair length", "select", ["Short", "Shoulder length", "Mid-back", "Long"], True), ("reference_photos", "Upload reference hairstyle photo", "photo", [], False)],
         },
         {
             "title": "Saree Draping",
