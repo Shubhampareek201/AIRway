@@ -774,20 +774,20 @@ class CustomerCheckoutView(APIView):
 
             base_snapshot["addons"] = adjusted_addons
             base_snapshot["addon_total"] = str(adjusted_addons_total)
-            # Recalculate from the variant/visit base plus the selected add-ons.
+            # Package and add-ons apply per selected service unit. The
+            # inspection/visit fee is charged once for the booking line.
             variant_base = Decimal(str(base_snapshot.get("variant_price", "0")))
             visit_fee = Decimal(str(base_snapshot.get("visit_fee", "0")))
-            unit_subtotal = variant_base + visit_fee + adjusted_addons_total
-            unit_tax = unit_subtotal * Decimal("0.18")
-            line_subtotal = unit_subtotal * quantity
-            line_tax = unit_tax * quantity
+            unit_subtotal = variant_base + adjusted_addons_total
+            line_subtotal = (unit_subtotal * quantity) + visit_fee
+            line_tax = line_subtotal * Decimal("0.18")
             line_total = line_subtotal + line_tax
 
             base_snapshot.update({
                 "cart_item_id": item.id,
                 "quantity": quantity,
                 "unit_subtotal": str(unit_subtotal),
-                "unit_tax": str(unit_tax),
+                "visit_fee": str(visit_fee),
                 "subtotal": str(line_subtotal),
                 "tax": str(line_tax),
                 "total": str(line_total),
