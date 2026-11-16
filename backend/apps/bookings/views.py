@@ -1344,6 +1344,7 @@ class CustomerOrderDetailView(APIView):
             "recurring_wash_plan": (
                 {
                     "id": recurring_plan.id,
+                    "service_title": recurring_plan.service.title,
                     "status": recurring_plan.status,
                     "frequency": recurring_plan.frequency,
                     "duration_days": recurring_plan.duration_days,
