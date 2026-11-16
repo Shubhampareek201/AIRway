@@ -265,6 +265,40 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         );
         return;
       }
+      // Avoid an unnecessary intermediate screen when the selected branch
+      // contains exactly one leaf category and that category already has
+      // customer-visible services. Keep the category screen when there are
+      // multiple choices or when the child has its own subcategories.
+      if (children.length == 1 && children.first.children.isEmpty) {
+        final leafCategory = children.first;
+        try {
+          final leafServices = await CatalogApi.listServices(
+            category: leafCategory.id,
+            addressId: widget.addressId,
+            audience: answers['beauty_audience']?.toString(),
+            categoryAnswers: answers,
+          );
+          if (!mounted) return;
+          if (leafServices.isNotEmpty) {
+            Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ServiceListScreen(
+                  categoryId: leafCategory.id,
+                  categoryTitle: leafCategory.title,
+                  addressId: widget.addressId,
+                  initialAnswers: answers,
+                ),
+              ),
+            );
+            return;
+          }
+        } catch (_) {
+          // Preserve the existing category navigation if the look-ahead
+          // request fails; the destination screen can still load normally.
+        }
+      }
+
       Navigator.push<void>(
         context,
         MaterialPageRoute(
