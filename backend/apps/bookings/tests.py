@@ -4425,3 +4425,76 @@ class CustomerCartIssuePhotoAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertEqual(deleted.status_code, 200)
         self.assertFalse(storage.exists(stored_path))
+
+
+class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
+    def setUp(self):
+        self.customer = self._create_user("+919876543390")
+        self.address = self._create_address(self.customer)
+        category = self._create_category("Car Wash", "recurring-ledger")
+        self.service = self._create_service(category, "Monthly Car Wash")
+        self.order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.PAID,
+            total_amount=Decimal("1000.00"),
+        )
+        self.first_at = timezone.now() + timedelta(days=2)
+        self.source_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self.first_at,
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        self.plan = RecurringWashPlan.objects.create(
+            order=self.order,
+            source_booking=self.source_booking,
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            frequency=RecurringWashPlan.Frequency.DAILY,
+            duration_days=5,
+            starts_on=timezone.localtime(self.first_at).date(),
+            ends_on=timezone.localtime(self.first_at).date() + timedelta(days=4),
+            vehicle_type="Hatchback",
+            vehicle_quantity=1,
+            quoted_total=Decimal("1000.00"),
+            status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+        )
+
+    def test_paid_plan_generates_idempotent_daily_visit_ledger_and_allocates_prepaid_value(self):
+        from apps.bookings.recurring import generate_recurring_wash_visit_ledger
+        from apps.bookings.models import RecurringWashVisit
+
+        visits = generate_recurring_wash_visit_ledger(self.plan)
+        self.assertEqual(len(visits), 5)
+        self.assertEqual(
+            [visit.scheduled_at.date() for visit in visits],
+            [self.first_at.date() + timedelta(days=offset) for offset in range(5)],
+        )
+        self.assertEqual(visits[0].booking_id, self.source_booking.id)
+        self.assertEqual(visits[0].status, RecurringWashVisit.Status.COMPLETED)
+        self.assertTrue(all(visit.prepaid_amount == Decimal("200.00") for visit in visits))
+        self.assertEqual(
+            len(generate_recurring_wash_visit_ledger(self.plan)),
+            5,
+        )
+        self.assertEqual(RecurringWashVisit.objects.filter(plan=self.plan).count(), 5)
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.status, RecurringWashPlan.Status.PAID_PENDING_SETUP)
+
+    def test_twice_weekly_ledger_uses_a_consistent_three_four_day_cadence(self):
+        from apps.bookings.recurring import generate_recurring_wash_visit_ledger
+
+        self.plan.frequency = RecurringWashPlan.Frequency.TWICE_WEEKLY
+        self.plan.duration_days = 15
+        self.plan.ends_on = self.plan.starts_on + timedelta(days=14)
+        self.plan.save(update_fields=["frequency", "duration_days", "ends_on", "updated_at"])
+        visits = generate_recurring_wash_visit_ledger(self.plan)
+        offsets = [
+            (timezone.localtime(visit.scheduled_at).date() - self.plan.starts_on).days
+            for visit in visits
+        ]
+        self.assertEqual(offsets, [0, 3, 7, 10, 14])
