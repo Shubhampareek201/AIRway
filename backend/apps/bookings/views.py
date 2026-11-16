@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer
+from .models import Booking, BookingStatusHistory, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -164,6 +164,142 @@ class BookingViewSet(viewsets.ModelViewSet):
         )
 
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
+
+    @action(detail=True, methods=["post"], url_path="quote/respond")
+    @transaction.atomic
+    def respond_to_quote(self, request, pk=None):
+        booking = self.get_object()
+        decision = str(request.data.get("decision", "")).strip().lower()
+        note = str(request.data.get("note", "")).strip()
+        if decision not in ("accept", "reject"):
+            return Response({"decision": "Choose accept or reject."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(note) > 1000:
+            return Response({"note": "Note must not exceed 1000 characters."}, status=status.HTTP_400_BAD_REQUEST)
+        if booking.status != Booking.Status.IN_PROGRESS:
+            return Response({"detail": "A quote can be approved only while the inspection job is in progress."}, status=status.HTTP_400_BAD_REQUEST)
+
+        quote = BookingQuote.objects.select_for_update().filter(
+            booking=booking, status=BookingQuote.Status.PENDING_CUSTOMER
+        ).order_by("-version").first()
+        if quote is None:
+            return Response({"detail": "There is no quote waiting for your response."}, status=status.HTTP_404_NOT_FOUND)
+        if quote.expires_at and quote.expires_at <= timezone.now():
+            quote.status = BookingQuote.Status.REJECTED
+            quote.customer_response_note = "Quote expired before customer response."
+            quote.responded_at = timezone.now()
+            quote.save(update_fields=["status", "customer_response_note", "responded_at", "updated_at"])
+            return Response({"detail": "This quote has expired. Ask the worker to submit a revised estimate."}, status=status.HTTP_400_BAD_REQUEST)
+
+        quote.customer_response_note = note
+        quote.responded_at = timezone.now()
+        if decision == "reject":
+            quote.status = BookingQuote.Status.REJECTED
+            quote.save(update_fields=["status", "customer_response_note", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=quote.worker.user,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Customer requested a quote revision",
+                body=f"The customer declined quote v{quote.version} for booking #{booking.id}. Review their note and submit a revised estimate.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.id, "quote_id": quote.id, "purpose": "booking_quote_rejected"},
+            )
+            return Response({"detail": "Quote declined. The worker can review your note and submit a revised estimate.", "quote_status": quote.status})
+
+        order_item = OrderItem.objects.select_for_update().filter(
+            booking=booking
+        ).select_related("order").first()
+        if order_item is None and hasattr(booking, "payment"):
+            return Response(
+                {"detail": "This legacy booking already has a payment attempt. Contact AIRway support before approving an additional estimate."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        quote_subtotal = (
+            quote.labour_amount + quote.material_amount + quote.other_amount
+        )
+        quote_total = quote_subtotal + quote.tax_amount
+        snapshot = dict(booking.pricing_snapshot or {})
+        visit_fee = Decimal(str(snapshot.get("visit_fee", "0") or "0"))
+        visit_tax = Decimal(str(snapshot.get("tax", "0") or "0"))
+        updated_subtotal = visit_fee + quote_subtotal
+        updated_tax = visit_tax + quote.tax_amount
+        updated_total = updated_subtotal + updated_tax
+        snapshot.update({
+            "inspection_quote_id": quote.id,
+            "inspection_quote_version": quote.version,
+            "inspection_quote_subtotal": str(quote_subtotal),
+            "inspection_quote_tax": str(quote.tax_amount),
+            "inspection_quote_total": str(quote_total),
+            "inspection_quote_items": quote.line_items,
+            "inspection_quote_notes": quote.notes,
+            "subtotal": str(updated_subtotal),
+            "tax": str(updated_tax),
+            "total": str(updated_total),
+        })
+        booking.pricing_snapshot = snapshot
+        booking.save(update_fields=["pricing_snapshot", "updated_at"])
+
+        if order_item:
+            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+            order_item.pricing_snapshot = snapshot
+            order_item.line_subtotal = updated_subtotal
+            order_item.tax_amount = updated_tax
+            order_item.line_total = updated_total
+            order_item.save(update_fields=[
+                "pricing_snapshot", "line_subtotal", "tax_amount", "line_total", "updated_at",
+            ])
+
+            active_items = list(order.items.exclude(
+                booking__status=Booking.Status.CANCELLED
+            ))
+            order.subtotal = sum((row.line_subtotal for row in active_items), Decimal("0.00"))
+            order.tax_amount = sum((row.tax_amount for row in active_items), Decimal("0.00"))
+            order.total_amount = order.subtotal + order.tax_amount - order.discount_amount
+
+            metadata = dict(order.metadata or {})
+            allocation = metadata.get("payment_allocation_v1")
+            if isinstance(allocation, dict):
+                balance_rows = list(allocation.get("balance", []))
+                balance_row = next(
+                    (row for row in balance_rows if row.get("order_item_id") == order_item.id),
+                    None,
+                )
+                if balance_row is None:
+                    balance_rows.append({
+                        "order_item_id": order_item.id,
+                        "booking_id": booking.id,
+                        "amount": str(quote_total),
+                    })
+                else:
+                    balance_row["amount"] = str(
+                        Decimal(str(balance_row.get("amount", "0"))) + quote_total
+                    )
+                allocation["balance"] = balance_rows
+                allocation["balance_total"] = str(
+                    Decimal(str(allocation.get("balance_total", "0"))) + quote_total
+                )
+                metadata["payment_allocation_v1"] = allocation
+            order.metadata = metadata
+            order.save(update_fields=[
+                "subtotal", "tax_amount", "total_amount", "metadata", "updated_at",
+            ])
+
+        quote.status = BookingQuote.Status.ACCEPTED
+        quote.save(update_fields=["status", "customer_response_note", "responded_at", "updated_at"])
+        Notification.objects.create(
+            user=quote.worker.user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Customer approved the estimate",
+            body=f"The customer approved quote v{quote.version} for booking #{booking.id}. You can proceed with the work.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": booking.id, "quote_id": quote.id, "purpose": "booking_quote_accepted"},
+        )
+        return Response({
+            "detail": "Estimate approved. The final payable amount has been updated.",
+            "quote_status": quote.status,
+            "pricing_snapshot": snapshot,
+            "order_total": str(order_item.order.total_amount) if order_item else str(updated_total),
+        })
 
     @action(detail=True, methods=["post"], url_path="confirm")
     def confirm_booking(self, request, pk=None):
