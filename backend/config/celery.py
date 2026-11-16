@@ -25,4 +25,12 @@ app.conf.beat_schedule = {
         'task': 'apps.bookings.tasks.timeout_pending_payments',
         'schedule': 60.0,
     },
+    'setup-recurring-wash-visits-every-five-minutes': {
+        'task': 'apps.bookings.tasks.setup_recurring_wash_visit_bookings',
+        'schedule': 300.0,
+    },
+    'dispatch-due-recurring-wash-visits-every-minute': {
+        'task': 'apps.bookings.tasks.dispatch_due_recurring_wash_visits',
+        'schedule': 60.0,
+    },
 }
