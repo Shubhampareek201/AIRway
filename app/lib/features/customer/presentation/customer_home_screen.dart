@@ -2385,7 +2385,7 @@ class _AirwaySymbolPainter extends CustomPainter {
     final outerArch = Path()
       ..moveTo(28, 92)
       ..lineTo(28, 52)
-      ..arcToPoint(const Offset(72, 52), radius: const Radius.circular(22))
+      ..cubicTo(28, 27.7, 72, 27.7, 72, 52)
       ..lineTo(72, 92);
     canvas.drawPath(outerArch, green);
     canvas.drawPath(outerArch, fineInk);
@@ -2393,7 +2393,7 @@ class _AirwaySymbolPainter extends CustomPainter {
     final innerArch = Path()
       ..moveTo(35, 92)
       ..lineTo(35, 53)
-      ..arcToPoint(const Offset(65, 53), radius: const Radius.circular(15))
+      ..cubicTo(35, 36.4, 65, 36.4, 65, 53)
       ..lineTo(65, 92);
     canvas.drawPath(innerArch, fineInk);
 
@@ -2515,7 +2515,6 @@ class _AirwayVinePainter extends CustomPainter {
       ..cubicTo(306, 33, 298, 46, 286, 43)
       ..close();
 
-    _drawLeaf(canvas, const Offset(0, 0), 0, 0, Path());
     _drawLeaf(canvas, const Offset(0, 0), leaf2Progress, 0, leaf2);
     _drawLeaf(canvas, const Offset(0, 0), leaf3Progress, 0, leaf3);
     _drawLeaf(canvas, const Offset(0, 0), leaf4Progress, 0, leaf4);
