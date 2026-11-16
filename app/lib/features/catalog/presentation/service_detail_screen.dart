@@ -36,6 +36,7 @@ class ServiceDetailScreen extends StatefulWidget {
   final int? addressId;
   final Map<String, dynamic> initialAnswers;
   final bool openElectricalAddOnLoad;
+  final Service? initialService;
 
   const ServiceDetailScreen({
     super.key,
@@ -43,6 +44,7 @@ class ServiceDetailScreen extends StatefulWidget {
     this.addressId,
     this.initialAnswers = const {},
     this.openElectricalAddOnLoad = false,
+    this.initialService,
   });
 
   @override
@@ -53,11 +55,32 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   Service? _service;
   bool _loading = true;
   String? _error;
+  final TextEditingController _electricalNotesController = TextEditingController();
+  bool _electricalPopupStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _loadService();
+    if (widget.initialService != null) {
+      _service = widget.initialService;
+      _loading = false;
+      if (widget.openElectricalAddOnLoad) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_electricalPopupStarted) {
+            _electricalPopupStarted = true;
+            _addElectricalService(_service!);
+          }
+        });
+      }
+    } else {
+      _loadService();
+    }
+  }
+
+  @override
+  void dispose() {
+    _electricalNotesController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadService() async {
@@ -78,7 +101,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-    if (mounted && widget.openElectricalAddOnLoad && _service != null) {
+    if (mounted && widget.openElectricalAddOnLoad && _service != null &&
+        !_electricalPopupStarted) {
+      _electricalPopupStarted = true;
       await _addElectricalService(_service!);
     }
   }
@@ -86,7 +111,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
   Future<void> _addElectricalService(Service service) async {
     final variants = _matchingVariants(service);
-    final notesController = TextEditingController();
+    _electricalNotesController.clear();
     final picker = ImagePicker();
     File? selectedPhoto;
 
@@ -360,7 +385,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                             )),
                             const SizedBox(height: 7),
                             TextField(
-                              controller: notesController,
+                              controller: _electricalNotesController,
                               minLines: 2,
                               maxLines: 4,
                               maxLength: 1000,
@@ -395,7 +420,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                   sheetContext,
                                   _ElectricalAddSelection(
                                     variant: selectedVariant,
-                                    notes: notesController.text.trim(),
+                                    notes: _electricalNotesController.text.trim(),
                                     photo: selectedPhoto,
                                   ),
                                 ),
@@ -471,7 +496,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         );
       }
     } finally {
-      notesController.dispose();
+      // The modal route has completed its dismissal before this method resumes.
+      // Only the transparent launcher route is closed; ordinary detail pages stay open.
       if (mounted && widget.openElectricalAddOnLoad) {
         Navigator.of(context).pop();
       }
@@ -506,6 +532,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // This route only hosts the modal. Keep the service list visible beneath it.
+    if (widget.openElectricalAddOnLoad) return const SizedBox.shrink();
     return Scaffold(
       backgroundColor: _Ui.bg,
       appBar: AppBar(
