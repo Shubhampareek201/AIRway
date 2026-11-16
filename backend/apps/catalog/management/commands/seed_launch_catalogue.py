@@ -526,6 +526,8 @@ class Command(BaseCommand):
                         ["Small", "Medium", "Large", "Custom Size"], required=True)
                 b.field(service, "carpet_photos", "Upload carpet photos", "photo", required=False)
             elif group_name == "Full Home Cleaning":
+                b.field(service, "bhk_type", "Home configuration", "select",
+                        ["1 BHK", "2 BHK", "3 BHK", "4 BHK", "5 BHK or larger", "Duplex / Villa"], required=True)
                 b.field(service, "bedroom_count", "Number of bedrooms", "number", required=True)
                 b.field(service, "bathroom_count", "Number of bathrooms", "number", required=True)
                 b.field(service, "property_size", "Approximate property size", "text", required=False)
