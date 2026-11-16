@@ -287,96 +287,86 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
 
     if (category.customerFlowSteps.isNotEmpty) {
-      final selected = await Navigator.push<Map<String, dynamic>>(
-        context,
+      // Keep personalisation visible while resolving the selected branch.
+      // Replace this route only when the destination is ready.
+      Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => CategoryDecisionScreen(
             categoryTitle: category.title,
             steps: category.customerFlowSteps,
+            onContinue: (flowContext, selected) async {
+              final routeAnswers = Map<String, dynamic>.from(selected);
+              final nextCategorySlug =
+                  routeAnswers.remove('__next_category_slug')?.toString().trim();
+              final nextCategoryId = int.tryParse(
+                routeAnswers.remove('__next_category_id')?.toString() ?? '',
+              );
+
+              Category routedCategory = category;
+              try {
+                if (nextCategoryId != null ||
+                    (nextCategorySlug != null && nextCategorySlug.isNotEmpty)) {
+                  final targets = category.children.where((child) {
+                    if (nextCategoryId != null) return child.id == nextCategoryId;
+                    return child.slug.toLowerCase() == nextCategorySlug!.toLowerCase();
+                  }).toList();
+                  if (targets.length != 1) {
+                    ScaffoldMessenger.of(flowContext).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'The next category is not configured correctly. Please contact support.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  routedCategory = targets.first;
+                }
+
+                final freshRoots = await CatalogApi.listCategories(
+                  addressId: addressId,
+                  audience: routeAnswers['beauty_audience']?.toString(),
+                );
+                if (nextCategoryId != null ||
+                    (nextCategorySlug != null && nextCategorySlug.isNotEmpty)) {
+                  routedCategory =
+                      _findCatalogCategoryById(freshRoots, routedCategory.id) ??
+                          routedCategory;
+                }
+
+                if (!flowContext.mounted) return;
+                final Widget destination = routedCategory.children.isNotEmpty
+                    ? ServiceCategoriesScreen(
+                        initialCategories: routedCategory.children,
+                        addressId: addressId,
+                        title: routedCategory.title,
+                        initialAnswers: routeAnswers,
+                      )
+                    : ServiceListScreen(
+                        categoryId: routedCategory.id,
+                        categoryTitle: routedCategory.title,
+                        addressId: addressId,
+                        initialAnswers: routeAnswers,
+                      );
+
+                Navigator.of(flowContext).pushReplacement<void, void>(
+                  MaterialPageRoute(builder: (_) => destination),
+                );
+              } catch (e) {
+                if (!flowContext.mounted) return;
+                ScaffoldMessenger.of(flowContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Could not load the selected service category. Please try again. ($e)',
+                    ),
+                  ),
+                );
+              }
+            },
           ),
         ),
       );
-      if (selected == null || !mounted) return;
-
-      // Keep navigation metadata out of booking answers. Home-screen category
-      // cards must honour the same Admin-defined branch routing as Browse Services.
-      final nextCategorySlug =
-          selected.remove('__next_category_slug')?.toString().trim();
-      final nextCategoryId = int.tryParse(
-        selected.remove('__next_category_id')?.toString() ?? '',
-      );
-      answers = selected;
-
-      if (nextCategoryId != null ||
-          (nextCategorySlug != null && nextCategorySlug.isNotEmpty)) {
-        final targets = category.children.where((child) {
-          if (nextCategoryId != null) return child.id == nextCategoryId;
-          return child.slug.toLowerCase() == nextCategorySlug!.toLowerCase();
-        }).toList();
-
-        if (targets.length != 1) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'The next category is not configured correctly. Please contact support.',
-              ),
-            ),
-          );
-          return;
-        }
-
-        var routedCategory = targets.first;
-        try {
-          // Re-resolve the exact selected branch from the current catalogue
-          // tree so its own children are not taken from a stale home snapshot.
-          final freshRoots = await CatalogApi.listCategories(
-            addressId: addressId,
-            audience: answers['beauty_audience']?.toString(),
-          );
-          routedCategory =
-              _findCatalogCategoryById(freshRoots, routedCategory.id) ??
-                  routedCategory;
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Could not refresh the selected category. Please try again. ($e)',
-              ),
-            ),
-          );
-          return;
-        }
-
-        if (!mounted) return;
-        if (routedCategory.children.isNotEmpty) {
-          Navigator.push<void>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ServiceCategoriesScreen(
-                initialCategories: routedCategory.children,
-                addressId: addressId,
-                title: routedCategory.title,
-                initialAnswers: answers,
-              ),
-            ),
-          );
-          return;
-        }
-
-        Navigator.push<void>(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ServiceListScreen(
-              categoryId: routedCategory.id,
-              categoryTitle: routedCategory.title,
-              addressId: addressId,
-              initialAnswers: answers,
-            ),
-          ),
-        );
-        return;
-      }
+      return;
     }
 
     if (!mounted) return;
