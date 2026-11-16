@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 from django.db import transaction
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 from unfold.admin import ModelAdmin, TabularInline
 
 from .models import (
@@ -351,9 +352,53 @@ class RecurringWashPlanAdmin(ModelAdmin):
     def save_formset(self, request, form, formset, change):
         instances = formset.save()
         if formset.model is RecurringWashVisit:
+            from apps.bookings.services import check_service_available, check_slot_availability
+
             for visit in instances:
-                if visit.booking_id and visit.booking.scheduled_at != visit.scheduled_at:
-                    visit.booking.scheduled_at = visit.scheduled_at
-                    visit.booking.save(update_fields=["scheduled_at", "updated_at"])
+                if not visit.booking_id or visit.booking.scheduled_at == visit.scheduled_at:
+                    continue
+                booking = visit.booking
+                if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+                    raise ValidationError(
+                        "An assigned, started, completed or cancelled visit cannot be rescheduled from this Admin inline."
+                    )
+                if visit.scheduled_at <= timezone.now():
+                    raise ValidationError("Choose a future date and time for this recurring visit.")
+                duration = (
+                    booking.variant.duration_minutes
+                    if booking.variant_id and booking.variant.duration_minutes
+                    else booking.service.duration_minutes
+                ) or 60
+                quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                try:
+                    check_service_available(booking.service, address=booking.address)
+                    check_slot_availability(
+                        service=booking.service,
+                        scheduled_at=visit.scheduled_at,
+                        duration_minutes=duration * (
+                            1 if booking.service.pricing_type == "per_unit" else quantity
+                        ),
+                        booking_mode=booking.booking_mode,
+                        drop_scheduled_at=(
+                            booking.drop_scheduled_at
+                            if booking.booking_mode == Booking.BookingMode.PICKUP_DROP
+                            else None
+                        ),
+                    )
+                except Exception as exc:
+                    raise ValidationError(str(exc)) from exc
+                WorkerOffer.objects.filter(
+                    booking=booking,
+                    status__in=(
+                        WorkerOffer.Status.PENDING,
+                        WorkerOffer.Status.DECLINED,
+                        WorkerOffer.Status.EXPIRED,
+                    ),
+                ).update(
+                    status=WorkerOffer.Status.WITHDRAWN,
+                    responded_at=timezone.now(),
+                )
+                booking.scheduled_at = visit.scheduled_at
+                booking.save(update_fields=["scheduled_at", "updated_at"])
 
 
