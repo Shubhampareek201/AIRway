@@ -89,6 +89,39 @@ class DynamicServicePhotoUploadTests(TestCase):
             self.assertNotIn("_airway_form_photos", self.item.category_answers)
             self.assertNotIn("room_photo", self.item.form_answers)
 
+    def test_editing_cart_notes_preserves_existing_service_photo(self):
+        from django.core.files.storage import FileSystemStorage
+
+        variant = ServiceVariant.objects.create(
+            service=self.service, title="Standard", mrp="100.00", price="100.00"
+        )
+        self.item.variant = variant
+        self.item.save(update_fields=["variant", "updated_at"])
+
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
+            upload_url = f"/api/v1/bookings/cart/items/{self.item.id}/form-photos/{self.photo_field.key}/"
+            uploaded = self.client.post(
+                upload_url,
+                {"photo": SimpleUploadedFile("room.jpg", valid_jpeg(), content_type="image/jpeg")},
+                format="multipart",
+            )
+            self.assertEqual(uploaded.status_code, 200, uploaded.data)
+            self.item.refresh_from_db()
+            stored_path = self.item.category_answers["_airway_form_photos"]["room_photo"]
+            storage = FileSystemStorage(location=private_root)
+            self.assertTrue(storage.exists(stored_path))
+
+            updated = self.client.patch(
+                f"/api/v1/bookings/cart/items/{self.item.id}/",
+                {"notes": "Please focus on the kitchen floor.", "category_answers": {}},
+                format="json",
+            )
+            self.assertEqual(updated.status_code, 200, updated.data)
+            self.item.refresh_from_db()
+            self.assertEqual(self.item.form_answers["room_photo"], "uploaded")
+            self.assertEqual(self.item.category_answers["_airway_form_photos"]["room_photo"], stored_path)
+            self.assertTrue(storage.exists(stored_path))
+
     def test_customer_cannot_upload_photo_for_another_services_field(self):
         response = self.client.post(
             f"/api/v1/bookings/cart/items/{self.item.id}/form-photos/not-configured/",
