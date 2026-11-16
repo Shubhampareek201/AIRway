@@ -1125,6 +1125,18 @@ class CustomerOrderDetailView(APIView):
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
                 "quote": quote_data,
+                "work_evidence": [
+                    {
+                        "id": evidence.id,
+                        "stage": evidence.stage,
+                        "note": evidence.note,
+                        "photo_url": request.build_absolute_uri(
+                            f"/api/v1/bookings/work-evidence/{evidence.id}/photo/"
+                        ),
+                        "created_at": evidence.created_at.isoformat(),
+                    }
+                    for evidence in booking.work_evidence.select_related("worker").all()
+                ],
                 "form_responses": [
                     {
                         "key": response.form_field.key,
