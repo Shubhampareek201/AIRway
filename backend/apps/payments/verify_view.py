@@ -442,8 +442,12 @@ def _process_verified_payment(
                     status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
                 ).first()
                 if recurring_plan:
-                    from apps.bookings.recurring import generate_recurring_wash_visit_ledger
+                    from apps.bookings.recurring import (
+                        generate_recurring_wash_visit_ledger,
+                        create_pending_recurring_visit_bookings,
+                    )
                     generate_recurring_wash_visit_ledger(recurring_plan)
+                    create_pending_recurring_visit_bookings(recurring_plan)
                 message = f"Final balance for AIRway order #{parent_order.id} was received. Thank you."
             else:
                 # Preserve the old full-payment transition for orders created
