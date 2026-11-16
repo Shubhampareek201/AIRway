@@ -414,13 +414,17 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     // Open it directly from the service card instead of the legacy
     // BookingScheduledScreen wizard.
     if (service.categoryRootSlug.toLowerCase() == 'electrical') {
-      await Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceDetailScreen(
+      await Navigator.of(context).push<void>(
+        PageRouteBuilder<void>(
+          opaque: false,
+          barrierColor: Colors.transparent,
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => ServiceDetailScreen(
             serviceId: service.id,
             addressId: widget.addressId,
             initialAnswers: widget.initialAnswers,
+            initialService: service,
             openElectricalAddOnLoad: true,
           ),
         ),
