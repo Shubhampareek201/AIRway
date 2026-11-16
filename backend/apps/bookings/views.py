@@ -278,6 +278,11 @@ class BookingViewSet(viewsets.ModelViewSet):
                 allocation["balance_total"] = str(
                     Decimal(str(allocation.get("balance_total", "0"))) + quote_total
                 )
+                advance_total = Decimal(str(allocation.get("advance_total", "0")))
+                allocation["percentage"] = str(
+                    (advance_total * Decimal("100") / order.total_amount).quantize(Decimal("0.01"))
+                    if order.total_amount > 0 else Decimal("0.00")
+                )
                 metadata["payment_allocation_v1"] = allocation
             order.metadata = metadata
             order.save(update_fields=[
@@ -1249,7 +1254,7 @@ class CustomerOrderDetailView(APIView):
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
             "is_staged_payment": is_staged_payment,
-            "advance_percentage": int(allocation.get("percentage", 30)),
+            "advance_percentage": float(allocation.get("percentage", 30)),
             "advance_total": allocation.get("advance_total"),
             "balance_total": allocation.get("balance_total"),
             "advance_paid": bool(advance_payment),
