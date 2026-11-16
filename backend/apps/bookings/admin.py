@@ -292,10 +292,13 @@ class RecurringWashVisitInline(TabularInline):
     extra = 0
     can_delete = False
     readonly_fields = (
+        "visit_number", "booking", "prepaid_amount",
+        "status", "created_at", "updated_at",
+    )
+    fields = (
         "visit_number", "scheduled_at", "booking", "prepaid_amount",
         "status", "admin_notes", "created_at", "updated_at",
     )
-    fields = readonly_fields
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -318,5 +321,39 @@ class RecurringWashPlanAdmin(ModelAdmin):
     )
     fields = readonly_fields + ("admin_notes",)
     inlines = [RecurringWashVisitInline]
+    actions = ["retry_pending_visit_setup"]
+
+    @admin.action(description="Retry setup for pending recurring visits")
+    def retry_pending_visit_setup(self, request, queryset):
+        from apps.bookings.recurring import create_pending_recurring_visit_bookings
+
+        created = 0
+        failed = 0
+        for plan in queryset:
+            try:
+                created += len(create_pending_recurring_visit_bookings(plan))
+                failed += plan.visits.filter(status=RecurringWashVisit.Status.PENDING_SETUP).count()
+            except Exception:
+                failed += 1
+        if failed:
+            self.message_user(
+                request,
+                f"Created {created} booking(s). {failed} visit(s) still need schedule resolution; see each visit's Admin notes.",
+                level=messages.WARNING,
+            )
+        else:
+            self.message_user(
+                request,
+                f"Recurring setup complete: {created} booking(s) created.",
+                level=messages.SUCCESS,
+            )
+
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save()
+        if formset.model is RecurringWashVisit:
+            for visit in instances:
+                if visit.booking_id and visit.booking.scheduled_at != visit.scheduled_at:
+                    visit.booking.scheduled_at = visit.scheduled_at
+                    visit.booking.save(update_fields=["scheduled_at", "updated_at"])
 
 
