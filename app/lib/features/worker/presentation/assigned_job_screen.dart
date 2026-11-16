@@ -401,12 +401,20 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
   Widget _buildScheduleInfo(WorkerAssignmentDetail job) {
     return Card(
       child: ListTile(
-        leading: const Icon(Icons.schedule),
-        title: const Text('Scheduled Time'),
-        subtitle: Text(_formatDateTime(job.scheduledAt)),
-        trailing: Icon(
-          job.dropScheduledAt != null ? Icons.inventory_2 : Icons.schedule,
+        leading: const Icon(Icons.event_available_rounded),
+        title: const Text('Service appointment'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Service time: ${_formatDateTime(job.scheduledAt)}'),
+            if (job.dropScheduledAt != null) ...[
+              const SizedBox(height: 4),
+              Text('Expected drop-off: ${_formatDateTime(job.dropScheduledAt!)}'),
+            ],
+          ],
         ),
+        trailing: Icon(job.dropScheduledAt != null ? Icons.inventory_2 : Icons.schedule),
       ),
     );
   }
