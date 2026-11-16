@@ -28,6 +28,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   final Map<int, TimeOfDay> times = {};
   final Map<int, TimeOfDay> dropTimes = {};
   final Set<int> _slotConfirmed = {};
+  final Set<int> _expandedItems = {};
   List<Map<String, dynamic>> addresses = [];
 
   @override
@@ -441,133 +442,82 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
     final time = times[id] ?? const TimeOfDay(hour: 10, minute: 0);
     final snapshot = Map<String, dynamic>.from(item['pricing_snapshot'] ?? {});
-    final addons = (snapshot['addons'] as List? ?? []);
+    final addons = snapshot['addons'] as List? ?? [];
+    final expanded = _expandedItems.contains(id);
+    final scheduled = _slotConfirmed.contains(id);
+    final quantity = item['quantity']?.toString() ?? '1';
+    final unit = item['service_unit_label']?.toString() ?? '';
+    final quantityLabel = unit.isNotEmpty ? '$quantity $unit' : 'Qty $quantity';
+    final amountLabel = '₹' + number(item['line_total']).toStringAsFixed(0);
     return Container(
-      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: line)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 44, height: 44, decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.home_repair_service_outlined, color: violet)),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(item['service_title']?.toString() ?? 'Service', style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
-            if ((item['variant_title'] ?? '').toString().isNotEmpty) Text(item['variant_title'].toString(), style: const TextStyle(fontSize: 12, color: sub)),
-            if (item['category_answers'] is Map)
-              for (final entry in (item['category_answers'] as Map).entries)
-                if (!entry.key.toString().endsWith('_id') &&
-                    entry.key.toString() != 'vehicle_type' &&
-                    entry.value != null && entry.value.toString().isNotEmpty)
-                  Text(
-                    '${{
-                      'vehicle_kind': 'Vehicle',
-                      'vehicle_make': 'Company',
-                      'vehicle_model': 'Model',
-                      'vehicle_type_label': 'Vehicle size',
-                    }[entry.key.toString()] ?? entry.key.toString().replaceAll('_', ' ')}: ${entry.value}',
-                    style: const TextStyle(fontSize: 11, color: sub),
-                  ),
-            Text(
-              (item['service_unit_label']?.toString().isNotEmpty == true
-                  ? item['quantity'].toString() + ' ' + item['service_unit_label'].toString()
-                  : 'Qty ' + item['quantity'].toString()) +
-              ' • ₹' + number(item['line_total']).toStringAsFixed(0),
-              style: const TextStyle(fontWeight: FontWeight.w800, color: violet, fontSize: 12),
-            ),
-          ])),
-          IconButton(onPressed: busy ? null : () => removeItem(id), icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
-        ]),
-        if (number(snapshot['visit_fee']) > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 7),
-            child: Text(
-              'Inspection / visit charge: ₹${number(snapshot['visit_fee']).toStringAsFixed(0)} (included once)',
-              style: const TextStyle(fontSize: 12, color: sub, fontWeight: FontWeight.w700),
-            ),
-          ),
-        if (item['notes']?.toString().trim().isNotEmpty == true)
-          Padding(
-            padding: const EdgeInsets.only(top: 7),
-            child: Text(
-              'Issue description: ${item['notes']}',
-              style: const TextStyle(fontSize: 12, color: sub),
-            ),
-          ),
-        if (item['has_issue_photo'] == true)
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
+      child: Column(children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => setState(() { if (expanded) { _expandedItems.remove(id); } else { _expandedItems.add(id); } }),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 8, 12),
             child: Row(children: [
-              Icon(Icons.image_outlined, size: 15, color: violet),
-              SizedBox(width: 5),
-              Text('Issue photo attached', style: TextStyle(fontSize: 12, color: sub)),
+              Container(width: 44, height: 44, decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.home_repair_service_outlined, color: violet)),
+              const SizedBox(width: 11),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(item['service_title']?.toString() ?? 'Service', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+                if ((item['variant_title'] ?? '').toString().isNotEmpty) Text(item['variant_title'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: sub)),
+                const SizedBox(height: 3),
+                Text('$quantityLabel  •  $amountLabel', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: violet)),
+              ])),
+              IconButton(tooltip: 'Remove service', onPressed: busy ? null : () => removeItem(id), icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent)),
+              Icon(expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, color: sub),
             ]),
           ),
-        if (item['has_form_photos'] == true)
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 13),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(color: scheduled ? pale : const Color(0xFFFFF7E8), borderRadius: BorderRadius.circular(12)),
             child: Row(children: [
-              Icon(Icons.photo_library_outlined, size: 15, color: violet),
-              SizedBox(width: 5),
-              Text('Service photos attached', style: TextStyle(fontSize: 12, color: sub)),
+              Icon(scheduled ? Icons.event_available_rounded : Icons.calendar_month_rounded, color: scheduled ? violet : const Color(0xFF9A6A16), size: 19),
+              const SizedBox(width: 8),
+              Expanded(child: Text(scheduled ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context) : 'Date & time not selected', style: TextStyle(color: scheduled ? ink : const Color(0xFF8A641F), fontWeight: FontWeight.w700, fontSize: 12))),
+              TextButton(onPressed: busy ? null : () => chooseSchedule(id), style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)), child: Text(scheduled ? 'Change' : 'Schedule')),
             ]),
           ),
-        if (addons.isNotEmpty) ...[
-          const Divider(height: 20),
-          const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: sub)),
-          for (final addon in addons) Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 12, color: ink)),
-        ],
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: busy ? null : () => editPreferences(item),
-          icon: const Icon(Icons.tune_rounded, size: 18),
-          label: const Text('Add / edit preferences'),
-          style: OutlinedButton.styleFrom(foregroundColor: violet),
         ),
-        const Divider(height: 20),
-        const Text('Service Schedule', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 13)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: pale,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.calendar_month_rounded, color: violet),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  _slotConfirmed.contains(id)
-                      ? DateFormat('EEE, dd MMM yyyy').format(date) + ' • ' + time.format(context)
-                      : 'Choose a date and available time',
-                  style: const TextStyle(color: ink, fontWeight: FontWeight.w700, fontSize: 12),
-                ),
-              ),
-              TextButton(
-                onPressed: busy ? null : () => chooseSchedule(id),
-                child: Text(_slotConfirmed.contains(id) ? 'Change' : 'Select'),
-              ),
-            ],
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 180),
+          crossFadeState: expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: Padding(
+            padding: const EdgeInsets.fromLTRB(15, 0, 15, 15),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Divider(height: 12),
+              if (item['category_answers'] is Map)
+                for (final entry in (item['category_answers'] as Map).entries)
+                  if (!entry.key.toString().endsWith('_id') && entry.key.toString() != 'vehicle_type' && entry.value != null && entry.value.toString().isNotEmpty)
+                    Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(entry.key.toString().replaceAll('_', ' ') + ': ' + entry.value.toString(), style: const TextStyle(fontSize: 12, color: sub))),
+              if (number(snapshot['visit_fee']) > 0)
+                Padding(padding: const EdgeInsets.only(top: 5), child: Text('Inspection / visit charge: ₹' + number(snapshot['visit_fee']).toStringAsFixed(0) + ' (included once)', style: const TextStyle(fontSize: 12, color: sub, fontWeight: FontWeight.w700))),
+              if (item['notes']?.toString().trim().isNotEmpty == true)
+                Padding(padding: const EdgeInsets.only(top: 7), child: Text('Issue description: ' + item['notes'].toString(), style: const TextStyle(fontSize: 12, color: sub))),
+              if (item['has_issue_photo'] == true)
+                const Padding(padding: EdgeInsets.only(top: 7), child: Row(children: [Icon(Icons.image_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Issue photo attached', style: TextStyle(fontSize: 12, color: sub))])),
+              if (item['has_form_photos'] == true)
+                const Padding(padding: EdgeInsets.only(top: 6), child: Row(children: [Icon(Icons.photo_library_outlined, size: 15, color: violet), SizedBox(width: 5), Text('Service photos attached', style: TextStyle(fontSize: 12, color: sub))])),
+              if (addons.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: sub)),
+                for (final addon in addons) Padding(padding: const EdgeInsets.only(top: 3), child: Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 12, color: ink))),
+              ],
+              if (item['booking_mode'] == 'pickup_drop' && scheduled)
+                Padding(padding: const EdgeInsets.only(top: 8), child: Text('Drop-off time: ' + (dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context), style: const TextStyle(color: sub, fontSize: 12))),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(onPressed: busy ? null : () => editPreferences(item), icon: const Icon(Icons.tune_rounded, size: 18), label: const Text('Edit service preferences'), style: OutlinedButton.styleFrom(foregroundColor: violet)),
+              if (scheduled && items.length > 1)
+                Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: busy ? null : () => applyScheduleToAll(id), icon: const Icon(Icons.copy_all_rounded, size: 16), label: const Text('Apply this time to all services'), style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact))),
+            ]),
           ),
         ),
-        if (_slotConfirmed.contains(id) && items.length > 1)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: busy ? null : () => applyScheduleToAll(id),
-              icon: const Icon(Icons.copy_all_rounded, size: 16),
-              label: const Text('Use this time for all services'),
-              style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact),
-            ),
-          ),
-        if (item['booking_mode'] == 'pickup_drop' && _slotConfirmed.contains(id))
-          Padding(
-            padding: const EdgeInsets.only(top: 7),
-            child: Text(
-              'Drop-off: ' + (dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context),
-              style: const TextStyle(color: sub, fontSize: 12),
-            ),
-          ),
       ]),
     );
   }
