@@ -653,11 +653,11 @@ class VehicleCatalogueClassFilterTest(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
         results = response.data if isinstance(response.data, list) else response.data["results"]
-        self.assertEqual([item["name"] for item in results], ["Swift"])
+        self.assertEqual([item["name"] for item in results], ["AIRway Test Swift"])
 
     def test_vehicle_class_filter_does_not_mix_car_and_bike_manufacturers(self):
         response = self.client.get(
-            "/api/v1/catalog/vehicle-makes/?vehicle_type=car&vehicle_class=Hatchback"
+            "/api/v1/catalog/vehicle-makes/?vehicle_type=car&vehicle_class=AIRway%20Hatchback&search=AIRway%20Test"
         )
         results = response.data if isinstance(response.data, list) else response.data["results"]
         self.assertNotIn(self.honda_bike.id, {item["id"] for item in results})
