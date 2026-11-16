@@ -220,7 +220,11 @@ class CustomerRecurringWashVisitRescheduleView(APIView):
         if booking:
             WorkerOffer.objects.filter(
                 booking=booking,
-                status=WorkerOffer.Status.PENDING,
+                status__in=(
+                    WorkerOffer.Status.PENDING,
+                    WorkerOffer.Status.DECLINED,
+                    WorkerOffer.Status.EXPIRED,
+                ),
             ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=timezone.now())
             booking.scheduled_at = new_time
             booking.save(update_fields=["scheduled_at", "updated_at"])
