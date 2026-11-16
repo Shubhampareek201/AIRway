@@ -423,6 +423,27 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                         Text(dateLabel(visit['scheduled_at']), style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
                         const SizedBox(height: 2),
                         Text(label(visit['status']?.toString() ?? ''), style: const TextStyle(color: sub, fontSize: 12)),
+                        if (visit['booking_id'] is int)
+                          TextButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => BookingTrackingScreen(
+                                  bookingId: visit['booking_id'] as int,
+                                  serviceTitle: plan['service_title']?.toString() ?? 'Car Wash',
+                                  initialStatus: visit['booking_status']?.toString() ?? 'pending',
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.location_searching_rounded, size: 15),
+                            label: const Text('Track visit'),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 28),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              alignment: Alignment.centerLeft,
+                            ),
+                          ),
                       ],
                     ),
                   ),
