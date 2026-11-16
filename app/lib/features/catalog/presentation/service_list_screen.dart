@@ -8,7 +8,6 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
-import 'package:airway/features/booking/presentation/booking_scheduled_screen.dart';
 
 class _PackageSelection {
   final ServiceVariant? variant;
