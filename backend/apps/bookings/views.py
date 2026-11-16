@@ -1568,8 +1568,16 @@ class CustomerCartItemView(APIView):
     def delete(self, request, item_id):
         item = self.get_item(request, item_id)
         cart = item.cart
-        stored_path = (item.category_answers or {}).get("_airway_issue_photo")
+        answers = dict(item.category_answers or {})
+        stored_paths = []
+        issue_photo = answers.get("_airway_issue_photo")
+        if issue_photo:
+            stored_paths.append(issue_photo)
+        form_photos = answers.get("_airway_form_photos", {})
+        if isinstance(form_photos, dict):
+            stored_paths.extend(path for path in form_photos.values() if path)
         item.delete()
-        if stored_path:
-            FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT).delete(stored_path)
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        for stored_path in stored_paths:
+            storage.delete(stored_path)
         return Response(CustomerCartSerializer(cart, context={"request": request}).data)
