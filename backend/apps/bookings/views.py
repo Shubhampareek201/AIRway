@@ -609,6 +609,13 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Only the assigned worker can complete this job."}, status=status.HTTP_403_FORBIDDEN)
         if booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": f"Cannot complete job in {booking.get_status_display()} state."}, status=status.HTTP_400_BAD_REQUEST)
+        if booking.booking_mode == Booking.BookingMode.INSPECTION or booking.service.pricing_type == "quote":
+            accepted_quote = booking.quotes.filter(status=BookingQuote.Status.ACCEPTED).exists()
+            if not accepted_quote:
+                return Response(
+                    {"detail": "The customer must approve the inspection estimate before the job can be completed."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         supplied_code = str(request.data.get("otp", "")).strip()
         with transaction.atomic():
