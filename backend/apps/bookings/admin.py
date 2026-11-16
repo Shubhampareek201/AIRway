@@ -286,6 +286,20 @@ class BookingCompletionOTPAdmin(ModelAdmin):
         return False
 
 
+class RecurringWashVisitInline(TabularInline):
+    model = RecurringWashVisit
+    extra = 0
+    can_delete = False
+    readonly_fields = (
+        "visit_number", "scheduled_at", "booking", "prepaid_amount",
+        "status", "created_at", "updated_at",
+    )
+    fields = readonly_fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(RecurringWashPlan)
 class RecurringWashPlanAdmin(ModelAdmin):
     list_display = (
@@ -303,19 +317,5 @@ class RecurringWashPlanAdmin(ModelAdmin):
     )
     fields = readonly_fields + ("status", "admin_notes")
     inlines = [RecurringWashVisitInline]
-
-
-class RecurringWashVisitInline(TabularInline):
-    model = RecurringWashVisit
-    extra = 0
-    can_delete = False
-    readonly_fields = (
-        "visit_number", "scheduled_at", "booking", "prepaid_amount",
-        "status", "created_at", "updated_at",
-    )
-    fields = readonly_fields
-
-    def has_add_permission(self, request, obj=None):
-        return False
 
 
