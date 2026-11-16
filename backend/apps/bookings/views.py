@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from decimal import Decimal
+from datetime import date
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.storage import FileSystemStorage
@@ -292,6 +293,19 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         quote.status = BookingQuote.Status.ACCEPTED
         quote.save(update_fields=["status", "customer_response_note", "responded_at", "updated_at"])
+
+        from apps.bookings.models import RecurringWashPlan
+        recurring_plan = RecurringWashPlan.objects.select_for_update().filter(
+            source_booking=booking,
+            status=RecurringWashPlan.Status.AWAITING_QUOTE,
+        ).first()
+        if recurring_plan:
+            recurring_plan.quoted_total = quote_total
+            recurring_plan.status = RecurringWashPlan.Status.AWAITING_PAYMENT
+            recurring_plan.quote_accepted_at = timezone.now()
+            recurring_plan.save(update_fields=[
+                "quoted_total", "status", "quote_accepted_at", "updated_at",
+            ])
         Notification.objects.create(
             user=quote.worker.user,
             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
