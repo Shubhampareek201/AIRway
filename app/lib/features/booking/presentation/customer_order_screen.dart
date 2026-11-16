@@ -358,6 +358,89 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         : orderBody(),
   );
 
+  Future<void> cancelRecurringPlan(int planId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel recurring plan?'),
+        content: const Text(
+          'All undelivered visits will be cancelled. Any unused prepaid amount will be sent for refund processing. Completed visits will not be refunded.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep plan'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cancel plan'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await BookingApi.cancelRecurringPlan(planId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recurring plan cancelled. Unused prepaid visits are being refunded.')),
+      );
+      await loadOrder(showLoader: false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> rescheduleRecurringVisit(Map<String, dynamic> visit) async {
+    final visitId = visit['id'] as int?;
+    if (visitId == null) return;
+    final current = DateTime.tryParse(visit['scheduled_at']?.toString() ?? '')?.toLocal()
+        ?? DateTime.now().add(const Duration(days: 1));
+    final today = DateTime.now();
+    final initialDate = current.isBefore(DateTime(today.year, today.month, today.day))
+        ? today
+        : current;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 180)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (time == null || !mounted) return;
+    final selected = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (selected.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a future date and time.')),
+      );
+      return;
+    }
+    if (selected.isAtSameMomentAs(current)) return;
+    try {
+      await BookingApi.rescheduleRecurringVisit(
+        visitId: visitId,
+        scheduledAt: selected,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Visit rescheduled successfully.')),
+      );
+      await loadOrder(showLoader: false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
   Widget recurringWashSection(Map<String, dynamic> plan) {
     final visits = (plan['visits'] as List? ?? [])
         .whereType<Map>()
@@ -423,6 +506,18 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                         Text(dateLabel(visit['scheduled_at']), style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
                         const SizedBox(height: 2),
                         Text(label(visit['status']?.toString() ?? ''), style: const TextStyle(color: sub, fontSize: 12)),
+                        if (visit['can_reschedule'] == true)
+                          TextButton.icon(
+                            onPressed: () => rescheduleRecurringVisit(visit),
+                            icon: const Icon(Icons.edit_calendar_outlined, size: 15),
+                            label: const Text('Reschedule'),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 28),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              alignment: Alignment.centerLeft,
+                            ),
+                          ),
                         if (visit['booking_id'] is int)
                           TextButton.icon(
                             onPressed: () => Navigator.push(
@@ -453,6 +548,17 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ),
           if (visits.isEmpty)
             const Text('Your visit schedule is being prepared.', style: TextStyle(color: sub)),
+          if (plan['can_cancel'] == true) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => cancelRecurringPlan(plan['id'] as int),
+                style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+                child: const Text('Cancel recurring plan'),
+              ),
+            ),
+          ],
         ],
       ),
     );
