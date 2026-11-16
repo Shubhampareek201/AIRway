@@ -338,7 +338,18 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.file(photo, height: 130, width: double.infinity, fit: BoxFit.cover),
+                            child: Container(
+                              height: 150,
+                              width: double.infinity,
+                              color: AirwayColors.surfaceVariant,
+                              alignment: Alignment.center,
+                              child: Image.file(
+                                photo,
+                                height: 150,
+                                width: double.infinity,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                         ),
                         Align(
