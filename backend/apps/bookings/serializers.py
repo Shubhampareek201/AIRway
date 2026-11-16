@@ -633,7 +633,12 @@ class BookingDetailSerializer(serializers.ModelSerializer):
         return {
             "id": quote.id,
             "version": quote.version,
-            "status": quote.status,
+            "status": (
+                "expired"
+                if quote.status == BookingQuote.Status.PENDING_CUSTOMER
+                and quote.expires_at and quote.expires_at <= timezone.now()
+                else quote.status
+            ),
             "line_items": quote.line_items,
             "labour_amount": str(quote.labour_amount),
             "material_amount": str(quote.material_amount),
