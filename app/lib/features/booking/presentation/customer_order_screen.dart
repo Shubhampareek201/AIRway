@@ -358,6 +358,85 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         : orderBody(),
   );
 
+  Widget recurringWashSection(Map<String, dynamic> plan) {
+    final visits = (plan['visits'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    String label(String value) {
+      switch (value) {
+        case 'pending_setup': return 'Schedule setup pending';
+        case 'booked': return 'Visit booked';
+        case 'in_progress': return 'In progress';
+        case 'completed': return 'Completed';
+        case 'cancelled': return 'Cancelled';
+        case 'skipped': return 'Skipped';
+        default: return value.replaceAll('_', ' ');
+      }
+    }
+    String dateLabel(dynamic raw) {
+      final parsed = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+      if (parsed == null) return 'Schedule to be confirmed';
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final hour = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+      final minute = parsed.minute.toString().padLeft(2, '0');
+      final period = parsed.hour >= 12 ? 'PM' : 'AM';
+      return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year} • $hour:$minute $period';
+    }
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Recurring Car Wash', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+          const SizedBox(height: 5),
+          Text(
+            '${plan['frequency'] ?? 'Scheduled'} • ${plan['duration_days'] ?? ''} days • ${plan['vehicle_quantity'] ?? 1} vehicle(s)',
+            style: const TextStyle(color: sub, fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          Text('Plan status: ${label(plan['status']?.toString() ?? '')}', style: const TextStyle(color: sub, fontSize: 13)),
+          const SizedBox(height: 10),
+          for (final visit in visits)
+            Padding(
+              padding: const EdgeInsets.only(top: 9),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(9)),
+                    child: Text('${visit['visit_number'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900, color: violet)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(dateLabel(visit['scheduled_at']), style: const TextStyle(fontWeight: FontWeight.w800, color: ink)),
+                        const SizedBox(height: 2),
+                        Text(label(visit['status']?.toString() ?? ''), style: const TextStyle(color: sub, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Text('₹${amount(visit['prepaid_amount']).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
+                ],
+              ),
+            ),
+          if (visits.isEmpty)
+            const Text('Your visit schedule is being prepared.', style: TextStyle(color: sub)),
+        ],
+      ),
+    );
+  }
+
   Widget orderBody() {
     final rows = (order?['items'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     final serviceInProgress = rows.any((row) => row['booking_status'] == 'in_progress');
@@ -417,6 +496,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
           const SizedBox(height: 14),
           scheduleOverview(rows),
+          if (order?['recurring_wash_plan'] is Map) ...[
+            const SizedBox(height: 14),
+            recurringWashSection(Map<String, dynamic>.from(order!['recurring_wash_plan'] as Map)),
+          ],
           const SizedBox(height: 18),
           const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
