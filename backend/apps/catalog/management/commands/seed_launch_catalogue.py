@@ -8,11 +8,13 @@ from apps.catalog.models import (
 )
 
 
-VEHICLES = [
+CAR_VEHICLES = [
     "Hatchback", "Sedan", "Compact SUV", "SUV – 5 Seater",
     "SUV – 7 Seater", "MUV / MPV", "Luxury Car",
     "Luxury SUV",
 ]
+BIKE_VEHICLES = ["Scooter", "Motorcycle"]
+VEHICLES = CAR_VEHICLES + BIKE_VEHICLES
 
 
 class CatalogueBuilder:
@@ -187,7 +189,13 @@ class Command(BaseCommand):
                 fields=[vehicle_field],
             )
             for package_title, description, tasks, duration in packages:
-                for vehicle in VEHICLES:
+                # Two-wheelers can use exterior washing. Interior and
+                # complete-car packages remain restricted to car body types.
+                package_vehicles = (
+                    VEHICLES if group_name == "Exterior Car Cleaning"
+                    else CAR_VEHICLES
+                )
+                for vehicle in package_vehicles:
                     b.package(
                         service, f"{package_title} — {vehicle}",
                         description, tasks, duration,
