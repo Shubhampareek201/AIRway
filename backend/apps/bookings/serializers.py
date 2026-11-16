@@ -1009,6 +1009,8 @@ class CartItemSerializer(serializers.ModelSerializer):
                 "form_answers": "This service has an invalid question configuration. Please contact support."
             })
         visible_keys = {field.key for field in visible_fields}
+        for hidden_photo_key in set(existing_photo_map) - visible_keys:
+            answers.pop(hidden_photo_key, None)
         if set(answers) - visible_keys:
             raise serializers.ValidationError({
                 "form_answers": "An answer was supplied for a question that is not applicable."
