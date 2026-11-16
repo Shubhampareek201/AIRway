@@ -86,7 +86,7 @@ class CustomerRecurringWashPlanCancelView(APIView):
             return Response({"reason": "Keep the cancellation reason under 500 characters."}, status=status.HTTP_400_BAD_REQUEST)
 
         now = timezone.now()
-        for visit in plan.visits.select_for_update().select_related("booking").order_by("visit_number"):
+        for visit in plan.visits.select_for_update(of=("self",)).select_related("booking").order_by("visit_number"):
             if visit.status in (
                 RecurringWashVisit.Status.COMPLETED,
                 RecurringWashVisit.Status.IN_PROGRESS,
@@ -159,7 +159,7 @@ class CustomerRecurringWashVisitRescheduleView(APIView):
     @transaction.atomic
     def post(self, request, visit_id):
         visit = get_object_or_404(
-            RecurringWashVisit.objects.select_for_update().select_related(
+            RecurringWashVisit.objects.select_for_update(of=("self",)).select_related(
                 "plan__service", "plan__variant", "plan__address", "booking"
             ),
             pk=visit_id,
