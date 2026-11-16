@@ -21,7 +21,11 @@ class Category(TimeStampedModel):
         help_text=(
             "Optional customer decision steps shown before browsing this category. "
             "Each item: key, title, type (select/text/number/textarea), options, required, description. "
-            "For visual choices, use option objects: {label, value, image} with an absolute image URL."
+            "For visual choices, use option objects: {label, value, image}. "
+            "To route a selected option directly to a child category, add next_category_slug "
+            "(or next_category_id) to that option. Alternatively set filter_children=true "
+            "and child_slugs={\"Selected option value\":[\"child-slug\"]} on the step "
+            "to show only the mapped children. Child categories remain the source of truth."
         ),
     )
     sort_order = models.PositiveIntegerField(default=0)
