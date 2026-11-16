@@ -1134,6 +1134,7 @@ class CustomerOrderDetailView(APIView):
                 "booking_id": booking.id,
                 "service": service_snapshot,
                 "booking_status": booking.status,
+                "can_cancel": booking.can_cancel,
                 "scheduled_at": booking.scheduled_at,
                 "quote": quote_data,
                 "work_evidence": [
