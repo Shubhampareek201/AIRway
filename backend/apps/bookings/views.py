@@ -965,6 +965,65 @@ class CustomerCheckoutView(APIView):
                 tax_amount=line_tax,
                 line_total=line_total,
             )
+
+            if item.service.category.slug == "monthly-car-wash-plans":
+                from datetime import timedelta
+                from apps.bookings.models import RecurringWashPlan
+
+                answers = item.form_answers or {}
+                category_answers = item.category_answers or {}
+                duration_days = {
+                    "15 days": 15, "1 month": 30,
+                    "3 months": 90, "6 months": 180,
+                }.get(answers.get("subscription_duration"))
+                frequency = {
+                    "Daily": RecurringWashPlan.Frequency.DAILY,
+                    "Alternate day": RecurringWashPlan.Frequency.ALTERNATE_DAY,
+                    "Twice a week": RecurringWashPlan.Frequency.TWICE_WEEKLY,
+                    "Weekly": RecurringWashPlan.Frequency.WEEKLY,
+                    "Fortnightly": RecurringWashPlan.Frequency.FORTNIGHTLY,
+                }.get(answers.get("wash_frequency"))
+                try:
+                    vehicle_quantity = int(answers.get("vehicle_quantity", 0))
+                    starts_on = date.fromisoformat(answers.get("plan_start_date", ""))
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError({
+                        "items": "The recurring wash plan needs a valid start date and vehicle quantity."
+                    })
+                vehicle_type = category_answers.get("vehicle_type") or answers.get("vehicle_type")
+                time_window = answers.get("preferred_time_window", "")
+                if (
+                    not duration_days or not frequency or vehicle_quantity < 1
+                    or not vehicle_type or starts_on < timezone.localdate()
+                    or time_window not in ("", "Morning", "Afternoon", "Evening")
+                ):
+                    raise serializers.ValidationError({
+                        "items": "Complete the recurring wash plan details with a valid start date, vehicle and frequency."
+                    })
+                RecurringWashPlan.objects.create(
+                    order=order,
+                    source_booking=booking,
+                    customer=request.user,
+                    address=cart.address,
+                    service=item.service,
+                    variant=item.variant,
+                    frequency=frequency,
+                    duration_days=duration_days,
+                    starts_on=starts_on,
+                    ends_on=starts_on + timedelta(days=duration_days - 1),
+                    preferred_time_window=time_window,
+                    vehicle_type=str(vehicle_type),
+                    vehicle_quantity=vehicle_quantity,
+                    plan_snapshot={
+                        "form_answers": answers,
+                        "category_answers": {
+                            key: value for key, value in category_answers.items()
+                            if not key.startswith("_airway_")
+                        },
+                        "notes": item.notes,
+                    },
+                )
+
             subtotal += line_subtotal
             tax_total += line_tax
             grand_total += line_total
