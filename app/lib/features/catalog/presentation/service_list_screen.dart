@@ -373,7 +373,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               );
                               if (picked != null && sheetContext.mounted) {
                                 selectedFormPhotos[field.key] = File(picked.path);
-                                updateFormAnswer(field.key, 'uploaded', setSheetState);
+                                updateFormAnswer(field.key, null, setSheetState);
                               }
                             },
                             icon: const Icon(Icons.camera_alt_outlined),
@@ -388,7 +388,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               );
                               if (picked != null && sheetContext.mounted) {
                                 selectedFormPhotos[field.key] = File(picked.path);
-                                updateFormAnswer(field.key, 'uploaded', setSheetState);
+                                updateFormAnswer(field.key, null, setSheetState);
                               }
                             },
                             icon: const Icon(Icons.photo_library_outlined),
@@ -412,7 +412,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 key: fieldKeys.putIfAbsent(field.key, () => GlobalKey()),
                 padding: const EdgeInsets.only(bottom: 12),
                 child: TextFormField(
-                  key: ValueKey('${field.key}:$current'),
+                  key: ValueKey(field.key),
                   initialValue: current,
                   keyboardType: field.fieldType == 'number'
                       ? const TextInputType.numberWithOptions(decimal: true)
