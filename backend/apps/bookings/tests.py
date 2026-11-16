@@ -4472,7 +4472,7 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         self.assertEqual(len(visits), 5)
         self.assertEqual(
             [visit.scheduled_at.date() for visit in visits],
-            [self.first_at.date() + timedelta(days=offset) for offset in range(5)],
+            [timezone.localtime(self.first_at).date() + timedelta(days=offset) for offset in range(5)],
         )
         self.assertEqual(visits[0].booking_id, self.source_booking.id)
         self.assertEqual(visits[0].status, RecurringWashVisit.Status.COMPLETED)
