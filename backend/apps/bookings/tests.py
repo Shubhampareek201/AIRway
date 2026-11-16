@@ -3638,16 +3638,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             "vehicle_quantity": 2,
             "wash_frequency": "Twice a week",
             "subscription_duration": "3 months",
-            "plan_start_date": (timezone.localdate() + timedelta(days=3)).isoformat(),
-            "preferred_time_window": "Morning",
         }
         field_specs = [
             ("vehicle_type", "Vehicle type", FormField.FieldType.SELECT, ["SUV"], True),
             ("vehicle_quantity", "Number of vehicles", FormField.FieldType.NUMBER, [], True),
             ("wash_frequency", "Preferred wash frequency", FormField.FieldType.SELECT, ["Daily", "Alternate day", "Twice a week", "Weekly", "Fortnightly"], True),
             ("subscription_duration", "Plan duration", FormField.FieldType.SELECT, ["15 days", "1 month", "3 months", "6 months"], True),
-            ("plan_start_date", "Preferred plan start date", FormField.FieldType.DATE, [], True),
-            ("preferred_time_window", "Preferred wash time", FormField.FieldType.SELECT, ["Morning", "Afternoon", "Evening"], False),
         ]
         for key, label, field_type, options, required in field_specs:
             FormField.objects.create(
@@ -3660,11 +3656,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             pricing_snapshot={"line_total": "118.00"},
         )
 
+        first_visit = timezone.now() + timedelta(days=2)
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
             {"items": [{
                 "cart_item_id": cart_item.id,
-                "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                "scheduled_at": first_visit.isoformat(),
             }]},
             format="json",
         )
@@ -3676,6 +3673,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(plan.duration_days, 90)
         self.assertEqual(plan.vehicle_type, "SUV")
         self.assertEqual(plan.vehicle_quantity, 2)
+        self.assertEqual(plan.starts_on, timezone.localtime(first_visit).date())
         self.assertEqual(plan.status, RecurringWashPlan.Status.AWAITING_QUOTE)
         self.assertEqual(plan.ends_on - plan.starts_on, timedelta(days=89))
 
