@@ -1125,6 +1125,28 @@ class CustomerOrderDetailView(APIView):
                 "booking_status": booking.status,
                 "scheduled_at": booking.scheduled_at,
                 "quote": quote_data,
+                "form_responses": [
+                    {
+                        "key": response.form_field.key,
+                        "label": response.form_field.label,
+                        "field_type": response.form_field.field_type,
+                        "value": (
+                            "Photo attached"
+                            if response.form_field.field_type == FormField.FieldType.PHOTO
+                            and (booking.customer_answers or {}).get("_airway_form_photos", {}).get(response.form_field.key)
+                            else response.value
+                        ),
+                        "photo_url": (
+                            request.build_absolute_uri(
+                                f"/api/v1/bookings/issue-photos/{booking.id}/?field_key={response.form_field.key}"
+                            )
+                            if response.form_field.field_type == FormField.FieldType.PHOTO
+                            and (booking.customer_answers or {}).get("_airway_form_photos", {}).get(response.form_field.key)
+                            else None
+                        ),
+                    }
+                    for response in booking.form_responses.select_related("form_field").all()
+                ],
                 "worker": (
                     {
                         "id": assignment.worker_id,
