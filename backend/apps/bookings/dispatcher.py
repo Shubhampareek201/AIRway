@@ -34,15 +34,15 @@ class DispatcherService:
 
     @classmethod
     @transaction.atomic
-    def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None):
-        """Dispatch a standalone booking to every eligible worker simultaneously."""
+    def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None, parent_order=None):
+        """Dispatch one service line; parent orders may use different workers per line."""
         from apps.bookings.models import Booking, OrderItem, WorkerOffer, DispatchConfiguration
         # Resolve the parent before taking a booking lock. Order acceptance
         # consistently locks order first, then bookings.
         order_id = OrderItem.objects.filter(
             booking_id=booking.pk
         ).values_list("order_id", flat=True).first()
-        if order_id:
+        if order_id and parent_order is None:
             from apps.bookings.models import Order
             return cls.dispatch_order(Order.objects.get(pk=order_id))
         booking = Booking.objects.select_for_update(of=("self",)).select_related(
@@ -51,9 +51,16 @@ class DispatcherService:
         config = DispatchConfiguration.get_solo()
         if not config.is_enabled or booking.status not in (booking.Status.PENDING, booking.Status.CONFIRMED):
             return []
-        # Fail closed: a standalone booking also requires a captured 30% advance.
+        # Parent-order lines share one verified 30% advance, but dispatch
+        # independently so each service can be assigned to a suitable worker.
         from apps.payments.models import Payment
-        if not Payment.objects.filter(
+        if parent_order is not None:
+            if not (parent_order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
+                order=parent_order, stage=Payment.Stage.ADVANCE,
+                status=Payment.Status.PAID,
+            ).exists():
+                return []
+        elif not Payment.objects.filter(
             booking=booking, stage=Payment.Stage.ADVANCE,
             status=Payment.Status.PAID,
         ).exists():
@@ -105,10 +112,9 @@ class DispatcherService:
 
     @classmethod
     def dispatch_order(cls, order):
-        """Offer a parent order to all workers eligible for every service line."""
+        """Dispatch each unassigned service line independently within one paid order."""
         from apps.bookings.models import Booking, BookingAssignment, WorkerOffer, DispatchConfiguration, Order
-        from apps.workers.models import WorkerProfile
-        from django.db.models import Max
+        from apps.payments.models import Payment
 
         with transaction.atomic():
             order = Order.objects.select_for_update().get(pk=order.pk)
@@ -117,99 +123,30 @@ class DispatcherService:
                 Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED
             ):
                 return []
-            # Dispatch is globally gated by a captured 30% advance. This also
-            # protects Celery retries and expired-offer batches from bypassing
-            # the checkout gate.
-            from apps.payments.models import Payment
             if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-                order=order,
-                stage=Payment.Stage.ADVANCE,
-                status=Payment.Status.PAID,
+                order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID
             ).exists():
                 return []
-            items = list(order.items.select_related(
-                "booking__service__category", "booking__variant", "booking__address__zone__city"
-            ).order_by("created_at"))
-            if not items:
-                return []
-            bookings = [
-                item.booking for item in items
-                if item.booking.status != Booking.Status.CANCELLED
-            ]
-            if not bookings or any(
-                booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
-                or BookingAssignment.objects.filter(booking=booking).exists()
-                for booking in bookings
-            ):
-                return []
-            anchor = bookings[0]
-            zone_id = anchor.address.zone_id if anchor.address_id else None
-            if not zone_id or any(
-                booking.address_id != anchor.address_id or booking.address.zone_id != zone_id
-                for booking in bookings
-            ):
-                logger.warning("Order %s has inconsistent service addresses; dispatch skipped", order.pk)
-                return []
 
-            if not cls.order_schedule_is_compatible(bookings):
-                logger.info("Order %s has overlapping service times; dispatch skipped", order.pk)
-                return []
-
-            eligible_ids = None
+            bookings = list(
+                Booking.objects.filter(order_item__order=order)
+                .exclude(status=Booking.Status.CANCELLED)
+                .select_related("service__category", "variant", "address__zone__city")
+                .order_by("created_at")
+            )
+            created = []
             for booking in bookings:
-                duration = (
-                    booking.variant.duration_minutes
-                    if booking.variant_id and booking.variant.duration_minutes
-                    else booking.service.duration_minutes
-                ) or 60
-                quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
-                duration_multiplier = 1 if booking.service.pricing_type == "per_unit" else quantity
-                from apps.workers.eligibility import required_worker_gender_for_booking
-                try:
-                    gender = required_worker_gender_for_booking(booking.service, booking.customer_answers)
-                except ValueError:
-                    logger.exception("Invalid worker preference on booking %s", booking.pk)
-                    return []
-                line_workers = cls._get_eligible_workers(
-                    service=booking.service,
-                    zone=booking.address.zone,
-                    scheduled_at=booking.scheduled_at,
-                    duration_minutes=duration * duration_multiplier,
-                    drop_scheduled_at=booking.drop_scheduled_at if booking.booking_mode == booking.BookingMode.PICKUP_DROP else None,
-                    exclude_booking_id=booking.pk,
-                    exclude_customer_id=booking.customer_id,
-                    required_gender=gender,
-                    required_tasks=(booking.variant.included_tasks if booking.variant_id else []),
-                )
-                line_ids = set(line_workers.values_list("pk", flat=True))
-                eligible_ids = line_ids if eligible_ids is None else eligible_ids.intersection(line_ids)
-                if not eligible_ids:
-                    cls._notify_dispatch_exhausted(anchor, order=order)
-                    return []
-
-            existing = WorkerOffer.objects.filter(order=order)
-            if existing.filter(status__in=[WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED]).exists():
-                return []
-            batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
-            already_offered = set(existing.filter(
-                status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
-            ).values_list("worker_id", flat=True))
-            # AIRway launch policy: offer every eligible worker simultaneously.
-            expiry_minutes = max(int(config.offer_expiry_minutes or 1), 1)
-            workers = list(
-                WorkerProfile.objects.filter(pk__in=eligible_ids)
-                .exclude(pk__in=already_offered)
-                .select_related("user")
-                .order_by(*cls._priority_ordering(config.priority_order))
-            )
-            if not workers:
-                cls._notify_dispatch_exhausted(anchor, order=order)
-                return []
-            return cls._create_offers(
-                booking=anchor, order=order, workers=workers,
-                batch_number=batch_number, expiry_minutes=expiry_minutes,
-                service_titles=[booking.service.title for booking in bookings],
-            )
+                if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+                    continue
+                if BookingAssignment.objects.filter(booking=booking).exists():
+                    continue
+                if WorkerOffer.objects.filter(
+                    booking=booking, order__isnull=True,
+                    status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+                ).exists():
+                    continue
+                created.extend(cls.dispatch_offers(booking, parent_order=order))
+            return created
 
     @staticmethod
     def _notify_dispatch_exhausted(booking, order=None):
