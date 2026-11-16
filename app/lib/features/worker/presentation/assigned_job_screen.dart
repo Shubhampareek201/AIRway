@@ -249,6 +249,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             const SizedBox(height: 16),
             _buildPaymentInfo(job),
             const SizedBox(height: 16),
+            _buildQuoteCard(job),
+            const SizedBox(height: 16),
             _buildActions(job),
           ],
         ),
@@ -437,6 +439,173 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildQuoteCard(WorkerAssignmentDetail job) {
+    final quote = job.quote;
+    if (quote == null && !job.canSubmitQuote) return const SizedBox.shrink();
+    final quoteStatus = quote?['status']?.toString() ?? '';
+    final lineItems = (quote?['line_items'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Inspection estimate', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            if (quote != null) ...[
+              const SizedBox(height: 8),
+              Text('Quote v${quote['version']} • ${quoteStatus.replaceAll('_', ' ')}',
+                  style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+              const SizedBox(height: 8),
+              for (final item in lineItems)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Row(children: [
+                    Expanded(child: Text('${item['description']} (${item['type']})',
+                        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12))),
+                    Text('₹${item['line_total'] ?? '0'}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                  ]),
+                ),
+              const Divider(height: 18),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text('Estimate including tax', style: TextStyle(fontWeight: FontWeight.w800)),
+                Text('₹${quote['total_amount'] ?? '0'}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+              ]),
+              if (quote['notes']?.toString().isNotEmpty == true) ...[
+                const SizedBox(height: 7),
+                Text(quote['notes'].toString(),
+                    style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+              ],
+              if (quoteStatus == 'pending_customer') ...[
+                const SizedBox(height: 8),
+                const Text('Waiting for the customer to approve or request a revision.',
+                    style: TextStyle(color: AirwayColors.primary, fontWeight: FontWeight.w700, fontSize: 12)),
+              ],
+              if (quoteStatus == 'rejected' && quote?['customer_response_note']?.toString().isNotEmpty == true) ...[
+                const SizedBox(height: 8),
+                Text('Customer feedback: ${quote!['customer_response_note']}',
+                    style: const TextStyle(color: Colors.deepOrange, fontSize: 12)),
+              ],
+            ],
+            if (job.canSubmitQuote) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _isActionInProgress ? null : () => _submitInspectionQuote(job),
+                  icon: const Icon(Icons.request_quote_outlined),
+                  label: Text(quoteStatus == 'rejected' ? 'Submit revised estimate' : 'Prepare estimate'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitInspectionQuote(WorkerAssignmentDetail job) async {
+    final labourController = TextEditingController();
+    final materialController = TextEditingController();
+    final otherController = TextEditingController();
+    final labourDescriptionController = TextEditingController(text: 'Labour and repair work');
+    final materialDescriptionController = TextEditingController(text: 'Required materials and spare parts');
+    final otherDescriptionController = TextEditingController(text: 'Additional charges');
+    final notesController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Prepare inspection estimate'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Align(alignment: Alignment.centerLeft, child: Text('Labour')),
+              TextField(controller: labourDescriptionController, decoration: const InputDecoration(labelText: 'Work description')),
+              TextField(controller: labourController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Labour amount (₹)')),
+              const SizedBox(height: 10),
+              const Align(alignment: Alignment.centerLeft, child: Text('Materials')),
+              TextField(controller: materialDescriptionController, decoration: const InputDecoration(labelText: 'Material description')),
+              TextField(controller: materialController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Material amount (₹)')),
+              const SizedBox(height: 10),
+              const Align(alignment: Alignment.centerLeft, child: Text('Other')),
+              TextField(controller: otherDescriptionController, decoration: const InputDecoration(labelText: 'Other work / charge')),
+              TextField(controller: otherController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Other amount (₹)')),
+              const SizedBox(height: 10),
+              TextField(controller: notesController, maxLines: 3, maxLength: 500, decoration: const InputDecoration(labelText: 'Notes for customer')),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, {
+              'labour': labourController.text.trim(),
+              'labour_description': labourDescriptionController.text.trim(),
+              'material': materialController.text.trim(),
+              'material_description': materialDescriptionController.text.trim(),
+              'other': otherController.text.trim(),
+              'other_description': otherDescriptionController.text.trim(),
+              'notes': notesController.text.trim(),
+            }),
+            child: const Text('Review estimate'),
+          ),
+        ],
+      ),
+    );
+    labourController.dispose();
+    materialController.dispose();
+    otherController.dispose();
+    labourDescriptionController.dispose();
+    materialDescriptionController.dispose();
+    otherDescriptionController.dispose();
+    notesController.dispose();
+    if (result == null || !mounted) return;
+
+    final lineItems = <Map<String, dynamic>>[];
+    void addLine(String type, String amountText, String description) {
+      final value = double.tryParse(amountText);
+      if (value != null && value > 0) {
+        lineItems.add({
+          'type': type,
+          'description': description.isEmpty ? type : description,
+          'quantity': '1',
+          'unit_price': value.toStringAsFixed(2),
+        });
+      }
+    }
+    addLine('labour', result['labour'] ?? '', result['labour_description'] ?? '');
+    addLine('material', result['material'] ?? '', result['material_description'] ?? '');
+    addLine('other', result['other'] ?? '', result['other_description'] ?? '');
+    if (lineItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter at least one positive estimate amount.')));
+      return;
+    }
+
+    setState(() => _isActionInProgress = true);
+    try {
+      await WorkerApi.submitInspectionQuote(
+        job.assignmentId,
+        lineItems: lineItems,
+        notes: result['notes'] ?? '',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estimate sent to customer for approval.')));
+      await _loadAssignedJob();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not submit estimate: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
   }
 
   Widget _buildActions(WorkerAssignmentDetail job) {
