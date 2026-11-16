@@ -27,7 +27,7 @@ class Migration(migrations.Migration):
                 ("vehicle_type", models.CharField(max_length=40)),
                 ("vehicle_quantity", models.PositiveSmallIntegerField(default=1)),
                 ("quoted_total", models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ("status", models.CharField(choices=[("awaiting_quote", "Awaiting quote"), ("awaiting_payment", "Awaiting payment"), ("active", "Active"), ("paused", "Paused"), ("cancelled", "Cancelled"), ("completed", "Completed")], db_index=True, default="awaiting_quote", max_length=20)),
+                ("status", models.CharField(choices=[("awaiting_quote", "Awaiting quote"), ("awaiting_payment", "Awaiting payment"), ("paid_pending_setup", "Paid - schedule setup pending"), ("active", "Active"), ("paused", "Paused"), ("cancelled", "Cancelled"), ("completed", "Completed")], db_index=True, default="awaiting_quote", max_length=20)),
                 ("plan_snapshot", models.JSONField(blank=True, default=dict)),
                 ("quote_accepted_at", models.DateTimeField(blank=True, null=True)),
                 ("activated_at", models.DateTimeField(blank=True, null=True)),
