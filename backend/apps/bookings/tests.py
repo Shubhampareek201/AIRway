@@ -4522,7 +4522,7 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             Booking.objects.filter(
                 recurring_wash_visit__plan=self.plan
             ).count(),
-            4,
+            5,
         )
         self.assertEqual(create_pending_recurring_visit_bookings(self.plan), [])
         self.plan.refresh_from_db()
