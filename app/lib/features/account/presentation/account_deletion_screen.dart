@@ -59,7 +59,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
         content: Text(
           '${t('This submits a request for AIRway review. Your account will not be closed immediately. ', 'यह अनुरोध AIRway की समीक्षा के लिए भेजेगा। आपका खाता तुरंत बंद नहीं होगा। ')}'
           '${t('Active bookings, disputes, payments and legally required records must be handled first.', 'पहले सक्रिय बुकिंग, विवाद, भुगतान और कानूनी रूप से आवश्यक रिकॉर्ड का निपटारा होगा।')}',
-        ),,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
