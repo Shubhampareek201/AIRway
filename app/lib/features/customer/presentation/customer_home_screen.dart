@@ -17,6 +17,8 @@ import 'package:airway/features/notification/presentation/notification_bell_butt
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
+import 'package:airway/features/account/presentation/account_security_screen.dart';
+import 'package:airway/features/account/presentation/payment_options_screen.dart';
 import 'package:airway/features/wallet/presentation/wallet_screen.dart';
 import 'package:airway/features/worker/presentation/worker_application_screen.dart';
 import 'package:airway/features/worker/presentation/worker_dashboard_screen.dart';
@@ -1987,11 +1989,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
+                leading: const Icon(Icons.payments_outlined, color: _Ui.violet),
+                title: const Text('Payment options'),
+                subtitle: const Text('Wallet and secure online checkout methods'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PaymentOptionsScreen()),
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
                 leading: const Icon(Icons.notifications_outlined, color: _Ui.violet),
                 title: const Text('Notification preferences'),
                 subtitle: const Text('Control push notifications on this device'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _openNotificationPreferences,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.security_outlined, color: _Ui.violet),
+                title: const Text('Password & security'),
+                subtitle: const Text('Change or set your account password'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
+                ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
