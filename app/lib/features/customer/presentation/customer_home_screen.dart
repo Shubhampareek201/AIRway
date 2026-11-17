@@ -13,7 +13,6 @@ import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
-import 'package:airway/features/notification/presentation/notification_list_screen.dart';
 import 'package:airway/features/notification/presentation/notification_bell_button.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/wallet/presentation/wallet_screen.dart';
@@ -552,12 +551,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Future<void> _startVoiceSearch() async {
     _showMessage('Voice search is not available. Use the text search instead.');
-  }
-
-  void _showNotificationsInfo() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const NotificationListScreen()),
-    );
   }
 
   void _showReferralInfo() {
