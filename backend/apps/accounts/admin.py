@@ -65,10 +65,10 @@ class CustomerVehicleAdmin(ModelAdmin):
 
 @admin.register(AccountDeletionRequest)
 class AccountDeletionRequestAdmin(ModelAdmin):
-    list_display = ("user", "status", "has_active_bookings", "active_booking_count", "created_at", "reviewed_at")
+    list_display = ("user", "status", "has_active_bookings", "has_financial_obligations", "active_booking_count", "created_at", "reviewed_at")
     list_filter = ("status", "has_active_bookings")
     search_fields = ("user__phone", "user__name")
-    readonly_fields = ("user", "created_at", "updated_at", "has_active_bookings", "active_booking_count")
+    readonly_fields = ("user", "created_at", "updated_at", "has_active_bookings", "has_financial_obligations", "active_booking_count")
 
     def save_model(self, request, obj, form, change):
         if obj.status == AccountDeletionRequest.Status.COMPLETED:
@@ -95,11 +95,23 @@ class AccountDeletionRequestAdmin(ModelAdmin):
                         booking__status__in=active_statuses,
                     ).values_list("booking_id", flat=True)
                 )
-            if active_ids:
+            wallet = getattr(obj.user, "wallet", None)
+            has_financial_obligations = bool(
+                wallet and (
+                    wallet.balance > 0
+                    or wallet.pending_balance > 0
+                    or wallet.reservations.filter(status="reserved").exists()
+                )
+            )
+            if active_ids or has_financial_obligations:
                 obj.status = AccountDeletionRequest.Status.UNDER_REVIEW
                 messages.error(
                     request,
-                    "This account cannot be closed while active bookings or disputes remain.",
+                    (
+                        "Resolve active bookings or disputes before closing this account."
+                        if active_ids
+                        else "Settle the wallet balance and reservations before closing this account."
+                    ),
                 )
                 super().save_model(request, obj, form, change)
                 return
