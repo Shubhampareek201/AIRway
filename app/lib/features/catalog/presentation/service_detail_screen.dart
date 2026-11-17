@@ -8,6 +8,7 @@ import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
+import 'package:airway/features/favorites/data/favorite_api.dart';
 
 
 
@@ -57,6 +58,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   String? _error;
   final TextEditingController _electricalNotesController = TextEditingController();
   bool _electricalPopupStarted = false;
+  int? _favoriteId;
+  bool _favoriteSaving = false;
 
   @override
   void initState() {
@@ -64,6 +67,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     if (widget.initialService != null) {
       _service = widget.initialService;
       _loading = false;
+      _loadFavoriteState(widget.serviceId);
       if (widget.openElectricalAddOnLoad) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_electricalPopupStarted) {
@@ -96,6 +100,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         categoryAnswers: widget.initialAnswers,
       );
       if (mounted) setState(() => _service = service);
+      await _loadFavoriteState(service.id);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -108,6 +113,48 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
+
+  Future<void> _loadFavoriteState(int serviceId) async {
+    try {
+      final favoriteId = await FavoriteApi.favoriteIdForService(serviceId);
+      if (mounted) setState(() => _favoriteId = favoriteId);
+    } catch (_) {
+      // Catalogue browsing must remain available if favorites are temporarily offline.
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final service = _service;
+    if (service == null || _favoriteSaving) return;
+    setState(() => _favoriteSaving = true);
+    try {
+      if (_favoriteId != null) {
+        await FavoriteApi.removeFavorite(_favoriteId!);
+        if (mounted) {
+          setState(() => _favoriteId = null);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Removed from favorites.')),
+          );
+        }
+      } else {
+        final favorite = await FavoriteApi.addFavorite(service.id);
+        if (mounted) {
+          setState(() => _favoriteId = int.tryParse('${favorite['id']}'));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Added to favorites.')),
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update favorites: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _favoriteSaving = false);
+    }
+  }
 
   Future<void> _addElectricalService(Service service) async {
     final variants = _matchingVariants(service);
@@ -610,6 +657,16 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         title: Text(_service?.title ?? 'Service'),
         backgroundColor: _Ui.bg,
         actions: [
+          IconButton(
+            tooltip: _favoriteId == null ? 'Add to favorites' : 'Remove from favorites',
+            onPressed: _favoriteSaving || _service == null ? null : _toggleFavorite,
+            icon: _favoriteSaving
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(
+                    _favoriteId == null ? Icons.favorite_border_rounded : Icons.favorite_rounded,
+                    color: _favoriteId == null ? null : Colors.redAccent,
+                  ),
+          ),
           CustomerCartBadge(
             color: _Ui.violet,
             onTap: () => Navigator.push(
