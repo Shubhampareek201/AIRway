@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:airway/features/account/data/account_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class AccountDeletionScreen extends StatefulWidget {
   const AccountDeletionScreen({super.key});
@@ -53,19 +54,19 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Request account deletion?'),
-        content: const Text(
-          'This submits a request for AIRway review. Your account will not be closed immediately. '
-          'Active bookings, disputes, payments and legally required records must be handled first.',
+        title: Text(t('Request account deletion?', 'खाता बंद करने का अनुरोध?')),
+        content: Text(
+          t('This submits a request for AIRway review. Your account will not be closed immediately. ', 'यह अनुरोध AIRway की समीक्षा के लिए भेजेगा। आपका खाता तुरंत बंद नहीं होगा। ')
+          t('Active bookings, disputes, payments and legally required records must be handled first.', 'पहले सक्रिय बुकिंग, विवाद, भुगतान और कानूनी रूप से आवश्यक रिकॉर्ड का निपटारा होगा।'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Keep account'),
+            child: Text(t('Keep account', 'खाता जारी रखें')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Submit request'),
+            child: Text(t('Submit request', 'अनुरोध भेजें')),
           ),
         ],
       ),
@@ -88,7 +89,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
           });
       _reasonController.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['detail']?.toString() ?? 'Request submitted.')),
+        SnackBar(content: Text(result['detail']?.toString() ?? t('Request submitted.', 'अनुरोध भेज दिया गया।'))),
       );
     } catch (error) {
       if (!mounted) return;
@@ -103,26 +104,27 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
   String _statusLabel(String? status) {
     switch (status) {
       case 'requested':
-        return 'Request submitted';
+        return t('Request submitted', 'अनुरोध भेज दिया गया');
       case 'under_review':
-        return 'Under review';
+        return t('Under review', 'समीक्षा जारी है');
       case 'rejected':
-        return 'Request not approved';
+        return t('Request not approved', 'अनुरोध स्वीकृत नहीं हुआ');
       case 'completed':
-        return 'Account closed';
+        return t('Account closed', 'खाता बंद हो गया');
       case 'cancelled':
         return 'Request cancelled';
       default:
-        return 'Status unavailable';
+        return t('Status unavailable', 'स्थिति उपलब्ध नहीं है');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AirwayText.tr;
     final request = _request;
     final status = request?['status']?.toString();
     return Scaffold(
-      appBar: AppBar(title: const Text('Delete account')),
+      appBar: AppBar(title: Text(t('Delete account', 'खाता बंद करें'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -134,7 +136,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                       children: [
                         Text(_error!, textAlign: TextAlign.center),
                         const SizedBox(height: 12),
-                        FilledButton(onPressed: _load, child: const Text('Retry')),
+                        FilledButton(onPressed: _load, child: Text(t('Retry', 'फिर कोशिश करें'))),
                       ],
                     ),
                   ),
@@ -144,17 +146,17 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                   children: [
                     const Icon(Icons.person_off_outlined, size: 48),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Your account and personal information',
+                    Text(
+                      t('Your account and personal information', 'आपका खाता और व्यक्तिगत जानकारी'),
                       style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'You can request closure of your AIRway account. AIRway will review active bookings, worker assignments, disputes, wallet balances and payment obligations before closure.',
+                    Text(
+                      t('You can request closure of your AIRway account. AIRway will review active bookings, worker assignments, disputes, wallet balances and payment obligations before closure.', 'आप अपना AIRway खाता बंद करने का अनुरोध कर सकते हैं। बंद करने से पहले AIRway सक्रिय बुकिंग, वर्कर असाइनमेंट, विवाद, वॉलेट बैलेंस और भुगतान दायित्वों की समीक्षा करेगा।'),
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      'Booking, payment, refund, tax and other legally required records may be retained where required. The account is not physically deleted from historical transactions.',
+                      t('Booking, payment, refund, tax and other legally required records may be retained where required. The account is not physically deleted from historical transactions.', 'जहाँ आवश्यक हो, बुकिंग, भुगतान, रिफंड, टैक्स और अन्य कानूनी रिकॉर्ड सुरक्षित रखे जा सकते हैं। पुराने लेन-देन से खाता रिकॉर्ड भौतिक रूप से नहीं हटाया जाता।'),
                     ),
                     const SizedBox(height: 20),
                     if (request != null) ...[
@@ -168,13 +170,13 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                               const SizedBox(height: 8),
                               Text(request['detail']?.toString() ??
                                   (request['has_active_bookings'] == true
-                                      ? 'There are ${request['active_booking_count'] ?? 0} active bookings or disputes to resolve first.'
+                                      ? t('There are ${request['active_booking_count'] ?? 0} active bookings or disputes to resolve first.', 'पहले ${request['active_booking_count'] ?? 0} सक्रिय बुकिंग या विवादों का निपटारा करना होगा।')
                                       : request['has_financial_obligations'] == true
-                                          ? 'Outstanding wallet funds or reservations must be settled before closure.'
-                                          : 'Your request is waiting for admin review.')),
+                                          ? t('Outstanding wallet funds or reservations must be settled before closure.', 'खाता बंद करने से पहले वॉलेट राशि या आरक्षित राशि का निपटारा करना होगा।')
+                                          : t('Your request is waiting for admin review.', 'आपका अनुरोध एडमिन की समीक्षा की प्रतीक्षा में है।'))),
                               if (request['admin_notes']?.toString().isNotEmpty == true) ...[
                                 const SizedBox(height: 8),
-                                Text('AIRway review: ${request['admin_notes']}'),
+                                Text(t('AIRway review: ${request['admin_notes']}', 'AIRway की समीक्षा: ${request['admin_notes']}')),
                               ],
                             ],
                           ),
@@ -184,7 +186,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                       OutlinedButton.icon(
                         onPressed: _load,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh status'),
+                        label: Text(t('Refresh status', 'स्थिति रीफ़्रेश करें')),
                       ),
                     ] else ...[
                       TextField(
@@ -192,8 +194,8 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                         maxLines: 4,
                         maxLength: 1000,
                         decoration: const InputDecoration(
-                          labelText: 'Reason (optional)',
-                          hintText: 'Tell us why you want to close your account.',
+                          labelText: t('Reason (optional)', 'कारण (वैकल्पिक)'),
+                          hintText: t('Tell us why you want to close your account.', 'बताएँ कि आप अपना खाता क्यों बंद करना चाहते हैं।'),
                           border: OutlineInputBorder(),
                         ),
                       ),
@@ -204,7 +206,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                           onPressed: _submitting ? null : _submit,
                           child: _submitting
                               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Text('Submit deletion request'),
+                              : Text(t('Submit deletion request', 'खाता बंद करने का अनुरोध भेजें')),
                         ),
                       ),
                     ],
