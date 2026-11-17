@@ -1,4 +1,5 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.utils import timezone
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
@@ -68,3 +69,61 @@ class AccountDeletionRequestAdmin(ModelAdmin):
     list_filter = ("status", "has_active_bookings")
     search_fields = ("user__phone", "user__name")
     readonly_fields = ("user", "created_at", "updated_at", "has_active_bookings", "active_booking_count")
+
+    def save_model(self, request, obj, form, change):
+        if obj.status == AccountDeletionRequest.Status.COMPLETED:
+            from apps.bookings.models import Booking, BookingAssignment
+            active_statuses = (
+                Booking.Status.PENDING,
+                Booking.Status.CONFIRMED,
+                Booking.Status.ASSIGNED,
+                Booking.Status.IN_PROGRESS,
+                Booking.Status.DISPUTED,
+            )
+            active_ids = set(
+                obj.user.bookings.filter(status__in=active_statuses)
+                .values_list("id", flat=True)
+            )
+            try:
+                worker_profile = obj.user.worker_profile
+            except Exception:
+                worker_profile = None
+            if worker_profile is not None:
+                active_ids.update(
+                    BookingAssignment.objects.filter(
+                        worker=worker_profile,
+                        booking__status__in=active_statuses,
+                    ).values_list("booking_id", flat=True)
+                )
+            if active_ids:
+                obj.status = AccountDeletionRequest.Status.UNDER_REVIEW
+                messages.error(
+                    request,
+                    "This account cannot be closed while active bookings or disputes remain.",
+                )
+                super().save_model(request, obj, form, change)
+                return
+
+            user = obj.user
+            old_photo = user.photo
+            user.is_active = False
+            user.set_unusable_password()
+            user.phone = None
+            user.name = ""
+            user.email = ""
+            user.gender = ""
+            user.photo = ""
+            user.devices.all().delete()
+            user.save(update_fields=[
+                "is_active", "password", "phone", "name", "email", "gender",
+                "photo", "updated_at",
+            ])
+            if old_photo:
+                old_photo.delete(save=False)
+            obj.reviewed_at = timezone.now()
+        elif obj.status in (
+            AccountDeletionRequest.Status.REJECTED,
+            AccountDeletionRequest.Status.CANCELLED,
+        ):
+            obj.reviewed_at = timezone.now()
+        super().save_model(request, obj, form, change)
