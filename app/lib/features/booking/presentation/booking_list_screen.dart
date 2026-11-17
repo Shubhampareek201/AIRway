@@ -71,8 +71,21 @@ class _BookingListScreenState extends State<BookingListScreen> {
       .where((b) => b.orderId == null && _matchesFilter(b.status)).toList()
     ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
 
+  bool _orderIsHistory(Map<String, dynamic> order) {
+    final items = (order['items'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => item['status']?.toString().toLowerCase() ?? '')
+        .toList();
+    if (items.isNotEmpty) {
+      return items.every((status) => _isHistoryStatus(status));
+    }
+    return _isHistoryStatus(order['status']?.toString() ?? '');
+  }
+
   List<Map<String, dynamic>> get filteredOrders => orders
-      .where((o) => _matchesFilter(o['status']?.toString() ?? '')).toList()
+      .where((order) => selectedFilter == 'all' ||
+          (selectedFilter == 'history' ? _orderIsHistory(order) : !_orderIsHistory(order)))
+      .toList()
     ..sort((a, b) => _orderDate(b).compareTo(_orderDate(a)));
 
   DateTime _orderDate(Map<String, dynamic> order) =>
