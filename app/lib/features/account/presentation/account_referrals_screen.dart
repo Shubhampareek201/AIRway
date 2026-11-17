@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:airway/features/account/data/account_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
-class AccountReferralsScreen extends StatefulWidget {
-  const AccountReferralsScreen({super.key});
+class  extends StatefulWidget {
+  const ({super.key});
 
   @override
-  State<AccountReferralsScreen> createState() => _AccountReferralsScreenState();
+  State<> createState() => _();
 }
 
-class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
+class _ extends State<> {
   final _codeController = TextEditingController();
   Map<String, dynamic>? _data;
   bool _loading = true;
@@ -61,7 +62,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Referral code applied. Your ₹100 reward is pending until your first service is completed.'),
+            content: Text(AirwayText.tr('Referral code applied. Your ₹100 reward is pending until your first service is completed.', 'रेफ़रल कोड लागू हो गया। आपकी ₹100 राशि पहली सेवा पूरी होने तक लंबित है।')),
           ),
         );
       }
@@ -80,8 +81,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
     if (code == null || code.isEmpty) return;
     await SharePlus.instance.share(
       ShareParams(
-        text: 'Join me on AIRway! Use my referral code $code when you create your account. '
-            'After your first AIRway service is completed, you get ₹100 in your wallet and I get ₹200. '
+        text: AirwayText.tr('Join me on AIRway! Use my referral code $code when you create your account. ', 'AIRway से जुड़ें! खाता बनाते समय मेरा रेफ़रल कोड $code इस्तेमाल करें। ')
+            AirwayText.tr('After your first AIRway service is completed, you get ₹100 in your wallet and I get ₹200. ', 'आपकी पहली AIRway सेवा पूरी होने पर आपको वॉलेट में ₹100 और मुझे ₹200 मिलेंगे। ')
             'Referral code: $code',
         subject: 'Join AIRway with my referral code',
       ),
@@ -90,6 +91,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AirwayText.tr;
     final data = _data ?? const <String, dynamic>{};
     final code = data['referral_code']?.toString() ?? '';
     final referrals = data['referrals'] is List
@@ -104,7 +106,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
         : null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Share & earn')),
+      appBar: AppBar(title: const Text(t('Share & earn', 'शेयर करें और कमाएँ'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -119,7 +121,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                         FilledButton.icon(
                           onPressed: _load,
                           icon: const Icon(Icons.refresh),
-                          label: const Text('Try again'),
+                          label: const Text(t('Try again', 'फिर कोशिश करें')),
                         ),
                       ],
                     ),
@@ -140,11 +142,11 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Invite friends to AIRway',
+                              t('Invite friends to AIRway', 'दोस्तों को AIRway पर आमंत्रित करें'),
                               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 8),
-                            const Text('Your friend gets ₹100 and you get ₹200 after their first service is successfully completed.'),
+                            const Text(t('Your friend gets ₹100 and you get ₹200 after their first service is successfully completed.', 'आपके दोस्त की पहली सेवा सफलतापूर्वक पूरी होने पर उन्हें ₹100 और आपको ₹200 मिलेंगे।')),
                             const SizedBox(height: 18),
                             Row(
                               children: [
@@ -155,14 +157,14 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                                   ),
                                 ),
                                 IconButton(
-                                  tooltip: 'Copy referral code',
+                                  tooltip: t('Copy referral code', 'रेफ़रल कोड कॉपी करें'),
                                   onPressed: code.isEmpty
                                       ? null
                                       : () async {
                                           await Clipboard.setData(ClipboardData(text: code));
                                           if (mounted) {
                                             ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Referral code copied.')),
+                                              const SnackBar(content: Text(t('Referral code copied.', 'रेफ़रल कोड कॉपी हो गया।'))),
                                             );
                                           }
                                         },
@@ -175,29 +177,29 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                               child: FilledButton.icon(
                                 onPressed: code.isEmpty ? null : _shareCode,
                                 icon: const Icon(Icons.share_outlined),
-                                label: const Text('Share referral code'),
+                                label: const Text(t('Share referral code', 'रेफ़रल कोड शेयर करें')),
                               ),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 24),
-                      Text('How it works', style: Theme.of(context).textTheme.titleMedium),
+                      Text(t('How it works', 'यह कैसे काम करता है'), style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 10),
-                      const _StepLine(number: '1', text: 'Share your unique referral code with a new customer.'),
-                      const _StepLine(number: '2', text: 'They install AIRway, create an account and apply your code.'),
-                      const _StepLine(number: '3', text: 'After their first service is completed and verified, ₹200 and ₹100 are credited to your respective wallets.'),
+                      const _StepLine(number: '1', text: t('Share your unique referral code with a new customer.', 'अपना यूनिक रेफ़रल कोड नए ग्राहक के साथ शेयर करें।')),
+                      const _StepLine(number: '2', text: t('They install AIRway, create an account and apply your code.', 'वे AIRway इंस्टॉल करके खाता बनाएँ और आपका कोड लागू करें।')),
+                      const _StepLine(number: '3', text: t('After their first service is completed and verified, ₹200 and ₹100 are credited to your respective wallets.', 'उनकी पहली सेवा पूरी और सत्यापित होने पर आपके और उनके वॉलेट में क्रमशः ₹200 और ₹100 जमा होंगे।')),
                       const SizedBox(height: 24),
-                      Text('Have a referral code?', style: Theme.of(context).textTheme.titleMedium),
+                      Text(t('Have a referral code?', 'क्या आपके पास रेफ़रल कोड है?'), style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
                       if (applied != null)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.check_circle_outline),
-                          title: Text('Code applied: ${applied['code'] ?? 'Referral'}'),
+                          title: Text(t('Code applied: ${applied['code'] ?? 'Referral'}', 'लागू कोड: ${applied['code'] ?? 'रेफ़रल'}')),
                           subtitle: Text(applied['rewarded'] == true
-                              ? 'Your ₹100 welcome reward has been credited.'
-                              : 'Your ₹100 welcome reward is pending your first completed service.'),
+                              ? t('Your ₹100 welcome reward has been credited.', 'आपका ₹100 स्वागत पुरस्कार वॉलेट में जमा हो गया है।')
+                              : t('Your ₹100 welcome reward is pending your first completed service.', 'आपका ₹100 स्वागत पुरस्कार पहली सेवा पूरी होने तक लंबित है।')),
                         )
                       else
                         Column(
@@ -207,7 +209,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                               textCapitalization: TextCapitalization.characters,
                               inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
                               decoration: const InputDecoration(
-                                labelText: 'Enter referral code',
+                                labelText: t('Enter referral code', 'रेफ़रल कोड दर्ज करें'),
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -218,27 +220,27 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                                 onPressed: _applying ? null : _applyCode,
                                 child: _applying
                                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : const Text('Apply code'),
+                                    : const Text(t('Apply code', 'कोड लागू करें')),
                               ),
                             ),
                           ],
                         ),
                       const SizedBox(height: 24),
                       Text(
-                        'Your invitations',
+                        t('Your invitations', 'आपके आमंत्रण'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
                       if (referrals.isEmpty)
-                        const Text('No invitations yet. Share your code to get started.')
+                        const Text(t('No invitations yet. Share your code to get started.', 'अभी कोई आमंत्रण नहीं। शुरुआत करने के लिए अपना कोड शेयर करें।'))
                       else
                         ...referrals.map((row) => ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                               title: Text(row['name']?.toString() ?? 'AIRway customer'),
                               subtitle: Text(row['status'] == 'rewarded'
-                                  ? 'Reward credited'
-                                  : 'Waiting for first completed service'),
+                                  ? t('Reward credited', 'पुरस्कार जमा हो गया')
+                                  : t('Waiting for first completed service', 'पहली सेवा पूरी होने की प्रतीक्षा')),
                               trailing: row['status'] == 'rewarded'
                                   ? const Icon(Icons.check_circle, color: Colors.green)
                                   : const Icon(Icons.schedule),
