@@ -1106,10 +1106,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(AirwayText.tr('ID Document Already Uploaded', 'पहचान दस्तावेज़ पहले से अपलोड है')),
-        content: const Text(
-          'Your ID document has already been submitted and is pending review. '
-          'You can replace it with a new document if needed. Your existing document will be updated.',
-        ),
+        content: Text(AirwayText.tr(
+          'Your ID document has already been submitted and is pending review. You can replace it with a new document if needed. Your existing document will be updated.',
+          'आपका पहचान दस्तावेज़ पहले ही जमा हो चुका है और समीक्षा में है। ज़रूरत पड़ने पर आप नया दस्तावेज़ अपलोड कर सकते हैं। मौजूदा दस्तावेज़ अपडेट हो जाएगा।',
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
