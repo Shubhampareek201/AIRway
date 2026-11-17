@@ -67,6 +67,46 @@ class CustomerReferralAPITests(APITestCase):
         self.assertIn("first service", response.data["reward_condition"].lower())
 
 
+    def test_applied_referral_is_returned_to_referred_customer(self):
+        Referral.objects.create(referrer=self.referrer, referred=self.referred)
+        response = self.client.get("/api/v1/auth/referrals/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["applied_referral"]["code"],
+            self.referrer.referral_code,
+        )
+        self.assertFalse(response.data["applied_referral"]["rewarded"])
+
+    def test_referral_cannot_be_applied_after_account_is_old_or_booking_exists(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.accounts.referrals import apply_referral_code
+
+        self.referred.created_at = timezone.now() - timedelta(days=2)
+        self.referred.save(update_fields=["created_at"])
+        with self.assertRaises(ValueError):
+            apply_referral_code(self.referred, self.referrer.referral_code)
+
+    def test_pending_booking_does_not_earn_referral_rewards(self):
+        from types import SimpleNamespace
+        from apps.accounts.referrals import reward_referral_for_first_completed_booking
+
+        referral = Referral.objects.create(
+            referrer=self.referrer,
+            referred=self.referred,
+        )
+        pending_booking = SimpleNamespace(
+            status="in_progress",
+            customer=self.referred,
+            pk=987655,
+        )
+        self.assertFalse(reward_referral_for_first_completed_booking(pending_booking))
+        referral.refresh_from_db()
+        self.assertFalse(referral.rewarded)
+        self.assertFalse(WalletTransaction.objects.exists())
+
+
     def test_first_completed_service_credits_both_wallets_once(self):
         from types import SimpleNamespace
         from apps.accounts.referrals import reward_referral_for_first_completed_booking
