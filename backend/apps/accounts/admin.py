@@ -111,6 +111,9 @@ class AccountDeletionRequestAdmin(ModelAdmin):
                 payment__customer=obj.user,
                 status__in=(PaymentRefund.Status.PROCESSING, PaymentRefund.Status.PENDING),
             ).exists()
+            obj.has_active_bookings = bool(active_ids)
+            obj.active_booking_count = len(active_ids)
+            obj.has_financial_obligations = has_financial_obligations
             if active_ids or has_financial_obligations:
                 obj.status = AccountDeletionRequest.Status.UNDER_REVIEW
                 messages.error(
