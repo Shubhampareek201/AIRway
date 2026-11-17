@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:airway/core/localization/airway_text.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -79,12 +80,12 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Take a photo'),
+              title: Text(AirwayText.tr('Take a photo', 'फ़ोटो लें')),
               onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from gallery'),
+              title: Text(AirwayText.tr('Choose from gallery', 'गैलरी से चुनें')),
               onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
           ],
@@ -102,12 +103,12 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       if (picked == null || !mounted) return;
       final file = File(picked.path);
       if (await file.length() > 5 * 1024 * 1024) {
-        _message('Choose an image smaller than 5 MB.');
+        _message(AirwayText.tr('Choose an image smaller than 5 MB.', '5 MB से छोटी इमेज चुनें।'));
         return;
       }
       setState(() => _photo = file);
     } catch (_) {
-      _message('Could not open the photo gallery. Please try again.');
+      _message(AirwayText.tr('Could not open the photo gallery. Please try again.', 'फ़ोटो गैलरी नहीं खुल सकी। फिर से कोशिश करें।'));
     }
   }
 
@@ -173,7 +174,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   Widget build(BuildContext context) {
     final phone = _profile?['phone']?.toString() ?? 'Not available';
     return Scaffold(
-      appBar: AppBar(title: const Text('Personal information')),
+      appBar: AppBar(title: Text(AirwayText.tr('Personal information', 'व्यक्तिगत जानकारी'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -190,7 +191,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                         FilledButton.icon(
                           onPressed: _load,
                           icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Retry'),
+                          label: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
                         ),
                       ],
                     ),
@@ -210,7 +211,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                               TextButton.icon(
                                 onPressed: _saving ? null : _choosePhoto,
                                 icon: const Icon(Icons.camera_alt_outlined),
-                                label: const Text('Change profile photo'),
+                                label: Text(AirwayText.tr('Change profile photo', 'प्रोफ़ाइल फ़ोटो बदलें')),
                               )
                             else
                               const Text(
@@ -219,7 +220,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                                 style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
                               ),
                             if (_photo != null)
-                              const Text('New photo selected', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                              Text(AirwayText.tr('New photo selected', 'नई फ़ोटो चुनी गई'), style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
                           ],
                         ),
                       ),
@@ -229,7 +230,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: 'Full name',
+                          labelText: AirwayText.tr('Full name', 'पूरा नाम'),
                           prefixIcon: Icon(Icons.person_outline_rounded),
                         ),
                         validator: (value) => value == null || value.trim().isEmpty
@@ -244,7 +245,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                         keyboardType: TextInputType.emailAddress,
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: 'Email address (optional)',
+                          labelText: AirwayText.tr('Email address (optional)', 'ईमेल पता (वैकल्पिक)'),
                           prefixIcon: Icon(Icons.email_outlined),
                         ),
                         validator: (value) {
@@ -259,7 +260,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       DropdownButtonFormField<String>(
                         initialValue: _gender,
                         decoration: const InputDecoration(
-                          labelText: 'Gender (optional)',
+                          labelText: AirwayText.tr('Gender (optional)', 'लिंग (वैकल्पिक)'),
                           prefixIcon: Icon(Icons.person_pin_outlined),
                         ),
                         items: _genders.entries
@@ -273,7 +274,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       const SizedBox(height: 14),
                       InputDecorator(
                         decoration: const InputDecoration(
-                          labelText: 'Registered phone number',
+                          labelText: AirwayText.tr('Registered phone number', 'रजिस्टर्ड फ़ोन नंबर'),
                           prefixIcon: Icon(Icons.phone_android_rounded),
                           helperText: 'Phone changes require OTP re-verification.',
                         ),
