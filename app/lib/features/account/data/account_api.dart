@@ -47,9 +47,10 @@ class AccountApi {
 
       final boundary = 'AIRwayProfile${DateTime.now().microsecondsSinceEpoch}';
       final bytes = await photo.readAsBytes();
-      final filename = photo.uri.pathSegments.isEmpty
+      final rawFilename = photo.uri.pathSegments.isEmpty
           ? 'profile-photo.jpg'
-          : photo.uri.pathSegments.last.replaceAll('"', '');
+          : photo.uri.pathSegments.last;
+      final filename = rawFilename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
       final extension = filename.toLowerCase().split('.').last;
       final mime = extension == 'png'
           ? 'image/png'
