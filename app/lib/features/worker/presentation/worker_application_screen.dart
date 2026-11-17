@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_app_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
@@ -187,7 +188,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Failed to load services/zones: $e');
+      setState(() => _error = AirwayText.tr('Failed to load services/zones: $e', 'सेवाएँ / क्षेत्र लोड नहीं हो सके: $e'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -211,7 +212,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pick photo: $e')),
+        SnackBar(content: Text(AirwayText.tr('Failed to pick photo: $e', 'फ़ोटो नहीं चुनी जा सकी: $e'))),
       );
     }
   }
@@ -231,7 +232,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pick document: $e')),
+        SnackBar(content: Text(AirwayText.tr('Failed to pick document: $e', 'दस्तावेज़ नहीं चुना जा सका: $e'))),
       );
     }
   }
@@ -388,40 +389,40 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     if (!mounted) return;
     if (_profilePhoto == null && !_hasExistingPhoto) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile photo is required. Please take a photo first.')),
+        SnackBar(content: Text(AirwayText.tr('Profile photo is required. Please take a photo first.', 'प्रोफ़ाइल फ़ोटो ज़रूरी है। पहले फ़ोटो लें।'))),
       );
       return;
     }
     if (_nameController.text.trim().isEmpty || _addressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your full name and residential address.')),
+        SnackBar(content: Text(AirwayText.tr('Please enter your full name and residential address.', 'अपना पूरा नाम और आवासीय पता दर्ज करें।'))),
       );
       return;
     }
     if (_weeklySchedule.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one working day and its hours.')),
+        SnackBar(content: Text(AirwayText.tr('Please select at least one working day and its hours.', 'कम से कम एक कार्य दिवस और उसके घंटे चुनें।'))),
       );
       return;
     }
 
     if (_selectedServiceIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one service.')),
+        SnackBar(content: Text(AirwayText.tr('Please select at least one service.', 'कम से कम एक सेवा चुनें।'))),
       );
       return;
     }
 
     if (_selectedZoneIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one service zone.')),
+        SnackBar(content: Text(AirwayText.tr('Please select at least one service zone.', 'कम से कम एक सेवा क्षेत्र चुनें।'))),
       );
       return;
     }
 
     if (_idDocument == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload an ID document.')),
+        SnackBar(content: Text(AirwayText.tr('Please upload an ID document.', 'कृपया पहचान दस्तावेज़ अपलोड करें।'))),
       );
       return;
     }
@@ -462,17 +463,17 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       if (errorStr.toLowerCase().contains('already exists')) {
         // Profile exists - check if ID document was uploaded
         if (_idDocumentUploaded) {
-          setState(() => _error = 'Your worker application is already complete. You can switch to Worker mode from settings.');
+          setState(() => _error = AirwayText.tr('Your worker application is already complete. You can switch to Worker mode from settings.', 'आपका वर्कर आवेदन पहले से पूरा है। सेटिंग्स से वर्कर मोड पर जा सकते हैं।'));
         } else {
           setState(() {
-            _error = 'A worker profile already exists. Uploading ID document to complete your application...';
+            _error = AirwayText.tr('A worker profile already exists. Uploading ID document to complete your application...', 'वर्कर प्रोफ़ाइल पहले से मौजूद है। आवेदन पूरा करने के लिए पहचान दस्तावेज़ अपलोड हो रहा है...');
             _currentStep = WorkerApplicationStep.idDocument;
           });
           // Profile exists, just need to upload ID document
           await _uploadIdDocumentAndComplete(isRetry: true);
         }
       } else if (errorStr.contains('Document upload') || errorStr.contains('Invalid document')) {
-        setState(() => _error = 'ID document upload failed. Please verify your file and try again.');
+        setState(() => _error = AirwayText.tr('ID document upload failed. Please verify your file and try again.', 'पहचान दस्तावेज़ अपलोड नहीं हुआ। फ़ाइल जाँचकर फिर कोशिश करें।'));
         if (!mounted) return;
         setState(() => _currentStep = WorkerApplicationStep.idDocument);
       } else {
@@ -500,7 +501,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Application submitted! Your profile is under review. Please allow 24-48 hours for admin verification.'),
+          content: Text(AirwayText.tr('Application submitted! Your profile is under review. Please allow 24-48 hours for admin verification.', 'आवेदन भेज दिया गया है! आपकी प्रोफ़ाइल समीक्षा में है। एडमिन वेरिफ़िकेशन के लिए 24-48 घंटे दें।')),
           backgroundColor: Colors.green,
         ),
       );
@@ -510,7 +511,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       final errorStr = e.toString();
 
       if (errorStr.contains('Document upload failed') || errorStr.contains('Invalid document') || errorStr.contains('doc_type') || errorStr.contains('file')) {
-        setState(() => _error = 'ID document upload failed. Please verify your file and try again.');
+        setState(() => _error = AirwayText.tr('ID document upload failed. Please verify your file and try again.', 'पहचान दस्तावेज़ अपलोड नहीं हुआ। फ़ाइल जाँचकर फिर कोशिश करें।'));
         if (!mounted) return;
         setState(() {
           _idDocumentUploaded = false;
@@ -625,11 +626,11 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: 'Go back',
+          tooltip: AirwayText.tr('Go back', 'वापस जाएँ'),
           icon: const Icon(Icons.arrow_back),
           onPressed: _goBack,
         ),
-        title: const Text('Become a Worker'),
+        title: Text(AirwayText.tr('Become a Worker', 'वर्कर बनें')),
         backgroundColor: AirwayColors.primary,
       ),
       body: _loading
@@ -650,7 +651,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
               const SizedBox(height: 16),
               Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: _loadServicesAndZones, child: const Text('Retry loading services and areas')),
+              OutlinedButton(onPressed: _loadServicesAndZones, child: Text(AirwayText.tr('Retry loading services and areas', 'सेवाएँ और क्षेत्र फिर से लोड करें'))),
             ],
           ),
         ),
@@ -753,7 +754,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                       ? Icon(Icons.check_circle, size: 32, color: Colors.green[700])
                       : const Icon(Icons.person, size: 32, color: AirwayColors.primary),
             ),
-            title: const Text('Profile Photo *', style: TextStyle(fontWeight: FontWeight.w800)),
+            title: Text(AirwayText.tr('Profile Photo *', 'प्रोफ़ाइल फ़ोटो *'), style: TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text(
               _fieldErrors['photo'] ??
                   (isTakingNewPhoto ? 'Photo ready for verification' : 'Required for worker verification'),
@@ -766,14 +767,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Text('Personal & Professional Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
+        Text(AirwayText.tr('Personal & Professional Details', 'व्यक्तिगत और पेशेवर जानकारी'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AirwayColors.text)),
         const SizedBox(height: 10),
         TextField(
           key: _nameKey,
           controller: _nameController,
           onChanged: (_) => _clearValidationError('name'),
           decoration: InputDecoration(
-            labelText: 'Full legal name *',
+            labelText: AirwayText.tr('Full legal name *', 'पूरा कानूनी नाम *'),
             border: const OutlineInputBorder(),
             errorText: _fieldErrors['name'],
           ),
@@ -785,7 +786,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           keyboardType: TextInputType.emailAddress,
           onChanged: (_) => _clearValidationError('email'),
           decoration: InputDecoration(
-            labelText: 'Email address *',
+            labelText: AirwayText.tr('Email address *', 'ईमेल पता *'),
             border: const OutlineInputBorder(),
             errorText: _fieldErrors['email'],
           ),
@@ -795,14 +796,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           key: _genderKey,
           initialValue: _selectedGender,
           decoration: InputDecoration(
-            labelText: 'Gender * (used for service matching)',
+            labelText: AirwayText.tr('Gender * (used for service matching)', 'लिंग * (सेवा मिलान के लिए)'),
             border: const OutlineInputBorder(),
             errorText: _fieldErrors['gender'],
           ),
           items: const [
-            DropdownMenuItem(value: 'male', child: Text('Male')),
-            DropdownMenuItem(value: 'female', child: Text('Female')),
-            DropdownMenuItem(value: 'other', child: Text('Other')),
+            DropdownMenuItem(value: 'male', child: Text(AirwayText.tr('Male', 'पुरुष'))),
+            DropdownMenuItem(value: 'female', child: Text(AirwayText.tr('Female', 'महिला'))),
+            DropdownMenuItem(value: 'other', child: Text(AirwayText.tr('Other', 'अन्य'))),
           ],
           onChanged: (value) {
             if (value != null) {
@@ -820,8 +821,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           maxLines: 2,
           onChanged: (_) => _clearValidationError('address'),
           decoration: InputDecoration(
-            labelText: 'Residential address *',
-            hintText: 'Use GPS or type your complete address',
+            labelText: AirwayText.tr('Residential address *', 'आवासीय पता *'),
+            hintText: AirwayText.tr('Use GPS or type your complete address', 'GPS इस्तेमाल करें या पूरा पता लिखें'),
             border: const OutlineInputBorder(),
             errorText: _fieldErrors['address'],
           ),
@@ -830,28 +831,28 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
           onPressed: _loading ? null : _fetchCurrentLocation,
           icon: const Icon(Icons.my_location),
-          label: const Text('Use my current location'),
+          label: Text(AirwayText.tr('Use my current location', 'मेरी वर्तमान लोकेशन इस्तेमाल करें')),
         )),
         if (_latitude != null && _longitude != null)
-          const Padding(padding: EdgeInsets.only(top: 4), child: Text('GPS location attached. Service area selected automatically.', style: TextStyle(color: Colors.green, fontSize: 12))),
+          const Padding(padding: EdgeInsets.only(top: 4), child: Text(AirwayText.tr('GPS location attached. Service area selected automatically.', 'GPS लोकेशन जुड़ गई। सेवा क्षेत्र अपने आप चुना गया।'), style: TextStyle(color: Colors.green, fontSize: 12))),
         const SizedBox(height: 10),
-        TextField(controller: _landmarkController, decoration: const InputDecoration(labelText: 'Nearby landmark', border: OutlineInputBorder())),
+        TextField(controller: _landmarkController, decoration: InputDecoration(labelText: AirwayText.tr('Nearby landmark', 'नज़दीकी लैंडमार्क'), border: OutlineInputBorder())),
         const SizedBox(height: 10),
-        TextField(controller: _upiController, decoration: const InputDecoration(labelText: 'UPI ID for payouts (optional)', border: OutlineInputBorder())),
+        TextField(controller: _upiController, decoration: InputDecoration(labelText: AirwayText.tr('UPI ID for payouts (optional)', 'भुगतान के लिए UPI ID (वैकल्पिक)'), border: OutlineInputBorder())),
         const SizedBox(height: 10),
-        TextField(controller: _qualificationController, decoration: const InputDecoration(labelText: 'Qualification / training', border: OutlineInputBorder())),
+        TextField(controller: _qualificationController, decoration: InputDecoration(labelText: AirwayText.tr('Qualification / training', 'योग्यता / प्रशिक्षण'), border: OutlineInputBorder())),
         const SizedBox(height: 10),
 
-        TextField(controller: _equipmentController, maxLines: 2, decoration: const InputDecoration(labelText: 'Tools, equipment or products you can bring', border: OutlineInputBorder())),
+        TextField(controller: _equipmentController, maxLines: 2, decoration: InputDecoration(labelText: AirwayText.tr('Tools, equipment or products you can bring', 'आप कौन-से औज़ार, उपकरण या उत्पाद ला सकते हैं'), border: OutlineInputBorder())),
         const SizedBox(height: 10),
-        TextField(controller: _bioController, maxLines: 3, decoration: const InputDecoration(labelText: 'About your work / skills', border: OutlineInputBorder())),
+        TextField(controller: _bioController, maxLines: 3, decoration: InputDecoration(labelText: AirwayText.tr('About your work / skills', 'आपके काम / कौशल के बारे में'), border: OutlineInputBorder())),
       ],
     );
   }
 
   Widget _buildServicesSection() {
     if (_services.isEmpty) {
-      return const Text('No active launch services are available for worker registration. Please contact AIRway support.');
+      return const Text(AirwayText.tr('No active launch services are available for worker registration. Please contact AIRway support.', 'वर्कर रजिस्ट्रेशन के लिए अभी कोई सक्रिय सेवा उपलब्ध नहीं है। AIRway सपोर्ट से संपर्क करें।'));
     }
     return WorkerServicePicker(
       services: _services,
@@ -894,7 +895,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           ),
           const SizedBox(height: 12),
           if (_zones.isEmpty)
-            const Text('No active service areas are configured yet. Please contact AIRway support.')
+            const Text(AirwayText.tr('No active service areas are configured yet. Please contact AIRway support.', 'अभी कोई सक्रिय सेवा क्षेत्र कॉन्फ़िगर नहीं है। AIRway सपोर्ट से संपर्क करें।'))
           else
             Wrap(
               spacing: 8,
@@ -964,7 +965,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
             child: Text(_fieldErrors['schedule']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
           ),
         const SizedBox(height: 6),
-        const Text('Choose the days and exact hours when you can accept jobs.', style: TextStyle(color: AirwayColors.textSecondary)),
+        const Text(AirwayText.tr('Choose the days and exact hours when you can accept jobs.', 'वे दिन और सही समय चुनें जब आप काम स्वीकार कर सकते हैं।'), style: TextStyle(color: AirwayColors.textSecondary)),
         const SizedBox(height: 8),
         ...List.generate(7, (day) {
           final selected = _weeklySchedule.containsKey(day);
@@ -987,9 +988,9 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: Row(
                       children: [
-                        Expanded(child: OutlinedButton(onPressed: () => _pickScheduleTime(day, 'start'), child: Text('From ${_timeText(_weeklySchedule[day]!['start']!)}'))),
+                        Expanded(child: OutlinedButton(onPressed: () => _pickScheduleTime(day, 'start'), child: Text(AirwayText.tr('From ${_timeText(_weeklySchedule[day]!['start']!)}', 'से: ${_timeText(_weeklySchedule[day]!['start']!)}')))),
                         const SizedBox(width: 8),
-                        Expanded(child: OutlinedButton(onPressed: () => _pickScheduleTime(day, 'end'), child: Text('To ${_timeText(_weeklySchedule[day]!['end']!)}'))),
+                        Expanded(child: OutlinedButton(onPressed: () => _pickScheduleTime(day, 'end'), child: Text(AirwayText.tr('To ${_timeText(_weeklySchedule[day]!['end']!)}', 'तक: ${_timeText(_weeklySchedule[day]!['end']!)}')))),
                       ],
                     ),
                   ),
@@ -1027,16 +1028,16 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         DropdownButtonFormField<String>(
           initialValue: _selectedIdType,
           items: const [
-            DropdownMenuItem(value: 'aadhaar', child: Text('Aadhaar (Recommended)')),
-            DropdownMenuItem(value: 'id', child: Text('Other ID')),
+            DropdownMenuItem(value: 'aadhaar', child: Text(AirwayText.tr('Aadhaar (Recommended)', 'आधार (अनुशंसित)'))),
+            DropdownMenuItem(value: 'id', child: Text(AirwayText.tr('Other ID', 'अन्य पहचान पत्र'))),
           ],
           onChanged: (value) {
             if (value != null) {
               setState(() => _selectedIdType = value);
             }
           },
-          decoration: const InputDecoration(
-            labelText: 'ID Type',
+          decoration: InputDecoration(
+            labelText: AirwayText.tr('ID Type', 'पहचान पत्र का प्रकार'),
             border: OutlineInputBorder(),
           ),
         ),
@@ -1070,8 +1071,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
             color: Colors.green.withAlpha(20),
             child: ListTile(
               leading: const Icon(Icons.check_circle, color: Colors.green),
-              title: const Text('Document Submitted', style: TextStyle(color: Colors.green)),
-              subtitle: Text('Type: ${_selectedIdType.toUpperCase()}'),
+              title: Text(AirwayText.tr('Document Submitted', 'दस्तावेज़ जमा हो गया'), style: TextStyle(color: Colors.green)),
+              subtitle: Text(AirwayText.tr('Type: ${_selectedIdType.toUpperCase()}', 'प्रकार: ${_selectedIdType.toUpperCase()}')),
               trailing: const Icon(Icons.pending_actions, color: Colors.orange),
             ),
           ),
@@ -1087,7 +1088,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              subtitle: Text('Type: ${_selectedIdType.toUpperCase()}'),
+              subtitle: Text(AirwayText.tr('Type: ${_selectedIdType.toUpperCase()}', 'प्रकार: ${_selectedIdType.toUpperCase()}')),
             ),
           ),
         ],
@@ -1104,7 +1105,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ID Document Already Uploaded'),
+        title: Text(AirwayText.tr('ID Document Already Uploaded', 'पहचान दस्तावेज़ पहले से अपलोड है')),
         content: const Text(
           'Your ID document has already been submitted and is pending review. '
           'You can replace it with a new document if needed. Your existing document will be updated.',
@@ -1112,14 +1113,14 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Keep Document'),
+            child: Text(AirwayText.tr('Keep Document', 'मौजूदा दस्तावेज़ रखें')),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _pickIdDocument();
             },
-            child: const Text('Upload New Document'),
+            child: Text(AirwayText.tr('Upload New Document', 'नया दस्तावेज़ अपलोड करें')),
           ),
         ],
       ),
@@ -1161,8 +1162,8 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           color: Colors.amber,
           child: ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Important: Your application is subject to admin verification.'),
-            subtitle: Text('You will be notified via in-app notification once approved.'),
+            title: Text(AirwayText.tr('Important: Your application is subject to admin verification.', 'महत्वपूर्ण: आपका आवेदन एडमिन वेरिफ़िकेशन के अधीन है।')),
+            subtitle: Text(AirwayText.tr('You will be notified via in-app notification once approved.', 'स्वीकृति मिलने पर ऐप में नोटिफ़िकेशन भेजा जाएगा।')),
           ),
         ),
       ],
@@ -1189,7 +1190,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         if (!isFirstStep && !isLastStep)
-          TextButton(onPressed: _goBack, child: const Text('Back'))
+          TextButton(onPressed: _goBack, child: Text(AirwayText.tr('Back', 'वापस')))
         else
           const SizedBox(width: 80),
         if (!isFirstStep && !isLastStep) ...[
@@ -1200,7 +1201,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Next', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(AirwayText.tr('Next', 'आगे'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ),
         ] else if (isLastStep) ...[
@@ -1211,7 +1212,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Submit Application', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(AirwayText.tr('Submit Application', 'आवेदन जमा करें'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ),
         ] else ...[
@@ -1222,7 +1223,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Next', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(AirwayText.tr('Next', 'आगे'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ),
         ],
