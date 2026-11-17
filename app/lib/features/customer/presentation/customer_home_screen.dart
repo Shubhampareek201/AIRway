@@ -20,6 +20,7 @@ import 'package:airway/features/account/presentation/notification_preferences_sc
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/payment_options_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
+import 'package:airway/features/favorites/presentation/favorite_services_screen.dart';
 import 'package:airway/features/wallet/presentation/wallet_screen.dart';
 import 'package:airway/features/worker/presentation/worker_application_screen.dart';
 import 'package:airway/features/worker/presentation/worker_dashboard_screen.dart';
@@ -1967,6 +1968,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 subtitle: const Text('Upcoming, active and completed services'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => setState(() => _tab = 1),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.favorite_border_rounded, color: _Ui.violet),
+                title: const Text('Favorite services'),
+                subtitle: const Text('Services you saved for later'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FavoriteServicesScreen()),
+                ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
