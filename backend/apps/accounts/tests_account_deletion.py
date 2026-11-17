@@ -62,3 +62,20 @@ class AccountDeletionRequestTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["has_request"])
         self.assertEqual(response.data["status"], "requested")
+
+
+    def test_wallet_balance_keeps_deletion_request_under_review(self):
+        from decimal import Decimal
+        from apps.wallet.models import Wallet
+
+        Wallet.objects.create(user=self.user, balance=Decimal("50.00"))
+        response = self.client.post(
+            "/api/v1/auth/delete-account/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "under_review")
+        self.assertTrue(response.data["has_financial_obligations"])
+        self.assertTrue(User.objects.get(pk=self.user.pk).is_active)
