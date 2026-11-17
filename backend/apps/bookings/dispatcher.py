@@ -168,28 +168,11 @@ class DispatcherService:
 
     @staticmethod
     def _notify_dispatch_exhausted(booking, order=None):
-        """Notify the customer and operations once when no eligible worker remains."""
+        """Alert operations once; customer booking screens own dispatch progress."""
         from apps.notifications.models import Notification
         from django.contrib.auth import get_user_model
 
-        customer = booking.customer
-        notification_title = "We're still finding your professional"
         identity = {"booking_id": booking.pk, "order_id": order.pk if order else None}
-        if Notification.objects.filter(
-            user=customer,
-            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-            title=notification_title,
-            data__booking_id=booking.pk,
-        ).exists():
-            return
-        Notification.objects.create(
-            user=customer,
-            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-            title=notification_title,
-            body="No available professional could accept this request yet. AIRway operations has been notified and will update you. Your booking remains safe; no extra payment is required.",
-            channel=Notification.Channel.IN_APP,
-            data={**identity, "dispatch_exhausted": True},
-        )
         User = get_user_model()
         for staff_user in User.objects.filter(is_staff=True, is_active=True).only("id"):
             Notification.objects.get_or_create(
