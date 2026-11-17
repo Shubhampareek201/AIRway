@@ -65,8 +65,8 @@ class LegalDocumentsScreen extends StatelessWidget {
           _LegalSection(
             title: t('Referral rewards', 'रेफ़रल पुरस्कार'),
             body: t(
-              'A valid new customer referral is recorded when the referral code is applied within 24 hours of account creation and before the customer makes a booking. After that referred customer’s first service is successfully completed and verified, AIRway credits ₹200 to the referrer’s wallet and ₹100 to the referred customer’s wallet. Signup, installation, booking, cancellation or an incomplete service does not earn the reward. Each referred customer can be rewarded once.',
-              'नए ग्राहक का रेफ़रल तभी मान्य होगा जब खाता बनने के 24 घंटे के भीतर और पहली बुकिंग से पहले रेफ़रल कोड लागू किया जाए। उस ग्राहक की पहली सेवा सफलतापूर्वक पूरी और सत्यापित होने पर रेफ़र करने वाले के वॉलेट में ₹200 और नए ग्राहक के वॉलेट में ₹100 जमा होंगे। केवल ऐप इंस्टॉल, साइनअप, बुकिंग, रद्दीकरण या अधूरी सेवा पर पुरस्कार नहीं मिलेगा। प्रत्येक नए ग्राहक पर एक बार ही पुरस्कार मिलेगा।',
+              'A valid new customer referral is recorded when the referral code is applied before the customer makes their first booking. After that referred customer’s first service is successfully completed and verified, AIRway credits ₹200 to the referrer’s wallet and ₹100 to the referred customer’s wallet. Signup, installation, booking, cancellation or an incomplete service does not earn the reward. Each referred customer can be rewarded once.',
+              'नए ग्राहक का रेफ़रल तभी मान्य होगा जब पहली बुकिंग से पहले रेफ़रल कोड लागू किया जाए। उस ग्राहक की पहली सेवा सफलतापूर्वक पूरी और सत्यापित होने पर रेफ़र करने वाले के वॉलेट में ₹200 और नए ग्राहक के वॉलेट में ₹100 जमा होंगे। केवल ऐप इंस्टॉल, साइनअप, बुकिंग, रद्दीकरण या अधूरी सेवा पर पुरस्कार नहीं मिलेगा। प्रत्येक नए ग्राहक पर एक बार ही पुरस्कार मिलेगा।',
             ),
           ),
           _LegalSection(
