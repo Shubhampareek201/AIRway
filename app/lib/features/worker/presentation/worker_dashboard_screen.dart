@@ -22,6 +22,7 @@ import 'package:airway/features/account/presentation/account_profile_screen.dart
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_deletion_screen.dart';
+import 'package:airway/core/localization/airway_locale.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
@@ -632,6 +633,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   }
 
   Widget _buildProfileTab(WorkerProfile profile) {
+    final hi = AirwayLocale.current.languageCode == 'hi';
     final photo = _photoUrl(profile);
     final services = profile.serviceItems;
     return _page([
@@ -694,24 +696,24 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         child: Column(children: [
           ListTile(
             leading: const Icon(Icons.person_outline_rounded),
-            title: const Text('Personal information'),
-            subtitle: const Text('Account name, email, photo and registered phone'),
+            title: Text(hi ? 'व्यक्तिगत जानकारी' : 'Personal information'),
+            subtitle: Text(hi ? 'खाते का नाम, ईमेल, फोटो और पंजीकृत फ़ोन' : 'Account name, email, photo and registered phone'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: _editAccountProfile,
           ),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Notification preferences'),
-            subtitle: const Text('Control push notifications on this device'),
+            title: Text(hi ? 'सूचना प्राथमिकताएँ' : 'Notification preferences'),
+            subtitle: Text(hi ? 'इस डिवाइस पर पुश नोटिफिकेशन नियंत्रित करें' : 'Control push notifications on this device'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: _openNotificationPreferences,
           ),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.tune_rounded),
-            title: const Text('App preferences'),
-            subtitle: const Text('Appearance and language'),
+            title: Text(hi ? 'ऐप प्राथमिकताएँ' : 'App preferences'),
+            subtitle: Text(hi ? 'भाषा सेटिंग' : 'Language settings'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AccountPreferencesScreen()),
@@ -720,8 +722,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.description_outlined),
-            title: const Text('Terms & Privacy'),
-            subtitle: const Text('Read AIRway terms and privacy information'),
+            title: Text(hi ? 'नियम और गोपनीयता' : 'Terms & Privacy'),
+            subtitle: Text(hi ? 'AIRway के नियम और गोपनीयता जानकारी पढ़ें' : 'Read AIRway terms and privacy information'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
@@ -730,8 +732,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.person_off_outlined),
-            title: const Text('Delete account'),
-            subtitle: const Text('Submit a request to close your AIRway account'),
+            title: Text(hi ? 'खाता हटाने का अनुरोध' : 'Delete account'),
+            subtitle: Text(hi ? 'अपना AIRway खाता बंद करने का अनुरोध भेजें' : 'Submit a request to close your AIRway account'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AccountDeletionScreen()),
@@ -740,8 +742,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.security_outlined),
-            title: const Text('Password & security'),
-            subtitle: const Text('Change or set your account password'),
+            title: Text(hi ? 'पासवर्ड और सुरक्षा' : 'Password & security'),
+            subtitle: Text(hi ? 'अपने खाते का पासवर्ड बदलें या सेट करें' : 'Change or set your account password'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
@@ -750,7 +752,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ]),
       ),
       const SizedBox(height: 14),
-      _sectionHeading('Your details'),
+      _sectionHeading(hi ? 'आपकी जानकारी' : 'Your details'),
       const SizedBox(height: 8),
       _detailTile(Icons.star_outline_rounded, 'Rating', profile.ratingAvg == null ? 'Not rated yet' : profile.ratingAvg!.toStringAsFixed(1)),
       _detailTile(Icons.work_history_outlined, 'Experience', '${profile.experienceYears ?? 0} years'),
@@ -790,8 +792,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       Card(
         child: ListTile(
           leading: const Icon(Icons.support_agent_outlined),
-          title: const Text('Help & Support'),
-          subtitle: const Text('Guidance for job offers, work profile and earnings'),
+          title: Text(hi ? 'मदद और सहायता' : 'Help & Support'),
+          subtitle: Text(hi ? 'जॉब ऑफ़र, वर्क प्रोफ़ाइल और कमाई में सहायता' : 'Guidance for job offers, work profile and earnings'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
@@ -805,18 +807,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ),
       ),
       const SizedBox(height: 16),
-      _sectionHeading('Account'),
+      _sectionHeading(hi ? 'खाता' : 'Account'),
       Card(
         child: Column(children: [
-          ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Earnings & payouts'), subtitle: const Text('View credited job earnings in the Earnings tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => setState(() => _selectedTab = 2)),
+          ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: Text(hi ? 'कमाई और भुगतान' : 'Earnings & payouts'), subtitle: Text(hi ? 'कमाई टैब में दर्ज कमाई देखें' : 'View credited job earnings in the Earnings tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => setState(() => _selectedTab = 2)),
           const Divider(height: 1),
-          ListTile(leading: const Icon(Icons.notifications_active_outlined), title: const Text('Job alerts'), subtitle: const Text('New service offers appear in the Jobs tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _openOffers),
+          ListTile(leading: const Icon(Icons.notifications_active_outlined), title: Text(hi ? 'जॉब अलर्ट' : 'Job alerts'), subtitle: Text(hi ? 'नई सर्विस ऑफ़र जॉब्स टैब में दिखेंगे' : 'New service offers appear in the Jobs tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _openOffers),
           const Divider(height: 1),
-          ListTile(leading: const Icon(Icons.storefront_outlined), title: const Text('Switch to Customer'), subtitle: const Text('Return to Customer Home with this account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _switchToCustomerMode),
+          ListTile(leading: const Icon(Icons.storefront_outlined), title: Text(hi ? 'कस्टमर मोड में जाएँ' : 'Switch to Customer'), subtitle: Text(hi ? 'इसी खाते से कस्टमर होम पर लौटें' : 'Return to Customer Home with this account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _switchToCustomerMode),
           const Divider(height: 1),
-          ListTile(leading: const Icon(Icons.switch_account_outlined), title: const Text('Switch Account'), subtitle: const Text('Sign out and use another account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _endSession(switchAccount: true)),
+          ListTile(leading: const Icon(Icons.switch_account_outlined), title: Text(hi ? 'खाता बदलें' : 'Switch Account'), subtitle: Text(hi ? 'साइन आउट करके दूसरा खाता उपयोग करें' : 'Sign out and use another account'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _endSession(switchAccount: true)),
           const Divider(height: 1),
-          ListTile(leading: Icon(Icons.logout_rounded, color: AirwayColors.error), title: Text('Log out', style: TextStyle(color: AirwayColors.error)), subtitle: const Text('Securely sign out of AIRway'), onTap: () => _endSession(switchAccount: false)),
+          ListTile(leading: Icon(Icons.logout_rounded, color: AirwayColors.error), title: Text(hi ? 'लॉग आउट' : 'Log out', style: TextStyle(color: AirwayColors.error)), subtitle: Text(hi ? 'AIRway से सुरक्षित रूप से साइन आउट करें' : 'Securely sign out of AIRway'), onTap: () => _endSession(switchAccount: false)),
         ]),
       ),
     ]);
