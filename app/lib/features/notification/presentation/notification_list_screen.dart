@@ -126,6 +126,31 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       });
     } catch (_) {
       if (!mounted) return;
+
+      // A timeout can happen after the server committed the DELETE. Reconcile
+      // with the server before restoring the card, so a successful deletion
+      // is never shown as a failure just because its response was lost.
+      var stillExists = true;
+      try {
+        final latest = await NotificationApi.listNotifications();
+        stillExists = latest.any((notification) => notification.id == item.id);
+      } catch (_) {
+        // If reconciliation is also offline, restore locally and let the user
+        // retry; the next normal refresh will resolve the server state.
+      }
+      if (!mounted) return;
+
+      if (!stillExists) {
+        setState(() {
+          _deletingIds.remove(item.id);
+          _locallyDeletedIds.add(item.id);
+          _notifications = _notifications
+              .where((notification) => notification.id != item.id)
+              .toList();
+        });
+        return;
+      }
+
       setState(() {
         _deletingIds.remove(item.id);
         // Restore only this notification; do not overwrite other changes
