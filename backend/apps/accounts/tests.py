@@ -971,6 +971,52 @@ class FirebaseGoogleAccountTests(APITestCase):
         self.assertEqual(User.objects.filter(email="same@example.com").count(), 2)
 
 
+    @patch("apps.accounts.views.verify_firebase_token")
+    def test_new_google_account_requires_policy_consent(self, verify_token):
+        verify_token.return_value = {
+            "uid": "firebase-google-uid-consent",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email": "consent@example.com",
+            "email_verified": True,
+            "name": "Consent User",
+        }
+        response = self.client.post(
+            "/api/v1/auth/firebase-login/",
+            {"id_token": "google-token"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(firebase_uid="firebase-google-uid-consent").exists())
+
+    @patch("apps.accounts.views.verify_firebase_token")
+    def test_google_signup_applies_referral_code_at_account_creation(self, verify_token):
+        from apps.accounts.models import Referral
+
+        referrer = User.objects.create_user(
+            phone="+919876543217",
+            name="Referral Owner",
+        )
+        verify_token.return_value = {
+            "uid": "firebase-google-uid-referred",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email": "referred-google@example.com",
+            "email_verified": True,
+            "name": "Referred Google User",
+        }
+        response = self.client.post(
+            "/api/v1/auth/firebase-login/",
+            {
+                "id_token": "google-token",
+                "terms_accepted": True,
+                "privacy_accepted": True,
+                "referral_code": referrer.referral_code,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        referred = User.objects.get(firebase_uid="firebase-google-uid-referred")
+        self.assertTrue(Referral.objects.filter(referrer=referrer, referred=referred).exists())
+
 class AccountLanguageAndConsentTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(phone="+919876543218")
