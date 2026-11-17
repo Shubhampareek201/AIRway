@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class BookingScheduleResult {
   final DateTime scheduledAt;
@@ -182,7 +183,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
       if (!mounted) return;
       setState(() => _updatingPreference = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update preference: $e')),
+        SnackBar(content: Text(AirwayText.tr('Could not update preference: $e', 'पसंद अपडेट नहीं हो सकी: $e'))),
       );
     }
   }
@@ -299,7 +300,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                       OutlinedButton.icon(
                         onPressed: _checking ? null : _changeDropTime,
                         icon: const Icon(Icons.flag_outlined),
-                        label: Text('Drop-off time: ${_dropTime.format(context)}'),
+                        label: Text(AirwayText.tr('Drop-off time: ${_dropTime.format(context)}', 'ड्रॉप-ऑफ़ समय: ${_dropTime.format(context)}')),
                       ),
                     ],
                     const SizedBox(height: 22),
@@ -409,7 +410,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                           _slotError = null;
                         }),
                         icon: const Icon(Icons.edit_calendar_outlined),
-                        label: const Text('Choose another date'),
+                        label: Text(AirwayText.tr('Choose another date', 'दूसरी तारीख चुनें')),
                       ),
                   ],
                 ],
