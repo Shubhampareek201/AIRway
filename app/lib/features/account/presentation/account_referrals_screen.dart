@@ -83,8 +83,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
     final code = _data?['referral_code']?.toString();
     if (code == null || code.isEmpty) return;
     final first = AirwayText.tr(
-      'Join me on AIRway! Use my referral code $code when you create your account.',
-      'AIRway से जुड़ें! खाता बनाते समय मेरा रेफ़रल कोड $code इस्तेमाल करें।',
+      'Join me on AIRway! Use my referral code $code within 24 hours of creating your account and before your first booking.',
+      'AIRway से जुड़ें! खाता बनाने के 24 घंटे के भीतर और पहली बुकिंग से पहले मेरा रेफ़रल कोड $code इस्तेमाल करें।',
     );
     final second = AirwayText.tr(
       'After your first AIRway service is completed, you get ₹100 in your wallet and I get ₹200.',
@@ -200,6 +200,13 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                       const SizedBox(height: 10),
                       _StepLine(number: '1', text: t('Share your unique referral code with a new customer.', 'अपना यूनिक रेफ़रल कोड नए ग्राहक के साथ शेयर करें।')),
                       _StepLine(number: '2', text: t('They install AIRway, create an account and apply your code.', 'वे AIRway इंस्टॉल करके खाता बनाएँ और आपका कोड लागू करें।')),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 38, top: 2, bottom: 8),
+                        child: Text(
+                          t('The code must be applied within 24 hours of signup and before the first booking.', 'कोड साइनअप के 24 घंटे के भीतर और पहली बुकिंग से पहले लागू करना होगा।'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                       _StepLine(number: '3', text: t('After their first service is completed and verified, ₹200 and ₹100 are credited to your respective wallets.', 'उनकी पहली सेवा पूरी और सत्यापित होने पर आपके और उनके वॉलेट में क्रमशः ₹200 और ₹100 जमा होंगे।')),
                       const SizedBox(height: 24),
                       Text(t('Have a referral code?', 'क्या आपके पास रेफ़रल कोड है?'), style: Theme.of(context).textTheme.titleMedium),
