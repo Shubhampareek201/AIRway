@@ -357,7 +357,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
 
   Future<void> _editAccountProfile() async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const AccountProfileScreen()),
+      MaterialPageRoute(builder: (_) => const AccountProfileScreen(workerMode: true)),
     );
     if (changed == true) await _refresh();
   }
