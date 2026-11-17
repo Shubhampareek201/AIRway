@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _referralCodeController = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
   bool _useEmail = false;
@@ -32,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _referralCodeController.dispose();
     super.dispose();
   }
 
@@ -53,6 +55,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final response = await AuthApi.firebaseLogin(
       idToken: idToken,
+      referralCode: _referralCodeController.text.trim().isEmpty
+          ? null
+          : _referralCodeController.text.trim(),
       termsAccepted: _termsAccepted,
       privacyAccepted: _privacyAccepted,
     );
@@ -288,6 +293,15 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
 
+TextField(
+  controller: _referralCodeController,
+  textCapitalization: TextCapitalization.characters,
+  inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
+  decoration: InputDecoration(
+    labelText: t('Referral code for a new Google account (optional)', 'नए Google खाते के लिए रेफ़रल कोड (वैकल्पिक)'),
+    border: const OutlineInputBorder(),
+  ),
+),
 CheckboxListTile(
   contentPadding: EdgeInsets.zero,
   value: _termsAccepted,
