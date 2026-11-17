@@ -7,6 +7,7 @@ import 'package:airway/features/auth/data/google_sign_in_service.dart';
 import 'package:airway/features/auth/presentation/signup_screen.dart';
 import 'package:airway/features/auth/presentation/forgot_password_screen.dart';
 import 'package:airway/features/auth/presentation/phone_login_screen.dart';
+import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
   bool _useEmail = false;
+  bool _termsAccepted = false;
+  bool _privacyAccepted = false;
 
   @override
   void dispose() {
@@ -49,6 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final response = await AuthApi.firebaseLogin(
       idToken: idToken,
+      termsAccepted: _termsAccepted,
+      privacyAccepted: _privacyAccepted,
     );
 
     await SecureSessionStorage.saveSession(
@@ -281,6 +286,29 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
 
+CheckboxListTile(
+  contentPadding: EdgeInsets.zero,
+  value: _termsAccepted,
+  onChanged: _loading ? null : (value) => setState(() => _termsAccepted = value ?? false),
+  controlAffinity: ListTileControlAffinity.leading,
+  title: const Text('I agree to the Terms & Conditions'),
+),
+CheckboxListTile(
+  contentPadding: EdgeInsets.zero,
+  value: _privacyAccepted,
+  onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
+  controlAffinity: ListTileControlAffinity.leading,
+  title: const Text('I have read and agree to the Privacy Policy'),
+),
+Align(
+  alignment: Alignment.center,
+  child: TextButton(
+    onPressed: () => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
+    ),
+    child: const Text('Read Terms & Privacy'),
+  ),
+),
 SizedBox(
   width: double.infinity,
   height: 54,
