@@ -435,8 +435,8 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                   Text(airway_localization.AirwayText.tr('Price summary', 'कीमत का सारांश'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
                 ]),
                 const SizedBox(height: 16),
-                priceRow('Service subtotal', '₹' + subtotal.toStringAsFixed(0)),
-                priceRow('Taxes & applicable charges', 'Calculated at checkout'),
+                priceRow(airway_localization.AirwayText.tr('Service subtotal', 'सेवा उप-योग'), '₹' + subtotal.toStringAsFixed(0)),
+                priceRow(airway_localization.AirwayText.tr('Taxes & applicable charges', 'टैक्स और लागू शुल्क'), airway_localization.AirwayText.tr('Calculated at checkout', 'चेकआउट पर गणना होगी')),
                 const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(color: line)),
                 Text(airway_localization.AirwayText.tr('Payment is split for your convenience', 'आपकी सुविधा के लिए भुगतान दो हिस्सों में है'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: ink)),
                 const SizedBox(height: 5),
@@ -472,7 +472,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               onPressed: busy ? null : checkout,
               child: busy
                 ? const SizedBox(height: 19, width: 19, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Text(airway_localization.AirwayText.tr('Continue to checkout', 'चेकआउट पर जाएँ'), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                     SizedBox(width: 7),
                     Icon(Icons.arrow_forward_rounded, size: 18),
