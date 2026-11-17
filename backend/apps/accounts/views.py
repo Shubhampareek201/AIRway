@@ -403,6 +403,7 @@ class AccountDeletionRequestView(APIView):
             "status": item.status,
             "reason": item.reason,
             "has_active_bookings": item.has_active_bookings,
+            "has_financial_obligations": item.has_financial_obligations,
             "active_booking_count": item.active_booking_count,
             "created_at": item.created_at.isoformat(),
             "updated_at": item.updated_at.isoformat(),
@@ -456,15 +457,24 @@ class AccountDeletionRequestView(APIView):
             )
 
         active_count = len(active_ids)
+        wallet = getattr(request.user, "wallet", None)
+        has_financial_obligations = bool(
+            wallet and (
+                wallet.balance > 0
+                or wallet.pending_balance > 0
+                or wallet.reservations.filter(status="reserved").exists()
+            )
+        )
         item = AccountDeletionRequest.objects.create(
             user=request.user,
             status=(
                 AccountDeletionRequest.Status.UNDER_REVIEW
-                if active_count
+                if active_count or has_financial_obligations
                 else AccountDeletionRequest.Status.REQUESTED
             ),
             reason=reason,
             has_active_bookings=active_count > 0,
+            has_financial_obligations=has_financial_obligations,
             active_booking_count=active_count,
         )
         return Response({
@@ -472,10 +482,13 @@ class AccountDeletionRequestView(APIView):
                 "Your request is recorded. It will be reviewed after active bookings or disputes are resolved."
                 if active_count
                 else "Your account deletion request has been submitted for review."
+                if not has_financial_obligations
+                else "Your request is recorded. Outstanding wallet funds or reservations must be settled before closure."
             ),
             "id": item.pk,
             "status": item.status,
             "has_active_bookings": item.has_active_bookings,
+            "has_financial_obligations": item.has_financial_obligations,
             "active_booking_count": item.active_booking_count,
         }, status=status.HTTP_201_CREATED)
 
