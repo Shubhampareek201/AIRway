@@ -11,12 +11,17 @@ class AirwayAppearance {
       ValueNotifier<ThemeMode>(ThemeMode.system);
 
   static Future<void> load() async {
-    final saved = await _storage.read(key: _key);
-    mode.value = switch (saved) {
-      'light' => ThemeMode.light,
-      'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    };
+    try {
+      final saved = await _storage.read(key: _key);
+      mode.value = switch (saved) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
+    } catch (_) {
+      // A preference-storage failure must never prevent the app from starting.
+      mode.value = ThemeMode.system;
+    }
   }
 
   static Future<void> setMode(ThemeMode value) async {
