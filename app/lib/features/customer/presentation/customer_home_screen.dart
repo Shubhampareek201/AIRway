@@ -14,6 +14,7 @@ import 'package:airway/features/booking/presentation/customer_order_screen.dart'
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/notification/presentation/notification_list_screen.dart';
+import 'package:airway/features/notification/presentation/notification_bell_button.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/wallet/presentation/wallet_screen.dart';
 import 'package:airway/features/worker/presentation/worker_application_screen.dart';
@@ -927,15 +928,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   size: 24,
                 ),
               ),
-              IconButton(
-                tooltip: 'Notifications',
-                onPressed: _showNotificationsInfo,
-                icon: const Icon(
-                  Icons.notifications_none_rounded,
-                  color: _Ui.ink,
-                  size: 25,
-                ),
-              ),
+              const NotificationBellButton(color: _Ui.ink),
             ],
           ),
           const SizedBox(height: 18),
