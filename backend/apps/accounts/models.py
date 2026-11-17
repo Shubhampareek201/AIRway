@@ -171,6 +171,33 @@ class Referral(TimeStampedModel):
     def __str__(self):
         return f"{self.referrer.phone} -> {self.referred.phone}"
 
+class FavoriteService(TimeStampedModel):
+    """A customer-owned bookmark for an active catalogue service."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="favorite_services",
+    )
+    service = models.ForeignKey(
+        "catalog.Service",
+        on_delete=models.CASCADE,
+        related_name="favorited_by",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "service"],
+                name="unique_user_favorite_service",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} favorites service {self.service_id}"
+
+
 class CustomerVehicle(TimeStampedModel):
     class VehicleType(models.TextChoices):
         CAR = "car", "Car"
