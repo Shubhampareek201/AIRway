@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
-from .models import Address, ConsentLog, CustomerVehicle, DeviceToken, Referral, User, UserRole
+from .models import Address, ConsentLog, CustomerVehicle, DeviceToken, Referral, User, UserRole, AccountDeletionRequest
 
 
 class UserRoleInline(TabularInline):
@@ -60,3 +60,11 @@ class CustomerVehicleAdmin(ModelAdmin):
     list_display = ("user", "vehicle_type", "vehicle_model", "custom_make", "custom_model", "nickname", "is_default")
     list_filter = ("vehicle_type", "is_default")
     search_fields = ("user__phone", "user__name", "custom_make", "custom_model", "vehicle_model__name", "vehicle_model__make__name")
+
+
+@admin.register(AccountDeletionRequest)
+class AccountDeletionRequestAdmin(ModelAdmin):
+    list_display = ("user", "status", "has_active_bookings", "active_booking_count", "created_at", "reviewed_at")
+    list_filter = ("status", "has_active_bookings")
+    search_fields = ("user__phone", "user__name")
+    readonly_fields = ("user", "created_at", "updated_at", "has_active_bookings", "active_booking_count")
