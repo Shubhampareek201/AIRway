@@ -14,7 +14,12 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
+        # Dispatch search/progress is already visible in the customer's booking
+        # journey. Hide legacy copies from both inbox and unread-count APIs.
+        return Notification.objects.filter(user=self.request.user).exclude(
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="We're still finding your professional",
+        )
 
     def get_serializer_class(self):
         from .serializers import NotificationSerializer as NS
