@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from apps.core.models import City, Zone
 from apps.workers.models import WorkerProfile
 from apps.catalog.models import Category, Service, VehicleMake, VehicleModel
-from .models import Address, CustomerVehicle
+from .models import Address, CustomerVehicle, FavoriteService
 
 
 User = get_user_model()
@@ -158,6 +158,86 @@ class LoginAPITest(APITestCase):
         }, format="json")
 
         self.assertEqual(response.status_code, 400)
+
+
+class FavoriteServiceAPITests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(phone="+919876543210")
+        self.other_user = User.objects.create_user(phone="+919876543211")
+        self.category = Category.objects.create(
+            title="Electrical",
+            slug="electrical",
+        )
+        self.service = Service.objects.create(
+            category=self.category,
+            title="Fan repair",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_add_favorite_is_idempotent_and_listed(self):
+        first = self.client.post(
+            "/api/v1/auth/favorites/",
+            {"service_id": self.service.id},
+            format="json",
+        )
+        second = self.client.post(
+            "/api/v1/auth/favorites/",
+            {"service_id": self.service.id},
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(FavoriteService.objects.filter(user=self.user).count(), 1)
+
+        listed = self.client.get("/api/v1/auth/favorites/")
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(listed.data), 1)
+        self.assertEqual(listed.data[0]["service_id"], self.service.id)
+
+    def test_filter_favorites_by_service_id(self):
+        favorite = FavoriteService.objects.create(
+            user=self.user,
+            service=self.service,
+        )
+        response = self.client.get(
+            f"/api/v1/auth/favorites/?service_id={self.service.id}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [favorite.id])
+
+    def test_delete_favorite_permanently_removes_only_own_record(self):
+        favorite = FavoriteService.objects.create(
+            user=self.user,
+            service=self.service,
+        )
+        response = self.client.delete(
+            f"/api/v1/auth/favorites/{favorite.id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(FavoriteService.objects.filter(pk=favorite.pk).exists())
+
+    def test_user_cannot_delete_another_users_favorite(self):
+        favorite = FavoriteService.objects.create(
+            user=self.other_user,
+            service=self.service,
+        )
+        response = self.client.delete(
+            f"/api/v1/auth/favorites/{favorite.id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(FavoriteService.objects.filter(pk=favorite.pk).exists())
+
+    def test_inactive_service_cannot_be_favorited(self):
+        self.service.is_active = False
+        self.service.save(update_fields=["is_active"])
+        response = self.client.post(
+            "/api/v1/auth/favorites/",
+            {"service_id": self.service.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
 
 
 class AddressAPITests(APITestCase):
