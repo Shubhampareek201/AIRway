@@ -995,6 +995,11 @@ class BookingViewSet(viewsets.ModelViewSet):
                 note="Service completion verified with customer-shared OTP.",
             )
 
+            # Referral reward is earned only on the referred customer's first
+            # successfully OTP-verified completed service.
+            from apps.accounts.referrals import reward_referrer_for_first_completed_booking
+            reward_referrer_for_first_completed_booking(locked_booking)
+
             order = getattr(locked_booking, "order_item", None)
             balance_ready = False
             if order:
