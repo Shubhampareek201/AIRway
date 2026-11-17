@@ -92,6 +92,62 @@ class AccountDeletionRequestAdmin(ModelAdmin):
 
             user = obj.user
             old_photo = user.photo
+
+            # Remove customer-only profile data while preserving addresses
+            # referenced by historical bookings and their audit trail.
+            from apps.bookings.models import Booking
+            from .models import Address, CustomerVehicle, FavoriteService
+            used_address_ids = Booking.objects.filter(
+                customer=user,
+            ).values_list("address_id", flat=True)
+            Address.objects.filter(user=user).exclude(
+                pk__in=used_address_ids,
+            ).update(
+                house_details="",
+                landmark="",
+                full_address="",
+                latitude=None,
+                longitude=None,
+                zone=None,
+                is_default=False,
+                deleted_at=timezone.now(),
+            )
+            CustomerVehicle.objects.filter(user=user).delete()
+            FavoriteService.objects.filter(user=user).delete()
+
+            # Deactivate and clear the worker's live profile. Keep verified
+            # identity documents for the legally required retention review.
+            from apps.workers.models import WorkerDocument, WorkerProfile
+            try:
+                worker_profile = user.worker_profile
+            except WorkerProfile.DoesNotExist:
+                worker_profile = None
+            if worker_profile is not None:
+                worker_profile.status = WorkerProfile.Status.SUSPENDED
+                worker_profile.gender = ""
+                worker_profile.bio = ""
+                worker_profile.qualification = ""
+                worker_profile.equipment_details = ""
+                worker_profile.residential_address = ""
+                worker_profile.latitude = None
+                worker_profile.longitude = None
+                worker_profile.landmark = ""
+                worker_profile.upi_id = ""
+                worker_profile.is_online = False
+                worker_profile.save(update_fields=[
+                    "status", "gender", "bio", "qualification",
+                    "equipment_details", "residential_address",
+                    "latitude", "longitude", "landmark", "upi_id",
+                    "is_online", "updated_at",
+                ])
+                for photo_document in worker_profile.documents.filter(
+                    doc_type=WorkerDocument.DocumentType.PHOTO,
+                ):
+                    photo_file = photo_document.file
+                    photo_document.delete()
+                    if photo_file:
+                        photo_file.delete(save=False)
+
             user.is_active = False
             user.set_unusable_password()
             user.phone = None
