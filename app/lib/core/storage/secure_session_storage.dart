@@ -19,6 +19,7 @@ class SecureSessionStorage {
 
   static const String _accessKey = 'airway_access_token';
   static const String _refreshKey = 'airway_refresh_token';
+  static const String _pushNotificationsKey = 'airway_push_notifications_enabled';
 
   static Future<void> saveSession({
     required String accessToken,
@@ -62,6 +63,18 @@ class SecureSessionStorage {
     return AuthSession(
       accessToken: access,
       refreshToken: refresh,
+    );
+  }
+
+  static Future<bool> pushNotificationsEnabled() async {
+    final value = await _storage.read(key: _pushNotificationsKey);
+    return value != 'false';
+  }
+
+  static Future<void> setPushNotificationsEnabled(bool enabled) async {
+    await _storage.write(
+      key: _pushNotificationsKey,
+      value: enabled ? 'true' : 'false',
     );
   }
 
