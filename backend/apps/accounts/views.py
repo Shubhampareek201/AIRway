@@ -30,7 +30,7 @@ from apps.catalog.models import Service
 from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
-from .models import Address, DeviceToken, CustomerVehicle, FavoriteService
+from .models import Address, DeviceToken, CustomerVehicle, FavoriteService, Referral
 from .serializers import (
     AddressCreateSerializer,
     AddressSerializer,
@@ -101,11 +101,18 @@ class FirebaseLoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        with transaction.atomic():
-            user, created = User.objects.get_or_create(
-                phone=phone,
-                defaults={"password": make_password(None)},
-            )
+        try:
+            with transaction.atomic():
+                user, created = User.objects.get_or_create(
+                    phone=phone,
+                    defaults={"password": make_password(None)},
+                )
+                referral_code = request.data.get("referral_code")
+                if created and referral_code:
+                    from .referrals import apply_referral_code
+                    apply_referral_code(user, referral_code)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if not user.is_active:
             return Response(
@@ -222,6 +229,8 @@ class CurrentUserView(APIView):
             "name": user.name,
             "email": user.email,
             "gender": user.gender,
+            "language": user.language,
+            "referral_code": user.referral_code,
             "photo_url": request.build_absolute_uri(user.photo.url) if user.photo else None,
             "has_usable_password": user.has_usable_password(),
             "active_mode": user.active_mode,
@@ -309,6 +318,55 @@ class CurrentUserView(APIView):
         except Exception:
             pass
         return None
+
+
+
+class AccountLanguageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        language = str(request.data.get("language", "")).strip().lower()
+        if language not in (User.Language.HINDI, User.Language.ENGLISH):
+            return Response(
+                {"language": "Choose either 'hi' or 'en'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request.user.language = language
+        request.user.save(update_fields=["language", "updated_at"])
+        return Response({"language": request.user.language})
+
+
+class CustomerReferralView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        referrals = Referral.objects.filter(referrer=request.user).select_related("referred").order_by("-created_at")
+        return Response({
+            "referral_code": request.user.referral_code,
+            "new_customer_credit": "149.00",
+            "referrer_reward": "200.00",
+            "reward_condition": "Your referred customer's first service must be completed.",
+            "total_referrals": referrals.count(),
+            "completed_referrals": referrals.filter(rewarded=True).count(),
+            "referrals": [{
+                "name": row.referred.name or "AIRway customer",
+                "status": "rewarded" if row.rewarded else "waiting_for_first_service",
+                "created_at": row.created_at.isoformat(),
+                "rewarded_at": row.rewarded_at.isoformat() if row.rewarded_at else None,
+            } for row in referrals[:50]],
+        })
+
+    def post(self, request):
+        from .referrals import apply_referral_code
+        try:
+            referral = apply_referral_code(request.user, request.data.get("referral_code"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "detail": "Referral code applied. ₹149 has been added to your AIRway Wallet.",
+            "referral_id": referral.pk,
+            "credit": "149.00",
+        }, status=status.HTTP_201_CREATED)
 
 
 class AccountProfileView(APIView):
