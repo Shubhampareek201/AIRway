@@ -32,6 +32,26 @@ class AccountApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> fetchLegalConsent() async {
+    final result = await LocationApi.request('/api/v1/auth/legal-consent/');
+    if (result is! Map) {
+      throw const FormatException('Unexpected legal consent response.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> acceptLegalConsent() async {
+    final result = await LocationApi.request(
+      '/api/v1/auth/legal-consent/',
+      method: 'POST',
+      data: {'terms_accepted': true, 'privacy_accepted': true},
+    );
+    if (result is! Map) {
+      throw const FormatException('Unexpected legal consent response.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> fetchDeletionRequest() async {
     final result = await LocationApi.request('/api/v1/auth/delete-account/');
     if (result is! Map) {
