@@ -42,7 +42,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           // A refresh that started before a swipe must not reinsert an item
           // whose DELETE request has since succeeded.
           _notifications = notifications
-              .where((item) => !_locallyDeletedIds.contains(item.id))
+              .where((item) =>
+                  !_locallyDeletedIds.contains(item.id) &&
+                  !_deletingIds.contains(item.id))
               .toList();
         });
       }
