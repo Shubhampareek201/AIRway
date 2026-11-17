@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:airway/features/auth/presentation/startup_gate.dart';
 import 'package:airway/core/theme/airway_theme.dart';
@@ -31,6 +32,7 @@ class AirwayApp extends StatelessWidget {
         themeMode: ThemeMode.light,
         locale: locale,
         supportedLocales: const [Locale('hi'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: const StartupGate(),
       ),
     );
