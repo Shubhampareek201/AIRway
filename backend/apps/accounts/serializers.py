@@ -8,7 +8,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.core.models import Zone
-from .models import Address, CustomerVehicle
+from .models import Address, CustomerVehicle, FavoriteService
 
 User = get_user_model()
 
@@ -301,6 +301,25 @@ class AddressCreateSerializer(serializers.ModelSerializer):
             longitude=longitude,
         )
         return attrs
+
+
+class FavoriteServiceSerializer(serializers.ModelSerializer):
+    service_id = serializers.IntegerField(source="service.id", read_only=True)
+    service_title = serializers.CharField(source="service.title", read_only=True)
+    category_title = serializers.CharField(source="service.category.title", read_only=True)
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FavoriteService
+        fields = ["id", "service_id", "service_title", "category_title", "image", "created_at"]
+        read_only_fields = fields
+
+    def get_image(self, obj):
+        if not obj.service.image:
+            return None
+        request = self.context.get("request")
+        url = obj.service.image.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class CustomerVehicleSerializer(serializers.ModelSerializer):
