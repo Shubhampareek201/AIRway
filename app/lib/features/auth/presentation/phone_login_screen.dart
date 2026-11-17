@@ -200,7 +200,7 @@ Navigator.of(context).pushAndRemoveUntil(
 }
 
   Future<void> _retryBackendLogin() async {
-    if (_loading) return;
+    if (_loading || _credentialProcessing) return;
     if (!_termsAccepted || !_privacyAccepted) {
       _message('Please accept the Terms & Conditions and Privacy Policy.');
       return;
@@ -210,6 +210,7 @@ Navigator.of(context).pushAndRemoveUntil(
       _message('Please verify your phone number again.');
       return;
     }
+    _credentialProcessing = true;
     setState(() => _loading = true);
     try {
       final idToken = await firebaseUser.getIdToken();
@@ -235,10 +236,12 @@ Navigator.of(context).pushAndRemoveUntil(
       );
     } on AuthApiException catch (error) {
       if (!mounted) return;
+      _credentialProcessing = false;
       setState(() => _loading = false);
       _message(error.message);
     } catch (_) {
       if (!mounted) return;
+      _credentialProcessing = false;
       setState(() => _loading = false);
       _message('Unable to complete AIRway login. Please try again.');
     }
@@ -404,7 +407,7 @@ Navigator.of(context).pushAndRemoveUntil(
                   child: Text(t('Change Mobile Number', 'मोबाइल नंबर बदलें')),
                 ),
 
-              if (!_verified && _auth.currentUser != null && !_loading)
+              if (!_verified && _auth.currentUser != null && !_loading && !_credentialProcessing)
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
