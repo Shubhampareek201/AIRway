@@ -4,7 +4,9 @@ import 'package:airway/features/favorites/data/favorite_api.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
 
 class FavoriteServicesScreen extends StatefulWidget {
-  const FavoriteServicesScreen({super.key});
+  final int? addressId;
+
+  const FavoriteServicesScreen({super.key, this.addressId});
 
   @override
   State<FavoriteServicesScreen> createState() => _FavoriteServicesScreenState();
@@ -74,7 +76,7 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
     if (serviceId == null) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => ServiceDetailScreen(serviceId: serviceId),
+        builder: (_) => ServiceDetailScreen(serviceId: serviceId, addressId: widget.addressId),
       ),
     );
     if (mounted) await _load();
