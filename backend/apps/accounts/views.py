@@ -323,7 +323,10 @@ class AccountProfileView(APIView):
             context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
+        previous_photo = request.user.photo
         user = serializer.save()
+        if previous_photo and previous_photo.name != (user.photo.name if user.photo else ""):
+            previous_photo.delete(save=False)
         photo_url = request.build_absolute_uri(user.photo.url) if user.photo else None
         return Response({
             "id": user.id,
