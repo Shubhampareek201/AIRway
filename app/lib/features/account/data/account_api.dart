@@ -125,7 +125,7 @@ class AccountApi {
     if (result.status < 200 || result.status >= 300) {
       final body = result.body;
       final detail = body is Map
-          ? body['detail'] ?? body['error'] ?? body.values.firstOrNull
+          ? body['detail'] ?? body['error'] ?? body.toString()
           : body;
       throw Exception('Profile update failed (${result.status}): $detail');
     }
