@@ -17,6 +17,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _referralCodeController = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -28,6 +29,7 @@ class _SignupScreenState extends State<SignupScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _referralCodeController.dispose();
     super.dispose();
   }
 
@@ -76,6 +78,9 @@ class _SignupScreenState extends State<SignupScreen> {
         password: password,
         confirmPassword: confirmPassword,
         email: email.isEmpty ? null : email,
+        referralCode: _referralCodeController.text.trim().isEmpty
+            ? null
+            : _referralCodeController.text.trim(),
       );
       await SecureSessionStorage.saveSession(
         accessToken: response['access'] as String,
@@ -147,6 +152,17 @@ class _SignupScreenState extends State<SignupScreen> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   labelText: 'Email (Optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _referralCodeController,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
+                decoration: const InputDecoration(
+                  labelText: 'Referral Code (Optional)',
+                  helperText: 'Enter your friend’s code to receive ₹100 after your first completed service.',
                   border: OutlineInputBorder(),
                 ),
               ),
