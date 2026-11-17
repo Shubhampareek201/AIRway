@@ -139,7 +139,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
           icon: const Icon(Icons.notifications_active_rounded, size: 34, color: AirwayColors.primary),
-          title: const Text('New service request'),
+          title: Text(AirwayText.tr('New service request', 'नई सेवा रिक्वेस्ट')),
           content: SizedBox(
             width: 420,
             child: SingleChildScrollView(
@@ -148,7 +148,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
                 if (offer.orderServices.length > 1) ...[
                   const SizedBox(height: 10),
-                  const Text('Services in this order', style: TextStyle(fontWeight: FontWeight.w800)),
+                  Text(AirwayText.tr('Services in this order', 'इस ऑर्डर की सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
                   for (final item in offer.orderServices)
                     Padding(
                       padding: const EdgeInsets.only(top: 5),
@@ -161,22 +161,22 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                     ),
                 ],
                 const SizedBox(height: 8),
-                if (offer.scheduledAt != null) Text('Requested time: ${_dateLabel(offer.scheduledAt)}'),
-                if (offer.serviceAddress?.isNotEmpty == true) Text('Address: ${offer.serviceAddress}'),
-                Text('Quantity: ${offer.quantity}'),
+                if (offer.scheduledAt != null) Text(AirwayText.tr('Requested time: ${_dateLabel(offer.scheduledAt)}', 'अनुरोधित समय: ${_dateLabel(offer.scheduledAt)}')),
+                if (offer.serviceAddress?.isNotEmpty == true) Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
+                Text(AirwayText.tr('Quantity: ${offer.quantity}', 'मात्रा: ${offer.quantity}')),
                 for (final entry in offer.customerAnswers.entries)
                   Text(workerCustomerAnswerLabel(entry.key, entry.value)),
                 for (final answer in offer.formResponses)
                   Text('${answer['label'] ?? answer['key']}: ${answer['value']}'),
                 if (offer.addons.isNotEmpty)
-                  Text('Add-ons: ${offer.addons.map((item) => item['title']).join(', ')}'),
+                  Text(AirwayText.tr('Add-ons: ${offer.addons.map((item) => item['title']).join(', ')}', 'अतिरिक्त सेवाएँ: ${offer.addons.map((item) => item['title']).join(', ')}')),
                 if (offer.expiresAt != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Text('Respond before ${_dateLabel(offer.expiresAt)}', style: const TextStyle(color: AirwayColors.error, fontWeight: FontWeight.w700)),
+                    child: Text(AirwayText.tr('Respond before ${_dateLabel(offer.expiresAt)}', '${_dateLabel(offer.expiresAt)} से पहले जवाब दें'), style: const TextStyle(color: AirwayColors.error, fontWeight: FontWeight.w700)),
                   ),
                 const SizedBox(height: 8),
-                const Text('Review the details before accepting. AIRway will confirm the assignment with the server.', style: TextStyle(fontSize: 12)),
+                Text(AirwayText.tr('Review the details before accepting. AIRway will confirm the assignment with the server.', 'स्वीकार करने से पहले विवरण जाँचें। AIRway सर्वर से असाइनमेंट की पुष्टि करेगा।'), style: TextStyle(fontSize: 12)),
               ]),
             ),
           ),
@@ -187,14 +187,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 try {
                   await WorkerApi.declineOffer(offer.id);
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request declined.')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request declined.', 'रिक्वेस्ट अस्वीकार कर दी गई।'))));
                     await _refresh();
                   }
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not decline request: $e')));
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not decline request: $e', 'रिक्वेस्ट अस्वीकार नहीं हो सकी: $e'))));
                 }
               },
-              child: const Text('Reject'),
+              child: Text(AirwayText.tr('Reject', 'अस्वीकार करें')),
             ),
             FilledButton(
               onPressed: () async {
@@ -202,16 +202,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 try {
                   await WorkerApi.acceptOffer(offer.id);
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request accepted. Assignment confirmed.')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request accepted. Assignment confirmed.', 'रिक्वेस्ट स्वीकार हो गई। असाइनमेंट कन्फ़र्म है।'))));
                     await _refresh();
                     _openAssignedJobs();
                   }
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Request could not be accepted: $e')));
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request could not be accepted: $e', 'रिक्वेस्ट स्वीकार नहीं हो सकी: $e'))));
                   await _refresh();
                 }
               },
-              child: const Text('Accept service'),
+              child: Text(AirwayText.tr('Accept service', 'सेवा स्वीकार करें')),
             ),
           ],
         ),
@@ -345,7 +345,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update availability: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not update availability: $e', 'उपलब्धता अपडेट नहीं हो सकी: $e'))),
         );
       }
     } finally {
@@ -390,11 +390,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Switch to Customer?'),
-        content: const Text('You will return to Customer Home using this same account. Your worker profile and job history will remain saved.'),
+        title: Text(AirwayText.tr('Switch to Customer?', 'कस्टमर मोड पर जाएँ?')),
+        content: Text(AirwayText.tr('You will return to Customer Home using this same account. Your worker profile and job history will remain saved.', 'आप इसी खाते से कस्टमर होम पर लौटेंगे। आपकी वर्कर प्रोफ़ाइल और जॉब हिस्ट्री सुरक्षित रहेगी।')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Switch')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(AirwayText.tr('Switch', 'बदलें'))),
         ],
       ),
     );
@@ -405,7 +405,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const CustomerHomeScreen()), (_) => false);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not switch to Customer mode: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not switch to Customer mode: $e', 'कस्टमर मोड पर नहीं जा सके: $e'))));
     }
   }
 
@@ -416,7 +416,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         title: Text(switchAccount ? 'Switch account?' : 'Log out?'),
         content: Text(switchAccount ? 'You will be signed out so another AIRway account can sign in on this device.' : 'You will be securely signed out of AIRway.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(switchAccount ? 'Continue' : 'Log out')),
         ],
       ),
@@ -453,7 +453,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Worker Dashboard')),
+        appBar: AppBar(title: Text(AirwayText.tr('Worker Dashboard', 'वर्कर डैशबोर्ड'))),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -467,7 +467,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 FilledButton.icon(
                   onPressed: () => _loadDashboard(),
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Try again'),
+                  label: Text(AirwayText.tr('Try again', 'फिर कोशिश करें')),
                 ),
               ],
             ),
@@ -483,7 +483,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         actions: [
           const NotificationBellButton(),
           IconButton(
-            tooltip: 'Refresh',
+            tooltip: AirwayText.tr('Refresh', 'रीफ़्रेश करें'),
             onPressed: _refresh,
             icon: const Icon(Icons.refresh_rounded),
           ),
@@ -586,7 +586,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ...active.take(5).map(_buildJobPreview),
       if (completed.isNotEmpty) ...[
         const SizedBox(height: 20),
-        Text('Completed jobs: ${completed.length}', style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(AirwayText.tr('Completed jobs: ${completed.length}', 'पूरे किए गए काम: ${completed.length}'), style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
     ]);
   }
@@ -604,20 +604,20 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Recorded earnings', style: TextStyle(color: Colors.white70)),
+              Text(AirwayText.tr('Recorded earnings', 'दर्ज की गई कमाई'), style: TextStyle(color: Colors.white70)),
               const SizedBox(height: 8),
               Text(
                 NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(total),
                 style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
-              Text('${_earnings.length} earning records', style: const TextStyle(color: Colors.white70)),
+              Text(AirwayText.tr('${_earnings.length} earning records', '${_earnings.length} कमाई रिकॉर्ड'), style: const TextStyle(color: Colors.white70)),
             ],
           ),
         ),
       ),
       const SizedBox(height: 20),
-      const Text('Recent activity', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+      Text(AirwayText.tr('Recent activity', 'हाल की गतिविधि'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
       if (_earningsError != null)
         _SectionErrorCard(message: _earningsError!, onRetry: _refresh)
@@ -836,10 +836,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Hello, ${profile.name?.trim().isNotEmpty == true ? profile.name : 'Partner'}!',
+                  Text(AirwayText.tr('Hello, ${profile.name?.trim().isNotEmpty == true ? profile.name : 'Partner'}!', 'नमस्ते, ${profile.name?.trim().isNotEmpty == true ? profile.name : 'पार्टनर'}!'),
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
-                  Text('Ready for your next service?', style: TextStyle(color: AirwayColors.textSecondary)),
+                  Text(AirwayText.tr('Ready for your next service?', 'अपनी अगली सेवा के लिए तैयार हैं?'), style: TextStyle(color: AirwayColors.textSecondary)),
                 ],
               ),
             ),
@@ -896,7 +896,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       child: ListTile(
         leading: Icon(Icons.assignment_outlined, color: AirwayColors.primary),
         title: Text(job['service_title']?.toString() ?? 'Assigned service'),
-        subtitle: Text('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}'),
+        subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
       ),
@@ -908,7 +908,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       child: ListTile(
         leading: Icon(Icons.work_outline, color: AirwayColors.primary),
         title: Text(job['service_title']?.toString() ?? 'Service job'),
-        subtitle: Text('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}'),
+        subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
       ),
@@ -919,8 +919,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     return Card(
       child: ListTile(
         leading: Icon(Icons.notifications_active_outlined, color: AirwayColors.primary),
-        title: Text('Booking #${offer.bookingId}'),
-        subtitle: Text('Received ${_dateLabel(offer.offeredAt.toIso8601String())}'),
+        title: Text(AirwayText.tr('Booking #${offer.bookingId}', 'बुकिंग #${offer.bookingId}')),
+        subtitle: Text(AirwayText.tr('Received ${_dateLabel(offer.offeredAt.toIso8601String())}', 'प्राप्त हुआ: ${_dateLabel(offer.offeredAt.toIso8601String())}')),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: _openOffers,
       ),
@@ -934,7 +934,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       child: ListTile(
         leading: const CircleAvatar(child: Icon(Icons.currency_rupee_rounded)),
         title: Text(title?.isNotEmpty == true ? title! : 'Service payment'),
-        subtitle: Text('Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}'),
+        subtitle: Text(AirwayText.tr('Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}', 'बुकिंग #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}')),
         trailing: Text(
           '+${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(amount)}',
           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
@@ -1036,10 +1036,10 @@ class _SectionErrorCard extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.cloud_off_outlined, color: Colors.orange),
-        title: const Text('This section could not be loaded'),
+        title: Text(AirwayText.tr('This section could not be loaded', 'यह सेक्शन लोड नहीं हो सका')),
         subtitle: Text(message, maxLines: 3, overflow: TextOverflow.ellipsis),
         trailing: IconButton(
-          tooltip: 'Retry',
+          tooltip: AirwayText.tr('Retry', 'फिर कोशिश करें'),
           onPressed: onRetry,
           icon: const Icon(Icons.refresh),
         ),
