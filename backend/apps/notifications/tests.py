@@ -294,6 +294,33 @@ class NotificationAPITest(TestCase):
         # 404 because the notification doesn't belong to the authenticated user
         self.assertEqual(response.status_code, 404)
 
+    def test_delete_notification_permanently_removes_own_record(self):
+        notification = Notification.objects.create(
+            user=self.user,
+            type=Notification.Type.BOOKING_CONFIRMED,
+            title="Delete me",
+        )
+
+        response = self.client.delete(f"/api/v1/notifications/{notification.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Notification.objects.filter(pk=notification.pk).exists())
+        unread_count = self.client.get("/api/v1/notifications/unread-count/")
+        self.assertEqual(unread_count.data["unread_count"], 0)
+
+    def test_user_cannot_delete_another_users_notification(self):
+        other_user = User.objects.create_user(phone="+919876543213")
+        notification = Notification.objects.create(
+            user=other_user,
+            type=Notification.Type.BOOKING_CONFIRMED,
+            title="Not yours",
+        )
+
+        response = self.client.delete(f"/api/v1/notifications/{notification.id}/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Notification.objects.filter(pk=notification.pk).exists())
+
     def test_mark_read_response_format(self):
         """Should return is_read in response."""
         notification = Notification.objects.create(
