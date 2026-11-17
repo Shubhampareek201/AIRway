@@ -160,3 +160,28 @@ class CustomerReferralAPITests(APITestCase):
         referral.refresh_from_db()
         self.assertFalse(referral.rewarded)
         self.assertFalse(WalletTransaction.objects.exists())
+
+
+    def test_registration_applies_referral_code_exactly_once(self):
+        response = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "phone": "+919876543212",
+                "name": "Signup Referred",
+                "password": "StrongPass!234",
+                "confirm_password": "StrongPass!234",
+                "referral_code": self.referrer.referral_code,
+                "terms_accepted": True,
+                "privacy_accepted": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        new_user = User.objects.get(phone="+919876543212")
+        self.assertEqual(
+            Referral.objects.filter(referrer=self.referrer, referred=new_user).count(),
+            1,
+        )
+        self.assertFalse(Wallet.objects.filter(user=new_user).exists())
+        self.assertFalse(Wallet.objects.filter(user=self.referrer).exists())
