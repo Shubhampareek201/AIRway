@@ -229,7 +229,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                         controller: _name,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: AirwayText.tr('Full name', 'पूरा नाम'),
                           prefixIcon: Icon(Icons.person_outline_rounded),
                         ),
@@ -244,7 +244,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                         controller: _email,
                         keyboardType: TextInputType.emailAddress,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: AirwayText.tr('Email address (optional)', 'ईमेल पता (वैकल्पिक)'),
                           prefixIcon: Icon(Icons.email_outlined),
                         ),
@@ -259,7 +259,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       const SizedBox(height: 14),
                       DropdownButtonFormField<String>(
                         initialValue: _gender,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: AirwayText.tr('Gender (optional)', 'लिंग (वैकल्पिक)'),
                           prefixIcon: Icon(Icons.person_pin_outlined),
                         ),
@@ -273,7 +273,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       ),
                       const SizedBox(height: 14),
                       InputDecorator(
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: AirwayText.tr('Registered phone number', 'रजिस्टर्ड फ़ोन नंबर'),
                           prefixIcon: Icon(Icons.phone_android_rounded),
                           helperText: 'Phone changes require OTP re-verification.',
