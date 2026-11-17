@@ -16,6 +16,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   List<Notification> _notifications = [];
   bool _loading = true;
   String? _error;
+  bool _markingAll = false;
+
+  int get _unreadCount => _notifications.where((item) => !item.isRead).length;
 
   @override
   void initState() {
@@ -23,216 +26,337 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     _loadNotifications();
   }
 
-  Future<void> _loadNotifications() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+  Future<void> _loadNotifications({bool showLoader = true}) async {
+    if (mounted) {
+      setState(() {
+        if (showLoader) _loading = true;
+        _error = null;
+      });
+    }
     try {
       final notifications = await NotificationApi.listNotifications();
-      if (mounted) {
-        setState(() {
-          _notifications = notifications;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() { _error = 'Could not load notifications.'; });
+      if (mounted) setState(() => _notifications = notifications);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load notifications. Please try again.');
     } finally {
-      if (mounted) setState(() { _loading = false; });
+      if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _refresh() async {
-    await _loadNotifications();
   }
 
   Future<void> _markAllRead() async {
+    if (_markingAll || _unreadCount == 0) return;
+    setState(() => _markingAll = true);
     try {
       await NotificationApi.markAllRead();
-      await _loadNotifications();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to mark all as read: $e')),
-        );
-      }
+      if (!mounted) return;
+      setState(() {
+        _notifications = _notifications.map((item) => _copyRead(item)).toList();
+      });
+    } catch (_) {
+      if (mounted) _message('Could not mark notifications as read. Try again.');
+    } finally {
+      if (mounted) setState(() => _markingAll = false);
     }
   }
 
-  Future<void> _markRead(Notification notification) async {
+  Notification _copyRead(Notification item) => Notification(
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    body: item.body,
+    channel: item.channel,
+    isRead: true,
+    readAt: item.readAt ?? DateTime.now(),
+    createdAt: item.createdAt,
+    data: item.data,
+    bookingId: item.bookingId,
+  );
+
+  Future<void> _markRead(Notification item) async {
+    if (item.isRead) return;
+    setState(() {
+      final index = _notifications.indexWhere((n) => n.id == item.id);
+      if (index >= 0) _notifications[index] = _copyRead(item);
+    });
     try {
-      await NotificationApi.markRead(notification.id);
+      await NotificationApi.markRead(item.id);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        final index = _notifications.indexWhere((n) => n.id == item.id);
+        if (index >= 0) _notifications[index] = item;
+      });
+      _message('Could not update this notification.');
+    }
+  }
+
+  Future<void> _delete(Notification item) async {
+    final previous = List<Notification>.from(_notifications);
+    setState(() => _notifications.removeWhere((n) => n.id == item.id));
+    try {
+      await NotificationApi.deleteNotification(item.id);
+    } catch (_) {
       if (mounted) {
-        setState(() {
-          final index = _notifications.indexWhere((n) => n.id == notification.id);
-          if (index != -1) {
-            final current = _notifications[index];
-            _notifications[index] = Notification(
-              id: current.id,
-              type: current.type,
-              title: current.title,
-              body: current.body,
-              channel: current.channel,
-              isRead: true,
-              readAt: DateTime.now(),
-              createdAt: current.createdAt,
-              data: current.data,
-              bookingId: current.bookingId,
-            );
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to mark as read: $e')),
-        );
+        setState(() => _notifications = previous);
+        _message('Could not delete notification.');
       }
     }
   }
 
-  void _navigateToBooking(int? bookingId) {
-    if (bookingId == null) return;
-    // Navigate to payment result screen to view booking details
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => PaymentResultScreen(bookingId: bookingId),
-      ),
+  void _message(String value) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(value), behavior: SnackBarBehavior.floating),
     );
+  }
+
+  Future<void> _openNotification(Notification item) async {
+    await _markRead(item);
+    if (!mounted || item.bookingId == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PaymentResultScreen(bookingId: item.bookingId!)),
+    );
+    if (mounted) _loadNotifications(showLoader: false);
+  }
+
+  String _sectionLabel(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(date.year, date.month, date.day);
+    if (day == today) return 'TODAY';
+    if (day == today.subtract(const Duration(days: 1))) return 'YESTERDAY';
+    return DateFormat('d MMMM yyyy').format(date).toUpperCase();
+  }
+
+  String _timeLabel(DateTime date) {
+    final now = DateTime.now();
+    final local = date.toLocal();
+    if (now.difference(local).inHours < 24 && now.day == local.day) {
+      return DateFormat('h:mm a').format(local);
+    }
+    return DateFormat('d MMM, h:mm a').format(local);
+  }
+
+  IconData _icon(String type) {
+    switch (type) {
+      case NotificationType.bookingConfirmed: return Icons.event_available_rounded;
+      case NotificationType.bookingAssigned: return Icons.person_pin_circle_outlined;
+      case NotificationType.bookingStarted: return Icons.play_circle_outline_rounded;
+      case NotificationType.bookingCompleted: return Icons.task_alt_rounded;
+      case NotificationType.bookingCancelled: return Icons.event_busy_rounded;
+      case NotificationType.paymentSuccess: return Icons.payments_outlined;
+      case NotificationType.walletCredit: return Icons.account_balance_wallet_outlined;
+      case NotificationType.workerOffer: return Icons.work_outline_rounded;
+      case NotificationType.workerOfferWithdrawn:
+      case NotificationType.workerOfferExpired: return Icons.work_off_outlined;
+      case NotificationType.referralReward:
+      case NotificationType.workerBonus: return Icons.card_giftcard_rounded;
+      case NotificationType.systemAnnouncement: return Icons.campaign_outlined;
+      default: return Icons.notifications_active_outlined;
+    }
+  }
+
+  Color _iconColor(String type) {
+    if (type == NotificationType.paymentSuccess || type == NotificationType.walletCredit) {
+      return const Color(0xFF16845B);
+    }
+    if (type == NotificationType.bookingCancelled || type == NotificationType.workerOfferExpired) {
+      return AirwayColors.error;
+    }
+    return AirwayColors.primary;
   }
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _notifications.where((n) => !n.isRead).length;
-
     return Scaffold(
+      backgroundColor: AirwayColors.background,
       appBar: AppBar(
-        title: const Text('Notifications'),
-        actions: [
-          if (unreadCount > 0)
-            TextButton(
-              onPressed: _markAllRead,
-              child: const Text('Mark All Read'),
+        titleSpacing: 20,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              _unreadCount == 0 ? 'You are all caught up' : '$_unreadCount unread updates',
+              style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary, fontWeight: FontWeight.w500),
             ),
-          IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
+          ],
+        ),
+        actions: [
+          if (_unreadCount > 0)
+            TextButton(
+              onPressed: _markingAll ? null : _markAllRead,
+              child: _markingAll
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Mark all read'),
+            ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: () => _loadNotifications(),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: () => _loadNotifications(),
         child: _buildBody(),
       ),
     );
   }
 
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 130),
+          Icon(Icons.cloud_off_rounded, size: 46, color: AirwayColors.textSecondary.withValues(alpha: .65)),
+          const SizedBox(height: 14),
+          Center(child: Text(_error!, textAlign: TextAlign.center)),
+          const SizedBox(height: 14),
+          Center(child: FilledButton.icon(onPressed: () => _loadNotifications(), icon: const Icon(Icons.refresh), label: const Text('Try again'))),
+        ],
+      );
+    }
+    if (_notifications.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 110),
+          Center(
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: .09), shape: BoxShape.circle),
+              child: const Icon(Icons.notifications_off_outlined, size: 40, color: AirwayColors.primary),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Center(child: Text('Nothing new right now', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+          const SizedBox(height: 7),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 38),
+            child: Text('Booking updates, payment receipts and important alerts will appear here.', textAlign: TextAlign.center, style: TextStyle(color: AirwayColors.textSecondary, height: 1.45)),
+          ),
+        ],
+      );
     }
 
-    if (_error != null) {
-      return SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final sections = <String, List<Notification>>{};
+    for (final item in _notifications) {
+      sections.putIfAbsent(_sectionLabel(item.createdAt), () => []).add(item);
+    }
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+      children: [
+        if (_unreadCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Row(
               children: [
-                const Icon(Icons.error_outline, size: 48, color: AirwayColors.error),
-                const SizedBox(height: 16),
-                Text(_error!),
-                const SizedBox(height: 16),
-                FilledButton(onPressed: _loadNotifications, child: const Text('Retry')),
+                Container(width: 7, height: 7, decoration: const BoxDecoration(color: AirwayColors.primary, shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Text('$_unreadCount UNREAD', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: AirwayColors.primary)),
               ],
             ),
           ),
-        ),
-      );
-    }
-
-    if (_notifications.isEmpty) {
-      return const Center(
-        child: Text('No notifications yet'),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _notifications.length,
-      itemBuilder: (context, index) => _buildNotificationItem(_notifications[index]),
+        for (final entry in sections.entries) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 12, 2, 9),
+            child: Text(entry.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.05, color: AirwayColors.textSecondary)),
+          ),
+          for (final item in entry.value) _notificationCard(item),
+        ],
+      ],
     );
   }
 
-  Widget _buildNotificationItem(Notification notification) {
-    final isRead = notification.isRead;
-    final hasBookingId = notification.bookingId != null;
-
-    return GestureDetector(
-      onTap: hasBookingId ? () => _navigateToBooking(notification.bookingId) : null,
-      child: Card(
-        color: isRead ? null : AirwayColors.primarySoft,
-        margin: const EdgeInsets.only(bottom: 8),
-        child: ListTile(
-          title: Text(
-            notification.title,
-            style: TextStyle(fontWeight: isRead ? FontWeight.normal : FontWeight.bold),
+  Widget _notificationCard(Notification item) {
+    final unread = !item.isRead;
+    final tint = _iconColor(item.type);
+    return Dismissible(
+      key: ValueKey(item.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(right: 22),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(color: AirwayColors.error, borderRadius: BorderRadius.circular(17)),
+        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+      ),
+      onDismissed: (_) => _delete(item),
+      child: InkWell(
+        onTap: () => _openNotification(item),
+        borderRadius: BorderRadius.circular(17),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.fromLTRB(13, 13, 12, 13),
+          decoration: BoxDecoration(
+            color: unread ? AirwayColors.primary.withValues(alpha: .055) : Colors.white,
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(
+              color: unread ? AirwayColors.primary.withValues(alpha: .24) : const Color(0xFFEAECEF),
+            ),
           ),
-          subtitle: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(notification.body),
-              const SizedBox(height: 4),
-              Text(
-                _formatTime(notification.createdAt),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AirwayColors.textSecondary,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: tint.withValues(alpha: .11), borderRadius: BorderRadius.circular(13)),
+                child: Icon(_icon(item.type), color: tint, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 13.5, height: 1.3, fontWeight: unread ? FontWeight.w800 : FontWeight.w600, color: AirwayColors.text),
+                          ),
+                        ),
+                        if (unread) ...[
+                          const SizedBox(width: 7),
+                          Container(width: 7, height: 7, margin: const EdgeInsets.only(top: 5), decoration: const BoxDecoration(color: AirwayColors.primary, shape: BoxShape.circle)),
+                        ],
+                      ],
+                    ),
+                    if (item.body.trim().isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        item.body,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, height: 1.4, color: AirwayColors.textSecondary),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time_rounded, size: 12, color: AirwayColors.textSecondary.withValues(alpha: .8)),
+                        const SizedBox(width: 4),
+                        Text(_timeLabel(item.createdAt), style: const TextStyle(fontSize: 10.5, color: AirwayColors.textSecondary)),
+                        const Spacer(),
+                        if (item.bookingId != null)
+                          const Text('VIEW BOOKING', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .5, color: AirwayColors.primary)),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          trailing: !isRead
-              ? IconButton(
-                  icon: const Icon(Icons.check_circle_outline, color: AirwayColors.primary),
-                  onPressed: () => _markRead(notification),
-                )
-              : const SizedBox.shrink(),
-          leading: Icon(
-            _getChannelIcon(notification.type),
-            color: isRead ? AirwayColors.textSecondary : AirwayColors.primary,
-          ),
         ),
       ),
     );
-  }
-
-  IconData _getChannelIcon(String type) {
-    switch (type) {
-      case NotificationType.bookingAssigned:
-        return Icons.work;
-      case NotificationType.bookingStarted:
-        return Icons.play_arrow;
-      case NotificationType.bookingCompleted:
-        return Icons.check_circle;
-      case NotificationType.bookingCancelled:
-        return Icons.cancel;
-      case NotificationType.paymentSuccess:
-        return Icons.payment;
-      case NotificationType.walletCredit:
-        return Icons.account_balance_wallet;
-      default:
-        return Icons.notifications;
-    }
-  }
-
-  String _formatTime(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-
-    if (diff.inSeconds < 60) {
-      return 'Just now';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else {
-      return DateFormat('dd/MM/yyyy').format(dt);
-    }
   }
 }
