@@ -99,13 +99,20 @@ class NotificationApi {
   }
 
   static Future<List<Notification>> listNotifications() async {
-    final result = await _request('/api/v1/notifications/');
-    final list = result['results'] as List;
-
-    return list
-        .whereType<Map>()
-        .map((e) => Notification.fromMap(Map<String, dynamic>.from(e)))
-        .toList();
+    final notifications = <Notification>[];
+    var page = 1;
+    while (true) {
+      final result = await _request('/api/v1/notifications/?page=$page');
+      final list = result['results'] as List? ?? const [];
+      notifications.addAll(
+        list.whereType<Map>().map(
+          (e) => Notification.fromMap(Map<String, dynamic>.from(e)),
+        ),
+      );
+      if (result['next'] == null || list.isEmpty) break;
+      page++;
+    }
+    return notifications;
   }
 
   static Future<Notification> markRead(int notificationId) async {
