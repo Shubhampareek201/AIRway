@@ -2026,7 +2026,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ListTile(
                 leading: const Icon(Icons.card_giftcard_outlined, color: _Ui.violet),
                 title: Text(hi ? 'शेयर करें और कमाएँ' : 'Share & earn'),
-                subtitle: Text(hi ? 'दोस्तों को आमंत्रित करें और ₹200 वॉलेट क्रेडिट पाएँ' : 'Invite friends and earn ₹200 wallet credit'),
+                subtitle: Text(hi ? 'दोस्त को ₹100 और खुद ₹200 पाएँ, पहली सेवा पूरी होने पर' : 'Your friend gets ₹100 and you get ₹200 after their first completed service'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountReferralsScreen()),
