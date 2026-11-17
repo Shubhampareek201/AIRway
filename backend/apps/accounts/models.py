@@ -257,6 +257,7 @@ class AccountDeletionRequest(TimeStampedModel):
     )
     reason = models.TextField(blank=True)
     has_active_bookings = models.BooleanField(default=False)
+    has_financial_obligations = models.BooleanField(default=False)
     active_booking_count = models.PositiveIntegerField(default=0)
     admin_notes = models.TextField(blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
