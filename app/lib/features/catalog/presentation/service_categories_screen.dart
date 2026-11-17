@@ -171,7 +171,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         }).toList();
         if (target.length != 1) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(AirwayText.tr('The next category is not configured correctly. Please contact support.', 'अगली श्रेणी सही तरीके से कॉन्फ़िगर नहीं है। कृपया सपोर्ट से संपर्क करें।')),
             ),
           );
