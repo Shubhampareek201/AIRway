@@ -50,7 +50,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     final number = _phoneController.text.trim();
 
     if (!RegExp(r'^[6-9]\d{9}$').hasMatch(number)) {
-      _message('Enter a valid 10-digit mobile number.');
+      _message(AirwayText.tr('Enter a valid 10-digit mobile number.', 'सही 10 अंकों का मोबाइल नंबर दर्ज करें।'));
       return;
     }
 
@@ -84,7 +84,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
             _loading = false;
           });
 
-          _message('Verification code requested. Enter your OTP.');
+          _message(AirwayText.tr('Verification code requested. Enter your OTP.', 'वेरिफ़िकेशन कोड भेज दिया गया है। OTP दर्ज करें।'));
         },
 
         codeAutoRetrievalTimeout: (verificationId) {
@@ -101,7 +101,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _message('Something went wrong. Please try again.');
+      _message(AirwayText.tr('Something went wrong. Please try again.', 'कुछ गड़बड़ हुई। फिर से कोशिश करें।'));
     }
   }
 
@@ -109,14 +109,14 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     final otp = _otpController.text.trim();
 
     if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
-      _message('Enter a valid 6-digit OTP.');
+      _message(AirwayText.tr('Enter a valid 6-digit OTP.', 'सही 6 अंकों का OTP दर्ज करें।'));
       return;
     }
 
     final verificationId = _verificationId;
 
     if (verificationId == null) {
-      _message('Request an OTP first.');
+      _message(AirwayText.tr('Request an OTP first.', 'पहले OTP मँगाएँ।'));
       return;
     }
 
@@ -195,7 +195,7 @@ Navigator.of(context).pushAndRemoveUntil(
     if (!mounted) return;
     _credentialProcessing = false;
     setState(() => _loading = false);
-    _message('Unable to complete AIRway login. Please try again.');
+    _message(AirwayText.tr('Unable to complete AIRway login. Please try again.', 'AIRway लॉगिन पूरा नहीं हो सका। फिर से कोशिश करें।'));
   }
 }
 
@@ -203,7 +203,7 @@ Navigator.of(context).pushAndRemoveUntil(
     if (_loading || _credentialProcessing) return;
     final firebaseUser = _auth.currentUser;
     if (firebaseUser == null) {
-      _message('Please verify your phone number again.');
+      _message(AirwayText.tr('Please verify your phone number again.', 'कृपया अपना फ़ोन नंबर फिर से वेरिफ़ाई करें।'));
       return;
     }
     _credentialProcessing = true;
