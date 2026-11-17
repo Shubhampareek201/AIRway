@@ -68,9 +68,11 @@ class AccountDeletionRequestTests(APITestCase):
         from decimal import Decimal
         from apps.wallet.models import Wallet
 
+        cached_wallet = self.user.wallet  # Deliberately cache the old reverse relation.
         wallet = Wallet.objects.get(user=self.user)
         wallet.balance = Decimal("50.00")
         wallet.save(update_fields=["balance", "updated_at"])
+        self.assertEqual(cached_wallet.balance, Decimal("0.00"))
         response = self.client.post(
             "/api/v1/auth/delete-account/",
             {},
@@ -87,9 +89,11 @@ class AccountDeletionRequestTests(APITestCase):
         from decimal import Decimal
         from apps.wallet.models import Wallet
 
+        cached_wallet = self.user.wallet  # Deliberately cache the old reverse relation.
         wallet = Wallet.objects.get(user=self.user)
         wallet.balance = Decimal("25.00")
         wallet.save(update_fields=["balance", "updated_at"])
+        self.assertEqual(cached_wallet.balance, Decimal("0.00"))
         created = self.client.post(
             "/api/v1/auth/delete-account/",
             {},
