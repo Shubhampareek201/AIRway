@@ -33,6 +33,10 @@ class AccountDeletionRequestTests(APITestCase):
             AccountDeletionRequest.objects.get(pk=request_id).status,
             AccountDeletionRequest.Status.CANCELLED,
         )
+        current = self.client.get("/api/v1/auth/delete-account/")
+        self.assertEqual(current.status_code, status.HTTP_200_OK)
+        self.assertEqual(current.data["status"], AccountDeletionRequest.Status.CANCELLED)
+        self.assertIn("cancelled", current.data["detail"].lower())
 
     def test_customer_cannot_cancel_when_no_active_request_exists(self):
         response = self.client.delete("/api/v1/auth/delete-account/")
