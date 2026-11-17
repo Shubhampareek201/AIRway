@@ -2268,7 +2268,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
 
   double _leafProgress(double startMs) {
     final totalMs = _growthDuration.inMilliseconds.toDouble();
-    final start = (startMs / totalMs).clamp(0.0, 1.0);
+    final start = (startMs / totalMs).clamp(0.0, 1.0).toDouble();
     final end = ((startMs + 520) / totalMs).clamp(0.0, 1.0);
     if (_controller.value <= start) return 0;
     return Curves.easeOutBack.transform(
@@ -2476,7 +2476,7 @@ class _AirwayVinePainter extends CustomPainter {
     for (final metric in metrics) {
       final visible = metric.extractPath(
         0,
-        metric.length * progress.clamp(0.0, 1.0),
+        metric.length * progress.clamp(0.0, 1.0).toDouble(),
       );
       canvas.drawPath(
         visible,
@@ -2525,7 +2525,7 @@ class _AirwayVinePainter extends CustomPainter {
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.rotate(rotation);
-    final pop = Curves.easeOutBack.transform(progress).clamp(0.0, 1.08);
+    final pop = Curves.easeOutBack.transform(progress).clamp(0.0, 1.08).toDouble();
     canvas.scale(scale * pop);
 
     final leaf = _leafShape();
@@ -2611,7 +2611,7 @@ class _AirwayVinePainter extends CustomPainter {
     for (var i = 0; i < shoots.length; i++) {
       final threshold = 0.22 + (i * 0.16);
       final shootProgress =
-          ((vineProgress - threshold) / (1 - threshold)).clamp(0.0, 1.0);
+          ((vineProgress - threshold) / (1 - threshold)).clamp(0.0, 1.0).toDouble();
       _drawGrowingPath(canvas, shoots[i], Curves.easeOut.transform(shootProgress));
     }
 
