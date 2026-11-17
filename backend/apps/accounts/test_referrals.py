@@ -38,8 +38,8 @@ class CustomerReferralAPITests(APITestCase):
                 rewarded=False,
             ).exists()
         )
-        self.assertFalse(Wallet.objects.filter(user=self.referred).exists())
-        self.assertFalse(Wallet.objects.filter(user=self.referrer).exists())
+        self.assertEqual(Wallet.objects.get(user=self.referred).balance, 0)
+        self.assertEqual(Wallet.objects.get(user=self.referrer).balance, 0)
         self.assertFalse(WalletTransaction.objects.exists())
 
     def test_referral_code_cannot_be_applied_twice(self):
@@ -183,5 +183,6 @@ class CustomerReferralAPITests(APITestCase):
             Referral.objects.filter(referrer=self.referrer, referred=new_user).count(),
             1,
         )
-        self.assertFalse(Wallet.objects.filter(user=new_user).exists())
-        self.assertFalse(Wallet.objects.filter(user=self.referrer).exists())
+        self.assertEqual(Wallet.objects.get(user=new_user).balance, 0)
+        self.assertEqual(Wallet.objects.get(user=self.referrer).balance, 0)
+        self.assertFalse(WalletTransaction.objects.exists())
