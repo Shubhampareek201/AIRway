@@ -18,6 +18,7 @@ import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
+import 'package:airway/core/localization/airway_locale.dart';
 import 'package:airway/features/account/presentation/account_referrals_screen.dart';
 import 'package:airway/features/account/presentation/account_deletion_screen.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
@@ -1876,6 +1877,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _bookings() => const BookingListScreen();
 
   Widget _profile(Map<String, dynamic> address) {
+    final hi = AirwayLocale.current.languageCode == 'hi';
     final account = _accountData ?? const <String, dynamic>{};
     final name = account['name']?.toString().trim();
     final email = account['email']?.toString().trim();
@@ -1885,7 +1887,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       padding: const EdgeInsets.all(20),
       children: [
         const Text(
-          'Profile',
+          hi ? 'प्रोफ़ाइल' : 'Profile',
           style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink),
         ),
         const SizedBox(height: 16),
@@ -1907,19 +1909,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name?.isNotEmpty == true ? name! : 'Your AIRway account',
+                    Text(name?.isNotEmpty == true ? name! : hi ? 'आपका AIRway खाता' : 'Your AIRway account',
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _Ui.ink)),
                     if (phone?.isNotEmpty == true)
                       Text(phone!, style: const TextStyle(color: _Ui.sub)),
                     if (email?.isNotEmpty == true)
                       Text(email!, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: _Ui.sub, fontSize: 12)),
-                    Text('${_addresses.length} saved addresses', style: const TextStyle(color: _Ui.sub, fontSize: 12)),
+                    Text(hi ? '${_addresses.length} सहेजे गए पते' : '${_addresses.length} saved addresses', style: const TextStyle(color: _Ui.sub, fontSize: 12)),
                   ],
                 ),
               ),
               IconButton(
-                tooltip: 'Edit personal information',
+                tooltip: hi ? 'व्यक्तिगत जानकारी संपादित करें' : 'Edit personal information',
                 onPressed: _editAccountProfile,
                 icon: const Icon(Icons.edit_outlined, color: _Ui.violet),
               ),
@@ -1937,8 +1939,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             elevation: 0,
             child: ListTile(
               leading: const Icon(Icons.work_outline, color: _Ui.violet),
-              title: const Text('Become a Worker'),
-              subtitle: const Text('Apply to provide services in your area'),
+              title: const Text(hi ? 'वर्कर बनें' : 'Become a Worker'),
+              subtitle: const Text(hi ? 'अपने क्षेत्र में सेवाएँ देने के लिए आवेदन करें' : 'Apply to provide services in your area'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _goToWorkerApplication,
             ),
@@ -1952,15 +1954,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.person_outline_rounded, color: _Ui.violet),
-                title: const Text('Personal information'),
-                subtitle: const Text('Name, email, profile photo and phone'),
+                title: const Text(hi ? 'व्यक्तिगत जानकारी' : 'Personal information'),
+                subtitle: const Text(hi ? 'नाम, ईमेल, प्रोफ़ाइल फोटो और फ़ोन' : 'Name, email, profile photo and phone'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _editAccountProfile,
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.location_on_outlined, color: _Ui.violet),
-                title: const Text('Manage addresses'),
+                title: const Text(hi ? 'पते प्रबंधित करें' : 'Manage addresses'),
                 subtitle: Text('${address['full_address'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _selectAddress,
@@ -1968,16 +1970,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.calendar_month_outlined, color: _Ui.violet),
-                title: const Text('My Bookings'),
-                subtitle: const Text('Upcoming, active and completed services'),
+                title: const Text(hi ? 'मेरी बुकिंग' : 'My Bookings'),
+                subtitle: const Text(hi ? 'आगामी, चालू और पूरी हुई सेवाएँ' : 'Upcoming, active and completed services'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => setState(() => _tab = 1),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.favorite_border_rounded, color: _Ui.violet),
-                title: const Text('Favorite services'),
-                subtitle: const Text('Services you saved for later'),
+                title: const Text(hi ? 'पसंदीदा सेवाएँ' : 'Favorite services'),
+                subtitle: const Text(hi ? 'बाद के लिए सेव की गई सेवाएँ' : 'Services you saved for later'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => FavoriteServicesScreen(addressId: int.tryParse('${address['id']}'))),
@@ -1986,8 +1988,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet),
-                title: const Text('Wallet'),
-                subtitle: const Text('View balance and transactions'),
+                title: const Text(hi ? 'वॉलेट' : 'Wallet'),
+                subtitle: const Text(hi ? 'बैलेंस और लेन-देन देखें' : 'View balance and transactions'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const WalletScreen()),
@@ -1996,8 +1998,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet),
-                title: const Text('My Ratings'),
-                subtitle: const Text('Your service feedback and ratings'),
+                title: const Text(hi ? 'मेरी रेटिंग' : 'My Ratings'),
+                subtitle: const Text(hi ? 'आपकी सेवा प्रतिक्रिया और रेटिंग' : 'Your service feedback and ratings'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const RatingsScreen()),
@@ -2006,8 +2008,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.payments_outlined, color: _Ui.violet),
-                title: const Text('Payment options'),
-                subtitle: const Text('Wallet and secure online checkout methods'),
+                title: const Text(hi ? 'भुगतान विकल्प' : 'Payment options'),
+                subtitle: const Text(hi ? 'वॉलेट और सुरक्षित ऑनलाइन भुगतान के तरीके' : 'Wallet and secure online checkout methods'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PaymentOptionsScreen()),
@@ -2016,16 +2018,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.notifications_outlined, color: _Ui.violet),
-                title: const Text('Notification preferences'),
-                subtitle: const Text('Control push notifications on this device'),
+                title: const Text(hi ? 'सूचना प्राथमिकताएँ' : 'Notification preferences'),
+                subtitle: const Text(hi ? 'इस डिवाइस पर पुश नोटिफिकेशन नियंत्रित करें' : 'Control push notifications on this device'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _openNotificationPreferences,
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.card_giftcard_outlined, color: _Ui.violet),
-                title: const Text('Share & earn'),
-                subtitle: const Text('Invite friends and earn ₹200 wallet credit'),
+                title: const Text(hi ? 'शेयर करें और कमाएँ' : 'Share & earn'),
+                subtitle: const Text(hi ? 'दोस्तों को आमंत्रित करें और ₹200 वॉलेट क्रेडिट पाएँ' : 'Invite friends and earn ₹200 wallet credit'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountReferralsScreen()),
@@ -2034,8 +2036,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.tune_rounded, color: _Ui.violet),
-                title: const Text('App preferences'),
-                subtitle: const Text('Appearance and language'),
+                title: const Text(hi ? 'ऐप प्राथमिकताएँ' : 'App preferences'),
+                subtitle: const Text(hi ? 'भाषा सेटिंग' : 'Language settings'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountPreferencesScreen()),
@@ -2044,8 +2046,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.security_outlined, color: _Ui.violet),
-                title: const Text('Password & security'),
-                subtitle: const Text('Change or set your account password'),
+                title: const Text(hi ? 'पासवर्ड और सुरक्षा' : 'Password & security'),
+                subtitle: const Text(hi ? 'अपने खाते का पासवर्ड बदलें या सेट करें' : 'Change or set your account password'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
@@ -2054,8 +2056,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.description_outlined, color: _Ui.violet),
-                title: const Text('Terms & Privacy'),
-                subtitle: const Text('Read AIRway terms and privacy information'),
+                title: const Text(hi ? 'नियम और गोपनीयता' : 'Terms & Privacy'),
+                subtitle: const Text(hi ? 'AIRway के नियम और गोपनीयता जानकारी पढ़ें' : 'Read AIRway terms and privacy information'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
@@ -2064,8 +2066,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.person_off_outlined, color: _Ui.violet),
-                title: const Text('Delete account'),
-                subtitle: const Text('Submit a request to close your AIRway account'),
+                title: const Text(hi ? 'खाता हटाने का अनुरोध' : 'Delete account'),
+                subtitle: const Text(hi ? 'अपना AIRway खाता बंद करने का अनुरोध भेजें' : 'Submit a request to close your AIRway account'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountDeletionScreen()),
@@ -2074,8 +2076,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.support_agent_outlined, color: _Ui.violet),
-                title: const Text('Help & Support'),
-                subtitle: const Text('Guidance for bookings, addresses and payments'),
+                title: const Text(hi ? 'मदद और सहायता' : 'Help & Support'),
+                subtitle: const Text(hi ? 'बुकिंग, पते और भुगतान में सहायता' : 'Guidance for bookings, addresses and payments'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
@@ -2091,13 +2093,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.refresh_rounded, color: _Ui.violet),
-                title: const Text('Refresh account data'),
+                title: const Text(hi ? 'खाते की जानकारी रीफ़्रेश करें' : 'Refresh account data'),
                 onTap: _refresh,
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.logout_rounded, color: _Ui.violet),
-                title: const Text('Log out'),
+                title: const Text(hi ? 'लॉग आउट' : 'Log out'),
                 onTap: _logout,
               ),
             ],
