@@ -69,7 +69,13 @@ class NotificationApi {
         'AIRway request failed (${result.status}): ${result.body}',
       );
     }
-    return Map<String, dynamic>.from(result.body as Map);
+    // DELETE endpoints commonly return 204 No Content. Treat an empty
+    // successful response as an empty object instead of throwing after the
+    // server has already completed the operation.
+    if (result.body is Map) {
+      return Map<String, dynamic>.from(result.body as Map);
+    }
+    return <String, dynamic>{};
   }
 
   static Future<void> registerDeviceToken(String token) async {
