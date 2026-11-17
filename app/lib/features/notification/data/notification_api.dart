@@ -91,6 +91,13 @@ class NotificationApi {
     );
   }
 
+  static Future<int> unreadCount() async {
+    final result = await _request('/api/v1/notifications/unread-count/');
+    final value = result['unread_count'];
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
   static Future<List<Notification>> listNotifications() async {
     final result = await _request('/api/v1/notifications/');
     final list = result['results'] as List;
