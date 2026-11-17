@@ -182,7 +182,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     final otherOffers = _offers.where((o) => [WorkerOffer.declined, WorkerOffer.expired, WorkerOffer.withdrawn].contains(o.status)).toList();
 
     if (pendingOffers.isEmpty && acceptedOffers.isEmpty && otherOffers.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(AirwayText.tr('No job offers', 'कोई जॉब ऑफ़र नहीं है')),
       );
     }
