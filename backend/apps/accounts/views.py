@@ -100,20 +100,44 @@ class FirebaseLoginView(APIView):
             )
 
         firebase_data = decoded.get("firebase", {})
+        provider = firebase_data.get("sign_in_provider") if isinstance(firebase_data, dict) else None
         phone = decoded.get("phone_number")
+        firebase_uid = decoded.get("uid") or decoded.get("sub")
 
-        if (
-            not isinstance(firebase_data, dict)
-            or firebase_data.get("sign_in_provider") != "phone"
-            or not isinstance(phone, str)
-            or not phone.startswith("+91")
-        ):
+        if provider == "phone":
+            if not isinstance(phone, str) or not phone.startswith("+91"):
+                return Response(
+                    {"error": "Verified Indian phone login required."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            lookup = {"phone": phone}
+            defaults = {"password": make_password(None)}
+            existing_account = User.objects.filter(phone=phone).exists()
+        elif provider == "google.com":
+            if not isinstance(firebase_uid, str) or not firebase_uid:
+                return Response(
+                    {"error": "Verified Google identity is required."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if decoded.get("email_verified") is not True:
+                return Response(
+                    {"error": "A verified Google email is required."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            lookup = {"firebase_uid": firebase_uid}
+            defaults = {
+                "phone": None,
+                "password": make_password(None),
+                "name": str(decoded.get("name") or "").strip()[:150],
+                "email": str(decoded.get("email") or "").strip().lower(),
+            }
+            existing_account = User.objects.filter(firebase_uid=firebase_uid).exists()
+        else:
             return Response(
-                {"error": "Verified Indian phone login required."},
+                {"error": "Use verified Google or Indian phone sign-in."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        existing_account = User.objects.filter(phone=phone).exists()
         if not existing_account and (
             request.data.get("terms_accepted") is not True
             or request.data.get("privacy_accepted") is not True
@@ -126,8 +150,8 @@ class FirebaseLoginView(APIView):
         try:
             with transaction.atomic():
                 user, created = User.objects.get_or_create(
-                    phone=phone,
-                    defaults={"password": make_password(None)},
+                    **lookup,
+                    defaults=defaults,
                 )
                 if created:
                     _record_legal_consent(user, request)
