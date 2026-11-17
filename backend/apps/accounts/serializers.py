@@ -17,10 +17,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True)
     email = serializers.EmailField(required=False, allow_blank=True)
+    referral_code = serializers.CharField(required=False, allow_blank=True, max_length=12, write_only=True)
 
     class Meta:
         model = User
-        fields = ["phone", "name", "email", "password", "confirm_password"]
+        fields = ["phone", "name", "email", "password", "confirm_password", "referral_code"]
 
     def validate_phone(self, value):
         if not re.match(r'^\+91[6-9]\d{9}$', value):
@@ -34,6 +35,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Email already registered.")
         return value
 
+    def validate_referral_code(self, value):
+        value = value.strip().upper()
+        if value and not User.objects.filter(referral_code__iexact=value, is_active=True).exists():
+            raise serializers.ValidationError("This referral code is invalid.")
+        return value
+
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('confirm_password'):
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
@@ -41,9 +48,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        from django.db import transaction
+        from .referrals import apply_referral_code
+
         validated_data.pop('confirm_password')
         password = validated_data.pop('password')
-        user = User.objects.create_user(**validated_data, password=password)
+        referral_code = validated_data.pop('referral_code', '')
+        with transaction.atomic():
+            user = User.objects.create_user(**validated_data, password=password)
+            if referral_code:
+                apply_referral_code(user, referral_code)
         return user
 
 
