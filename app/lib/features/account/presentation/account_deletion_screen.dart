@@ -245,6 +245,29 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                           label: Text(t('Cancel deletion request', 'खाता बंद करने का अनुरोध रद्द करें')),
                         ),
                       ],
+                      if (status == 'cancelled' || status == 'rejected') ...[
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _reasonController,
+                          maxLines: 4,
+                          maxLength: 1000,
+                          decoration: InputDecoration(
+                            labelText: t('Reason (optional)', 'कारण (वैकल्पिक)'),
+                            hintText: t('Tell us why you want to close your account.', 'बताएँ कि आप अपना खाता क्यों बंद करना चाहते हैं।'),
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _submitting ? null : _submit,
+                            child: _submitting
+                                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(t('Submit a new request', 'नया अनुरोध भेजें')),
+                          ),
+                        ),
+                      ],
                     ] else ...[
                       TextField(
                         controller: _reasonController,
