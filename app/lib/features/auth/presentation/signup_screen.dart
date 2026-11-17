@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/auth/presentation/startup_gate.dart';
+import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -21,6 +22,8 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _termsAccepted = false;
+  bool _privacyAccepted = false;
 
   @override
   void dispose() {
@@ -67,6 +70,10 @@ class _SignupScreenState extends State<SignupScreen> {
       _message('Passwords do not match.');
       return;
     }
+    if (!_termsAccepted || !_privacyAccepted) {
+      _message('Please accept the Terms & Conditions and Privacy Policy.');
+      return;
+    }
     if (_loading) return;
 
     setState(() => _loading = true);
@@ -81,6 +88,8 @@ class _SignupScreenState extends State<SignupScreen> {
         referralCode: _referralCodeController.text.trim().isEmpty
             ? null
             : _referralCodeController.text.trim(),
+        termsAccepted: _termsAccepted,
+        privacyAccepted: _privacyAccepted,
       );
       await SecureSessionStorage.saveSession(
         accessToken: response['access'] as String,
@@ -194,6 +203,29 @@ class _SignupScreenState extends State<SignupScreen> {
                       setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
                     },
                   ),
+                ),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _termsAccepted,
+                onChanged: _loading ? null : (value) => setState(() => _termsAccepted = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('I agree to the Terms & Conditions'),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _privacyAccepted,
+                onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('I have read and agree to the Privacy Policy'),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
+                  ),
+                  child: const Text('Read Terms & Privacy'),
                 ),
               ),
               const SizedBox(height: 24),
