@@ -108,6 +108,8 @@ class FirebaseLoginView(APIView):
                     defaults={"password": make_password(None)},
                 )
                 referral_code = request.data.get("referral_code")
+                if referral_code and not created:
+                    raise ValueError("Referral codes can only be applied when creating a new AIRway account.")
                 if created and referral_code:
                     from .referrals import apply_referral_code
                     apply_referral_code(user, referral_code)
