@@ -143,14 +143,14 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                   children: [
                     const Icon(Icons.verified_user_outlined, size: 54, color: AirwayColors.primary),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Your account uses OTP or Google sign-in',
+                    Text(
+                      AirwayText.tr('Your account uses OTP or Google sign-in', 'आपका खाता OTP या Google साइन-इन का उपयोग करता है'),
                       style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'No password is currently set for ${_phone ?? 'this account'}. You can create or reset one using OTP verification.',
+                      AirwayText.tr('No password is currently set for ${_phone ?? 'this account'}. You can create or reset one using OTP verification.', '${_phone ?? 'इस खाते'} के लिए अभी पासवर्ड सेट नहीं है। आप OTP वेरिफ़िकेशन से पासवर्ड बना या रीसेट कर सकते हैं।'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: AirwayColors.textSecondary, height: 1.45),
                     ),
@@ -166,8 +166,8 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                         child: Text(AirwayText.tr('Set password with OTP', 'OTP से पासवर्ड सेट करें')),
                       )
                     else
-                      const Text(
-                        'No phone number is linked to this account. Continue with Google sign-in; adding a phone number requires a separate verification flow.',
+                      Text(
+                        AirwayText.tr('No phone number is linked to this account. Continue with Google sign-in; adding a phone number requires a separate verification flow.', 'इस खाते से कोई फ़ोन नंबर लिंक नहीं है। Google से साइन-इन जारी रखें; फ़ोन नंबर जोड़ने के लिए अलग वेरिफ़िकेशन ज़रूरी है।'),
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AirwayColors.textSecondary, height: 1.45),
                       ),
@@ -176,21 +176,21 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
               : ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    const Text(
-                      'Change your password',
+                    Text(
+                      AirwayText.tr('Change your password', 'अपना पासवर्ड बदलें'),
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Use a strong password you do not use on other websites.',
+                    Text(
+                      AirwayText.tr('Use a strong password you do not use on other websites.', 'ऐसा मज़बूत पासवर्ड चुनें जिसे आप दूसरी वेबसाइटों पर इस्तेमाल नहीं करते।'),
                       style: TextStyle(color: AirwayColors.textSecondary),
                     ),
                     const SizedBox(height: 22),
-                    _passwordField('Current password', _oldPassword, _obscureOld,
+                    _passwordField(AirwayText.tr('Current password', 'मौजूदा पासवर्ड'), _oldPassword, _obscureOld,
                         () => setState(() => _obscureOld = !_obscureOld), current: true),
-                    _passwordField('New password', _newPassword, _obscureNew,
+                    _passwordField(AirwayText.tr('New password', 'नया पासवर्ड'), _newPassword, _obscureNew,
                         () => setState(() => _obscureNew = !_obscureNew)),
-                    _passwordField('Confirm new password', _confirmPassword, _obscureConfirm,
+                    _passwordField(AirwayText.tr('Confirm new password', 'नए पासवर्ड की पुष्टि करें'), _confirmPassword, _obscureConfirm,
                         () => setState(() => _obscureConfirm = !_obscureConfirm)),
                     const SizedBox(height: 8),
                     FilledButton(
