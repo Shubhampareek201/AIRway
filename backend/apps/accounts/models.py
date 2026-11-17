@@ -67,6 +67,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     )
     name = models.CharField(max_length=150, blank=True)
     email = models.EmailField(blank=True)
+    firebase_uid = models.CharField(max_length=128, unique=True, null=True, blank=True)
     gender = models.CharField(max_length=20, choices=Gender.choices, blank=True)
     photo = models.ImageField(upload_to="users/", blank=True)
     language = models.CharField(max_length=2, choices=Language.choices, default=Language.HINDI)
