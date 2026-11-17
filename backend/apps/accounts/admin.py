@@ -103,6 +103,14 @@ class AccountDeletionRequestAdmin(ModelAdmin):
                     or wallet.reservations.filter(status="reserved").exists()
                 )
             )
+            from apps.payments.models import Payment, PaymentRefund
+            has_financial_obligations = has_financial_obligations or Payment.objects.filter(
+                customer=obj.user,
+                status=Payment.Status.PENDING,
+            ).exists() or PaymentRefund.objects.filter(
+                payment__customer=obj.user,
+                status__in=(PaymentRefund.Status.PROCESSING, PaymentRefund.Status.PENDING),
+            ).exists()
             if active_ids or has_financial_obligations:
                 obj.status = AccountDeletionRequest.Status.UNDER_REVIEW
                 messages.error(
