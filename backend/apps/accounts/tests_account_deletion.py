@@ -68,7 +68,9 @@ class AccountDeletionRequestTests(APITestCase):
         from decimal import Decimal
         from apps.wallet.models import Wallet
 
-        Wallet.objects.create(user=self.user, balance=Decimal("50.00"))
+        wallet = Wallet.objects.get(user=self.user)
+        wallet.balance = Decimal("50.00")
+        wallet.save(update_fields=["balance", "updated_at"])
         response = self.client.post(
             "/api/v1/auth/delete-account/",
             {},
@@ -85,7 +87,9 @@ class AccountDeletionRequestTests(APITestCase):
         from decimal import Decimal
         from apps.wallet.models import Wallet
 
-        wallet = Wallet.objects.create(user=self.user, balance=Decimal("25.00"))
+        wallet = Wallet.objects.get(user=self.user)
+        wallet.balance = Decimal("25.00")
+        wallet.save(update_fields=["balance", "updated_at"])
         created = self.client.post(
             "/api/v1/auth/delete-account/",
             {},
