@@ -203,7 +203,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
         const SizedBox(height: 8),
         Text(message, textAlign: TextAlign.center, style: const TextStyle(color: sub)),
         const SizedBox(height: 18),
-        FilledButton(onPressed: action, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
+        FilledButton(onPressed: action, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
       ]),
     ),
   );
