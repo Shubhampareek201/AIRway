@@ -201,10 +201,6 @@ Navigator.of(context).pushAndRemoveUntil(
 
   Future<void> _retryBackendLogin() async {
     if (_loading || _credentialProcessing) return;
-    if (!_termsAccepted || !_privacyAccepted) {
-      _message('Please accept the Terms & Conditions and Privacy Policy.');
-      return;
-    }
     final firebaseUser = _auth.currentUser;
     if (firebaseUser == null) {
       _message('Please verify your phone number again.');
