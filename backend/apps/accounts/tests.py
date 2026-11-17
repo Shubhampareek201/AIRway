@@ -56,6 +56,68 @@ class CurrentUserAPITest(APITestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class AccountProfileUpdateAPITest(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            phone="+919876543210",
+            name="Original Name",
+            email="original@example.com",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_update_account_name_email_and_gender(self):
+        response = self.client.patch(
+            "/api/v1/auth/profile/",
+            {
+                "name": "Updated Name",
+                "email": "updated@example.com",
+                "gender": User.Gender.OTHER,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.name, "Updated Name")
+        self.assertEqual(self.user.email, "updated@example.com")
+        self.assertEqual(self.user.gender, User.Gender.OTHER)
+        self.assertEqual(response.data["phone"], self.user.phone)
+
+    def test_account_profile_rejects_duplicate_email(self):
+        User.objects.create_user(
+            phone="+919876543211",
+            email="taken@example.com",
+        )
+        response = self.client.patch(
+            "/api/v1/auth/profile/",
+            {"email": "TAKEN@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "original@example.com")
+
+    def test_account_profile_does_not_allow_phone_change(self):
+        response = self.client.patch(
+            "/api/v1/auth/profile/",
+            {"phone": "+919876543212"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.phone, "+919876543210")
+
+    def test_account_profile_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.patch(
+            "/api/v1/auth/profile/",
+            {"name": "Not allowed"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
 class LoginAPITest(APITestCase):
     """Test login endpoint authentication."""
 
