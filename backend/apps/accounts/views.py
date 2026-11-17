@@ -30,7 +30,7 @@ from apps.catalog.models import Service
 from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
-from .models import Address, DeviceToken, CustomerVehicle, FavoriteService, Referral, AccountDeletionRequest
+from .models import Address, DeviceToken, CustomerVehicle, FavoriteService, Referral, AccountDeletionRequest, ConsentLog
 from .serializers import (
     AddressCreateSerializer,
     AddressSerializer,
@@ -48,6 +48,18 @@ from .serializers import (
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+LEGAL_DOCUMENT_VERSION = "draft-1"
+
+
+def _record_legal_consent(user, request):
+    ip_address = request.META.get("REMOTE_ADDR")
+    for document in (ConsentLog.Document.TERMS, ConsentLog.Document.PRIVACY):
+        ConsentLog.objects.get_or_create(
+            user=user,
+            document=document,
+            version=LEGAL_DOCUMENT_VERSION,
+            defaults={"ip_address": ip_address},
+        )
 
 
 class FirebaseLoginView(APIView):
@@ -101,12 +113,24 @@ class FirebaseLoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        existing_account = User.objects.filter(phone=phone).exists()
+        if not existing_account and (
+            request.data.get("terms_accepted") is not True
+            or request.data.get("privacy_accepted") is not True
+        ):
+            return Response(
+                {"error": "Accept the Terms & Conditions and Privacy Policy before creating your account."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             with transaction.atomic():
                 user, created = User.objects.get_or_create(
                     phone=phone,
                     defaults={"password": make_password(None)},
                 )
+                if created:
+                    _record_legal_consent(user, request)
                 referral_code = request.data.get("referral_code")
                 if referral_code and not created:
                     raise ValueError("Referral codes can only be applied when creating a new AIRway account.")
@@ -144,6 +168,14 @@ class RegisterView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        if (
+            request.data.get("terms_accepted") is not True
+            or request.data.get("privacy_accepted") is not True
+        ):
+            return Response(
+                {"error": "Accept the Terms & Conditions and Privacy Policy before creating your account."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
             errors = serializer.errors
@@ -154,6 +186,7 @@ class RegisterView(APIView):
         try:
             with transaction.atomic():
                 user = serializer.save()
+                _record_legal_consent(user, request)
                 referral_code = request.data.get("referral_code")
                 if referral_code:
                     from .referrals import apply_referral_code
@@ -345,6 +378,41 @@ class AccountLanguageView(APIView):
         request.user.language = language
         request.user.save(update_fields=["language", "updated_at"])
         return Response({"language": request.user.language})
+
+
+class LegalConsentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        accepted = set(
+            ConsentLog.objects.filter(
+                user=request.user,
+                version=LEGAL_DOCUMENT_VERSION,
+                document__in=(ConsentLog.Document.TERMS, ConsentLog.Document.PRIVACY),
+            ).values_list("document", flat=True)
+        )
+        return Response({
+            "version": LEGAL_DOCUMENT_VERSION,
+            "is_draft": True,
+            "terms_accepted": ConsentLog.Document.TERMS in accepted,
+            "privacy_accepted": ConsentLog.Document.PRIVACY in accepted,
+            "consent_complete": (
+                ConsentLog.Document.TERMS in accepted
+                and ConsentLog.Document.PRIVACY in accepted
+            ),
+        })
+
+    def post(self, request):
+        if (
+            request.data.get("terms_accepted") is not True
+            or request.data.get("privacy_accepted") is not True
+        ):
+            return Response(
+                {"detail": "Both Terms & Conditions and Privacy Policy must be accepted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        _record_legal_consent(request.user, request)
+        return self.get(request)
 
 
 class CustomerReferralView(APIView):
