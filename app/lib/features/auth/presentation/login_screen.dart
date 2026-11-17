@@ -137,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(t(t('Login', 'लॉगिन'), 'लॉगिन')),
+        title: Text(t('Login', 'लॉगिन')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -146,12 +146,12 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 t('Welcome Back', 'वापसी पर स्वागत है'),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 t('Login with your phone number and password', 'अपने फ़ोन नंबर और पासवर्ड से लॉगिन करें'),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         side: BorderSide(color: _useEmail ? green : Colors.grey),
                       ),
                       onPressed: () => setState(() => _useEmail = true),
-                      child: const Text(t('Email', 'ईमेल')),
+                      child: Text(t('Email', 'ईमेल')),
                     ),
                   ),
                 ],
@@ -198,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: t('Email Address', 'ईमेल पता'),
                     border: OutlineInputBorder(),
                   ),
@@ -227,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
                     );
                   },
-                  child: const Text(t('Forgot Password?', 'पासवर्ड भूल गए?')),
+                  child: Text(t('Forgot Password?', 'पासवर्ड भूल गए?')),
                 ),
               ),
               const SizedBox(height: 20),
@@ -243,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text(t(t('Login', 'लॉगिन'), 'लॉगिन')),
+                      : Text(t('Login', 'लॉगिन')),
                 ),
               ),
               const SizedBox(height: 16),
@@ -257,19 +257,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         MaterialPageRoute(builder: (_) => const SignupScreen()),
                       );
                     },
-                    child: const Text(t('Sign Up', 'साइन अप')),
+                    child: Text(t('Sign Up', 'साइन अप')),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              const Row(
+              Row(
                 children: [
-                  Expanded(child: Divider()),
+                  const Expanded(child: Divider()),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
                     child: Text(t('OR', 'या')),
                   ),
-                  Expanded(child: Divider()),
+                  const Expanded(child: Divider()),
                 ],
               ),
               const SizedBox(height: 12),
@@ -278,7 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 height: 54,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.phone_android_rounded),
-                  label: const Text(t('Login with OTP', 'OTP से लॉगिन करें')),
+                  label: Text(t('Login with OTP', 'OTP से लॉगिन करें')),
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const PhoneLoginScreen()),
@@ -300,7 +300,7 @@ CheckboxListTile(
   value: _privacyAccepted,
   onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
   controlAffinity: ListTileControlAffinity.leading,
-  title: const Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
+  title: Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
 ),
 Align(
   alignment: Alignment.center,
@@ -308,7 +308,7 @@ Align(
     onPressed: () => Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
     ),
-    child: const Text(t('Read Terms & Privacy', 'नियम और गोपनीयता पढ़ें')),
+    child: Text(t('Read Terms & Privacy', 'नियम और गोपनीयता पढ़ें')),
   ),
 ),
 SizedBox(
@@ -320,7 +320,7 @@ SizedBox(
       height: 24,
       errorBuilder: (_, _, _) => const Icon(Icons.g_mobiledata, size: 24),
     ),
-    label: const Text(t('Continue with Google', 'Google से जारी रखें')),
+    label: Text(t('Continue with Google', 'Google से जारी रखें')),
     onPressed: _loading ? null : _loginWithGoogle,
   ),
 ),
