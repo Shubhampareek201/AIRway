@@ -47,10 +47,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="mark-all-read")
     def mark_all_read(self, request, pk=None):
         """Mark all unread notifications as read."""
-        notifications = Notification.objects.filter(
-            user=request.user,
-            is_read=False
-        )
+        notifications = self.get_queryset().filter(is_read=False)
         count = notifications.count()
         now = timezone.now()
         for notification in notifications:
