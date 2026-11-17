@@ -18,6 +18,7 @@ import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
+import 'package:airway/features/account/presentation/account_referrals_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/payment_options_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
@@ -2017,6 +2018,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 subtitle: const Text('Control push notifications on this device'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _openNotificationPreferences,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.card_giftcard_outlined, color: _Ui.violet),
+                title: const Text('Share & earn'),
+                subtitle: const Text('Invite friends and earn ₹200 wallet credit'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountReferralsScreen()),
+                ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
