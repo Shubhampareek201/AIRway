@@ -1886,8 +1886,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text(
-          hi ? 'प्रोफ़ाइल' : 'Profile',
+        Text(hi ? 'प्रोफ़ाइल' : 'Profile',
           style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink),
         ),
         const SizedBox(height: 16),
