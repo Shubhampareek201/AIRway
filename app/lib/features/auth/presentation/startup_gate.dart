@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_locale.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/location/data/location_api.dart';
@@ -76,6 +77,7 @@ class _StartupGateState extends State<StartupGate> {
     }
 
     if (meResponse != null) {
+      AirwayLocale.setLanguage(meResponse['language']?.toString() ?? 'hi');
       // A worker profile can remain attached to an account after switching
       // back to customer mode. Route by the account's explicit active mode,
       // never by the mere existence/approval of a worker profile.
