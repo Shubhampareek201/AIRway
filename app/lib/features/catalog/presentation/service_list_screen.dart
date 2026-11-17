@@ -11,6 +11,7 @@ import 'package:airway/features/catalog/presentation/service_detail_screen.dart'
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class _PackageSelection {
   final ServiceVariant? variant;
@@ -360,7 +361,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               updateFormAnswer(field.key, null, setSheetState);
                             },
                             icon: const Icon(Icons.delete_outline),
-                            label: const Text('Remove photo'),
+                            label: Text(AirwayText.tr('Remove photo', 'फ़ोटो हटाएँ')),
                           ),
                         ),
                       ] else
@@ -388,7 +389,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               }
                             },
                             icon: const Icon(Icons.camera_alt_outlined),
-                            label: const Text('Camera'),
+                            label: Text(AirwayText.tr('Camera', 'कैमरा')),
                           )),
                           const SizedBox(width: 8),
                           Expanded(child: OutlinedButton.icon(
@@ -403,7 +404,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                               }
                             },
                             icon: const Icon(Icons.photo_library_outlined),
-                            label: const Text('Gallery'),
+                            label: Text(AirwayText.tr('Gallery', 'गैलरी')),
                           )),
                           ]),
                         ),
@@ -566,7 +567,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ],
                           if (service.addons.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            const Text('Optional add-ons', style: TextStyle(
+                            Text(AirwayText.tr('Optional add-ons', 'वैकल्पिक अतिरिक्त सेवाएँ'), style: TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text,
                             )),
                             const SizedBox(height: 7),
@@ -594,7 +595,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ],
                           if (visibleFields.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            const Text('A few service details', style: TextStyle(
+                            Text(AirwayText.tr('A few service details', 'सेवा से जुड़ी कुछ जानकारी'), style: TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text,
                             )),
                             const SizedBox(height: 8),
@@ -603,7 +604,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           const SizedBox(height: 5),
                           const Align(
                             alignment: Alignment.centerLeft,
-                            child: Text('Anything we should know?',
+                            child: Text(AirwayText.tr('Anything we should know?', 'क्या हमें कुछ और जानना चाहिए?'),
                               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text)),
                           ),
                           const SizedBox(height: 7),
@@ -614,7 +615,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             maxLength: 1000,
                             textCapitalization: TextCapitalization.sentences,
                             decoration: InputDecoration(
-                              hintText: 'Add a request or special instruction (optional)',
+                              hintText: AirwayText.tr('Add a request or special instruction (optional)', 'कोई अनुरोध या विशेष निर्देश लिखें (वैकल्पिक)'),
                               hintStyle: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
                               filled: true,
                               fillColor: AirwayColors.background,
@@ -631,7 +632,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ),
                           if (service.categoryRootSlug.toLowerCase() == 'electrical') ...[
                             const SizedBox(height: 12),
-                            const Text('Issue photo (optional)', style: TextStyle(
+                            Text(AirwayText.tr('Issue photo (optional)', 'समस्या की फ़ोटो (वैकल्पिक)'), style: TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text,
                             )),
                             const SizedBox(height: 7),
@@ -645,7 +646,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 child: TextButton.icon(
                                   onPressed: () => setSheetState(() => selectedPhoto = null),
                                   icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Remove photo'),
+                                  label: Text(AirwayText.tr('Remove photo', 'फ़ोटो हटाएँ')),
                                 ),
                               ),
                             ] else
@@ -659,7 +660,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                     if (picked != null) setSheetState(() => selectedPhoto = File(picked.path));
                                   },
                                   icon: const Icon(Icons.camera_alt_outlined),
-                                  label: const Text('Camera'),
+                                  label: Text(AirwayText.tr('Camera', 'कैमरा')),
                                 )),
                                 const SizedBox(width: 8),
                                 Expanded(child: OutlinedButton.icon(
@@ -671,13 +672,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                     if (picked != null) setSheetState(() => selectedPhoto = File(picked.path));
                                   },
                                   icon: const Icon(Icons.photo_library_outlined),
-                                  label: const Text('Gallery'),
+                                  label: Text(AirwayText.tr('Gallery', 'गैलरी')),
                                 )),
                               ]),
                           ],
                           if (service.bookingMode == 'inspection' && service.visitFee > 0) ...[
                             const SizedBox(height: 10),
-                            Text('Inspection / visit charge: ₹${service.visitFee.toStringAsFixed(0)} (charged once)',
+                            Text(AirwayText.tr('Inspection / visit charge: ₹${service.visitFee.toStringAsFixed(0)} (charged once)', 'निरीक्षण / विज़िट शुल्क: ₹${service.visitFee.toStringAsFixed(0)} (एक बार लिया जाएगा)'),
                               style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
                           ],
                         ],
@@ -738,7 +739,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                 );
                               },
                         icon: const Icon(Icons.shopping_bag_outlined, size: 18),
-                        label: const Text('Add to Cart'),
+                        label: Text(AirwayText.tr('Add to Cart', 'कार्ट में जोड़ें')),
                         style: FilledButton.styleFrom(
                           backgroundColor: AirwayColors.primary,
                           foregroundColor: Colors.white,
@@ -846,7 +847,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     }).toList();
     if (service.variants.isNotEmpty && availableVariants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No package is available for this selection.')),
+        SnackBar(content: Text(AirwayText.tr('No package is available for this selection.', 'इस चयन के लिए कोई पैकेज उपलब्ध नहीं है।'))),
       );
       return;
     }
@@ -930,7 +931,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Added to cart', style: TextStyle(
+                      Text(AirwayText.tr('Added to cart', 'कार्ट में जोड़ दिया गया'), style: TextStyle(
                         color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800,
                       )),
                       Text(service.title, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -951,7 +952,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
                     minimumSize: Size.zero,
                   ),
-                  child: const Text('VIEW CART', style: TextStyle(
+                  child: Text(AirwayText.tr('VIEW CART', 'कार्ट देखें'), style: TextStyle(
                     fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3,
                   )),
                 ),
@@ -963,7 +964,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not add service: $e')),
+        SnackBar(content: Text(AirwayText.tr('Could not add service: $e', 'सेवा कार्ट में नहीं जुड़ सकी: $e'))),
       );
     }
   }
@@ -1011,7 +1012,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           textInputAction: TextInputAction.search,
           onChanged: (value) => setState(() => _query = value),
           decoration: InputDecoration(
-            hintText: 'Search ${widget.categoryTitle ?? "services"}...',
+            hintText: AirwayText.tr('Search ${widget.categoryTitle ?? "services"}...', '${widget.categoryTitle ?? "सेवाएँ"} खोजें...'),
             hintStyle: const TextStyle(
               fontSize: 13.5,
               color: AirwayColors.textSecondary,
@@ -1019,7 +1020,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             prefixIcon: const Icon(Icons.search_rounded, color: AirwayColors.primary),
             suffixIcon: _query.isNotEmpty
                 ? IconButton(
-                    tooltip: 'Clear search',
+                    tooltip: AirwayText.tr('Clear search', 'खोज हटाएँ'),
                     onPressed: () {
                       _searchController.clear();
                       setState(() => _query = '');
@@ -1277,7 +1278,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
-              FilledButton(onPressed: _loadServices, child: const Text('Retry')),
+              FilledButton(onPressed: _loadServices, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
             ],
           ),
         ),
@@ -1293,7 +1294,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
               const SizedBox(height: 14),
               Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AirwayColors.textSecondary)),
               const SizedBox(height: 20),
-              FilledButton(onPressed: _loadServices, child: const Text('Retry')),
+              FilledButton(onPressed: _loadServices, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
             ],
           ),
         ),
