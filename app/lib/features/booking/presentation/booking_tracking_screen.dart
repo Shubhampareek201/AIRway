@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class BookingTrackingScreen extends StatefulWidget {
   final int bookingId;
@@ -80,13 +81,13 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
 
   String get _statusText {
     switch (_status) {
-      case 'pending': return 'Finding a professional';
-      case 'confirmed': return 'Booking confirmed';
-      case 'assigned': return 'Professional assigned';
-      case 'in_progress': return 'Service in progress';
-      case 'completed': return 'Service completed';
-      case 'cancelled': return 'Booking cancelled';
-      case 'disputed': return 'Booking under review';
+      case 'pending': return AirwayText.tr('Finding a professional', 'प्रोफ़ेशनल खोज रहे हैं');
+      case 'confirmed': return AirwayText.tr('Booking confirmed', 'बुकिंग कन्फ़र्म हो गई');
+      case 'assigned': return AirwayText.tr('Professional assigned', 'प्रोफ़ेशनल असाइन हो गया');
+      case 'in_progress': return AirwayText.tr('Service in progress', 'सेवा जारी है');
+      case 'completed': return AirwayText.tr('Service completed', 'सेवा पूरी हो गई');
+      case 'cancelled': return AirwayText.tr('Booking cancelled', 'बुकिंग रद्द हो गई');
+      case 'disputed': return AirwayText.tr('Booking under review', 'बुकिंग की समीक्षा हो रही है');
       default: return _status.replaceAll('_', ' ');
     }
   }
@@ -101,12 +102,12 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
       backgroundColor: const Color(0xFFF8FAF8),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        title: const Text('Track Service'),
+        title: Text(AirwayText.tr('Track Service', 'सेवा ट्रैक करें')),
         actions: [
           IconButton(
             onPressed: _loading ? null : () => _refresh(),
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh status',
+            tooltip: AirwayText.tr('Refresh status', 'स्थिति रीफ़्रेश करें'),
           ),
         ],
       ),
@@ -130,7 +131,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         Text(widget.serviceTitle,
                             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _ink)),
                         const SizedBox(height: 5),
-                        Text('Booking #${widget.bookingId}',
+                        Text(AirwayText.tr('Booking #${widget.bookingId}', 'बुकिंग #${widget.bookingId}'),
                             style: const TextStyle(color: _muted, fontSize: 12)),
                         const SizedBox(height: 14),
                         Container(
@@ -152,17 +153,17 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(color: const Color(0xFFFFF5E9), borderRadius: BorderRadius.circular(14)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('Could not refresh tracking', style: TextStyle(fontWeight: FontWeight.w800, color: _ink)),
+                        Text(AirwayText.tr('Could not refresh tracking', 'ट्रैकिंग रीफ़्रेश नहीं हो सकी'), style: TextStyle(fontWeight: FontWeight.w800, color: _ink)),
                         const SizedBox(height: 5),
                         Text(_error!, style: const TextStyle(color: _muted, fontSize: 12)),
-                        TextButton.icon(onPressed: () => _refresh(), icon: const Icon(Icons.refresh), label: const Text('Try again')),
+                        TextButton.icon(onPressed: () => _refresh(), icon: const Icon(Icons.refresh), label: Text(AirwayText.tr('Try again', 'फिर कोशिश करें'))),
                       ]),
                     ),
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _line)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Booking journey', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
+                      Text(AirwayText.tr('Booking journey', 'बुकिंग की प्रगति'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
                       const SizedBox(height: 18),
                       _step('Booking placed', true, 'Your service request has been received.'),
                       _step('Professional assigned', assigned || started || completed,
@@ -177,13 +178,13 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _line)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('Your professional', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
+                        Text(AirwayText.tr('Your professional', 'आपके प्रोफ़ेशनल'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
                         const SizedBox(height: 12),
                         if (_tracking['worker_unavailable'] == true)
                           const Padding(
                             padding: EdgeInsets.only(bottom: 10),
                             child: Text(
-                              'This professional is temporarily unavailable. AIRway operations is reviewing your booking.',
+                              AirwayText.tr('This professional is temporarily unavailable. AIRway operations is reviewing your booking.', 'यह प्रोफ़ेशनल अभी उपलब्ध नहीं है। AIRway टीम आपकी बुकिंग की समीक्षा कर रही है।'),
                               style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
                             ),
                           ),
@@ -200,20 +201,20 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(_tracking['worker_name']?.toString() ?? 'Assigned professional',
+                            Text(_tracking['worker_name']?.toString() ?? AirwayText.tr('Assigned professional', 'असाइन किया गया प्रोफ़ेशनल'),
                                 style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
                             if (_tracking['worker_rating'] != null)
-                              Text('★ ${_tracking['worker_rating']} (${_tracking['worker_rating_count'] ?? 0} ratings)',
+                              Text(AirwayText.tr('★ ${_tracking['worker_rating']} (${_tracking['worker_rating_count'] ?? 0} ratings)', '★ ${_tracking['worker_rating']} (${_tracking['worker_rating_count'] ?? 0} रेटिंग)'),
                                   style: const TextStyle(color: _muted, fontSize: 12)),
                             if ((_tracking['worker_experience_years'] ?? 0) > 0)
-                              Text('${_tracking['worker_experience_years']} years experience',
+                              Text(AirwayText.tr('${_tracking['worker_experience_years']} years experience', '${_tracking['worker_experience_years']} साल का अनुभव'),
                                   style: const TextStyle(color: _muted, fontSize: 12)),
                           ])),
                         ]),
                         if ((_tracking['worker_qualification']?.toString() ?? '').isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 10),
-                            child: Text('Qualification: ${_tracking['worker_qualification']}',
+                            child: Text(AirwayText.tr('Qualification: ${_tracking['worker_qualification']}', 'योग्यता: ${_tracking['worker_qualification']}'),
                                 style: const TextStyle(color: _muted, fontSize: 12)),
                           ),
                         if ((_tracking['worker_bio']?.toString() ?? '').isNotEmpty)
@@ -225,7 +226,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         if ((_tracking['worker_completed_jobs'] ?? 0) > 0)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
-                            child: Text('${_tracking['worker_completed_jobs']} completed AIRway jobs',
+                            child: Text(AirwayText.tr('${_tracking['worker_completed_jobs']} completed AIRway jobs', 'AIRway पर ${_tracking['worker_completed_jobs']} काम पूरे किए'),
                                 style: const TextStyle(color: _muted, fontSize: 12)),
                           ),
                         for (final service in (_tracking['worker_verified_services'] as List? ?? const []))
@@ -235,13 +236,13 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                               Text(service['service']?.toString() ?? '',
                                   style: const TextStyle(fontWeight: FontWeight.w700, color: _ink)),
                               if ((service['verified_skills'] as List? ?? const []).isNotEmpty)
-                                Text('Verified skills: ${(service['verified_skills'] as List).join(', ')}',
+                                Text(AirwayText.tr('Verified skills: ${(service['verified_skills'] as List).join(', ')}', 'वेरिफ़ाइड कौशल: ${(service['verified_skills'] as List).join(', ')}'),
                                     style: const TextStyle(color: _muted, fontSize: 12)),
                             ]),
                           ),
                         const Padding(
                           padding: EdgeInsets.only(top: 12),
-                          child: Text('Your contact details stay private. Contact AIRway Support if you need help.',
+                          child: Text(AirwayText.tr('Your contact details stay private. Contact AIRway Support if you need help.', 'आपकी संपर्क जानकारी निजी रहती है। मदद के लिए AIRway सपोर्ट से संपर्क करें।'),
                               style: TextStyle(color: _muted, fontSize: 11, height: 1.4)),
                         ),
                       ]),
@@ -254,14 +255,14 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                       Icon(Icons.location_searching_rounded, color: _green),
                       SizedBox(width: 10),
                       Expanded(child: Text(
-                        'Live map and ETA will appear when the assigned professional shares verified GPS location. We will not display a guessed location.',
+                        AirwayText.tr('Live map and ETA will appear when the assigned professional shares verified GPS location. We will not display a guessed location.', 'असाइन किया गया प्रोफ़ेशनल सत्यापित GPS लोकेशन साझा करेगा, तब लाइव मैप और पहुँचने का समय दिखेगा। अनुमानित लोकेशन नहीं दिखाई जाएगी।'),
                         style: TextStyle(color: _muted, fontSize: 12, height: 1.45),
                       )),
                     ]),
                   ),
                   const SizedBox(height: 14),
                   if (!_terminal)
-                    const Center(child: Text('Status refreshes automatically every 20 seconds',
+                    const Center(child: Text(AirwayText.tr('Status refreshes automatically every 20 seconds', 'स्थिति हर 20 सेकंड में अपने आप अपडेट होती है'),
                         style: TextStyle(color: _muted, fontSize: 11))),
                 ],
               ),
