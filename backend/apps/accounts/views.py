@@ -410,7 +410,9 @@ class AccountDeletionRequestView(APIView):
             "admin_notes": item.admin_notes,
         })
 
+    @transaction.atomic
     def post(self, request):
+        User.objects.select_for_update().get(pk=request.user.pk)
         reason = str(request.data.get("reason", "")).strip()
         if len(reason) > 1000:
             return Response(
