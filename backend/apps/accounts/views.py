@@ -1064,8 +1064,6 @@ class FavoriteServiceListCreateView(APIView):
     def get(self, request):
         favorites = FavoriteService.objects.filter(
             user=request.user,
-            service__is_active=True,
-            service__category__is_active=True,
         ).select_related("service", "service__category")
         service_id = request.query_params.get("service_id")
         if service_id:
