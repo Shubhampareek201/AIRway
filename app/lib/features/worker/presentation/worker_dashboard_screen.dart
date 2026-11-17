@@ -680,8 +680,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             ExpansionTile(
               key: const PageStorageKey<String>('worker_dashboard_selected_services_expansion'),
               leading: const Icon(Icons.visibility_outlined),
-              title: const Text(t('View selected services', 'चुनी गई सेवाएँ देखें')),
-              subtitle: const Text(t('Expand only when you need the full list', 'पूरी सूची देखने के लिए खोलें')),
+              title: Text(t('View selected services', 'चुनी गई सेवाएँ देखें')),
+              subtitle: Text(t('Expand only when you need the full list', 'पूरी सूची देखने के लिए खोलें')),
               children: services.map((item) => ListTile(
                 dense: true,
                 leading: const Icon(Icons.check_circle_outline, size: 18),
