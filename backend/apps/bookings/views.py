@@ -1673,6 +1673,17 @@ class CustomerOrderListView(APIView):
                 "total_amount": str(order.total_amount),
                 "created_at": order.created_at,
                 "item_count": order.items.count(),
+                "items": [
+                    {
+                        "booking_id": item.booking_id,
+                        "service_title": item.booking.service.title,
+                        "variant_title": item.booking.variant.title if item.booking.variant_id else "",
+                        "scheduled_at": item.booking.scheduled_at,
+                        "status": item.booking.status,
+                        "line_total": str(item.line_total),
+                    }
+                    for item in order.items.select_related("booking__service", "booking__variant").all()
+                ],
                 "is_staged_payment": staged,
                 "advance_paid": advance_paid,
                 "balance_paid": balance_paid,
