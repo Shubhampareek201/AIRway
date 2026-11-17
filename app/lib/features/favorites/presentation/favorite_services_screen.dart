@@ -68,7 +68,7 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
   }
 
   Future<void> _openService(Map<String, dynamic> item) async {
-    if (item['service_is_active'] != true) {
+    if (item['service_is_available'] != true) {
       _message('This service is currently unavailable. You can remove it from favorites.');
       return;
     }
