@@ -1,5 +1,4 @@
 from decimal import Decimal
-from datetime import timedelta
 
 from django.db import transaction
 from django.utils import timezone
@@ -42,8 +41,6 @@ def apply_referral_code(referred_user, code):
         raise ValueError("A referral code has already been applied to this account.")
     if referred.referral_code.upper() == normalized:
         raise ValueError("You cannot use your own referral code.")
-    if timezone.now() - referred.created_at > timedelta(hours=24):
-        raise ValueError("Referral codes must be applied within 24 hours of creating your AIRway account.")
     if referred.bookings.exists():
         raise ValueError("Referral codes can only be applied before your first booking.")
 
