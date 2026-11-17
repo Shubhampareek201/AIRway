@@ -655,8 +655,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
               Text(profile.phone ?? t('Phone not available', 'फ़ोन उपलब्ध नहीं'), style: TextStyle(color: AirwayColors.textSecondary)),
               const SizedBox(height: 5),
-              const Row(children: [
-                Icon(Icons.verified_rounded, size: 16, color: Colors.green),
+              Row(children: [
+                const Icon(Icons.verified_rounded, size: 16, color: Colors.green),
                 SizedBox(width: 4),
                 Text(t('Verified worker', 'सत्यापित वर्कर'), style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 12)),
               ]),
