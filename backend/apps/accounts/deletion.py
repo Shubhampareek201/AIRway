@@ -3,6 +3,7 @@ def get_account_deletion_obligations(user):
     from apps.bookings.models import Booking, BookingAssignment
     from apps.payments.models import Payment, PaymentRefund
     from apps.workers.models import WorkerProfile
+    from apps.wallet.models import Wallet
 
     active_statuses = (
         Booking.Status.PENDING,
@@ -27,7 +28,9 @@ def get_account_deletion_obligations(user):
             ).values_list("booking_id", flat=True)
         )
 
-    wallet = getattr(user, "wallet", None)
+    # Query afresh: request.user may carry a cached reverse OneToOne wallet
+    # instance whose balance predates a payment/refund update in this request.
+    wallet = Wallet.objects.filter(user_id=user.pk).first()
     has_financial_obligations = bool(
         wallet and (
             wallet.balance > 0
