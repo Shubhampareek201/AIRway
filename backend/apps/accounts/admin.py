@@ -152,7 +152,8 @@ class AccountDeletionRequestAdmin(ModelAdmin):
             user.set_unusable_password()
             user.phone = None
             user.firebase_uid = None
-            user.referral_code = ""
+            # Keep the unique referral-code column valid while permanently invalidating the old public code.
+            user.referral_code = f"C{user.pk:011d}"
             user.name = ""
             user.email = ""
             user.gender = ""
