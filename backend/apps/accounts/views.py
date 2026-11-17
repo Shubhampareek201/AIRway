@@ -212,12 +212,10 @@ class RegisterView(APIView):
             return Response({"error": error_msg}, status=status.HTTP_400_BAD_REQUEST)
         try:
             with transaction.atomic():
+                # RegisterSerializer.create applies a supplied referral code
+                # inside its own atomic block. Do not apply it a second time here.
                 user = serializer.save()
                 _record_legal_consent(user, request)
-                referral_code = request.data.get("referral_code")
-                if referral_code:
-                    from .referrals import apply_referral_code
-                    apply_referral_code(user, referral_code)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
