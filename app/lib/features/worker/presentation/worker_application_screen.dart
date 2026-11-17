@@ -1158,10 +1158,10 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const Divider(),
         _buildReviewItem('Bio', _bioController.text.trim().isNotEmpty, _bioController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
         const SizedBox(height: 24),
-        const Card(
+        Card(
           color: Colors.amber,
           child: ListTile(
-            leading: Icon(Icons.info_outline),
+            leading: const Icon(Icons.info_outline),
             title: Text(AirwayText.tr('Important: Your application is subject to admin verification.', 'महत्वपूर्ण: आपका आवेदन एडमिन वेरिफ़िकेशन के अधीन है।')),
             subtitle: Text(AirwayText.tr('You will be notified via in-app notification once approved.', 'स्वीकृति मिलने पर ऐप में नोटिफ़िकेशन भेजा जाएगा।')),
           ),
