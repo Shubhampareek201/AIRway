@@ -9,6 +9,7 @@ import 'package:airway/features/catalog/data/catalog_api.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/catalog/data/catalog_image_resolver.dart';
 import 'package:airway/features/favorites/data/favorite_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 
 
@@ -133,7 +134,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         if (mounted) {
           setState(() => _favoriteId = null);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Removed from favorites.')),
+            SnackBar(content: Text(AirwayText.tr('Removed from favorites.', 'पसंदीदा से हटा दिया गया।'))),
           );
         }
       } else {
@@ -141,14 +142,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         if (mounted) {
           setState(() => _favoriteId = int.tryParse('${favorite['id']}'));
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Added to favorites.')),
+            SnackBar(content: Text(AirwayText.tr('Added to favorites.', 'पसंदीदा में जोड़ दिया गया।'))),
           );
         }
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update favorites: $error')),
+          SnackBar(content: Text(AirwayText.tr('Could not update favorites: $error', 'पसंदीदा अपडेट नहीं हो सके: $error'))),
         );
       }
     } finally {
@@ -191,7 +192,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               } catch (error) {
                 if (sheetContext.mounted) {
                   ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(content: Text('Could not select photo: $error')),
+                    SnackBar(content: Text(AirwayText.tr('Could not select photo: $error', 'फ़ोटो नहीं चुनी जा सकी: $error'))),
                   );
                 }
               }
@@ -396,7 +397,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                               ),
                             ],
                             const SizedBox(height: 14),
-                            const Text('Add a photo (optional)', style: TextStyle(
+                            Text(AirwayText.tr('Add a photo (optional)', 'फ़ोटो जोड़ें (वैकल्पिक)'), style: TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w800, color: _Ui.ink,
                             )),
                             const SizedBox(height: 5),
@@ -415,7 +416,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                 child: TextButton.icon(
                                   onPressed: () => setSheetState(() => selectedPhoto = null),
                                   icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Remove photo'),
+                                  label: Text(AirwayText.tr('Remove photo', 'फ़ोटो हटाएँ')),
                                 ),
                               ),
                             ] else
@@ -425,7 +426,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                     child: OutlinedButton.icon(
                                       onPressed: () => pickPhoto(ImageSource.camera),
                                       icon: const Icon(Icons.camera_alt_outlined),
-                                      label: const Text('Camera'),
+                                      label: Text(AirwayText.tr('Camera', 'कैमरा')),
                                     ),
                                   ),
                                   const SizedBox(width: 9),
@@ -433,13 +434,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                                     child: OutlinedButton.icon(
                                       onPressed: () => pickPhoto(ImageSource.gallery),
                                       icon: const Icon(Icons.photo_library_outlined),
-                                      label: const Text('Gallery'),
+                                      label: Text(AirwayText.tr('Gallery', 'गैलरी')),
                                     ),
                                   ),
                                 ],
                               ),
                             const SizedBox(height: 13),
-                            const Text('Describe the actual problem (optional)', style: TextStyle(
+                            Text(AirwayText.tr('Describe the actual problem (optional)', 'वास्तविक समस्या का विवरण दें (वैकल्पिक)'), style: TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w800, color: _Ui.ink,
                             )),
                             const SizedBox(height: 7),
@@ -450,7 +451,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                               maxLength: 1000,
                               textCapitalization: TextCapitalization.sentences,
                               decoration: InputDecoration(
-                                hintText: 'Example: The fan makes noise and stops after a few minutes...',
+                                hintText: AirwayText.tr('Example: The fan makes noise and stops after a few minutes...', 'उदाहरण: पंखा आवाज़ करता है और कुछ मिनट बाद बंद हो जाता है...'),
                                 hintStyle: const TextStyle(fontSize: 11.5, color: _Ui.sub),
                                 filled: true,
                                 fillColor: const Color(0xFFFAFAF8),
@@ -488,7 +489,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                           );
                         },
                         icon: const Icon(Icons.shopping_bag_outlined, size: 18),
-                        label: const Text('Add to Cart'),
+                        label: Text(AirwayText.tr('Add to Cart', 'कार्ट में जोड़ें')),
                         style: FilledButton.styleFrom(
                           backgroundColor: _Ui.violet,
                           foregroundColor: Colors.white,
@@ -568,7 +569,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text('Added to cart', style: TextStyle(
+                        Text(AirwayText.tr('Added to cart', 'कार्ट में जोड़ दिया गया'), style: TextStyle(
                           color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800,
                         )),
                         Text(service.title, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -589,7 +590,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
                       minimumSize: Size.zero,
                     ),
-                    child: const Text('VIEW CART', style: TextStyle(
+                    child: Text(AirwayText.tr('VIEW CART', 'कार्ट देखें'), style: TextStyle(
                       fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3,
                     )),
                   ),
@@ -609,7 +610,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not add service: $error')),
+          SnackBar(content: Text(AirwayText.tr('Could not add service: $error', 'सेवा कार्ट में नहीं जुड़ सकी: $error'))),
         );
       }
     } finally {
@@ -837,7 +838,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       child: FilledButton(
                         onPressed: () => _addElectricalService(service),
                         style: FilledButton.styleFrom(backgroundColor: _Ui.violet),
-                        child: const Text('ADD'),
+                        child: Text(AirwayText.tr('ADD', 'जोड़ें')),
                       ),
                     ),
                   ],
@@ -1052,7 +1053,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: const Text('ADD'),
+                  child: Text(AirwayText.tr('ADD', 'जोड़ें')),
                 ),
               ),
             ],
@@ -1159,7 +1160,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             style: const TextStyle(color: _Ui.sub),
           ),
           const SizedBox(height: 20),
-          FilledButton(onPressed: _loadService, child: const Text('Retry')),
+          FilledButton(onPressed: _loadService, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
         ],
       ),
     ),
