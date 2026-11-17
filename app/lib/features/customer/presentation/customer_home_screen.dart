@@ -17,6 +17,7 @@ import 'package:airway/features/notification/presentation/notification_bell_butt
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
+import 'package:airway/features/account/presentation/account_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/payment_options_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
@@ -2016,6 +2017,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 subtitle: const Text('Control push notifications on this device'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _openNotificationPreferences,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.tune_rounded, color: _Ui.violet),
+                title: const Text('App preferences'),
+                subtitle: const Text('Appearance and language'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountPreferencesScreen()),
+                ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
