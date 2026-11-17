@@ -130,13 +130,14 @@ class AccountDeletionRequestAdmin(ModelAdmin):
             user.set_unusable_password()
             user.phone = None
             user.firebase_uid = None
+            user.referral_code = ""
             user.name = ""
             user.email = ""
             user.gender = ""
             user.photo = ""
             user.devices.all().delete()
             user.save(update_fields=[
-                "is_active", "password", "phone", "firebase_uid", "name", "email", "gender",
+                "is_active", "password", "phone", "firebase_uid", "referral_code", "name", "email", "gender",
                 "photo", "updated_at",
             ])
             if old_photo:
