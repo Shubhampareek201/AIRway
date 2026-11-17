@@ -2273,7 +2273,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
     if (_controller.value <= start) return 0;
     return Curves.easeOutBack.transform(
       Interval(start, end > start ? end : 1).transform(_controller.value),
-    ).clamp(0.0, 1.0);
+    ).clamp(0.0, 1.0).toDouble();
   }
 
   @override
