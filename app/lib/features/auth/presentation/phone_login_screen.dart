@@ -222,8 +222,8 @@ Navigator.of(context).pushAndRemoveUntil(
         referralCode: _referralCodeController.text.trim().isEmpty
             ? null
             : _referralCodeController.text.trim(),
-        termsAccepted: true,
-        privacyAccepted: true,
+        termsAccepted: _termsAccepted,
+        privacyAccepted: _privacyAccepted,
       );
       await SecureSessionStorage.saveSession(
         accessToken: response['access'] as String,
