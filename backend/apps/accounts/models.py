@@ -267,6 +267,13 @@ class AccountDeletionRequest(TimeStampedModel):
         indexes = [
             models.Index(fields=["user", "status"], name="accounts_ac_user_i_6a2f90_idx"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(status__in=["requested", "under_review"]),
+                name="one_active_account_deletion_per_user",
+            ),
+        ]
 
     def __str__(self):
         return f"Deletion request #{self.pk} for user {self.user_id} ({self.status})"
