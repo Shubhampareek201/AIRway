@@ -334,6 +334,7 @@ class AuthApi {
   // 1. Firebase OTP login -> Django JWT tokens
   static Future<Map<String, dynamic>> firebaseLogin({
     required String idToken,
+    String? referralCode,
   }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
@@ -344,7 +345,11 @@ class AuthApi {
       );
 
       final body = utf8.encode(
-        jsonEncode({'id_token': idToken}),
+        jsonEncode({
+          'id_token': idToken,
+          if (referralCode != null && referralCode.trim().isNotEmpty)
+            'referral_code': referralCode.trim().toUpperCase(),
+        }),
       );
 
       request.headers.contentType = ContentType.json;
