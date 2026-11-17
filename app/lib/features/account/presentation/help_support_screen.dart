@@ -98,14 +98,20 @@ class HelpSupportScreen extends StatelessWidget {
           const SizedBox(height: 18),
           if (onPrimaryAction != null)
             OutlinedButton.icon(
-              onPressed: onPrimaryAction,
+              onPressed: () {
+                Navigator.of(context).pop();
+                onPrimaryAction?.call();
+              },
               icon: Icon(workerMode ? Icons.work_outline_rounded : Icons.calendar_month_outlined),
               label: Text(primaryLabel),
             ),
           if (onSecondaryAction != null) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: onSecondaryAction,
+              onPressed: () {
+                Navigator.of(context).pop();
+                onSecondaryAction?.call();
+              },
               icon: Icon(workerMode ? Icons.account_balance_wallet_outlined : Icons.payments_outlined),
               label: Text(secondaryLabel),
             ),
