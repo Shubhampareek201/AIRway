@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/auth/presentation/forgot_password_screen.dart';
 import 'package:airway/features/account/data/account_api.dart';
@@ -49,7 +50,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _message('Could not load account security details.');
+      _message(AirwayText.tr('Could not load account security details.', 'खाता सुरक्षा की जानकारी लोड नहीं हो सकी।'));
     }
   }
 
@@ -59,15 +60,15 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
     final newPassword = _newPassword.text;
     final confirm = _confirmPassword.text;
     if (oldPassword.isEmpty || newPassword.isEmpty || confirm.isEmpty) {
-      _message('Complete all password fields.');
+      _message(AirwayText.tr('Complete all password fields.', 'पासवर्ड के सभी फ़ील्ड भरें।'));
       return;
     }
     if (newPassword != confirm) {
-      _message('New passwords do not match.');
+      _message(AirwayText.tr('New passwords do not match.', 'नए पासवर्ड मेल नहीं खाते।'));
       return;
     }
     if (newPassword == oldPassword) {
-      _message('Choose a password different from your current password.');
+      _message(AirwayText.tr('Choose a password different from your current password.', 'मौजूदा पासवर्ड से अलग पासवर्ड चुनें।'));
       return;
     }
 
@@ -86,7 +87,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       _oldPassword.clear();
       _newPassword.clear();
       _confirmPassword.clear();
-      _message('Password changed successfully.');
+      _message(AirwayText.tr('Password changed successfully.', 'पासवर्ड सफलतापूर्वक बदल दिया गया।'));
     } catch (error) {
       if (!mounted) return;
       _message(error.toString().replaceFirst('Exception: ', ''));
@@ -133,7 +134,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Password & security')),
+      appBar: AppBar(title: Text(AirwayText.tr('Password & security', 'पासवर्ड और सुरक्षा'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : !_hasPassword
@@ -162,7 +163,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                           );
                           if (mounted) await _load();
                         },
-                        child: const Text('Set password with OTP'),
+                        child: Text(AirwayText.tr('Set password with OTP', 'OTP से पासवर्ड सेट करें')),
                       )
                     else
                       const Text(
@@ -196,7 +197,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                       onPressed: _saving ? null : _changePassword,
                       child: _saving
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Text('Update password'),
+                          : Text(AirwayText.tr('Update password', 'पासवर्ड अपडेट करें')),
                     ),
                   ],
                 ),
