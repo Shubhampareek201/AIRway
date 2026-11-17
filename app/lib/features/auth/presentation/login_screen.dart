@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
   debugPrintStack(stackTrace: stackTrace);
 
   if (!mounted) return;
-  _message('Google Sign-In failed: $error');
+  _message(AirwayText.tr('Google Sign-In failed: $error', 'Google साइन-इन विफल: $error'));
 } finally {
     if (mounted) {
       setState(() => _loading = false);
@@ -94,15 +94,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (!_useEmail && !RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
-      _message('Enter a valid 10-digit mobile number.');
+      _message(AirwayText.tr('Enter a valid 10-digit mobile number.', 'सही 10 अंकों का मोबाइल नंबर दर्ज करें।'));
       return;
     }
     if (_useEmail && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
-      _message('Enter a valid email address.');
+      _message(AirwayText.tr('Enter a valid email address.', 'सही ईमेल पता दर्ज करें।'));
       return;
     }
     if (password.isEmpty) {
-      _message('Please enter password.');
+      _message(AirwayText.tr('Please enter password.', 'कृपया पासवर्ड दर्ज करें।'));
       return;
     }
     if (_loading) return;
@@ -131,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _message('Unable to login. Please try again.');
+      _message(AirwayText.tr('Unable to login. Please try again.', 'लॉगिन नहीं हो सका। फिर से कोशिश करें।'));
     }
   }
 
