@@ -307,3 +307,40 @@ class NotificationAPITest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("is_read", response.data)
         self.assertTrue(response.data["is_read"])
+
+class NotificationUnreadCountApiTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(phone="+919876543211")
+        self.other_user = User.objects.create_user(phone="+919876543212")
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_unread_count_is_scoped_to_authenticated_user(self):
+        Notification.objects.create(
+            user=self.user,
+            type=Notification.Type.BOOKING_CONFIRMED,
+            title="Unread one",
+        )
+        Notification.objects.create(
+            user=self.user,
+            type=Notification.Type.BOOKING_ASSIGNED,
+            title="Already read",
+            is_read=True,
+            read_at=timezone.now(),
+        )
+        Notification.objects.create(
+            user=self.other_user,
+            type=Notification.Type.BOOKING_CONFIRMED,
+            title="Another user's unread",
+        )
+
+        response = self.client.get("/api/v1/notifications/unread-count/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["unread_count"], 1)
+
+    def test_unread_count_returns_zero_when_empty(self):
+        response = self.client.get("/api/v1/notifications/unread-count/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["unread_count"], 0)
