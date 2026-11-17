@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class JobOffersScreen extends StatefulWidget {
   const JobOffersScreen({super.key});
@@ -54,7 +55,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Could not load job offers.';
+          _error = AirwayText.tr('Could not load job offers.', 'जॉब ऑफ़र लोड नहीं हो सके।');
         });
       }
     } finally {
@@ -108,7 +109,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to accept: $e')),
+          SnackBar(content: Text(AirwayText.tr('Failed to accept: $e', 'ऑफ़र स्वीकार नहीं हुआ: $e'))),
         );
       }
     } finally {
@@ -129,7 +130,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to decline: $e')),
+          SnackBar(content: Text(AirwayText.tr('Failed to decline: $e', 'ऑफ़र अस्वीकार नहीं हुआ: $e'))),
         );
       }
     } finally {
@@ -141,7 +142,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Job Offers'),
+        title: Text(AirwayText.tr('Job Offers', 'जॉब ऑफ़र')),
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
@@ -167,7 +168,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
                 const SizedBox(height: 16),
                 Text(_error!),
                 const SizedBox(height: 16),
-                FilledButton(onPressed: _refresh, child: const Text('Retry')),
+                FilledButton(onPressed: _refresh, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
               ],
             ),
           ),
@@ -182,7 +183,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
 
     if (pendingOffers.isEmpty && acceptedOffers.isEmpty && otherOffers.isEmpty) {
       return const Center(
-        child: Text('No job offers'),
+        child: Text(AirwayText.tr('No job offers', 'कोई जॉब ऑफ़र नहीं है')),
       );
     }
 
@@ -192,19 +193,19 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           if (acceptedOffers.isNotEmpty) ...[
-            const Text('Accepted Offers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(AirwayText.tr('Accepted Offers', 'स्वीकृत ऑफ़र'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...acceptedOffers.map((o) => _buildOfferCard(o, isAccepted: true)),
           ],
           if (pendingOffers.isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text('Pending Offers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(AirwayText.tr('Pending Offers', 'लंबित ऑफ़र'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...pendingOffers.map((o) => _buildOfferCard(o, isAccepted: false)),
           ],
           if (otherOffers.isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text('Completed/Expired', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(AirwayText.tr('Completed/Expired', 'पूरे हुए / समाप्त ऑफ़र'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...otherOffers.take(3).map((o) => _buildOfferCard(o, isAccepted: false)),
           ],
@@ -236,21 +237,21 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
                 style: const TextStyle(fontSize: 12),
               ),
             if (offer.scheduledAt != null)
-              Text('Requested: ${_formatDateTime(offer.scheduledAt!)}'),
+              Text(AirwayText.tr('Requested: ${_formatDateTime(offer.scheduledAt!)}', 'अनुरोधित समय: ${_formatDateTime(offer.scheduledAt!)}')),
             if (offer.serviceAddress?.isNotEmpty == true)
-              Text('Area: ${offer.serviceAddress}', maxLines: 2, overflow: TextOverflow.ellipsis),
-            Text('Expected duration: ${offer.expectedDurationMinutes} minutes',
+              Text(AirwayText.tr('Area: ${offer.serviceAddress}', 'क्षेत्र: ${offer.serviceAddress}'), maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(AirwayText.tr('Expected duration: ${offer.expectedDurationMinutes} minutes', 'अनुमानित अवधि: ${offer.expectedDurationMinutes} मिनट'),
                 style: const TextStyle(fontSize: 12)),
             if (offer.bookingNotes?.trim().isNotEmpty == true)
-              Text('Customer instructions: ${offer.bookingNotes}',
+              Text(AirwayText.tr('Customer instructions: ${offer.bookingNotes}', 'ग्राहक के निर्देश: ${offer.bookingNotes}'),
                   style: const TextStyle(fontSize: 12)),
             if (offer.customerTotal > 0)
-              Text('Customer total: ₹${offer.customerTotal.toStringAsFixed(2)}'),
+              Text(AirwayText.tr('Customer total: ₹${offer.customerTotal.toStringAsFixed(2)}', 'ग्राहक का कुल: ₹${offer.customerTotal.toStringAsFixed(2)}')),
             if (offer.advanceReceived > 0)
-              Text('Advance received: ₹${offer.advanceReceived.toStringAsFixed(2)}',
+              Text(AirwayText.tr('Advance received: ₹${offer.advanceReceived.toStringAsFixed(2)}', 'प्राप्त अग्रिम: ₹${offer.advanceReceived.toStringAsFixed(2)}'),
                   style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
             if (offer.remainingBalance > 0)
-              Text('Customer balance: ₹${offer.remainingBalance.toStringAsFixed(2)}'),
+              Text(AirwayText.tr('Customer balance: ₹${offer.remainingBalance.toStringAsFixed(2)}', 'ग्राहक की शेष राशि: ₹${offer.remainingBalance.toStringAsFixed(2)}')),
             for (final entry in offer.customerAnswers.entries)
               Text(
                 workerCustomerAnswerLabel(entry.key, entry.value),
@@ -266,11 +267,11 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
                 'Add-ons: ${offer.addons.map((addon) => addon['title']).join(', ')}',
                 style: const TextStyle(fontSize: 12),
               ),
-            Text('Offered: ${_formatDateTime(offer.offeredAt)}'),
+            Text(AirwayText.tr('Offered: ${_formatDateTime(offer.offeredAt)}', 'ऑफ़र का समय: ${_formatDateTime(offer.offeredAt)}')),
             if (offer.expiresAt != null && offer.status == WorkerOffer.pending)
               _buildExpiryCountdown(offer),
             if (offer.status == WorkerOffer.accepted)
-              Text('Status: Accepted', style: TextStyle(color: Colors.green[700])),
+              Text(AirwayText.tr('Status: Accepted', 'स्थिति: स्वीकृत'), style: TextStyle(color: Colors.green[700])),
           ],
         ),
         trailing: _buildActionButtons(offer, inProgress, isAccepted),
@@ -303,7 +304,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     // Accepted offers show status only
     if (status == WorkerOffer.accepted) {
       return Chip(
-        label: const Text('Accepted', style: TextStyle(fontSize: 12)),
+        label: Text(AirwayText.tr('Accepted', 'स्वीकृत'), style: TextStyle(fontSize: 12)),
         backgroundColor: Colors.green.shade100,
       );
     }
@@ -311,7 +312,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     // Declined offers show status
     if (status == WorkerOffer.declined) {
       return Chip(
-        label: const Text('Declined'),
+        label: Text(AirwayText.tr('Declined', 'अस्वीकृत')),
         backgroundColor: Colors.red.shade100,
       );
     }
@@ -319,7 +320,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     // Expired offers show status
     if (status == WorkerOffer.expired) {
       return Chip(
-        label: const Text('Expired'),
+        label: Text(AirwayText.tr('Expired', 'समाप्त')),
         backgroundColor: Colors.grey.shade200,
       );
     }
@@ -327,7 +328,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     // Withdrawn offers show status
     if (status == WorkerOffer.withdrawn) {
       return Chip(
-        label: const Text('Withdrawn'),
+        label: Text(AirwayText.tr('Withdrawn', 'वापस लिया गया')),
         backgroundColor: Colors.grey.shade200,
       );
     }
@@ -352,13 +353,13 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
                 foregroundColor: AirwayColors.error,
                 side: const BorderSide(color: AirwayColors.error),
               ),
-              child: const Text('Decline'),
+              child: Text(AirwayText.tr('Decline', 'अस्वीकार करें')),
             ),
           const SizedBox(width: 8),
           if (offer.canAccept)
             FilledButton(
               onPressed: () => _acceptOffer(offer.id),
-              child: const Text('Accept'),
+              child: Text(AirwayText.tr('Accept', 'स्वीकार करें')),
             ),
         ],
       );
