@@ -155,9 +155,12 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                     ),
                     const SizedBox(height: 20),
                     FilledButton(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
-                      ),
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                        );
+                        if (mounted) await _load();
+                      },
                       child: const Text('Set password with OTP'),
                     ),
                   ],
