@@ -5,6 +5,7 @@ on:
     branches:
       - feat/worker-onboarding-service-availability
       - feat/airway-30-70-payment-lifecycle
+      - feat/airway-account-profile-preferences
     paths:
       - "backend/**"
       - ".github/workflows/worker-approval-tests.yml"
@@ -12,6 +13,7 @@ on:
     branches:
       - feat/worker-approval-completion
       - feat/airway-30-70-payment-lifecycle
+      - feat/airway-account-profile-preferences
   workflow_dispatch:
 
 permissions:
