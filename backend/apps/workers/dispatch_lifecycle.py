@@ -154,8 +154,8 @@ def handle_worker_suspension(worker_id):
                 payload = {"booking_id": anchor.pk, "order_id": order.pk, "worker_id": worker_id}
                 notify_customer(
                     anchor,
-                    "Finding a replacement professional",
-                    "Your previously assigned professional is no longer available. Your advance remains valid and AIRway is matching a replacement.",
+                    "Professional update",
+                    "Your previously assigned professional is no longer available. Your advance remains valid. We will notify you once a replacement is confirmed.",
                     payload,
                 )
             # Re-dispatch only after assignments and statuses are committed.
@@ -214,8 +214,8 @@ def handle_worker_suspension(worker_id):
             payload = {"booking_id": booking.pk, "worker_id": worker_id}
             notify_customer(
                 booking,
-                "Finding a replacement professional",
-                "Your previously assigned professional is no longer available. Your advance remains valid and AIRway is matching a replacement.",
+                "Professional update",
+                "Your previously assigned professional is no longer available. Your advance remains valid. We will notify you once a replacement is confirmed.",
                 payload,
             )
         from apps.bookings.dispatcher import DispatcherService
