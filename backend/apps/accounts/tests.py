@@ -1,5 +1,6 @@
 
 from io import BytesIO
+from unittest.mock import patch
 
 from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -899,3 +900,119 @@ class CustomerSavedVehicleApiTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data["vehicle_class"], "SUV")
         self.assertEqual(response.data["custom_make"], "Other")
+
+
+
+class FirebaseGoogleAccountTests(APITestCase):
+    @patch("apps.accounts.views.verify_firebase_token")
+    def test_google_only_user_is_created_and_reused_by_firebase_uid(self, verify_token):
+        from apps.accounts.models import ConsentLog
+
+        verify_token.return_value = {
+            "uid": "firebase-google-uid-001",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email": "google.user@example.com",
+            "email_verified": True,
+            "name": "Google User",
+        }
+        first = self.client.post(
+            "/api/v1/auth/firebase-login/",
+            {
+                "id_token": "verified-google-token",
+                "terms_accepted": True,
+                "privacy_accepted": True,
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK, first.data)
+        self.assertIsNone(first.data["user"]["phone"])
+        self.assertEqual(User.objects.filter(firebase_uid="firebase-google-uid-001").count(), 1)
+        self.assertEqual(
+            ConsentLog.objects.filter(
+                user__firebase_uid="firebase-google-uid-001",
+                version="draft-1",
+            ).count(),
+            2,
+        )
+
+        second = self.client.post(
+            "/api/v1/auth/firebase-login/",
+            {"id_token": "same-google-account"},
+            format="json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertEqual(User.objects.filter(firebase_uid="firebase-google-uid-001").count(), 1)
+
+    @patch("apps.accounts.views.verify_firebase_token")
+    def test_google_signin_does_not_auto_link_by_matching_email(self, verify_token):
+        phone_user = User.objects.create_user(
+            phone="+919876543219",
+            email="same@example.com",
+        )
+        verify_token.return_value = {
+            "uid": "firebase-google-uid-002",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email": "same@example.com",
+            "email_verified": True,
+            "name": "Same Email",
+        }
+        response = self.client.post(
+            "/api/v1/auth/firebase-login/",
+            {
+                "id_token": "google-token",
+                "terms_accepted": True,
+                "privacy_accepted": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        google_user = User.objects.get(firebase_uid="firebase-google-uid-002")
+        self.assertNotEqual(google_user.pk, phone_user.pk)
+        self.assertEqual(User.objects.filter(email="same@example.com").count(), 2)
+
+
+class AccountLanguageAndConsentTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(phone="+919876543218")
+        self.client.force_authenticate(user=self.user)
+
+    def test_language_preference_is_saved_and_returned(self):
+        response = self.client.patch(
+            "/api/v1/auth/language/",
+            {"language": "en"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.language, "en")
+        self.assertEqual(self.client.get("/api/v1/auth/me/").data["language"], "en")
+
+    def test_invalid_language_is_rejected(self):
+        response = self.client.patch(
+            "/api/v1/auth/language/",
+            {"language": "fr"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_legal_consent_records_both_documents_and_version(self):
+        response = self.client.post(
+            "/api/v1/auth/legal-consent/",
+            {"terms_accepted": True, "privacy_accepted": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["consent_complete"])
+        self.assertTrue(response.data["is_draft"])
+        self.assertEqual(
+            self.user.consents.filter(version="draft-1").count(),
+            2,
+        )
+
+    def test_legal_consent_requires_both_documents(self):
+        response = self.client.post(
+            "/api/v1/auth/legal-consent/",
+            {"terms_accepted": True, "privacy_accepted": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
