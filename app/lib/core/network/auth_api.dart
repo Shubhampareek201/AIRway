@@ -27,6 +27,8 @@ class AuthApi {
     required String confirmPassword,
     String? email,
     String? referralCode,
+    required bool termsAccepted,
+    required bool privacyAccepted,
   }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
@@ -42,6 +44,8 @@ class AuthApi {
           'name': name,
           'password': password,
           'confirm_password': confirmPassword,
+          'terms_accepted': termsAccepted,
+          'privacy_accepted': privacyAccepted,
           if (email != null && email.isNotEmpty) 'email': email,
           if (referralCode != null && referralCode.trim().isNotEmpty) 'referral_code': referralCode.trim().toUpperCase(),
         }),
@@ -335,6 +339,8 @@ class AuthApi {
   static Future<Map<String, dynamic>> firebaseLogin({
     required String idToken,
     String? referralCode,
+    bool termsAccepted = false,
+    bool privacyAccepted = false,
   }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
@@ -347,6 +353,8 @@ class AuthApi {
       final body = utf8.encode(
         jsonEncode({
           'id_token': idToken,
+          'terms_accepted': termsAccepted,
+          'privacy_accepted': privacyAccepted,
           if (referralCode != null && referralCode.trim().isNotEmpty)
             'referral_code': referralCode.trim().toUpperCase(),
         }),
