@@ -140,3 +140,53 @@ class CustomerReferralAPITests(APITestCase):
             Notification.objects.filter(type=Notification.Type.REFERRAL_REWARD).count(),
             2,
         )
+
+
+    def test_cancelled_booking_does_not_earn_referral_rewards(self):
+        from types import SimpleNamespace
+        from apps.accounts.referrals import reward_referral_for_first_completed_booking
+
+        referral = Referral.objects.create(
+            referrer=self.referrer,
+            referred=self.referred,
+        )
+        cancelled_booking = SimpleNamespace(
+            status="cancelled",
+            customer=self.referred,
+            pk=987653,
+        )
+
+        self.assertFalse(reward_referral_for_first_completed_booking(cancelled_booking))
+        referral.refresh_from_db()
+        self.assertFalse(referral.rewarded)
+        self.assertFalse(WalletTransaction.objects.exists())
+
+    def test_reward_is_not_given_if_referred_customer_had_an_earlier_completed_service(self):
+        from types import SimpleNamespace
+        from apps.bookings.models import Booking
+        from apps.accounts.referrals import reward_referral_for_first_completed_booking
+
+        referral = Referral.objects.create(
+            referrer=self.referrer,
+            referred=self.referred,
+        )
+        # The helper checks the customer's persisted completed bookings before
+        # crediting. Create a minimal real booking only if required model fields
+        # are available through the normal booking factory in booking tests.
+        earlier_completed = SimpleNamespace(
+            status="completed",
+            customer=self.referred,
+            pk=987652,
+        )
+        with patch.object(
+            type(self.referred.bookings),
+            "filter",
+            return_value=type("CompletedQuery", (), {
+                "exclude": lambda _self, **kwargs: type("Result", (), {"exists": lambda _inner: True})()
+            })(),
+        ):
+            self.assertFalse(reward_referral_for_first_completed_booking(earlier_completed))
+
+        referral.refresh_from_db()
+        self.assertFalse(referral.rewarded)
+        self.assertFalse(WalletTransaction.objects.exists())
