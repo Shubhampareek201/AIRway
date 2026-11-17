@@ -42,19 +42,19 @@ class _NotificationPreferencesScreenState
       if (!mounted) return;
       if (!applied) {
         _message(
-          'AIRway notification permission is blocked by your device. Enable it in your phone settings, then try again.',
+          AirwayText.tr('AIRway notification permission is blocked by your device. Enable it in your phone settings, then try again.', 'इस डिवाइस पर AIRway नोटिफ़िकेशन की अनुमति बंद है। फ़ोन सेटिंग्स में इसे चालू करके फिर कोशिश करें।'),
         );
         await _load();
         return;
       }
       setState(() => _enabled = value);
       _message(value
-          ? 'Push notifications enabled on this device.'
-          : 'Push notifications disabled on this device.');
+          ? AirwayText.tr('Push notifications enabled on this device.', 'इस डिवाइस पर पुश नोटिफ़िकेशन चालू हैं।')
+          : AirwayText.tr('Push notifications disabled on this device.', 'इस डिवाइस पर पुश नोटिफ़िकेशन बंद हैं।'));
     } catch (error) {
       if (!mounted) return;
       _message(
-        'Could not update notification settings. Check your connection and try again.',
+        AirwayText.tr('Could not update notification settings. Check your connection and try again.', 'नोटिफ़िकेशन सेटिंग्स अपडेट नहीं हो सकीं। कनेक्शन जाँचकर फिर कोशिश करें।'),
       );
       await _load();
     } finally {
@@ -87,27 +87,27 @@ class _NotificationPreferencesScreenState
                       color: AirwayColors.primary,
                     ),
                     title: Text(
-                      'Push notifications',
+                      AirwayText.tr('Push notifications', 'पुश नोटिफ़िकेशन'),
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
                       _saving
-                          ? 'Updating this device…'
-                          : 'Booking updates, payment alerts and service notifications on this device.',
+                          ? AirwayText.tr('Updating this device…', 'इस डिवाइस को अपडेट किया जा रहा है…')
+                          : AirwayText.tr('Booking updates, payment alerts and service notifications on this device.', 'इस डिवाइस पर बुकिंग अपडेट, पेमेंट अलर्ट और सेवा नोटिफ़िकेशन।'),
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                const ListTile(
-                  leading: Icon(Icons.inbox_outlined),
+                ListTile(
+                  leading: const Icon(Icons.inbox_outlined),
                   title: Text(AirwayText.tr('In-app notification inbox', 'ऐप के अंदर नोटिफ़िकेशन इनबॉक्स')),
                   subtitle: Text(
-                    'Your notification history remains available inside AIRway even when push notifications are turned off.',
+                    AirwayText.tr('Your notification history remains available inside AIRway even when push notifications are turned off.', 'पुश नोटिफ़िकेशन बंद होने पर भी आपका नोटिफ़िकेशन इतिहास AIRway में उपलब्ध रहेगा।'),
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'This setting applies to the current device. Your other signed-in devices keep their own notification preference.',
+                Text(
+                  AirwayText.tr('This setting applies to the current device. Your other signed-in devices keep their own notification preference.', 'यह सेटिंग केवल इस डिवाइस पर लागू होती है। दूसरे डिवाइस की नोटिफ़िकेशन सेटिंग अलग रहेगी।'),
                   style: TextStyle(
                     color: AirwayColors.textSecondary,
                     fontSize: 12,
