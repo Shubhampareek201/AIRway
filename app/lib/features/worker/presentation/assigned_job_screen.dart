@@ -228,7 +228,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
     if (_jobDetail == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Assigned Job')),
+        appBar: AppBar(title: Text(AirwayText.tr('Assigned Job', 'असाइन की गई जॉब'))),
         body: Center(child: Text(AirwayText.tr('No assigned job', 'कोई जॉब असाइन नहीं है'))),
       );
     }
@@ -236,7 +236,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     final job = _jobDetail!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Assigned Job'),
+        title: Text(AirwayText.tr('Assigned Job', 'असाइन की गई जॉब')),
       ),
       body: RefreshIndicator(
         onRefresh: _loadAssignedJob,
@@ -331,7 +331,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                               if (!snapshot.hasData) {
                                 return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()));
                               }
-                              if (snapshot.hasError) return const Text('Could not authorize photo access.');
+                              if (snapshot.hasError) return Text(AirwayText.tr('Could not authorize photo access.', 'फ़ोटो एक्सेस की अनुमति नहीं मिली।'));
                               return ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
                                 child: Image.network(
@@ -340,7 +340,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                                   height: 150,
                                   width: double.infinity,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Text('Photo is unavailable.'),
+                                  errorBuilder: (_, __, ___) => Text(AirwayText.tr('Photo is unavailable.', 'फ़ोटो उपलब्ध नहीं है।')),
                                 ),
                               );
                             },
@@ -374,7 +374,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 future: WorkerApi.getAuthHeaders(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return const Text('Could not authorize photo access.');
+                    return Text(AirwayText.tr('Could not authorize photo access.', 'फ़ोटो एक्सेस की अनुमति नहीं मिली।'));
                   }
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
@@ -387,7 +387,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                       width: double.infinity,
                       height: 220,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Text('Issue photo is unavailable.'),
+                      errorBuilder: (_, __, ___) => Text(AirwayText.tr('Issue photo is unavailable.', 'समस्या की फ़ोटो उपलब्ध नहीं है।')),
                     ),
                   );
                 },
@@ -403,12 +403,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.event_available_rounded),
-        title: const Text('Service appointment'),
+        title: Text(AirwayText.tr('Service appointment', 'सेवा का अपॉइंटमेंट')),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Service time: ${_formatDateTime(job.scheduledAt)}'),
+            Text(AirwayText.tr('Service time: ${_formatDateTime(job.scheduledAt)}', 'सेवा का समय: ${_formatDateTime(job.scheduledAt)}')),
             if (job.recurringVisit != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -416,11 +416,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 style: const TextStyle(fontWeight: FontWeight.w700, color: AirwayColors.primary),
               ),
               const SizedBox(height: 2),
-              Text('Prepaid under plan #${job.recurringVisit!['plan_id'] ?? ''}'),
+              Text(AirwayText.tr('Prepaid under plan #${job.recurringVisit!['plan_id'] ?? ''}', 'प्लान #${job.recurringVisit!['plan_id'] ?? ''} के अंतर्गत प्रीपेड')),
             ],
             if (job.dropScheduledAt != null) ...[
               const SizedBox(height: 4),
-              Text('Expected drop-off: ${_formatDateTime(job.dropScheduledAt!)}'),
+              Text(AirwayText.tr('Expected drop-off: ${_formatDateTime(job.dropScheduledAt!)}', 'अपेक्षित ड्रॉप-ऑफ़: ${_formatDateTime(job.dropScheduledAt!)}')),
             ],
           ],
         ),
@@ -455,7 +455,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         children: [
           ListTile(
             leading: const Icon(Icons.people),
-            title: const Text('Assignment'),
+            title: Text(AirwayText.tr('Assignment', 'असाइनमेंट')),
             subtitle: Text(
               'Assigned: ${_formatDateTimeIfNotNull(assignment.assignedAt)}',
             ),
@@ -486,7 +486,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.payment),
-        title: const Text('Payment'),
+        title: Text(AirwayText.tr('Payment', 'भुगतान')),
         subtitle: Text(paymentLabel),
         trailing: Chip(
           label: Text(statusLabel),
@@ -528,7 +528,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 ),
               const Divider(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                const Text('Estimate including tax', style: TextStyle(fontWeight: FontWeight.w800)),
+                Text(AirwayText.tr('Estimate including tax', 'टैक्स सहित अनुमान'), style: TextStyle(fontWeight: FontWeight.w800)),
                 Text('₹${quote['total_amount'] ?? '0'}',
                     style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
               ]),
@@ -603,7 +603,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, {
               'labour': labourController.text.trim(),
@@ -644,7 +644,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     addLine('material', result['material'] ?? '', result['material_description'] ?? '');
     addLine('other', result['other'] ?? '', result['other_description'] ?? '');
     if (lineItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter at least one positive estimate amount.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Enter at least one positive estimate amount.', 'कम से कम एक सकारात्मक अनुमान राशि दर्ज करें।'))));
       return;
     }
 
@@ -656,11 +656,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         notes: result['notes'] ?? '',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estimate sent to customer for approval.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Estimate sent to customer for approval.', 'अनुमान ग्राहक की स्वीकृति के लिए भेज दिया गया है।'))));
       await _loadAssignedJob();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not submit estimate: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not submit estimate: $e', 'अनुमान भेजा नहीं जा सका: $e'))));
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
@@ -679,7 +679,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           children: [
             Text(AirwayText.tr('Work photos', 'काम की फ़ोटो'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             const SizedBox(height: 6),
-            Text('Capture the service condition before work and the completed result after work.',
+            Text(AirwayText.tr('Capture the service condition before work and the completed result after work.', 'काम शुरू होने से पहले और पूरा होने के बाद सेवा की स्थिति की फ़ोटो लें।'),
                 style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
             for (final stage in ['before', 'after']) ...[
               const SizedBox(height: 12),
@@ -698,7 +698,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                         future: WorkerApi.getAuthHeaders(),
                         builder: (context, snapshot) {
                           if (!snapshot.hasData) return const SizedBox(height: 70, child: Center(child: CircularProgressIndicator()));
-                          if (snapshot.hasError) return const Text('Could not authorize evidence photo.');
+                          if (snapshot.hasError) return Text(AirwayText.tr('Could not authorize evidence photo.', 'सबूत की फ़ोटो के लिए अनुमति नहीं मिली।'));
                           return ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: Image.network(
@@ -707,7 +707,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                               height: 150,
                               width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Text('Evidence photo unavailable.'),
+                              errorBuilder: (_, __, ___) => Text(AirwayText.tr('Evidence photo unavailable.', 'सबूत की फ़ोटो उपलब्ध नहीं है।')),
                             ),
                           );
                         },
@@ -771,7 +771,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       await _loadAssignedJob();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not upload work photo: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not upload work photo: $e', 'काम की फ़ोटो अपलोड नहीं हो सकी: $e'))));
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
@@ -812,8 +812,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                     )
                   : const Icon(Icons.check),
               label: _isActionInProgress
-                  ? const Text('Completing...')
-                  : const Text('Complete Job'),
+                  ? Text(AirwayText.tr('Completing...', 'पूरा किया जा रहा है...'))
+                  : Text(AirwayText.tr('Complete Job', 'काम पूरा करें')),
             ),
           ),
         ],
@@ -827,8 +827,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           const Card(
             child: ListTile(
               leading: Icon(Icons.check_circle),
-              title: Text('Job Status'),
-              subtitle: Text('This job has been completed'),
+              title: Text(AirwayText.tr('Job Status', 'जॉब की स्थिति')),
+              subtitle: Text(AirwayText.tr('This job has been completed', 'यह जॉब पूरी हो चुकी है')),
             ),
           ),
           const SizedBox(height: 8),
@@ -852,8 +852,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       return Card(
         child: const ListTile(
           leading: Icon(Icons.pending_outlined),
-          title: Text('Job Status'),
-          subtitle: Text('Payment pending - awaiting worker assignment'),
+          title: Text(AirwayText.tr('Job Status', 'जॉब की स्थिति')),
+          subtitle: Text(AirwayText.tr('Payment pending - awaiting worker assignment', 'भुगतान लंबित है - वर्कर असाइन होने की प्रतीक्षा है')),
         ),
       );
     }
@@ -862,7 +862,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       child: ListTile(
         leading: const Icon(Icons.info),
         title: const Text('Job Status'),
-        subtitle: Text('Status: ${BookingStatus.display(status)}'),
+        subtitle: Text(AirwayText.tr('Status: ${BookingStatus.display(status)}', 'स्थिति: ${BookingStatus.display(status)}')),
       ),
     );
   }
@@ -874,7 +874,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Rate customer'),
+          title: Text(AirwayText.tr('Rate customer', 'ग्राहक को रेट करें')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -928,12 +928,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       if (!mounted) return;
       setState(() => _hasRatedCustomer = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Customer rating submitted. Thank you.')),
+        SnackBar(content: Text(AirwayText.tr('Customer rating submitted. Thank you.', 'ग्राहक की रेटिंग भेज दी गई। धन्यवाद।'))),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not submit rating: $e')),
+        SnackBar(content: Text(AirwayText.tr('Could not submit rating: $e', 'रेटिंग भेजी नहीं जा सकी: $e'))),
       );
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
