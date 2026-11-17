@@ -240,7 +240,7 @@ Navigator.of(context).pushAndRemoveUntil(
 
               const SizedBox(height: 32),
 
-              if (!_otpSent && !_verified) ...[
+              if (!_otpSent && !_verified)
                 TextField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
@@ -254,6 +254,8 @@ Navigator.of(context).pushAndRemoveUntil(
                     border: OutlineInputBorder(),
                   ),
                 ),
+
+              if (!_verified) ...[
                 const SizedBox(height: 14),
                 TextField(
                   controller: _referralCodeController,
