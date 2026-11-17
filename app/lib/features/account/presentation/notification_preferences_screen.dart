@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 
@@ -27,7 +28,7 @@ class _NotificationPreferencesScreenState
       final enabled = await PushNotificationService.notificationsEnabled();
       if (mounted) setState(() => _enabled = enabled);
     } catch (_) {
-      if (mounted) _message('Could not read notification permission status.');
+      if (mounted) _message(AirwayText.tr('Could not read notification permission status.', 'नोटिफ़िकेशन अनुमति की स्थिति नहीं पढ़ी जा सकी।'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -71,7 +72,7 @@ class _NotificationPreferencesScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Notification preferences')),
+      appBar: AppBar(title: Text(AirwayText.tr('Notification preferences', 'नोटिफ़िकेशन प्राथमिकताएँ'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -85,7 +86,7 @@ class _NotificationPreferencesScreenState
                       Icons.notifications_active_outlined,
                       color: AirwayColors.primary,
                     ),
-                    title: const Text(
+                    title: Text(
                       'Push notifications',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
@@ -99,7 +100,7 @@ class _NotificationPreferencesScreenState
                 const SizedBox(height: 12),
                 const ListTile(
                   leading: Icon(Icons.inbox_outlined),
-                  title: Text('In-app notification inbox'),
+                  title: Text(AirwayText.tr('In-app notification inbox', 'ऐप के अंदर नोटिफ़िकेशन इनबॉक्स')),
                   subtitle: Text(
                     'Your notification history remains available inside AIRway even when push notifications are turned off.',
                   ),
