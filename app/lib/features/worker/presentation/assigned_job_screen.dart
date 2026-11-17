@@ -137,7 +137,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         throw Exception(issued['detail'] ?? 'Could not request completion code.');
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(AirwayText.tr('Ask the customer to share the 6-digit completion code shown in their AIRway notifications.', 'ग्राहक से AIRway नोटिफ़िकेशन में दिखा 6 अंकों का पूरा करने वाला कोड साझा करने को कहें।')),
           duration: Duration(seconds: 5),
         ),
@@ -159,7 +159,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 autofocus: true,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: AirwayText.tr('Customer completion code', 'ग्राहक का सेवा-समाप्ति कोड'),
                   border: OutlineInputBorder(),
                   counterText: '',
@@ -895,7 +895,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 controller: commentController,
                 maxLength: 500,
                 maxLines: 3,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: AirwayText.tr('Comment (optional)', 'टिप्पणी (वैकल्पिक)'),
                   border: OutlineInputBorder(),
                 ),
