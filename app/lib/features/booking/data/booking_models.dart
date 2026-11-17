@@ -47,6 +47,7 @@ class PaymentMethod {
 
 class Booking {
   final int id;
+  final int? orderId;
   final int serviceId;
   final String serviceTitle;
   final String? serviceImage;
@@ -67,6 +68,7 @@ class Booking {
 
   Booking({
     required this.id,
+    this.orderId,
     required this.serviceId,
     required this.serviceTitle,
     this.serviceImage,
@@ -99,6 +101,7 @@ class Booking {
   factory Booking.fromMap(Map<String, dynamic> map) {
     return Booking(
       id: map['id'],
+      orderId: map['order_id'] == null ? null : int.tryParse(map['order_id'].toString()),
       serviceId: map['service'],
       serviceTitle: map['service_title'] ?? '',
       serviceImage: map['service_image'],
