@@ -515,6 +515,13 @@ class AccountDeletionRequestView(APIView):
             "id": item.pk,
             "status": item.status,
             "reason": item.reason,
+            "detail": (
+                "Resolve active bookings or disputes before account closure."
+                if obligations["has_active_bookings"]
+                else "Settle wallet funds, pending payments or refunds before account closure."
+                if obligations["has_financial_obligations"]
+                else "Your request is waiting for AIRway admin review."
+            ),
             **obligations,
             "created_at": item.created_at.isoformat(),
             "updated_at": item.updated_at.isoformat(),
@@ -559,9 +566,9 @@ class AccountDeletionRequestView(APIView):
         return Response({
             "detail": (
                 "Your request is recorded. It will be reviewed after active bookings or disputes are resolved."
-                if active_count
+                if obligations["has_active_bookings"]
                 else "Your account deletion request has been submitted for review."
-                if not has_financial_obligations
+                if not obligations["has_financial_obligations"]
                 else "Your request is recorded. Outstanding wallet funds or reservations must be settled before closure."
             ),
             "id": item.pk,
