@@ -133,6 +133,37 @@ class ProfileCompletionSerializer(serializers.Serializer):
         return attrs
 
 
+class AccountProfileUpdateSerializer(serializers.ModelSerializer):
+    """Authenticated account profile edits; phone changes require a separate OTP flow."""
+
+    class Meta:
+        model = User
+        fields = ["name", "email", "gender", "photo"]
+        extra_kwargs = {
+            "name": {"required": False, "allow_blank": False, "max_length": 150},
+            "email": {"required": False, "allow_blank": True},
+            "gender": {"required": False, "allow_blank": True},
+            "photo": {"required": False},
+        }
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name cannot be empty.")
+        return value
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if value and User.objects.filter(email__iexact=value).exclude(pk=self.instance.pk).exists():
+            raise serializers.ValidationError("Email already in use.")
+        return value
+
+    def validate_photo(self, value):
+        if value and value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError("Profile photo must be 5 MB or smaller.")
+        return value
+
+
 class ResetPasswordSerializer(serializers.Serializer):
     phone = serializers.CharField()
     otp = serializers.CharField(max_length=6)
