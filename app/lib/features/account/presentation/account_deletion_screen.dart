@@ -50,6 +50,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
   }
 
   Future<void> _submit() async {
+    final t = AirwayText.tr;
     if (_submitting) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -102,6 +103,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
   }
 
   String _statusLabel(String? status) {
+    final t = AirwayText.tr;
     switch (status) {
       case 'requested':
         return t('Request submitted', 'अनुरोध भेज दिया गया');
@@ -112,7 +114,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
       case 'completed':
         return t('Account closed', 'खाता बंद हो गया');
       case 'cancelled':
-        return 'Request cancelled';
+        return t('Request cancelled', 'अनुरोध रद्द कर दिया गया');
       default:
         return t('Status unavailable', 'स्थिति उपलब्ध नहीं है');
     }
@@ -155,7 +157,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                       t('You can request closure of your AIRway account. AIRway will review active bookings, worker assignments, disputes, wallet balances and payment obligations before closure.', 'आप अपना AIRway खाता बंद करने का अनुरोध कर सकते हैं। बंद करने से पहले AIRway सक्रिय बुकिंग, वर्कर असाइनमेंट, विवाद, वॉलेट बैलेंस और भुगतान दायित्वों की समीक्षा करेगा।'),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
+                    Text(
                       t('Booking, payment, refund, tax and other legally required records may be retained where required. The account is not physically deleted from historical transactions.', 'जहाँ आवश्यक हो, बुकिंग, भुगतान, रिफंड, टैक्स और अन्य कानूनी रिकॉर्ड सुरक्षित रखे जा सकते हैं। पुराने लेन-देन से खाता रिकॉर्ड भौतिक रूप से नहीं हटाया जाता।'),
                     ),
                     const SizedBox(height: 20),
@@ -193,7 +195,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                         controller: _reasonController,
                         maxLines: 4,
                         maxLength: 1000,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: t('Reason (optional)', 'कारण (वैकल्पिक)'),
                           hintText: t('Tell us why you want to close your account.', 'बताएँ कि आप अपना खाता क्यों बंद करना चाहते हैं।'),
                           border: OutlineInputBorder(),
