@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/features/worker/data/worker_app_api.dart';
@@ -81,7 +82,7 @@ class _WorkerProfileEditScreenState extends State<WorkerProfileEditScreen> {
       ));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save profile: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not save profile: $e', 'प्रोफ़ाइल सेव नहीं हो सकी: $e'))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -105,7 +106,7 @@ class _WorkerProfileEditScreenState extends State<WorkerProfileEditScreen> {
   Widget build(BuildContext context) {
     final image = _photo;
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit profile')),
+      appBar: AppBar(title: Text(AirwayText.tr('Edit profile', 'प्रोफ़ाइल संपादित करें'))),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -118,9 +119,9 @@ class _WorkerProfileEditScreenState extends State<WorkerProfileEditScreen> {
                   backgroundImage: image != null ? FileImage(image) : null,
                   child: image == null ? const Icon(Icons.person, size: 42) : null,
                 ),
-                TextButton.icon(onPressed: _saving ? null : _choosePhoto, icon: const Icon(Icons.photo_camera_outlined), label: const Text('Change profile photo')),
+                TextButton.icon(onPressed: _saving ? null : _choosePhoto, icon: const Icon(Icons.photo_camera_outlined), label: Text(AirwayText.tr('Change profile photo', 'प्रोफ़ाइल फ़ोटो बदलें'))),
                 if (image != null)
-                  const Text('New photo will be visible after admin verification.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+                  Text(AirwayText.tr('New photo will be visible after admin verification.', 'नई फ़ोटो एडमिन वेरिफ़िकेशन के बाद दिखाई देगी।'), textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
               ]),
             ),
             const SizedBox(height: 18),
