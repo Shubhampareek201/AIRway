@@ -551,6 +551,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
 
 class BookingListSerializer(serializers.ModelSerializer):
+    order_id = serializers.IntegerField(source="order_item.order_id", read_only=True)
     customer_answers = serializers.SerializerMethodField()
     service_title = serializers.CharField(source="service.title", read_only=True)
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
@@ -563,7 +564,7 @@ class BookingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            "id", "service", "service_title", "service_unit_label", "service_image", "variant_title",
+            "id", "order_id", "service", "service_title", "service_unit_label", "service_image", "variant_title",
             "booking_mode", "scheduled_at", "status", "status_display",
             "address_label", "address_full", "pricing_snapshot",
             "customer_answers", "completed_at", "created_at"
