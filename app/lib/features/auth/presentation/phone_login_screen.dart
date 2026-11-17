@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
+import 'package:airway/core/localization/airway_text.dart';
 class PhoneLoginScreen extends StatefulWidget {
   const PhoneLoginScreen({super.key});
 
@@ -245,11 +246,12 @@ Navigator.of(context).pushAndRemoveUntil(
 
   @override
   Widget build(BuildContext context) {
+    final t = AirwayText.tr;
     const green = Color(0xFF176B58);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AIRway Sign In'),
+        title: Text(t('AIRway Sign In', 'AIRway में लॉगिन करें')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -269,10 +271,10 @@ Navigator.of(context).pushAndRemoveUntil(
 
               Text(
                 _verified
-                    ? 'Phone Verified'
+                    ? t('Phone Verified', 'फ़ोन सत्यापित')
                     : _otpSent
-                        ? 'Verify Your Number'
-                        : 'Welcome to AIRway',
+                        ? t('Verify Your Number', 'अपना नंबर सत्यापित करें')
+                        : t('Welcome to AIRway', 'AIRway में आपका स्वागत है'),
                 style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -283,10 +285,10 @@ Navigator.of(context).pushAndRemoveUntil(
 
               Text(
                 _verified
-                    ? 'Firebase verification successful.'
+                    ? t('Firebase verification successful.', 'Firebase सत्यापन सफल रहा।')
                     : _otpSent
-                        ? 'Enter the 6-digit verification code.'
-                        : 'Enter your mobile number to continue.',
+                        ? t('Enter the 6-digit verification code.', '6 अंकों का सत्यापन कोड दर्ज करें।')
+                        : t('Enter your mobile number to continue.', 'जारी रखने के लिए अपना मोबाइल नंबर दर्ज करें।'),
                 style: const TextStyle(
                   fontSize: 16,
                   color: Colors.black54,
@@ -303,8 +305,8 @@ Navigator.of(context).pushAndRemoveUntil(
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                   ],
-                  decoration: const InputDecoration(
-                    labelText: 'Mobile Number',
+                  decoration: InputDecoration(
+                    labelText: t('Mobile Number', 'मोबाइल नंबर'),
                     prefixText: '+91 ',
                     border: OutlineInputBorder(),
                   ),
@@ -317,14 +319,14 @@ Navigator.of(context).pushAndRemoveUntil(
                   value: _termsAccepted,
                   onChanged: _loading ? null : (value) => setState(() => _termsAccepted = value ?? false),
                   controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('I agree to the Terms & Conditions'),
+                  title: Text(t('I agree to the Terms & Conditions', 'मैं नियम और शर्तों से सहमत हूँ')),
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _privacyAccepted,
                   onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
                   controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('I have read and agree to the Privacy Policy'),
+                  title: const Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -332,7 +334,7 @@ Navigator.of(context).pushAndRemoveUntil(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
                     ),
-                    child: const Text('Read Terms & Privacy'),
+                    child: Text(t('Read Terms & Privacy', 'नियम और गोपनीयता पढ़ें')),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -341,8 +343,8 @@ Navigator.of(context).pushAndRemoveUntil(
                   textCapitalization: TextCapitalization.characters,
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
                   decoration: const InputDecoration(
-                    labelText: 'Referral Code (Optional)',
-                    helperText: 'Apply a friend’s code when creating a new account.',
+                    labelText: t('Referral Code (Optional)', 'रेफ़रल कोड (वैकल्पिक)'),
+                    helperText: t('Apply a friend’s code when creating a new account.', 'नया खाता बनाते समय दोस्त का कोड लागू करें।'),
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -357,7 +359,7 @@ Navigator.of(context).pushAndRemoveUntil(
                     FilteringTextInputFormatter.digitsOnly,
                   ],
                   decoration: const InputDecoration(
-                    labelText: '6-digit OTP',
+                    labelText: t('6-digit OTP', '6 अंकों का OTP'),
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -383,7 +385,7 @@ Navigator.of(context).pushAndRemoveUntil(
                             ),
                           )
                         : Text(
-                            _otpSent ? 'Verify OTP' : 'Send OTP',
+                            _otpSent ? t('Verify OTP', 'OTP सत्यापित करें') : t('Send OTP', 'OTP भेजें'),
                           ),
                   ),
                 ),
@@ -399,7 +401,7 @@ Navigator.of(context).pushAndRemoveUntil(
                             _otpController.clear();
                           });
                         },
-                  child: const Text('Change Mobile Number'),
+                  child: const Text(t('Change Mobile Number', 'मोबाइल नंबर बदलें')),
                 ),
 
               if (!_verified && _auth.currentUser != null && !_loading)
@@ -407,7 +409,7 @@ Navigator.of(context).pushAndRemoveUntil(
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _retryBackendLogin,
-                    child: const Text('Continue after accepting policies'),
+                    child: const Text(t('Continue after accepting policies', 'नीतियाँ स्वीकार करके जारी रखें')),
                   ),
                 ),
 
@@ -425,8 +427,8 @@ Navigator.of(context).pushAndRemoveUntil(
               if (!_verified)
                 const Center(
                   child: Text(
-                    'By continuing, you consent to phone verification '
-                    'through Firebase.',
+                    t('By continuing, you consent to phone verification ', 'जारी रखकर आप फ़ोन सत्यापन की सहमति देते हैं ')
+                    t('through Firebase.', 'Firebase के माध्यम से।'),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
