@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/catalog/data/catalog_models.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
@@ -78,9 +79,9 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
       for (final serviceId in remove) { await WorkerApi.removeService(serviceId); }
       if (!mounted) return;
       Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Your service list has been updated.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Your service list has been updated.', 'आपकी सेवा सूची अपडेट हो गई है।'))));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Some service changes could not be saved: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Some service changes could not be saved: $e', 'कुछ सेवा बदलाव सेव नहीं हो सके: $e'))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -93,7 +94,7 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
       return id != null && !_catalogue.any((service) => service.id == id);
     }).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('My services')),
+      appBar: AppBar(title: Text(AirwayText.tr('My services', 'मेरी सेवाएँ'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -102,16 +103,16 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Text(_error!, textAlign: TextAlign.center),
                     const SizedBox(height: 12),
-                    FilledButton(onPressed: _load, child: const Text('Try again')),
+                    FilledButton(onPressed: _load, child: Text(AirwayText.tr('Try again', 'फिर कोशिश करें'))),
                   ]),
                 ))
               : Column(children: [
                   Expanded(child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
                     children: [
-                      const Text('Manage the services you can provide', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                      Text(AirwayText.tr('Manage the services you can provide', 'वे सेवाएँ प्रबंधित करें जो आप दे सकते हैं'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
-                      const Text('Choose a category, select services, then review the skills you can perform.', style: TextStyle(color: AirwayColors.textSecondary)),
+                      Text(AirwayText.tr('Choose a category, select services, then review the skills you can perform.', 'श्रेणी चुनें, सेवाएँ चुनें और फिर अपने कौशल की समीक्षा करें।'), style: TextStyle(color: AirwayColors.textSecondary)),
                       const SizedBox(height: 16),
                       WorkerServicePicker(
                         services: _catalogue,
@@ -132,16 +133,16 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                       ),
                       if (inactiveRows.isNotEmpty) ...[
                         const SizedBox(height: 20),
-                        const Text('Unavailable services', style: TextStyle(fontWeight: FontWeight.w800)),
+                        Text(AirwayText.tr('Unavailable services', 'अनुपलब्ध सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 6),
                         ...inactiveRows.map((row) {
                           final id = int.tryParse(row['service']?.toString() ?? '');
                           return Card(child: ListTile(
                             leading: const Icon(Icons.info_outline, color: Colors.orange),
                             title: Text(row['service_title']?.toString() ?? 'Inactive service'),
-                            subtitle: const Text('This service is no longer active. Remove it from your profile if you no longer provide it.'),
+                            subtitle: Text(AirwayText.tr('This service is no longer active. Remove it from your profile if you no longer provide it.', 'यह सेवा अब सक्रिय नहीं है। यदि आप इसे नहीं देते, तो अपनी प्रोफ़ाइल से हटाएँ।')),
                             trailing: IconButton(
-                              tooltip: 'Remove service',
+                              tooltip: AirwayText.tr('Remove service', 'सेवा हटाएँ'),
                               onPressed: _saving || id == null ? null : () => setState(() { _selected.remove(id); }),
                               icon: const Icon(Icons.remove_circle_outline),
                             ),
@@ -154,7 +155,7 @@ class _WorkerServiceManagementScreenState extends State<WorkerServiceManagementS
                     padding: const EdgeInsets.all(16),
                     child: SizedBox(width: double.infinity, child: FilledButton(
                       onPressed: _saving ? null : _save,
-                      child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save service changes'),
+                      child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(AirwayText.tr('Save service changes', 'सेवा बदलाव सेव करें')),
                     )),
                   )),
                 ]),
