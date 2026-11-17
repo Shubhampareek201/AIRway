@@ -92,6 +92,26 @@ def reward_referral_for_first_completed_booking(booking):
         "Welcome reward: your first AIRway service was completed",
         f"referral:{referral.pk}:referred:first-service",
     )
+
+    from apps.notifications.models import Notification
+    Notification.objects.bulk_create([
+        Notification(
+            user=referral.referrer,
+            type=Notification.Type.REFERRAL_REWARD,
+            title="Referral reward credited",
+            body="₹200 has been added to your AIRway wallet because your friend's first service was completed.",
+            channel=Notification.Channel.IN_APP,
+            data={"referral_id": referral.pk, "amount": "200.00", "reward_for": "referrer"},
+        ),
+        Notification(
+            user=referral.referred,
+            type=Notification.Type.REFERRAL_REWARD,
+            title="Welcome reward credited",
+            body="₹100 has been added to your AIRway wallet after your first completed AIRway service.",
+            channel=Notification.Channel.IN_APP,
+            data={"referral_id": referral.pk, "amount": "100.00", "reward_for": "referred"},
+        ),
+    ])
     referral.rewarded = True
     referral.rewarded_at = timezone.now()
     referral.save(update_fields=["rewarded", "rewarded_at", "updated_at"])
