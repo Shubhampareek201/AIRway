@@ -15,6 +15,7 @@ class PhoneLoginScreen extends StatefulWidget {
 class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
+  final _referralCodeController = TextEditingController();
   final _auth = FirebaseAuth.instance;
 
   bool _loading = false;
@@ -26,6 +27,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   void dispose() {
     _phoneController.dispose();
     _otpController.dispose();
+    _referralCodeController.dispose();
     super.dispose();
   }
 
@@ -150,6 +152,9 @@ Future<void> _signInWithCredential(
     // Django verifies the Firebase token and issues its own JWTs.
     final response = await AuthApi.firebaseLogin(
       idToken: idToken,
+      referralCode: _referralCodeController.text.trim().isEmpty
+          ? null
+          : _referralCodeController.text.trim(),
     );
     await SecureSessionStorage.saveSession(
       accessToken: response['access'] as String,
@@ -235,7 +240,7 @@ Navigator.of(context).pushAndRemoveUntil(
 
               const SizedBox(height: 32),
 
-              if (!_otpSent && !_verified)
+              if (!_otpSent && !_verified) ...[
                 TextField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
@@ -249,6 +254,18 @@ Navigator.of(context).pushAndRemoveUntil(
                     border: OutlineInputBorder(),
                   ),
                 ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _referralCodeController,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
+                  decoration: const InputDecoration(
+                    labelText: 'Referral Code (Optional)',
+                    helperText: 'Apply a friend’s code when creating a new account.',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
 
               if (_otpSent && !_verified)
                 TextField(
