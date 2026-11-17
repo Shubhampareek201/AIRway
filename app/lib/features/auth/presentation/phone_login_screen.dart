@@ -24,6 +24,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   bool _verified = false;
   bool _termsAccepted = false;
   bool _privacyAccepted = false;
+  bool _credentialProcessing = false;
   String? _verificationId;
 
   @override
@@ -130,8 +131,9 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
 Future<void> _signInWithCredential(
   PhoneAuthCredential credential,
 ) async {
-  if (!mounted || _verified || _loading) return;
+  if (!mounted || _verified || _credentialProcessing) return;
 
+  _credentialProcessing = true;
   setState(() => _loading = true);
 
   try {
@@ -180,14 +182,17 @@ Navigator.of(context).pushAndRemoveUntil(
     // Secure session storage and home navigation come next.
   } on FirebaseAuthException catch (error) {
     if (!mounted) return;
+    _credentialProcessing = false;
     setState(() => _loading = false);
     _message(error.message ?? 'Firebase authentication failed.');
   } on AuthApiException catch (error) {
     if (!mounted) return;
+    _credentialProcessing = false;
     setState(() => _loading = false);
     _message(error.message);
   } catch (_) {
     if (!mounted) return;
+    _credentialProcessing = false;
     setState(() => _loading = false);
     _message('Unable to complete AIRway login. Please try again.');
   }
