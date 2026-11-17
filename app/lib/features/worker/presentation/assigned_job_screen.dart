@@ -861,7 +861,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.info),
-        title: const Text('Job Status'),
+        title: Text(AirwayText.tr('Job Status', 'जॉब की स्थिति')),
         subtitle: Text(AirwayText.tr('Status: ${BookingStatus.display(status)}', 'स्थिति: ${BookingStatus.display(status)}')),
       ),
     );
