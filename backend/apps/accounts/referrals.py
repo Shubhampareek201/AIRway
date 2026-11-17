@@ -90,7 +90,7 @@ def reward_referral_for_first_completed_booking(booking):
         referral.referred,
         REFERRED_FIRST_SERVICE_CREDIT,
         "Welcome reward: your first AIRway service was completed",
-        f"referral:{referral.pk}:referred",
+        f"referral:{referral.pk}:referred:first-service",
     )
     referral.rewarded = True
     referral.rewarded_at = timezone.now()
