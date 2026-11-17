@@ -6,8 +6,8 @@ from django.utils import timezone
 from .models import Referral, User
 from apps.wallet.models import Wallet, WalletTransaction
 
-REFERRED_SIGNUP_CREDIT = Decimal("149.00")
-REFERRER_COMPLETION_CREDIT = Decimal("200.00")
+REFERRED_FIRST_SERVICE_CREDIT = Decimal("100.00")
+REFERRER_FIRST_SERVICE_CREDIT = Decimal("200.00")
 
 
 def _credit_wallet(user, amount, description, reference_id):
@@ -31,9 +31,11 @@ def _credit_wallet(user, amount, description, reference_id):
 
 @transaction.atomic
 def apply_referral_code(referred_user, code):
+    """Attach one valid referrer to a new customer; do not credit either wallet yet."""
     normalized = str(code or "").strip().upper()
     if not normalized:
         raise ValueError("Enter a referral code.")
+
     referred = User.objects.select_for_update().get(pk=referred_user.pk)
     if Referral.objects.filter(referred=referred).exists():
         raise ValueError("A referral code has already been applied to this account.")
@@ -41,42 +43,54 @@ def apply_referral_code(referred_user, code):
         raise ValueError("You cannot use your own referral code.")
     if referred.bookings.filter(status="completed").exists():
         raise ValueError("Referral codes can only be applied before your first completed service.")
-    referrer = User.objects.filter(referral_code__iexact=normalized, is_active=True).first()
+
+    referrer = User.objects.filter(
+        referral_code__iexact=normalized,
+        is_active=True,
+    ).first()
     if referrer is None:
         raise ValueError("This referral code is invalid.")
     if referrer.pk == referred.pk:
         raise ValueError("You cannot use your own referral code.")
 
-    referral = Referral.objects.create(referrer=referrer, referred=referred)
-    _credit_wallet(
-        referred,
-        REFERRED_SIGNUP_CREDIT,
-        "AIRway referral welcome credit",
-        f"referral:{referral.pk}:referred",
-    )
-    return referral
+    return Referral.objects.create(referrer=referrer, referred=referred)
 
 
 @transaction.atomic
-def reward_referrer_for_first_completed_booking(booking):
+def reward_referral_for_first_completed_booking(booking):
+    """
+    Credit both customers only after the referred customer's first service
+    has reached the OTP-verified COMPLETED state. Referral row locking and
+    stable transaction references make the reward idempotent.
+    """
     if booking.status != "completed":
         return False
-    if booking.customer.bookings.filter(status="completed").exclude(pk=booking.pk).exists():
-        return False
+
     referral = (
         Referral.objects.select_for_update()
-        .select_related("referrer")
+        .select_related("referrer", "referred")
         .filter(referred=booking.customer, rewarded=False)
         .first()
     )
     if referral is None:
         return False
 
+    # Check after acquiring the referral lock so concurrent completion requests
+    # cannot reward two different bookings for the same referred customer.
+    if booking.customer.bookings.filter(status="completed").exclude(pk=booking.pk).exists():
+        return False
+
     _credit_wallet(
         referral.referrer,
-        REFERRER_COMPLETION_CREDIT,
-        "Referral reward: friend's first service was completed",
+        REFERRER_FIRST_SERVICE_CREDIT,
+        "Referral reward: your friend's first AIRway service was completed",
         f"referral:{referral.pk}:referrer",
+    )
+    _credit_wallet(
+        referral.referred,
+        REFERRED_FIRST_SERVICE_CREDIT,
+        "Welcome reward: your first AIRway service was completed",
+        f"referral:{referral.pk}:referred",
     )
     referral.rewarded = True
     referral.rewarded_at = timezone.now()
