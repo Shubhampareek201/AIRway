@@ -343,9 +343,9 @@ class CustomerReferralView(APIView):
         referrals = Referral.objects.filter(referrer=request.user).select_related("referred").order_by("-created_at")
         return Response({
             "referral_code": request.user.referral_code,
-            "new_customer_credit": "149.00",
+            "new_customer_credit": "100.00",
             "referrer_reward": "200.00",
-            "reward_condition": "Your referred customer's first service must be completed.",
+            "reward_condition": "Both rewards are credited after the referred customer's first service is successfully completed.",
             "total_referrals": referrals.count(),
             "completed_referrals": referrals.filter(rewarded=True).count(),
             "referrals": [{
@@ -363,9 +363,11 @@ class CustomerReferralView(APIView):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({
-            "detail": "Referral code applied. ₹149 has been added to your AIRway Wallet.",
+            "detail": "Referral code applied. You and your referrer will receive wallet credits after your first service is completed.",
             "referral_id": referral.pk,
-            "credit": "149.00",
+            "new_customer_credit": "100.00",
+            "referrer_reward": "200.00",
+            "status": "waiting_for_first_service",
         }, status=status.HTTP_201_CREATED)
 
 
