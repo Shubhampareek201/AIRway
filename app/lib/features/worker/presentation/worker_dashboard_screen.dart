@@ -18,6 +18,8 @@ import 'package:airway/features/worker/presentation/worker_profile_edit_screen.d
 import 'package:airway/features/worker/presentation/worker_service_management_screen.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/notification/presentation/notification_bell_button.dart';
+import 'package:airway/features/account/presentation/account_profile_screen.dart';
+import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -351,6 +353,19 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     if (changed == true) await _refresh();
   }
 
+  Future<void> _editAccountProfile() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const AccountProfileScreen()),
+    );
+    if (changed == true) await _refresh();
+  }
+
+  Future<void> _openNotificationPreferences() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const NotificationPreferencesScreen()),
+    );
+  }
+
   Future<void> _manageServices() async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => WorkerServiceManagementScreen(profile: _profile!)),
@@ -667,6 +682,26 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                     : null,
               )).toList(),
             ),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      Card(
+        child: Column(children: [
+          ListTile(
+            leading: const Icon(Icons.person_outline_rounded),
+            title: const Text('Personal information'),
+            subtitle: const Text('Account name, email, photo and registered phone'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: _editAccountProfile,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('Notification preferences'),
+            subtitle: const Text('Control push notifications on this device'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: _openNotificationPreferences,
+          ),
         ]),
       ),
       const SizedBox(height: 14),
