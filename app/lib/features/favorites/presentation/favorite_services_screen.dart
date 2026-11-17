@@ -57,7 +57,7 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
       setState(() {
         _removing.remove(id);
         if (!_favorites.any((value) => value['id'] == item['id'])) {
-          final index = previousIndex.clamp(0, _favorites.length);
+          final index = previousIndex.clamp(0, _favorites.length).toInt();
           _favorites.insert(index, item);
         }
       });
