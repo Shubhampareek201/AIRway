@@ -764,14 +764,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             MaterialPageRoute(
               builder: (_) => HelpSupportScreen(
                 workerMode: true,
-                onPrimaryAction: () {
-                  Navigator.of(context).pop();
-                  setState(() => _selectedTab = 1);
-                },
-                onSecondaryAction: () {
-                  Navigator.of(context).pop();
-                  setState(() => _selectedTab = 2);
-                },
+                onPrimaryAction: () => setState(() => _selectedTab = 1),
+                onSecondaryAction: () => setState(() => _selectedTab = 2),
               ),
             ),
           ),
