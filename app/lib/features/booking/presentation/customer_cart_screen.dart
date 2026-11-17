@@ -9,6 +9,7 @@ import 'package:airway/features/booking/presentation/customer_order_screen.dart'
 import 'package:airway/features/booking/presentation/booking_schedule_screen.dart';
 import 'package:airway/features/booking/presentation/customer_cart_badge.dart';
 import 'package:airway/features/booking/presentation/cart_item_preferences_screen.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class CustomerCartScreen extends StatefulWidget {
   const CustomerCartScreen({super.key});
@@ -77,7 +78,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       }
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('This date and time has been applied to every service. Availability will be checked for each service at checkout.')),
+      SnackBar(content: Text(AirwayText.tr('This date and time has been applied to every service. Availability will be checked for each service at checkout.', 'यह तारीख और समय सभी सेवाओं पर लागू कर दिया गया है। चेकआउट पर हर सेवा की उपलब्धता जाँची जाएगी।'))),
     );
   }
 
@@ -100,11 +101,11 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           Row(children: [
             const Icon(Icons.event_available_rounded, color: violet),
             const SizedBox(width: 9),
-            const Expanded(child: Text('Your schedule', style: TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 15))),
-            Text('${groups.length} time slots', style: const TextStyle(color: violet, fontWeight: FontWeight.w800, fontSize: 12)),
+            Expanded(child: Text(AirwayText.tr('Your schedule', 'आपका शेड्यूल'), style: TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 15))),
+            Text(AirwayText.tr('${groups.length} time slots', '${groups.length} समय स्लॉट'), style: const TextStyle(color: violet, fontWeight: FontWeight.w800, fontSize: 12)),
           ]),
           const SizedBox(height: 5),
-          Text('${_slotConfirmed.length} of ${items.length} services scheduled', style: const TextStyle(color: sub, fontSize: 12)),
+          Text(AirwayText.tr('${_slotConfirmed.length} of ${items.length} services scheduled', '${items.length} में से ${_slotConfirmed.length} सेवाएँ शेड्यूल हुईं'), style: const TextStyle(color: sub, fontSize: 12)),
           const SizedBox(height: 10),
           for (final entry in entries) ...[
             const Divider(height: 12, color: line),
@@ -208,7 +209,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     final addressId = int.tryParse(cart?['address']?.toString() ?? '');
     if (selectedItem == null || serviceId == null || addressId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a valid service and address first.')),
+        SnackBar(content: Text(AirwayText.tr('Select a valid service and address first.', 'पहले सही सेवा और पता चुनें।'))),
       );
       return;
     }
@@ -256,7 +257,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   Future<void> checkout() async {
     if (items.isEmpty) return;
     if (cart?['address'] == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a service address first.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Please select a service address first.', 'पहले सेवा का पता चुनें।'))));
       return;
     }
     setState(() => busy = true);
@@ -316,13 +317,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.check_circle_rounded, color: violet, size: 48),
-          title: const Text('Order placed'),
+          title: Text(AirwayText.tr('Order placed', 'ऑर्डर दे दिया गया')),
           content: Text(
             'Your order #' + result['order_id'].toString() +
             ' has been created. Pay the 30% advance to start worker matching. The remaining 70% is due only after every service is completed and verified with the customer OTP.',
             textAlign: TextAlign.center,
           ),
-          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Continue'))],
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(AirwayText.tr('Continue', 'जारी रखें')))],
         ),
       );
       if (mounted) {
@@ -335,7 +336,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => busy = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Checkout failed: ' + e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Checkout failed: $e', 'चेकआउट विफल: $e'))));
       }
     }
   }
@@ -352,13 +353,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('My Cart', style: AirwayText.titleLarge.copyWith(fontSize: 20, fontWeight: FontWeight.w800, color: ink)),
-          Text('Review your services', style: TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w500)),
+          Text(AirwayText.tr('My Cart', 'मेरी कार्ट'), style: AirwayText.titleLarge.copyWith(fontSize: 20, fontWeight: FontWeight.w800, color: ink)),
+          Text(AirwayText.tr('Review your services', 'अपनी सेवाओं की समीक्षा करें'), style: TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w500)),
         ],
       ),
       actions: [
         IconButton(
-          tooltip: 'Refresh cart',
+          tooltip: AirwayText.tr('Refresh cart', 'कार्ट रीफ़्रेश करें'),
           onPressed: loading ? null : loadCart,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -399,9 +400,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                       style: const TextStyle(color: AirwayColors.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
                   ),
                   const SizedBox(height: 13),
-                  const Text('Your home,\nyour services.', style: TextStyle(color: AirwayColors.text, fontSize: 25, height: 1.12, fontWeight: FontWeight.w900)),
+                  Text(AirwayText.tr('Your home,\nyour services.', 'आपका घर,\nआपकी सेवाएँ।'), style: TextStyle(color: AirwayColors.text, fontSize: 25, height: 1.12, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 7),
-                  Text('A few quick details and we’ll take it from here.',
+                  Text(AirwayText.tr('A few quick details and we’ll take it from here.', 'कुछ ज़रूरी जानकारी दें, बाकी हम संभाल लेंगे।'),
                     style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
                   const SizedBox(height: 17),
                   Row(children: [
@@ -416,11 +417,11 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             addressCard(),
             const SizedBox(height: 22),
             Row(children: [
-              const Expanded(child: Text('Your services', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: ink))),
+              Expanded(child: Text(AirwayText.tr('Your services', 'आपकी सेवाएँ'), style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: ink))),
               Text(items.length.toString() + ' items', style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w700)),
             ]),
             const SizedBox(height: 5),
-            const Text('Tap a service to view details or update your preferences.', style: TextStyle(fontSize: 12, color: sub)),
+            Text(AirwayText.tr('Tap a service to view details or update your preferences.', 'विवरण देखने या पसंद बदलने के लिए किसी सेवा पर टैप करें।'), style: TextStyle(fontSize: 12, color: sub)),
             const SizedBox(height: 13),
             scheduleOverviewCard(),
             for (final item in items) ...[itemCard(item), const SizedBox(height: 13)],
@@ -431,15 +432,15 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 const Row(children: [
                   Icon(Icons.receipt_long_rounded, color: violet, size: 20),
                   SizedBox(width: 9),
-                  Text('Price summary', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+                  Text(AirwayText.tr('Price summary', 'कीमत का सारांश'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
                 ]),
                 const SizedBox(height: 16),
                 priceRow('Service subtotal', '₹' + subtotal.toStringAsFixed(0)),
                 priceRow('Taxes & applicable charges', 'Calculated at checkout'),
                 const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(color: line)),
-                const Text('Payment is split for your convenience', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: ink)),
+                Text(AirwayText.tr('Payment is split for your convenience', 'आपकी सुविधा के लिए भुगतान दो हिस्सों में है'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: ink)),
                 const SizedBox(height: 5),
-                const Text('30% advance to begin worker matching · 70% after every service is completed and verified.', style: TextStyle(fontSize: 11, height: 1.4, color: sub)),
+                Text(AirwayText.tr('30% advance to begin worker matching · 70% after every service is completed and verified.', 'वर्कर मिलान शुरू करने के लिए 30% अग्रिम · सभी सेवाएँ पूरी और वेरिफ़ाई होने पर 70% शेष।'), style: TextStyle(fontSize: 11, height: 1.4, color: sub)),
               ]),
             ),
           ],
@@ -454,7 +455,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         ),
         child: SafeArea(top: false, child: Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            const Text('TOTAL AMOUNT', style: TextStyle(color: sub, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            Text(AirwayText.tr('TOTAL AMOUNT', 'कुल राशि'), style: TextStyle(color: sub, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
             const SizedBox(height: 2),
             Text('₹' + subtotal.toStringAsFixed(0), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: ink)),
           ])),
@@ -472,7 +473,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               child: busy
                 ? const SizedBox(height: 19, width: 19, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Text('Continue to checkout', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    Text(AirwayText.tr('Continue to checkout', 'चेकआउट पर जाएँ'), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                     SizedBox(width: 7),
                     Icon(Icons.arrow_forward_rounded, size: 18),
                   ]),
@@ -518,13 +519,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('SERVICE LOCATION', style: TextStyle(color: sub, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w900)),
+          Text(AirwayText.tr('SERVICE LOCATION', 'सेवा का पता'), style: TextStyle(color: sub, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
           Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: ink, fontSize: 12, height: 1.35, fontWeight: FontWeight.w700)),
         ])),
         if (addresses.isNotEmpty)
           PopupMenuButton<int>(
-            tooltip: 'Change address',
+            tooltip: AirwayText.tr('Change address', 'पता बदलें'),
             icon: const Icon(Icons.edit_location_alt_rounded, color: violet),
             onSelected: (id) async {
               setState(() { busy = true; _slotConfirmed.clear(); });
@@ -632,7 +633,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 Text(quantityLabel + '  ·  ' + amountLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: violet)),
               ])),
               IconButton(
-                tooltip: 'Remove service',
+                tooltip: AirwayText.tr('Remove service', 'सेवा हटाएँ'),
                 onPressed: busy ? null : () => removeItem(id),
                 icon: const Icon(Icons.delete_outline_rounded, color: AirwayColors.error, size: 21),
               ),
@@ -710,30 +711,30 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                   if (!entry.key.toString().endsWith('_id') && entry.key.toString() != 'vehicle_type' && entry.value != null && entry.value.toString().isNotEmpty)
                     Padding(padding: const EdgeInsets.only(bottom: 5), child: Text(entry.key.toString().replaceAll('_', ' ') + ': ' + entry.value.toString(), style: const TextStyle(fontSize: 11, color: sub))),
               if (number(snapshot['visit_fee']) > 0)
-                Padding(padding: const EdgeInsets.only(top: 5), child: Text('Inspection / visit charge: ₹' + number(snapshot['visit_fee']).toStringAsFixed(0) + ' (included once)', style: const TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w700))),
+                Padding(padding: const EdgeInsets.only(top: 5), child: Text(AirwayText.tr('Inspection / visit charge: ₹${number(snapshot['visit_fee']).toStringAsFixed(0)} (included once)', 'निरीक्षण / विज़िट शुल्क: ₹${number(snapshot['visit_fee']).toStringAsFixed(0)} (एक बार शामिल)'), style: const TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w700))),
               if (item['notes']?.toString().trim().isNotEmpty == true)
-                Padding(padding: const EdgeInsets.only(top: 7), child: Text('Issue description: ' + item['notes'].toString(), style: const TextStyle(fontSize: 11, color: sub))),
+                Padding(padding: const EdgeInsets.only(top: 7), child: Text(AirwayText.tr('Issue description: ${item['notes']}', 'समस्या का विवरण: ${item['notes']}'), style: const TextStyle(fontSize: 11, color: sub))),
 
               if (addons.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                const Text('ADD-ONS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 9, color: sub, letterSpacing: .8)),
+                Text(AirwayText.tr('ADD-ONS', 'अतिरिक्त सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 9, color: sub, letterSpacing: .8)),
                 for (final addon in addons)
                   Padding(padding: const EdgeInsets.only(top: 4), child: Text('• ' + addon['title'].toString() + ' × ' + addon['quantity'].toString(), style: const TextStyle(fontSize: 11, color: ink))),
               ],
               if (item['booking_mode'] == 'pickup_drop' && scheduled)
-                Padding(padding: const EdgeInsets.only(top: 8), child: Text('Drop-off time: ' + (dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context), style: const TextStyle(color: sub, fontSize: 11))),
+                Padding(padding: const EdgeInsets.only(top: 8), child: Text(AirwayText.tr('Drop-off time: ${(dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context)}', 'ड्रॉप-ऑफ़ समय: ${(dropTimes[id] ?? const TimeOfDay(hour: 17, minute: 0)).format(context)}'), style: const TextStyle(color: sub, fontSize: 11))),
               const SizedBox(height: 12),
               SizedBox(width: double.infinity, child: OutlinedButton.icon(
                 onPressed: busy ? null : () => editPreferences(item),
                 icon: const Icon(Icons.tune_rounded, size: 17),
-                label: const Text('Edit service preferences'),
+                label: Text(AirwayText.tr('Edit service preferences', 'सेवा की पसंद बदलें')),
                 style: OutlinedButton.styleFrom(foregroundColor: violet, side: const BorderSide(color: AirwayColors.borderStrong), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               )),
               if (scheduled && items.length > 1)
                 Align(alignment: Alignment.centerLeft, child: TextButton.icon(
                   onPressed: busy ? null : () => applyScheduleToAll(id),
                   icon: const Icon(Icons.copy_all_rounded, size: 16),
-                  label: const Text('Apply this time to all services'),
+                  label: Text(AirwayText.tr('Apply this time to all services', 'यह समय सभी सेवाओं पर लागू करें')),
                   style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact),
                 )),
             ]),
@@ -762,7 +763,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         const SizedBox(height: 8),
         Text(message, textAlign: TextAlign.center, style: const TextStyle(color: sub)),
         const SizedBox(height: 18),
-        FilledButton(onPressed: action, child: const Text('Continue')),
+        FilledButton(onPressed: action, child: Text(AirwayText.tr('Continue', 'जारी रखें'))),
       ]),
     ),
   );
