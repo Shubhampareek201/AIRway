@@ -20,7 +20,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
   static const greenSoft = Color(0xFFE3F2E9);
   static const ink = Color(0xFF14211B);
   static const sub = Color(0xFF6B7A72);
-  static const bg = Color(0xFFF1F4F2);
+  static const bg = Colors.white;
   static const line = Color(0xFFE8EEEA);
 
   List<Booking> bookings = [];
@@ -68,7 +68,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
   }
 
   List<Booking> get filteredBookings => bookings
-      .where((b) => _matchesFilter(b.status)).toList()
+      .where((b) => b.orderId == null && _matchesFilter(b.status)).toList()
     ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
 
   List<Map<String, dynamic>> get filteredOrders => orders
@@ -187,15 +187,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
                       Icons.event_note_rounded, widget.onBookNew ?? _goBack,
                       actionLabel: AirwayText.tr('Book a service', 'सेवा बुक करें'))
                   else ...[
-                    if (filteredOrders.isNotEmpty) ...[
-                      _sectionLabel(AirwayText.tr('Service Orders', 'सेवा ऑर्डर')),
-                      for (final order in filteredOrders) ...[orderCard(order), const SizedBox(height: 11)],
-                      const SizedBox(height: 7),
-                    ],
-                    if (filteredBookings.isNotEmpty) ...[
-                      _sectionLabel(AirwayText.tr('Individual Services', 'अलग-अलग सेवाएँ')),
-                      for (final booking in filteredBookings) ...[bookingCard(booking), const SizedBox(height: 12)],
-                    ],
+                    _sectionLabel(AirwayText.tr('Your bookings', 'आपकी बुकिंग')),
+                    ..._bookingFeed(),
                   ],
                 ],
               ),
@@ -275,18 +268,47 @@ class _BookingListScreenState extends State<BookingListScreen> {
     padding: const EdgeInsets.fromLTRB(1, 2, 1, 10),
     child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: ink)));
 
+  List<Widget> _bookingFeed() {
+    final entries = <({DateTime date, Widget child})>[];
+    for (final order in filteredOrders) {
+      entries.add((date: _orderDate(order), child: orderCard(order)));
+    }
+    for (final booking in filteredBookings) {
+      entries.add((date: booking.scheduledAt, child: bookingCard(booking)));
+    }
+    entries.sort((a, b) => b.date.compareTo(a.date));
+    return [
+      for (final entry in entries) ...[
+        entry.child,
+        const SizedBox(height: 12),
+      ],
+    ];
+  }
+
   Widget orderCard(Map<String, dynamic> order) {
     final id = int.tryParse(order['id']?.toString() ?? '');
     final statusValue = order['status']?.toString() ?? '';
     final ready = order['ready_for_payment'] == true;
     final paid = statusValue == 'paid';
     final total = double.tryParse(order['total_amount']?.toString() ?? '') ?? 0;
+    final items = (order['items'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final serviceNames = items.map((item) => item['service_title']?.toString() ?? '')
+        .where((name) => name.isNotEmpty).toSet().toList();
+    final serviceSummary = serviceNames.take(2).join(' • ');
     final status = paid
       ? AirwayText.tr('Paid', 'भुगतान हो गया')
       : ready
-        ? AirwayText.tr('Ready for payment', 'भुगतान के लिए तैयार')
-        : AirwayText.tr('Assigning professionals', 'प्रोफ़ेशनल असाइन किए जा रहे हैं');
+        ? AirwayText.tr('Payment due', 'भुगतान बाकी')
+        : statusValue == 'partially_cancelled'
+          ? AirwayText.tr('Partially cancelled', 'आंशिक रूप से रद्द')
+          : AirwayText.tr('In progress', 'जारी');
     final color = statusColor(statusValue);
+    final orderDate = items.isNotEmpty
+        ? DateTime.tryParse(items.first['scheduled_at']?.toString() ?? '')
+        : _orderDate(order);
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
@@ -311,8 +333,17 @@ class _BookingListScreenState extends State<BookingListScreen> {
                 _statusPill(status, color),
               ]),
               const SizedBox(height: 5),
-              Text(AirwayText.tr('${order['item_count'] ?? 0} services', '${order['item_count'] ?? 0} सेवाएँ'),
+              Text(
+                serviceSummary.isNotEmpty
+                    ? (serviceNames.length > 2 ? '$serviceSummary + ${serviceNames.length - 2} more' : serviceSummary)
+                    : AirwayText.tr('${order['item_count'] ?? 0} services', '${order['item_count'] ?? 0} सेवाएँ'),
+                maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 11.5, color: sub)),
+              if (orderDate != null) ...[
+                const SizedBox(height: 5),
+                Text(DateFormat('EEE, dd MMM yyyy • hh:mm a').format(orderDate.toLocal()),
+                  style: const TextStyle(fontSize: 10.5, color: sub)),
+              ],
               const SizedBox(height: 5),
               Text('₹${total.toStringAsFixed(0)}',
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: green)),
