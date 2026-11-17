@@ -11,6 +11,8 @@ from .views import (
     CurrentUserView,
     DeviceTokenView,
     FirebaseLoginView,
+    FavoriteServiceListCreateView,
+    FavoriteServiceDetailView,
     ForgotPasswordView,
     GeoapifyAutocompleteView,
     LocationReverseView,
@@ -92,6 +94,8 @@ urlpatterns = [
         AddressDetailView.as_view(),
         name="address-detail",
     ),
+    path("favorites/", FavoriteServiceListCreateView.as_view(), name="favorite-service-list-create"),
+    path("favorites/<int:favorite_id>/", FavoriteServiceDetailView.as_view(), name="favorite-service-detail"),
     path(
         "vehicles/",
         CustomerVehicleListCreateView.as_view(),
