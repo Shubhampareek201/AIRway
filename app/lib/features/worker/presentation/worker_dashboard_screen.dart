@@ -23,6 +23,7 @@ import 'package:airway/features/account/presentation/notification_preferences_sc
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_deletion_screen.dart';
 import 'package:airway/core/localization/airway_locale.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
@@ -634,6 +635,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
 
   Widget _buildProfileTab(WorkerProfile profile) {
     final hi = AirwayLocale.current.languageCode == 'hi';
+    final t = AirwayText.tr;
     final photo = _photoUrl(profile);
     final services = profile.serviceItems;
     return _page([
@@ -649,17 +651,17 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             ),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(profile.name?.trim().isNotEmpty == true ? profile.name! : 'AIRway Worker',
+              Text(profile.name?.trim().isNotEmpty == true ? profile.name! : t('AIRway Worker', 'AIRway वर्कर'),
                   style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-              Text(profile.phone ?? 'Phone not available', style: TextStyle(color: AirwayColors.textSecondary)),
+              Text(profile.phone ?? t('Phone not available', 'फ़ोन उपलब्ध नहीं'), style: TextStyle(color: AirwayColors.textSecondary)),
               const SizedBox(height: 5),
               const Row(children: [
                 Icon(Icons.verified_rounded, size: 16, color: Colors.green),
                 SizedBox(width: 4),
-                Text('Verified worker', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 12)),
+                Text(t('Verified worker', 'सत्यापित वर्कर'), style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 12)),
               ]),
             ])),
-            IconButton(tooltip: 'Edit profile', onPressed: _editProfile, icon: const Icon(Icons.edit_outlined)),
+            IconButton(tooltip: t('Edit profile', 'प्रोफ़ाइल संपादित करें'), onPressed: _editProfile, icon: const Icon(Icons.edit_outlined)),
           ]),
         ),
       ),
@@ -668,8 +670,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         child: Column(children: [
           ListTile(
             leading: const Icon(Icons.category_outlined),
-            title: const Text('My services', style: TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: Text('${services.length} services selected'),
+            title: Text(t('My services', 'मेरी सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(t('${services.length} services selected', '${services.length} सेवाएँ चुनी गईं')),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: _manageServices,
           ),
@@ -678,12 +680,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             ExpansionTile(
               key: const PageStorageKey<String>('worker_dashboard_selected_services_expansion'),
               leading: const Icon(Icons.visibility_outlined),
-              title: const Text('View selected services'),
-              subtitle: const Text('Expand only when you need the full list'),
+              title: const Text(t('View selected services', 'चुनी गई सेवाएँ देखें')),
+              subtitle: const Text(t('Expand only when you need the full list', 'पूरी सूची देखने के लिए खोलें')),
               children: services.map((item) => ListTile(
                 dense: true,
                 leading: const Icon(Icons.check_circle_outline, size: 18),
-                title: Text(item['service_title']?.toString() ?? 'Service'),
+                title: Text(item['service_title']?.toString() ?? t('Service', 'सेवा')),
                 subtitle: item['capabilities'] is List && (item['capabilities'] as List).isNotEmpty
                     ? Text((item['capabilities'] as List).join(', '), maxLines: 2, overflow: TextOverflow.ellipsis)
                     : null,
@@ -754,28 +756,28 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       const SizedBox(height: 14),
       _sectionHeading(hi ? 'आपकी जानकारी' : 'Your details'),
       const SizedBox(height: 8),
-      _detailTile(Icons.star_outline_rounded, 'Rating', profile.ratingAvg == null ? 'Not rated yet' : profile.ratingAvg!.toStringAsFixed(1)),
-      _detailTile(Icons.work_history_outlined, 'Experience', '${profile.experienceYears ?? 0} years'),
-      _detailTile(Icons.school_outlined, 'Qualification', profile.qualification?.isNotEmpty == true ? profile.qualification! : 'Not added'),
-      _detailTile(Icons.home_outlined, 'Residential address', profile.residentialAddress?.isNotEmpty == true ? profile.residentialAddress! : 'Not added'),
-      _detailTile(Icons.location_on_outlined, 'Landmark', profile.landmark?.isNotEmpty == true ? profile.landmark! : 'Not added'),
-      _detailTile(Icons.handyman_outlined, 'Tools / equipment', profile.equipmentDetails?.isNotEmpty == true ? profile.equipmentDetails! : 'Not added'),
-      _detailTile(Icons.payments_outlined, 'Payout UPI ID', profile.upiId?.isNotEmpty == true ? profile.upiId! : 'Not added'),
-      _detailTile(Icons.verified_user_outlined, 'Application', 'Approved'),
-      if (profile.bio?.isNotEmpty == true) _detailTile(Icons.person_outline_rounded, 'About your work', profile.bio!),
+      _detailTile(Icons.star_outline_rounded, t('Rating', 'रेटिंग'), profile.ratingAvg == null ? t('Not rated yet', 'अभी रेटिंग नहीं') : profile.ratingAvg!.toStringAsFixed(1)),
+      _detailTile(Icons.work_history_outlined, t('Experience', 'अनुभव'), t('${profile.experienceYears ?? 0} years', '${profile.experienceYears ?? 0} वर्ष')),
+      _detailTile(Icons.school_outlined, t('Qualification', 'योग्यता'), profile.qualification?.isNotEmpty == true ? profile.qualification! : t('Not added', 'जोड़ा नहीं गया')),
+      _detailTile(Icons.home_outlined, t('Residential address', 'निवास का पता'), profile.residentialAddress?.isNotEmpty == true ? profile.residentialAddress! : t('Not added', 'जोड़ा नहीं गया')),
+      _detailTile(Icons.location_on_outlined, t('Landmark', 'पहचान स्थल'), profile.landmark?.isNotEmpty == true ? profile.landmark! : t('Not added', 'जोड़ा नहीं गया')),
+      _detailTile(Icons.handyman_outlined, t('Tools / equipment', 'औज़ार / उपकरण'), profile.equipmentDetails?.isNotEmpty == true ? profile.equipmentDetails! : t('Not added', 'जोड़ा नहीं गया')),
+      _detailTile(Icons.payments_outlined, t('Payout UPI ID', 'भुगतान UPI ID'), profile.upiId?.isNotEmpty == true ? profile.upiId! : t('Not added', 'जोड़ा नहीं गया')),
+      _detailTile(Icons.verified_user_outlined, t('Application', 'आवेदन'), t('Approved', 'स्वीकृत')),
+      if (profile.bio?.isNotEmpty == true) _detailTile(Icons.person_outline_rounded, t('About your work', 'आपके काम के बारे में'), profile.bio!),
       if (profile.documents.isNotEmpty) _detailTile(
         Icons.description_outlined,
-        'Verification documents',
+        t('Verification documents', 'सत्यापन दस्तावेज़'),
         profile.documents.map((item) {
-          final type = item['doc_type']?.toString() ?? 'Document';
+          final type = item['doc_type']?.toString() ?? t('Document', 'दस्तावेज़');
           final status = item['status']?.toString() ?? 'pending';
           return '$type: $status';
         }).join(', '),
       ),
-      if (profile.zones.isNotEmpty) _detailTile(Icons.map_outlined, 'Service areas', profile.zones.join(', ')),
+      if (profile.zones.isNotEmpty) _detailTile(Icons.map_outlined, t('Service areas', 'सेवा क्षेत्र'), profile.zones.join(', ')),
       if (profile.schedules.isNotEmpty) _detailTile(
         Icons.schedule_outlined,
-        'Working hours',
+        t('Working hours', 'कार्य समय'),
         profile.schedules.map((item) {
           final day = item['weekday_display']?.toString() ?? '';
           final start = item['start_time']?.toString() ?? '';
@@ -787,7 +789,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         }).join(', '),
       ),
       const SizedBox(height: 14),
-      OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined), label: const Text('Edit profile details')),
+      OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined), label: Text(t('Edit profile details', 'प्रोफ़ाइल विवरण संपादित करें'))),
       const SizedBox(height: 16),
       Card(
         child: ListTile(
