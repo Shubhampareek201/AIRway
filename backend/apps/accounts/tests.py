@@ -1,4 +1,8 @@
 
+from io import BytesIO
+
+from PIL import Image
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 
 from rest_framework import status
@@ -107,6 +111,27 @@ class AccountProfileUpdateAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, "+919876543210")
+
+    def test_account_profile_accepts_valid_photo_upload(self):
+        image = Image.new("RGB", (2, 2), color="green")
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        upload = SimpleUploadedFile(
+            "profile.png",
+            buffer.getvalue(),
+            content_type="image/png",
+        )
+
+        response = self.client.patch(
+            "/api/v1/auth/profile/",
+            {"photo": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.photo)
+        self.assertTrue(response.data["photo_url"].endswith(self.user.photo.url))
 
     def test_account_profile_requires_authentication(self):
         self.client.force_authenticate(user=None)
