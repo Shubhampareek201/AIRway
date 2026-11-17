@@ -102,6 +102,53 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
     }
   }
 
+  Future<void> _cancelRequest() async {
+    final t = AirwayText.tr;
+    if (_submitting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(t('Cancel deletion request?', 'खाता बंद करने का अनुरोध रद्द करें?')),
+        content: Text(t(
+          'Your account will remain active and the deletion review will stop.',
+          'आपका खाता सक्रिय रहेगा और बंद करने की समीक्षा रोक दी जाएगी।',
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(t('Go back', 'वापस जाएँ')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(t('Cancel request', 'अनुरोध रद्द करें')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _submitting = true);
+    try {
+      final result = await AccountApi.cancelAccountDeletionRequest();
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['detail']?.toString() ??
+              t('Deletion request cancelled.', 'खाता बंद करने का अनुरोध रद्द कर दिया गया।')),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   String _statusLabel(String? status) {
     final t = AirwayText.tr;
     switch (status) {
@@ -190,6 +237,14 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                         icon: const Icon(Icons.refresh),
                         label: Text(t('Refresh status', 'स्थिति रीफ़्रेश करें')),
                       ),
+                      if (status == 'requested' || status == 'under_review') ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _submitting ? null : _cancelRequest,
+                          icon: const Icon(Icons.close_rounded),
+                          label: Text(t('Cancel deletion request', 'खाता बंद करने का अनुरोध रद्द करें')),
+                        ),
+                      ],
                     ] else ...[
                       TextField(
                         controller: _reasonController,
