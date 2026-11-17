@@ -154,15 +154,22 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                       style: const TextStyle(color: AirwayColors.textSecondary, height: 1.45),
                     ),
                     const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
-                        );
-                        if (mounted) await _load();
-                      },
-                      child: const Text('Set password with OTP'),
-                    ),
+                    if (_phone?.isNotEmpty == true)
+                      FilledButton(
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                          );
+                          if (mounted) await _load();
+                        },
+                        child: const Text('Set password with OTP'),
+                      )
+                    else
+                      const Text(
+                        'No phone number is linked to this account. Continue with Google sign-in; adding a phone number requires a separate verification flow.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AirwayColors.textSecondary, height: 1.45),
+                      ),
                   ],
                 )
               : ListView(
