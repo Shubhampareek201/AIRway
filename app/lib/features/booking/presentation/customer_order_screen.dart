@@ -7,6 +7,7 @@ import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/booking_tracking_screen.dart';
 import 'package:airway/features/payment/data/payment_api.dart';
 import 'package:airway/features/ratings/data/rating_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class CustomerOrderScreen extends StatefulWidget {
   final int orderId;
@@ -107,20 +108,20 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid wallet amount.')),
+        SnackBar(content: Text(AirwayText.tr('Enter a valid wallet amount.', 'वॉलेट की सही राशि दर्ज करें।'))),
       );
       return;
     }
     final walletAmount = parsedWalletAmount;
     if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > stageDue) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a wallet amount within your available balance and the amount due now.')),
+        SnackBar(content: Text(AirwayText.tr('Enter a wallet amount within your available balance and the amount due now.', 'उपलब्ध वॉलेट बैलेंस और अभी देय राशि के भीतर रकम दर्ज करें।'))),
       );
       return;
     }
     if ((walletAmount * 100).roundToDouble() != walletAmount * 100) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wallet amount can have at most two decimal places.')),
+        SnackBar(content: Text(AirwayText.tr('Wallet amount can have at most two decimal places.', 'वॉलेट राशि में अधिकतम दो दशमलव स्थान हो सकते हैं।'))),
       );
       return;
     }
@@ -143,13 +144,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             icon: const Icon(Icons.verified_rounded, color: violet, size: 48),
-            title: const Text('Payment successful'),
+            title: Text(AirwayText.tr('Payment successful', 'भुगतान सफल')),
             content: Text(
               paidByWallet
                   ? 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : _currentPaymentStage == 'balance' ? 'final 70% balance' : 'full payment'} was paid using your AIRway wallet.'
                   : 'Your ${_currentPaymentStage == 'advance' ? '30% advance' : _currentPaymentStage == 'balance' ? 'final 70% balance' : 'full payment'} has already been paid.',
             ),
-            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(AirwayText.tr('Done', 'हो गया')))],
           ),
         );
         return;
@@ -173,7 +174,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       if (mounted) {
         setState(() => paying = false);
         loadWalletBalance();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start payment: ' + e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not start payment: $e', 'भुगतान शुरू नहीं हो सका: $e'))));
       }
     }
   }
@@ -186,7 +187,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       if (mounted) {
         setState(() => paying = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment could not be verified. Please check your order before retrying.')),
+          SnackBar(content: Text(AirwayText.tr('Payment could not be verified. Please check your order before retrying.', 'भुगतान वेरिफ़ाई नहीं हो सका। दोबारा कोशिश करने से पहले अपना ऑर्डर जाँचें।'))),
         );
         await loadOrder(showLoader: false);
       }
@@ -233,7 +234,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           ),
           title: Text(title),
           content: Text(message),
-          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(AirwayText.tr('Done', 'हो गया')))],
         ),
       );
     } catch (e) {
@@ -243,7 +244,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         await loadWalletBalance();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Payment verification is still unresolved: ' + e.toString())),
+          SnackBar(content: Text(AirwayText.tr('Payment verification is still unresolved: $e', 'भुगतान वेरिफ़िकेशन अभी स्पष्ट नहीं है: $e'))),
         );
       }
     }
@@ -263,7 +264,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (!mounted) return;
     setState(() => paying = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('External wallet selected: ' + (response.walletName ?? 'Wallet'))),
+      SnackBar(content: Text(AirwayText.tr('External wallet selected: ${response.walletName ?? 'Wallet'}', 'बाहरी वॉलेट चुना गया: ${response.walletName ?? 'वॉलेट'}'))),
     );
   }
 
@@ -277,19 +278,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Cancel this service?'),
+        title: Text(AirwayText.tr('Cancel this service?', 'यह सेवा रद्द करें?')),
         content: Text(
           'Do you want to cancel $service? Any eligible captured payment will be sent for refund. Refund status will appear in this order.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Keep service'),
+            child: Text(AirwayText.tr('Keep service', 'सेवा जारी रखें')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Cancel service'),
+            child: Text(AirwayText.tr('Cancel service', 'सेवा रद्द करें')),
           ),
         ],
       ),
@@ -301,14 +302,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       await loadOrder(showLoader: false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Service cancelled. Any eligible refund will be updated here.')),
+        SnackBar(content: Text(AirwayText.tr('Service cancelled. Any eligible refund will be updated here.', 'सेवा रद्द हो गई। लागू रिफंड की जानकारी यहाँ अपडेट होगी।'))),
       );
     } catch (e) {
       if (!mounted) return;
       await loadOrder(showLoader: false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not cancel this service: $e')),
+        SnackBar(content: Text(AirwayText.tr('Could not cancel this service: $e', 'सेवा रद्द नहीं हो सकी: $e'))),
       );
     }
   }
@@ -362,18 +363,18 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Cancel recurring plan?'),
+        title: Text(AirwayText.tr('Cancel recurring plan?', 'बार-बार आने वाला प्लान रद्द करें?')),
         content: const Text(
           'All undelivered visits will be cancelled. Any unused prepaid amount will be sent for refund processing. Completed visits will not be refunded.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Keep plan'),
+            child: Text(AirwayText.tr('Keep plan', 'प्लान जारी रखें')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Cancel plan'),
+            child: Text(AirwayText.tr('Cancel plan', 'प्लान रद्द करें')),
           ),
         ],
       ),
@@ -383,7 +384,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       await BookingApi.cancelRecurringPlan(planId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recurring plan cancelled. Unused prepaid visits are being refunded.')),
+        SnackBar(content: Text(AirwayText.tr('Recurring plan cancelled. Unused prepaid visits are being refunded.', 'प्लान रद्द हो गया। बिना उपयोग की गई प्रीपेड विज़िट का रिफंड किया जा रहा है।'))),
       );
       await loadOrder(showLoader: false);
     } catch (e) {
@@ -418,7 +419,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final selected = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     if (selected.isBefore(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a future date and time.')),
+        SnackBar(content: Text(AirwayText.tr('Choose a future date and time.', 'भविष्य की तारीख और समय चुनें।'))),
       );
       return;
     }
@@ -430,7 +431,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Visit rescheduled successfully.')),
+        SnackBar(content: Text(AirwayText.tr('Visit rescheduled successfully.', 'विज़िट का समय सफलतापूर्वक बदला गया।'))),
       );
       await loadOrder(showLoader: false);
     } catch (e) {
@@ -480,14 +481,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Recurring Car Wash', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+          Text(AirwayText.tr('Recurring Car Wash', 'नियमित कार वॉश'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 5),
           Text(
             '${plan['frequency'] ?? 'Scheduled'} • ${plan['duration_days'] ?? ''} days • ${plan['vehicle_quantity'] ?? 1} vehicle(s)',
             style: const TextStyle(color: sub, fontSize: 13),
           ),
           const SizedBox(height: 4),
-          Text('Plan status: ${label(plan['status']?.toString() ?? '')}', style: const TextStyle(color: sub, fontSize: 13)),
+          Text(AirwayText.tr('Plan status: ${label(plan['status']?.toString() ?? '')}', 'प्लान की स्थिति: ${label(plan['status']?.toString() ?? '')}'), style: const TextStyle(color: sub, fontSize: 13)),
           for (final refund in refunds)
             Padding(
               padding: const EdgeInsets.only(top: 5),
@@ -526,7 +527,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                           TextButton.icon(
                             onPressed: () => rescheduleRecurringVisit(visit),
                             icon: const Icon(Icons.edit_calendar_outlined, size: 15),
-                            label: const Text('Reschedule'),
+                            label: Text(AirwayText.tr('Reschedule', 'समय बदलें')),
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.zero,
                               minimumSize: const Size(0, 28),
@@ -547,7 +548,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                               ),
                             ),
                             icon: const Icon(Icons.location_searching_rounded, size: 15),
-                            label: const Text('Track visit'),
+                            label: Text(AirwayText.tr('Track visit', 'विज़िट ट्रैक करें')),
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.zero,
                               minimumSize: const Size(0, 28),
@@ -563,7 +564,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               ),
             ),
           if (visits.isEmpty)
-            const Text('Your visit schedule is being prepared.', style: TextStyle(color: sub)),
+            Text(AirwayText.tr('Your visit schedule is being prepared.', 'आपका विज़िट शेड्यूल तैयार किया जा रहा है।'), style: TextStyle(color: sub)),
           if (plan['can_cancel'] == true) ...[
             const SizedBox(height: 12),
             Align(
@@ -571,7 +572,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               child: TextButton(
                 onPressed: () => cancelRecurringPlan(plan['id'] as int),
                 style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
-                child: const Text('Cancel recurring plan'),
+                child: Text(AirwayText.tr('Cancel recurring plan', 'नियमित प्लान रद्द करें')),
               ),
             ),
           ],
@@ -632,7 +633,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                               : 'Pay the $initialPaymentLabel to start worker matching. This page refreshes automatically.',
                   style: const TextStyle(color: sub, height: 1.4)),
               const SizedBox(height: 12),
-              Text('Order total  ₹' + total.toStringAsFixed(0), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
+              Text(AirwayText.tr('Order total ₹${total.toStringAsFixed(0)}', 'ऑर्डर कुल ₹${total.toStringAsFixed(0)}'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
           const SizedBox(height: 14),
@@ -644,7 +645,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             recurringWashSection(Map<String, dynamic>.from(order!['recurring_wash_plan'] as Map)),
           ],
           const SizedBox(height: 18),
-          const Text('Your services', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
+          Text(AirwayText.tr('Your services', 'आपकी सेवाएँ'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: ink)),
           const SizedBox(height: 10),
           if (serviceInProgress) ...[
             Container(
@@ -667,7 +668,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                 const SizedBox(height: 5),
                 Text('Order total ₹${total.toStringAsFixed(2)}', style: const TextStyle(color: sub)),
                 const SizedBox(height: 3),
-                Text('Due now ₹${dueNow.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet)),
+                Text(AirwayText.tr('Due now ₹${dueNow.toStringAsFixed(2)}', 'अभी देय ₹${dueNow.toStringAsFixed(2)}'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet)),
               ]),
             ),
             const SizedBox(height: 10),
@@ -681,7 +682,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('AIRway wallet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
+                  Text(AirwayText.tr('AIRway wallet', 'AIRway वॉलेट'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
                   const SizedBox(height: 5),
                   Text(
                     walletLoading
@@ -696,7 +697,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
-                      labelText: 'Use wallet amount (₹)',
+                      labelText: AirwayText.tr('Use wallet amount (₹)', 'वॉलेट से इस्तेमाल की राशि (₹)'),
                       hintText: '0.00',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.account_balance_wallet_outlined),
@@ -706,7 +707,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Amount due now', style: TextStyle(color: sub)),
+                      Text(AirwayText.tr('Amount due now', 'अभी देय राशि'), style: TextStyle(color: sub)),
                       Text('₹${dueNow.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
                     ],
                   ),
@@ -714,7 +715,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Wallet applied', style: TextStyle(color: sub)),
+                      Text(AirwayText.tr('Wallet applied', 'वॉलेट से भुगतान'), style: TextStyle(color: sub)),
                       Text('− ₹${selectedWalletAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, color: ink)),
                     ],
                   ),
@@ -722,7 +723,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Pay online', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+                      Text(AirwayText.tr('Pay online', 'ऑनलाइन भुगतान करें'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
                       Text(
                         '₹${(dueNow - selectedWalletAmount).clamp(0, dueNow).toStringAsFixed(2)}',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet),
@@ -749,13 +750,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                 ),
             )),
           if (!ready && !paid)
-            const Text('Pay the 30% advance to start worker matching. The remaining 70% is due after all active services are verified.', textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
+            Text(AirwayText.tr('Pay the 30% advance to start worker matching. The remaining 70% is due after all active services are verified.', 'वर्कर मिलान शुरू करने के लिए 30% अग्रिम दें। बाकी 70% सभी सक्रिय सेवाओं के वेरिफ़ाई होने के बाद देय होगा।'), textAlign: TextAlign.center, style: TextStyle(color: sub, fontSize: 12)),
           if (paid)
-            const Text('Paid successfully', style: TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800)),
+            Text(AirwayText.tr('Paid successfully', 'भुगतान सफलतापूर्वक हो गया'), style: TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingListScreen())),
-            child: const Text('View My Bookings'),
+            child: Text(AirwayText.tr('View My Bookings', 'मेरी बुकिंग देखें')),
           )),
         ])),
       ),
@@ -783,10 +784,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         const Row(children: [
           Icon(Icons.calendar_month_rounded, color: violet, size: 19),
           SizedBox(width: 8),
-          Text('Your service schedule', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+          Text(AirwayText.tr('Your service schedule', 'आपका सेवा शेड्यूल'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
         ]),
         const SizedBox(height: 5),
-        const Text('Services sharing the same appointment are grouped together.', style: TextStyle(color: sub, fontSize: 12)),
+        Text(AirwayText.tr('Services sharing the same appointment are grouped together.', 'एक ही अपॉइंटमेंट वाली सेवाएँ एक साथ दिखाई गई हैं।'), style: TextStyle(color: sub, fontSize: 12)),
         const SizedBox(height: 10),
         for (var i = 0; i < entries.length; i++) ...[
           if (i > 0) const Divider(height: 16),
@@ -840,7 +841,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Order progress', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+        Text(AirwayText.tr('Order progress', 'ऑर्डर की प्रगति'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
         const SizedBox(height: 12),
         for (var i = 0; i < steps.length; i++) ...[
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -881,7 +882,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         Text(statusLabel(status), style: const TextStyle(color: violet, fontWeight: FontWeight.w700, fontSize: 12)),
         if (row['form_responses'] is List && (row['form_responses'] as List).isNotEmpty) ...[
           const SizedBox(height: 10),
-          const Text('Service details', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+          Text(AirwayText.tr('Service details', 'सेवा का विवरण'), style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
           const SizedBox(height: 6),
           for (final answer in (row['form_responses'] as List).whereType<Map>())
             Padding(
@@ -900,7 +901,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                           if (!snapshot.hasData) {
                             return const SizedBox(height: 55, child: Center(child: CircularProgressIndicator()));
                           }
-                          if (snapshot.hasError) return const Text('Could not load the attached photo.');
+                          if (snapshot.hasError) return Text(AirwayText.tr('Could not load the attached photo.', 'संलग्न फ़ोटो लोड नहीं हो सकी।'));
                           return ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: Image.network(
@@ -909,7 +910,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                               height: 130,
                               width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Text('Attached photo is unavailable.'),
+                              errorBuilder: (_, __, ___) => Text(AirwayText.tr('Attached photo is unavailable.', 'संलग्न फ़ोटो उपलब्ध नहीं है।')),
                             ),
                           );
                         },
@@ -921,7 +922,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         ],
         if (row['work_evidence'] is List && (row['work_evidence'] as List).isNotEmpty) ...[
           const SizedBox(height: 10),
-          const Text('Work progress photos', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+          Text(AirwayText.tr('Work progress photos', 'काम की प्रगति की फ़ोटो'), style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
           const SizedBox(height: 7),
           for (final evidence in (row['work_evidence'] as List).whereType<Map>())
             Padding(
@@ -940,7 +941,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                     future: BookingApi.getAuthHeaders(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const SizedBox(height: 55, child: Center(child: CircularProgressIndicator()));
-                      if (snapshot.hasError) return const Text('Could not load work photo.');
+                      if (snapshot.hasError) return Text(AirwayText.tr('Could not load work photo.', 'काम की फ़ोटो लोड नहीं हो सकी।'));
                       return ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: Image.network(
@@ -949,7 +950,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                           height: 130,
                           width: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Text('Work photo unavailable.'),
+                          errorBuilder: (_, __, ___) => Text(AirwayText.tr('Work photo unavailable.', 'काम की फ़ोटो उपलब्ध नहीं है।')),
                         ),
                       );
                     },
@@ -976,19 +977,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               const Icon(Icons.lock_clock_outlined, color: violet),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Service completion code', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12)),
+                Text(AirwayText.tr('Service completion code', 'सेवा पूरी करने का कोड'), style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12)),
                 const SizedBox(height: 3),
                 SelectableText(
                   row['completion_otp']['code'].toString(),
                   style: const TextStyle(fontSize: 24, letterSpacing: 5, fontWeight: FontWeight.w900, color: violet),
                 ),
-                const Text('Share with your assigned professional after the service is finished.', style: TextStyle(fontSize: 11, color: sub)),
+                Text(AirwayText.tr('Share with your assigned professional after the service is finished.', 'सेवा पूरी होने के बाद यह कोड अपने असाइन किए गए प्रोफ़ेशनल को बताएँ।'), style: TextStyle(fontSize: 11, color: sub)),
               ])),
               IconButton(
-                tooltip: 'Copy code',
+                tooltip: AirwayText.tr('Copy code', 'कोड कॉपी करें'),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: row['completion_otp']['code'].toString()));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completion code copied.')));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Completion code copied.', 'सेवा पूरी करने का कोड कॉपी हो गया।'))));
                 },
                 icon: const Icon(Icons.copy_rounded),
               ),
@@ -1000,21 +1001,21 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           Row(children: [
             const Icon(Icons.event_available_rounded, size: 15, color: violet),
             const SizedBox(width: 6),
-            Expanded(child: Text('Service time: $scheduled', style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w600))),
+            Expanded(child: Text(AirwayText.tr('Service time: $scheduled', 'सेवा का समय: $scheduled'), style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w600))),
           ]),
         ],
         if (row['drop_scheduled_at']?.toString().isNotEmpty == true)
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 21),
-            child: Text('Expected drop-off: ${DateFormatForOrder.format(row['drop_scheduled_at'].toString())}', style: const TextStyle(color: sub, fontSize: 12)),
+            child: Text(AirwayText.tr('Expected drop-off: ${DateFormatForOrder.format(row['drop_scheduled_at'].toString())}', 'अपेक्षित ड्रॉप-ऑफ़: ${DateFormatForOrder.format(row['drop_scheduled_at'].toString())}'), style: const TextStyle(color: sub, fontSize: 12)),
           ),
-        if (worker != null) Text('Professional: ' + (worker['name']?.toString() ?? 'Assigned'), style: const TextStyle(color: sub, fontSize: 12)),
+        if (worker != null) Text(AirwayText.tr('Professional: ${worker['name']?.toString() ?? 'Assigned'}', 'प्रोफ़ेशनल: ${worker['name']?.toString() ?? 'असाइन किया गया'}'), style: const TextStyle(color: sub, fontSize: 12)),
         if (row['advance_amount'] != null && row['balance_amount'] != null) ...[
           const SizedBox(height: 7),
           Row(
             children: [
-              Expanded(child: Text('Advance ₹${amount(row['advance_amount']).toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 11))),
-              Expanded(child: Text('Balance ₹${amount(row['balance_amount']).toStringAsFixed(2)}', textAlign: TextAlign.end, style: const TextStyle(color: sub, fontSize: 11))),
+              Expanded(child: Text(AirwayText.tr('Advance ₹${amount(row['advance_amount']).toStringAsFixed(2)}', 'अग्रिम ₹${amount(row['advance_amount']).toStringAsFixed(2)}'), style: const TextStyle(color: sub, fontSize: 11))),
+              Expanded(child: Text(AirwayText.tr('Balance ₹${amount(row['balance_amount']).toStringAsFixed(2)}', 'शेष ₹${amount(row['balance_amount']).toStringAsFixed(2)}'), textAlign: TextAlign.end, style: const TextStyle(color: sub, fontSize: 11))),
             ],
           ),
         ],
@@ -1026,14 +1027,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
           onPressed: status == 'cancelled' ? null : () => trackService(row),
           icon: const Icon(Icons.location_searching_rounded, size: 17),
-          label: const Text('Track this service'),
+          label: Text(AirwayText.tr('Track this service', 'यह सेवा ट्रैक करें')),
         )),
         if (row['can_cancel'] == true) ...[
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton.icon(
             onPressed: () => cancelService(row),
             icon: const Icon(Icons.cancel_outlined, size: 17),
-            label: const Text('Cancel this service'),
+            label: Text(AirwayText.tr('Cancel this service', 'यह सेवा रद्द करें')),
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFFB3261E),
               side: const BorderSide(color: Color(0xFFE7B9B6)),
@@ -1046,14 +1047,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             const Row(children: [
               Icon(Icons.verified_rounded, size: 17, color: Color(0xFF2E7D52)),
               SizedBox(width: 7),
-              Text('Thank you for rating this professional.',
+              Text(AirwayText.tr('Thank you for rating this professional.', 'इस प्रोफ़ेशनल को रेट करने के लिए धन्यवाद।'),
                   style: TextStyle(color: Color(0xFF2E7D52), fontSize: 12, fontWeight: FontWeight.w700)),
             ])
           else
             SizedBox(width: double.infinity, child: OutlinedButton.icon(
               onPressed: () => rateProfessional(row),
               icon: const Icon(Icons.star_rounded, size: 18),
-              label: const Text('Rate professional'),
+              label: Text(AirwayText.tr('Rate professional', 'प्रोफ़ेशनल को रेट करें')),
             )),
         ],
       ]),
@@ -1095,7 +1096,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ),
           const Divider(height: 16),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Estimate including tax', style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+            Text(AirwayText.tr('Estimate including tax', 'टैक्स सहित अनुमान'), style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
             Text('₹${amount(quote['total_amount']).toStringAsFixed(2)}',
                 style: const TextStyle(fontWeight: FontWeight.w900, color: violet, fontSize: 16)),
           ]),
@@ -1119,14 +1120,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             Row(children: [
               Expanded(child: OutlinedButton(
                 onPressed: _quoteResponding ? null : () => respondToQuote(row, 'reject'),
-                child: const Text('Request revision'),
+                child: Text(AirwayText.tr('Request revision', 'संशोधन माँगें')),
               )),
               const SizedBox(width: 8),
               Expanded(child: FilledButton(
                 onPressed: _quoteResponding ? null : () => respondToQuote(row, 'accept'),
                 child: _quoteResponding
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Approve estimate'),
+                    : Text(AirwayText.tr('Approve estimate', 'अनुमान स्वीकार करें')),
               )),
             ]),
           ],
@@ -1143,11 +1144,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Request a revised estimate?'),
-          content: const Text('The professional will be asked to review your feedback and submit a revised estimate.'),
+          title: Text(AirwayText.tr('Request a revised estimate?', 'संशोधित अनुमान माँगें?')),
+          content: Text(AirwayText.tr('The professional will be asked to review your feedback and submit a revised estimate.', 'प्रोफ़ेशनल से आपकी प्रतिक्रिया देखकर नया अनुमान भेजने को कहा जाएगा।')),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep quote')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Request revision')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(AirwayText.tr('Keep quote', 'अनुमान रहने दें'))),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(AirwayText.tr('Request revision', 'संशोधन माँगें'))),
           ],
         ),
       );
@@ -1174,7 +1175,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         } catch (_) {}
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update estimate: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not update estimate: $e', 'अनुमान अपडेट नहीं हो सका: $e'))),
         );
       }
     } finally {
@@ -1191,11 +1192,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Rate your professional'),
+          title: Text(AirwayText.tr('Rate your professional', 'अपने प्रोफ़ेशनल को रेट करें')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('How was your service experience?'),
+              Text(AirwayText.tr('How was your service experience?', 'आपका सेवा अनुभव कैसा रहा?')),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1213,20 +1214,20 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                 maxLength: 500,
                 maxLines: 3,
                 decoration: const InputDecoration(
-                  labelText: 'Comment (optional)',
+                  labelText: AirwayText.tr('Comment (optional)', 'टिप्पणी (वैकल्पिक)'),
                   border: OutlineInputBorder(),
                 ),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not now')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Not now', 'अभी नहीं'))),
             FilledButton(
               onPressed: () => Navigator.pop(
                 dialogContext,
                 (rating: selectedRating, comment: commentController.text.trim()),
               ),
-              child: const Text('Submit rating'),
+              child: Text(AirwayText.tr('Submit rating', 'रेटिंग भेजें')),
             ),
           ],
         ),
@@ -1244,12 +1245,12 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       await loadOrder(showLoader: false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Thank you. Your rating has been submitted.')),
+        SnackBar(content: Text(AirwayText.tr('Thank you. Your rating has been submitted.', 'धन्यवाद। आपकी रेटिंग भेज दी गई है।'))),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not submit rating: $e')),
+        SnackBar(content: Text(AirwayText.tr('Could not submit rating: $e', 'रेटिंग भेजी नहीं जा सकी: $e'))),
       );
     }
   }
@@ -1270,7 +1271,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             children: [
               Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF075B3C), size: 19),
               SizedBox(width: 7),
-              Text('Refund updates', style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+              Text(AirwayText.tr('Refund updates', 'रिफंड अपडेट'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
             ],
           ),
           const SizedBox(height: 9),
@@ -1315,8 +1316,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         ),
         const SizedBox(height: 4),
         Text(reasonText, style: const TextStyle(color: sub, fontSize: 12)),
-        Text('AIRway wallet: ₹${walletValue.toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 12)),
-        Text('Original payment method: ₹${gatewayValue.toStringAsFixed(2)}', style: const TextStyle(color: sub, fontSize: 12)),
+        Text(AirwayText.tr('AIRway wallet: ₹${walletValue.toStringAsFixed(2)}', 'AIRway वॉलेट: ₹${walletValue.toStringAsFixed(2)}'), style: const TextStyle(color: sub, fontSize: 12)),
+        Text(AirwayText.tr('Original payment method: ₹${gatewayValue.toStringAsFixed(2)}', 'मूल भुगतान माध्यम: ₹${gatewayValue.toStringAsFixed(2)}'), style: const TextStyle(color: sub, fontSize: 12)),
         if (status == 'failed' && (refund['failure_reason']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 4),
           Text(refund['failure_reason'].toString(), style: const TextStyle(color: Color(0xFFB3261E), fontSize: 12)),
@@ -1335,7 +1336,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         const SizedBox(height: 8),
         Text(message, textAlign: TextAlign.center, style: const TextStyle(color: sub)),
         const SizedBox(height: 18),
-        FilledButton(onPressed: action, child: const Text('Retry')),
+        FilledButton(onPressed: action, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
       ]),
     ),
   );
