@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:airway/core/localization/airway_text.dart';
+import 'package:airway/features/account/data/account_api.dart';
 
 class LegalDocumentsScreen extends StatelessWidget {
   const LegalDocumentsScreen({super.key});
@@ -35,6 +36,8 @@ class LegalDocumentsScreen extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          const _LegalConsentPanel(),
           const SizedBox(height: 20),
           Text(t('Terms & Conditions', 'नियम और शर्तें'), style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
@@ -142,4 +145,103 @@ class _LegalSection extends StatelessWidget {
           ],
         ),
       );
+}
+
+
+class _LegalConsentPanel extends StatefulWidget {
+  const _LegalConsentPanel();
+
+  @override
+  State<_LegalConsentPanel> createState() => _LegalConsentPanelState();
+}
+
+class _LegalConsentPanelState extends State<_LegalConsentPanel> {
+  bool _authenticated = false;
+  bool _accepted = false;
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final result = await AccountApi.fetchLegalConsent();
+      if (!mounted) return;
+      setState(() {
+        _authenticated = true;
+        _accepted = result['consent_complete'] == true;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _authenticated = false;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _accept() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await AccountApi.acceptLegalConsent();
+      if (!mounted) return;
+      setState(() => _accepted = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AirwayText.tr(
+            'Your acceptance has been saved.',
+            'आपकी सहमति सेव हो गई है।',
+          )),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || !_authenticated) return const SizedBox.shrink();
+    final t = AirwayText.tr;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              _accepted ? Icons.verified_outlined : Icons.fact_check_outlined,
+              color: _accepted ? Colors.green : Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _accepted
+                    ? t('You have accepted the current draft policies.', 'आपने मौजूदा प्रारूप नीतियों को स्वीकार किया है।')
+                    : t('Review and acknowledge the current draft policies for your account.', 'अपने खाते के लिए मौजूदा प्रारूप नीतियों की समीक्षा करके सहमति दें।'),
+              ),
+            ),
+            if (!_accepted)
+              TextButton(
+                onPressed: _saving ? null : _accept,
+                child: _saving
+                    ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(t('Accept', 'स्वीकार करें')),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
