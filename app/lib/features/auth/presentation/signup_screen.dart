@@ -4,6 +4,7 @@ import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/auth/presentation/startup_gate.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -51,11 +52,11 @@ class _SignupScreenState extends State<SignupScreen> {
     final confirmPassword = _confirmPasswordController.text;
 
     if (name.isEmpty) {
-      _message('Please enter your full name.');
+      _message(AirwayText.tr('Please enter your full name.', 'कृपया अपना पूरा नाम दर्ज करें।'));
       return;
     }
     if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
-      _message('Enter a valid 10-digit mobile number.');
+      _message(AirwayText.tr('Enter a valid 10-digit mobile number.', 'सही 10 अंकों का मोबाइल नंबर दर्ज करें।'));
       return;
     }
     if (email.isNotEmpty && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
@@ -67,11 +68,11 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
     if (password != confirmPassword) {
-      _message('Passwords do not match.');
+      _message(AirwayText.tr('Passwords do not match.', 'पासवर्ड मेल नहीं खाते।'));
       return;
     }
     if (!_termsAccepted || !_privacyAccepted) {
-      _message('Please accept the Terms & Conditions and Privacy Policy.');
+      _message(AirwayText.tr('Please accept the Terms & Conditions and Privacy Policy.', 'कृपया नियम और शर्तें तथा गोपनीयता नीति स्वीकार करें।'));
       return;
     }
     if (_loading) return;
@@ -107,17 +108,18 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _message('Unable to register. Please try again.');
+      _message(AirwayText.tr('Unable to register. Please try again.', 'रजिस्ट्रेशन नहीं हो सका। फिर से कोशिश करें।'));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AirwayText.tr;
     const green = Color(0xFF176B58);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Account'),
+        title: Text(t('Create Account', 'खाता बनाएँ')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -127,19 +129,19 @@ class _SignupScreenState extends State<SignupScreen> {
             children: [
               const SizedBox(height: 10),
               const Text(
-                'Sign Up',
+                t('Sign Up', 'साइन अप'),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Create your account to get started',
+                t('Create your account to get started', 'शुरू करने के लिए अपना खाता बनाएँ'),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
               const SizedBox(height: 32),
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
+                decoration: InputDecoration(
+                  labelText: t('Full Name', 'पूरा नाम'),
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -150,7 +152,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 maxLength: 10,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                  labelText: 'Mobile Number',
+                  labelText: t('Mobile Number', 'मोबाइल नंबर'),
                   prefixText: '+91 ',
                   border: OutlineInputBorder(),
                 ),
@@ -160,7 +162,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
-                  labelText: 'Email (Optional)',
+                  labelText: t('Email (Optional)', 'ईमेल (वैकल्पिक)'),
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -170,8 +172,8 @@ class _SignupScreenState extends State<SignupScreen> {
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
                 decoration: const InputDecoration(
-                  labelText: 'Referral Code (Optional)',
-                  helperText: 'Enter your friend’s code to receive ₹100 after your first completed service.',
+                  labelText: t('Referral Code (Optional)', 'रेफ़रल कोड (वैकल्पिक)'),
+                  helperText: t('Enter your friend’s code to receive ₹100 after your first completed service.', 'पहली सेवा पूरी होने पर ₹100 पाने के लिए दोस्त का कोड दर्ज करें।'),
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -180,7 +182,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: _passwordController,
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
-                  labelText: 'Password',
+                  labelText: t('Password', 'पासवर्ड'),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
@@ -195,7 +197,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: _confirmPasswordController,
                 obscureText: _obscureConfirmPassword,
                 decoration: InputDecoration(
-                  labelText: 'Confirm Password',
+                  labelText: t('Confirm Password', 'पासवर्ड की पुष्टि करें'),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility),
@@ -210,14 +212,14 @@ class _SignupScreenState extends State<SignupScreen> {
                 value: _termsAccepted,
                 onChanged: _loading ? null : (value) => setState(() => _termsAccepted = value ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('I agree to the Terms & Conditions'),
+                title: Text(t('I agree to the Terms & Conditions', 'मैं नियम और शर्तों से सहमत हूँ')),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _privacyAccepted,
                 onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('I have read and agree to the Privacy Policy'),
+                title: const Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
               ),
               Align(
                 alignment: Alignment.centerLeft,
@@ -225,7 +227,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
                   ),
-                  child: const Text('Read Terms & Privacy'),
+                  child: Text(t('Read Terms & Privacy', 'नियम और गोपनीयता पढ़ें')),
                 ),
               ),
               const SizedBox(height: 24),
@@ -241,7 +243,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Sign Up'),
+                      : const Text(t('Sign Up', 'साइन अप')),
                 ),
               ),
               const SizedBox(height: 16),
@@ -253,7 +255,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     onPressed: () {
                       Navigator.of(context).pop();
                     },
-                    child: const Text('Login'),
+                    child: const Text(t('Login', 'लॉगिन')),
                   ),
                 ],
               ),
