@@ -6,7 +6,9 @@ import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/account/data/account_api.dart';
 
 class AccountProfileScreen extends StatefulWidget {
-  const AccountProfileScreen({super.key});
+  final bool workerMode;
+
+  const AccountProfileScreen({super.key, this.workerMode = false});
 
   @override
   State<AccountProfileScreen> createState() => _AccountProfileScreenState();
@@ -119,7 +121,10 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
 
   Widget _avatar() {
     final photo = _photo;
-    final photoUrl = _profile?['photo_url']?.toString();
+    final workerProfile = _profile?['worker_profile'];
+    final photoUrl = widget.workerMode && workerProfile is Map
+        ? workerProfile['photo_url']?.toString()
+        : _profile?['photo_url']?.toString();
     Widget image;
     if (photo != null) {
       image = Image.file(photo, width: 104, height: 104, fit: BoxFit.cover);
@@ -180,11 +185,18 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                           children: [
                             _avatar(),
                             const SizedBox(height: 8),
-                            TextButton.icon(
-                              onPressed: _saving ? null : _choosePhoto,
-                              icon: const Icon(Icons.camera_alt_outlined),
-                              label: const Text('Change profile photo'),
-                            ),
+                            if (!widget.workerMode)
+                              TextButton.icon(
+                                onPressed: _saving ? null : _choosePhoto,
+                                icon: const Icon(Icons.camera_alt_outlined),
+                                label: const Text('Change profile photo'),
+                              )
+                            else
+                              const Text(
+                                'Worker profile photos are updated from Work profile details and require verification.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                              ),
                             if (_photo != null)
                               const Text('New photo selected', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
                           ],
