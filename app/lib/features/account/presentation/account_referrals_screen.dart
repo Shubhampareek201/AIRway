@@ -83,8 +83,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
     final code = _data?['referral_code']?.toString();
     if (code == null || code.isEmpty) return;
     final first = AirwayText.tr(
-      'Join me on AIRway! Use my referral code $code within 24 hours of creating your account and before your first booking.',
-      'AIRway से जुड़ें! खाता बनाने के 24 घंटे के भीतर और पहली बुकिंग से पहले मेरा रेफ़रल कोड $code इस्तेमाल करें।',
+      'Join me on AIRway! Use my referral code $code before you make your first booking.',
+      'AIRway से जुड़ें! पहली बुकिंग से पहले मेरा रेफ़रल कोड $code इस्तेमाल करें।',
     );
     final second = AirwayText.tr(
       'After your first AIRway service is completed, you get ₹100 in your wallet and I get ₹200.',
@@ -203,7 +203,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                       Padding(
                         padding: const EdgeInsets.only(left: 38, top: 2, bottom: 8),
                         child: Text(
-                          t('The code must be applied within 24 hours of signup and before the first booking.', 'कोड साइनअप के 24 घंटे के भीतर और पहली बुकिंग से पहले लागू करना होगा।'),
+                          t('Apply the code before the first booking.', 'कोड पहली बुकिंग से पहले लागू करना होगा।'),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
