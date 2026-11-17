@@ -364,9 +364,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AirwayText.tr('Cancel recurring plan?', 'बार-बार आने वाला प्लान रद्द करें?')),
-        content: const Text(
+        content: Text(AirwayText.tr(
           'All undelivered visits will be cancelled. Any unused prepaid amount will be sent for refund processing. Completed visits will not be refunded.',
-        ),
+          'सभी डिलीवर न हुई विज़िट रद्द होंगी। बिना उपयोग की गई प्रीपेड राशि रिफंड के लिए भेजी जाएगी। पूरी हो चुकी विज़िट का रिफंड नहीं होगा।',
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -651,9 +652,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             Container(
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(13)),
-              child: const Text(
-                'When your professional requests completion verification, the secure code will appear inside that service below. Share it only after the work is finished.',
-                style: TextStyle(color: sub, height: 1.4),
+              child: Text(
+                AirwayText.tr('When your professional requests completion verification, the secure code will appear inside that service below. Share it only after the work is finished.', 'जब आपका प्रोफ़ेशनल सेवा पूरी होने की पुष्टि माँगेगा, सुरक्षित कोड नीचे उस सेवा के अंदर दिखाई देगा। इसे केवल काम पूरा होने के बाद साझा करें।'),
+                style: const TextStyle(color: sub, height: 1.4),
               ),
             ),
             const SizedBox(height: 10),
@@ -696,7 +697,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                     enabled: !walletLoading,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: AirwayText.tr('Use wallet amount (₹)', 'वॉलेट से इस्तेमाल की राशि (₹)'),
                       hintText: '0.00',
                       border: OutlineInputBorder(),
@@ -745,8 +746,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               onPressed: paying ? null : startPayment,
               child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(
                   selectedWalletAmount > 0 && selectedWalletAmount >= dueNow
-                      ? 'Pay with AIRway wallet'
-                      : 'Pay ₹' + (dueNow - selectedWalletAmount).clamp(0, dueNow).toStringAsFixed(2),
+                      ? AirwayText.tr('Pay with AIRway wallet', 'AIRway वॉलेट से भुगतान करें')
+                      : AirwayText.tr('Pay ₹${(dueNow - selectedWalletAmount).clamp(0, dueNow).toStringAsFixed(2)}', '₹${(dueNow - selectedWalletAmount).clamp(0, dueNow).toStringAsFixed(2)} का भुगतान करें'),
                 ),
             )),
           if (!ready && !paid)
@@ -1213,7 +1214,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                 controller: commentController,
                 maxLength: 500,
                 maxLines: 3,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: AirwayText.tr('Comment (optional)', 'टिप्पणी (वैकल्पिक)'),
                   border: OutlineInputBorder(),
                 ),
