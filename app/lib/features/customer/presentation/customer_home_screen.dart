@@ -2269,7 +2269,7 @@ class _AnimatedAirwayBrandState extends State<_AnimatedAirwayBrand>
   double _leafProgress(double startMs) {
     final totalMs = _growthDuration.inMilliseconds.toDouble();
     final start = (startMs / totalMs).clamp(0.0, 1.0).toDouble();
-    final end = ((startMs + 520) / totalMs).clamp(0.0, 1.0);
+    final end = ((startMs + 520) / totalMs).clamp(0.0, 1.0).toDouble();
     if (_controller.value <= start) return 0;
     return Curves.easeOutBack.transform(
       Interval(start, end > start ? end : 1).transform(_controller.value),
