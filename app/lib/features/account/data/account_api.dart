@@ -72,6 +72,17 @@ class AccountApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> cancelAccountDeletionRequest() async {
+    final result = await LocationApi.request(
+      '/api/v1/auth/delete-account/',
+      method: 'DELETE',
+    );
+    if (result is! Map) {
+      throw const FormatException('Unexpected account deletion response.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> updateLanguage(String language) async {
     final result = await LocationApi.request(
       '/api/v1/auth/language/',
