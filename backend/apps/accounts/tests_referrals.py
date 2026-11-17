@@ -78,15 +78,16 @@ class CustomerReferralAPITests(APITestCase):
         )
         self.assertFalse(response.data["applied_referral"]["rewarded"])
 
-    def test_referral_cannot_be_applied_after_account_is_older_than_24_hours(self):
+    def test_referral_can_be_applied_to_an_older_account_before_first_booking(self):
         from datetime import timedelta
         from django.utils import timezone
         from apps.accounts.referrals import apply_referral_code
 
-        self.referred.created_at = timezone.now() - timedelta(days=2)
+        self.referred.created_at = timezone.now() - timedelta(days=30)
         self.referred.save(update_fields=["created_at"])
-        with self.assertRaises(ValueError):
-            apply_referral_code(self.referred, self.referrer.referral_code)
+        referral = apply_referral_code(self.referred, self.referrer.referral_code)
+        self.assertEqual(referral.referrer, self.referrer)
+        self.assertEqual(referral.referred, self.referred)
 
     def test_pending_booking_does_not_earn_referral_rewards(self):
         from types import SimpleNamespace
