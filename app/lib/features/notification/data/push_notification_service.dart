@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:airway/firebase_options.dart';
 import 'package:airway/features/notification/data/notification_api.dart';
+import 'package:airway/core/storage/secure_session_storage.dart';
 
 @pragma('vm:entry-point')
 Future<void> airwayFirebaseBackgroundHandler(RemoteMessage message) async {
@@ -34,8 +35,55 @@ class PushNotificationService {
     _initialized = false;
   }
 
+  static Future<bool> notificationsEnabled() async {
+    final preferred = await SecureSessionStorage.pushNotificationsEnabled();
+    final settings = await _messaging.getNotificationSettings();
+    return preferred &&
+        settings.authorizationStatus != AuthorizationStatus.denied;
+  }
+
+  static Future<bool> setNotificationsEnabled(bool enabled) async {
+    if (!enabled) {
+      // Keep the preference unchanged if the server cannot unregister this
+      // device; otherwise a failed request could leave push delivery active.
+      final token = await _messaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        await NotificationApi.unregisterDeviceToken(token);
+      }
+      await _messaging.deleteToken();
+      await _tokenRefreshSubscription?.cancel();
+      _tokenRefreshSubscription = null;
+      _initialized = false;
+      await SecureSessionStorage.setPushNotificationsEnabled(false);
+      return true;
+    }
+
+    final settings = await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      return false;
+    }
+
+    final token = await _messaging.getToken();
+    if (token == null || token.isEmpty) return false;
+    await NotificationApi.registerDeviceToken(token);
+    await SecureSessionStorage.setPushNotificationsEnabled(true);
+    _tokenRefreshSubscription ??= _messaging.onTokenRefresh.listen((value) {
+      if (value.isNotEmpty) {
+        unawaited(NotificationApi.registerDeviceToken(value).catchError((Object _) {}));
+      }
+    });
+    _initialized = true;
+    return true;
+  }
+
   static Future<void> initializeForAuthenticatedUser() async {
     if (_initialized) return;
+    if (!await SecureSessionStorage.pushNotificationsEnabled()) return;
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
