@@ -1875,7 +1875,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _bookings() => const BookingListScreen();
+  Widget _bookings() => BookingListScreen(
+    onBookNew: () => setState(() => _tab = 0),
+    onBack: () => setState(() => _tab = 0),
+  );
 
   Widget _profile(Map<String, dynamic> address) {
     final hi = AirwayLocale.current.languageCode == 'hi';
