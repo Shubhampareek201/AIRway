@@ -517,7 +517,13 @@ class AccountDeletionRequestView(APIView):
             "status": item.status,
             "reason": item.reason,
             "detail": (
-                "Resolve active bookings or disputes before account closure."
+                "Your account deletion request was cancelled. Your AIRway account remains active."
+                if item.status == AccountDeletionRequest.Status.CANCELLED
+                else "Your account has been closed."
+                if item.status == AccountDeletionRequest.Status.COMPLETED
+                else "Your deletion request was not approved. Contact AIRway support for details."
+                if item.status == AccountDeletionRequest.Status.REJECTED
+                else "Resolve active bookings or disputes before account closure."
                 if obligations["has_active_bookings"]
                 else "Settle wallet funds, pending payments or refunds before account closure."
                 if obligations["has_financial_obligations"]
