@@ -30,7 +30,7 @@ from apps.catalog.models import Service
 from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
-from .models import Address, DeviceToken, CustomerVehicle, FavoriteService, Referral
+from .models import Address, DeviceToken, CustomerVehicle, FavoriteService, Referral, AccountDeletionRequest
 from .serializers import (
     AddressCreateSerializer,
     AddressSerializer,
@@ -383,6 +383,98 @@ class CustomerReferralView(APIView):
             "new_customer_credit": "100.00",
             "referrer_reward": "200.00",
             "status": "waiting_for_first_service",
+        }, status=status.HTTP_201_CREATED)
+
+
+class AccountDeletionRequestView(APIView):
+    """Record a deletion request without destroying financial or booking history."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        item = AccountDeletionRequest.objects.filter(user=request.user).first()
+        if item is None:
+            return Response({"has_request": False})
+        return Response({
+            "has_request": True,
+            "id": item.pk,
+            "status": item.status,
+            "reason": item.reason,
+            "has_active_bookings": item.has_active_bookings,
+            "active_booking_count": item.active_booking_count,
+            "created_at": item.created_at.isoformat(),
+            "updated_at": item.updated_at.isoformat(),
+            "admin_notes": item.admin_notes,
+        })
+
+    def post(self, request):
+        reason = str(request.data.get("reason", "")).strip()
+        if len(reason) > 1000:
+            return Response(
+                {"reason": "Keep the reason within 1000 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing = AccountDeletionRequest.objects.filter(
+            user=request.user,
+            status__in=(
+                AccountDeletionRequest.Status.REQUESTED,
+                AccountDeletionRequest.Status.UNDER_REVIEW,
+            ),
+        ).first()
+        if existing:
+            return Response({
+                "detail": "Your account deletion request is already under review.",
+                "status": existing.status,
+                "id": existing.pk,
+            }, status=status.HTTP_200_OK)
+
+        from apps.bookings.models import Booking, BookingAssignment
+        active_statuses = (
+            Booking.Status.PENDING,
+            Booking.Status.CONFIRMED,
+            Booking.Status.ASSIGNED,
+            Booking.Status.IN_PROGRESS,
+            Booking.Status.DISPUTED,
+        )
+        active_ids = set(
+            request.user.bookings.filter(status__in=active_statuses)
+            .values_list("id", flat=True)
+        )
+        try:
+            worker_profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            worker_profile = None
+        if worker_profile is not None:
+            active_ids.update(
+                BookingAssignment.objects.filter(
+                    worker=worker_profile,
+                    booking__status__in=active_statuses,
+                ).values_list("booking_id", flat=True)
+            )
+
+        active_count = len(active_ids)
+        item = AccountDeletionRequest.objects.create(
+            user=request.user,
+            status=(
+                AccountDeletionRequest.Status.UNDER_REVIEW
+                if active_count
+                else AccountDeletionRequest.Status.REQUESTED
+            ),
+            reason=reason,
+            has_active_bookings=active_count > 0,
+            active_booking_count=active_count,
+        )
+        return Response({
+            "detail": (
+                "Your request is recorded. It will be reviewed after active bookings or disputes are resolved."
+                if active_count
+                else "Your account deletion request has been submitted for review."
+            ),
+            "id": item.pk,
+            "status": item.status,
+            "has_active_bookings": item.has_active_bookings,
+            "active_booking_count": item.active_booking_count,
         }, status=status.HTTP_201_CREATED)
 
 
