@@ -20,6 +20,7 @@ import 'package:airway/features/notification/data/push_notification_service.dart
 import 'package:airway/features/notification/presentation/notification_bell_button.dart';
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
+import 'package:airway/features/account/presentation/account_security_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -701,6 +702,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             subtitle: const Text('Control push notifications on this device'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: _openNotificationPreferences,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.security_outlined),
+            title: const Text('Password & security'),
+            subtitle: const Text('Change or set your account password'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
+            ),
           ),
         ]),
       ),
