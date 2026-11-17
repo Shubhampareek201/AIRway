@@ -72,56 +72,19 @@ class AccountDeletionRequestAdmin(ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         if obj.status == AccountDeletionRequest.Status.COMPLETED:
-            from apps.bookings.models import Booking, BookingAssignment
-            active_statuses = (
-                Booking.Status.PENDING,
-                Booking.Status.CONFIRMED,
-                Booking.Status.ASSIGNED,
-                Booking.Status.IN_PROGRESS,
-                Booking.Status.DISPUTED,
-            )
-            active_ids = set(
-                obj.user.bookings.filter(status__in=active_statuses)
-                .values_list("id", flat=True)
-            )
-            try:
-                worker_profile = obj.user.worker_profile
-            except Exception:
-                worker_profile = None
-            if worker_profile is not None:
-                active_ids.update(
-                    BookingAssignment.objects.filter(
-                        worker=worker_profile,
-                        booking__status__in=active_statuses,
-                    ).values_list("booking_id", flat=True)
-                )
-            wallet = getattr(obj.user, "wallet", None)
-            has_financial_obligations = bool(
-                wallet and (
-                    wallet.balance > 0
-                    or wallet.pending_balance > 0
-                    or wallet.reservations.filter(status="reserved").exists()
-                )
-            )
-            from apps.payments.models import Payment, PaymentRefund
-            has_financial_obligations = has_financial_obligations or Payment.objects.filter(
-                customer=obj.user,
-                status=Payment.Status.PENDING,
-            ).exists() or PaymentRefund.objects.filter(
-                payment__customer=obj.user,
-                status__in=(PaymentRefund.Status.PROCESSING, PaymentRefund.Status.PENDING),
-            ).exists()
-            obj.has_active_bookings = bool(active_ids)
-            obj.active_booking_count = len(active_ids)
-            obj.has_financial_obligations = has_financial_obligations
-            if active_ids or has_financial_obligations:
+            from .deletion import get_account_deletion_obligations
+            obligations = get_account_deletion_obligations(obj.user)
+            obj.has_active_bookings = obligations["has_active_bookings"]
+            obj.active_booking_count = obligations["active_booking_count"]
+            obj.has_financial_obligations = obligations["has_financial_obligations"]
+            if obligations['has_active_bookings'] or obligations['has_financial_obligations']:
                 obj.status = AccountDeletionRequest.Status.UNDER_REVIEW
                 messages.error(
                     request,
                     (
                         "Resolve active bookings or disputes before closing this account."
-                        if active_ids
-                        else "Settle the wallet balance and reservations before closing this account."
+                        if obligations["has_active_bookings"]
+                        else "Settle wallet funds, pending payments or refunds before closing this account."
                     ),
                 )
                 super().save_model(request, obj, form, change)
