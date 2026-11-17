@@ -326,7 +326,7 @@ Navigator.of(context).pushAndRemoveUntil(
                   value: _privacyAccepted,
                   onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
                   controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
+                  title: Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -342,7 +342,7 @@ Navigator.of(context).pushAndRemoveUntil(
                   controller: _referralCodeController,
                   textCapitalization: TextCapitalization.characters,
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: t('Referral Code (Optional)', 'रेफ़रल कोड (वैकल्पिक)'),
                     helperText: t('Apply a friend’s code when creating a new account.', 'नया खाता बनाते समय दोस्त का कोड लागू करें।'),
                     border: OutlineInputBorder(),
@@ -358,7 +358,7 @@ Navigator.of(context).pushAndRemoveUntil(
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                   ],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: t('6-digit OTP', '6 अंकों का OTP'),
                     border: OutlineInputBorder(),
                   ),
@@ -401,7 +401,7 @@ Navigator.of(context).pushAndRemoveUntil(
                             _otpController.clear();
                           });
                         },
-                  child: const Text(t('Change Mobile Number', 'मोबाइल नंबर बदलें')),
+                  child: Text(t('Change Mobile Number', 'मोबाइल नंबर बदलें')),
                 ),
 
               if (!_verified && _auth.currentUser != null && !_loading)
@@ -409,7 +409,7 @@ Navigator.of(context).pushAndRemoveUntil(
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _retryBackendLogin,
-                    child: const Text(t('Continue after accepting policies', 'नीतियाँ स्वीकार करके जारी रखें')),
+                    child: Text(t('Continue after accepting policies', 'नीतियाँ स्वीकार करके जारी रखें')),
                   ),
                 ),
 
@@ -425,12 +425,12 @@ Navigator.of(context).pushAndRemoveUntil(
               const SizedBox(height: 24),
 
               if (!_verified)
-                const Center(
+                Center(
                   child: Text(
-                    t('By continuing, you consent to phone verification ', 'जारी रखकर आप फ़ोन सत्यापन की सहमति देते हैं ')
-                    t('through Firebase.', 'Firebase के माध्यम से।'),
+                    '${t('By continuing, you consent to phone verification ', 'जारी रखकर आप फ़ोन सत्यापन की सहमति देते हैं ')}'
+                    '${t('through Firebase.', 'Firebase के माध्यम से।')}',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Colors.black54,
                     ),
