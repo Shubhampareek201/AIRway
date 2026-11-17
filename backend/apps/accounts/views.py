@@ -18,6 +18,7 @@ from apps.workers.models import WorkerProfile
 
 from firebase_admin import auth
 from rest_framework import status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -39,6 +40,7 @@ from .serializers import (
     VerifyOTPSerializer,
     ResetPasswordSerializer,
     ProfileCompletionSerializer,
+    AccountProfileUpdateSerializer,
     CustomerVehicleSerializer,
 )
 
@@ -217,6 +219,9 @@ class CurrentUserView(APIView):
             "phone": user.phone,
             "name": user.name,
             "email": user.email,
+            "gender": user.gender,
+            "photo_url": request.build_absolute_uri(user.photo.url) if user.photo else None,
+            "has_usable_password": user.has_usable_password(),
             "active_mode": user.active_mode,
             "profile_complete": bool(user.name and user.name.strip()),
             "can_switch_to_worker": user.active_mode == User.Mode.WORKER,
@@ -302,6 +307,33 @@ class CurrentUserView(APIView):
         except Exception:
             pass
         return None
+
+
+class AccountProfileView(APIView):
+    """Update the shared account identity used in customer and worker modes."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def patch(self, request):
+        serializer = AccountProfileUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        photo_url = request.build_absolute_uri(user.photo.url) if user.photo else None
+        return Response({
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "phone": user.phone,
+            "gender": user.gender,
+            "photo_url": photo_url,
+            "profile_complete": bool(user.name and user.name.strip()),
+        })
 
 
 class ChangePasswordView(APIView):
