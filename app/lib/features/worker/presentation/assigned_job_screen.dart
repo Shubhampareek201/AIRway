@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
 import 'package:airway/features/ratings/data/rating_api.dart';
@@ -58,7 +59,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       if (matchingJobs.isEmpty) {
         if (mounted) {
           setState(() {
-            _error = 'This job is no longer assigned to your account.';
+            _error = AirwayText.tr('This job is no longer assigned to your account.', 'यह जॉब अब आपके खाते को असाइन नहीं है।');
             _loading = false;
           });
         }
@@ -88,7 +89,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Could not load assigned job: $e';
+          _error = AirwayText.tr('Could not load assigned job: $e', 'असाइन की गई जॉब लोड नहीं हो सकी: $e');
           _loading = false;
         });
       }
@@ -106,14 +107,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       await WorkerApi.startJob(_jobDetail!.assignmentId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Job started')),
+          SnackBar(content: Text(AirwayText.tr('Job started', 'काम शुरू हो गया')) ),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start job: $e')),
+          SnackBar(content: Text(AirwayText.tr('Failed to start job: $e', 'काम शुरू नहीं हो सका: $e'))),
         );
       }
     } finally {
@@ -137,7 +138,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ask the customer to share the 6-digit completion code shown in their AIRway notifications.'),
+          content: Text(AirwayText.tr('Ask the customer to share the 6-digit completion code shown in their AIRway notifications.', 'ग्राहक से AIRway नोटिफ़िकेशन में दिखा 6 अंकों का पूरा करने वाला कोड साझा करने को कहें।')),
           duration: Duration(seconds: 5),
         ),
       );
@@ -146,12 +147,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Verify service completion'),
+          title: Text(AirwayText.tr('Verify service completion', 'सेवा पूरी होने की पुष्टि करें')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Enter the 6-digit code shared by the customer after the service is finished.'),
+              Text(AirwayText.tr('Enter the 6-digit code shared by the customer after the service is finished.', 'सेवा पूरी होने के बाद ग्राहक द्वारा साझा किया गया 6 अंकों का कोड दर्ज करें।')),
               const SizedBox(height: 14),
               TextField(
                 controller: controller,
@@ -159,7 +160,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 decoration: const InputDecoration(
-                  labelText: 'Customer completion code',
+                  labelText: AirwayText.tr('Customer completion code', 'ग्राहक का सेवा-समाप्ति कोड'),
                   border: OutlineInputBorder(),
                   counterText: '',
                 ),
@@ -169,7 +170,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
             ),
             FilledButton(
               onPressed: () {
@@ -178,7 +179,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                   Navigator.pop(dialogContext, value);
                 }
               },
-              child: const Text('Verify & complete'),
+              child: Text(AirwayText.tr('Verify & complete', 'पुष्टि करें और पूरा करें')),
             ),
           ],
         ),
@@ -195,14 +196,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['detail']?.toString() ?? 'Completion verified.')),
+          SnackBar(content: Text(result['detail']?.toString() ?? AirwayText.tr('Completion verified.', 'सेवा पूरी होने की पुष्टि हो गई।'))),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Completion verification failed: $e')),
+          SnackBar(content: Text(AirwayText.tr('Completion verification failed: $e', 'सेवा पूरी होने की पुष्टि विफल: $e'))),
         );
       }
     } finally {
@@ -213,14 +214,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Assigned Job')),
+        appBar: AppBar(title: Text(AirwayText.tr('Assigned Job', 'असाइन की गई जॉब'))),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Assigned Job')),
+        appBar: AppBar(title: Text(AirwayText.tr('Assigned Job', 'असाइन की गई जॉब'))),
         body: _errorWidget(_error!),
       );
     }
@@ -228,7 +229,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     if (_jobDetail == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Assigned Job')),
-        body: const Center(child: Text('No assigned job')),
+        body: Center(child: Text(AirwayText.tr('No assigned job', 'कोई जॉब असाइन नहीं है'))),
       );
     }
 
@@ -293,7 +294,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             ],
             if (job.customerAnswers.isNotEmpty) ...[
               const Divider(height: 22),
-              const Text('Customer selections', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text(AirwayText.tr('Customer selections', 'ग्राहक के चयन'), style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               for (final entry in job.customerAnswers.entries)
                 if (!entry.key.endsWith('_id') &&
@@ -309,7 +310,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             ],
             if (job.formResponses.isNotEmpty) ...[
               const Divider(height: 22),
-              const Text('Service details', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text(AirwayText.tr('Service details', 'सेवा का विवरण'), style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               for (final answer in job.formResponses)
                 Padding(
@@ -351,7 +352,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             ],
             if (job.addons.isNotEmpty) ...[
               const Divider(height: 22),
-              const Text('Add-ons', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text(AirwayText.tr('Add-ons', 'अतिरिक्त सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               for (final addon in job.addons)
                 Text(
@@ -361,13 +362,13 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             ],
             if (job.notes?.isNotEmpty == true) ...[
               const Divider(height: 22),
-              const Text('Customer note', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text(AirwayText.tr('Customer note', 'ग्राहक का नोट'), style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               Text(job.notes!, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
             ],
             if (job.issuePhotoUrl?.isNotEmpty == true) ...[
               const Divider(height: 22),
-              const Text('Customer issue photo', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text(AirwayText.tr('Customer issue photo', 'ग्राहक द्वारा साझा की गई समस्या की फ़ोटो'), style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               FutureBuilder<Map<String, String>>(
                 future: WorkerApi.getAuthHeaders(),
@@ -509,7 +510,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Inspection estimate', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            Text(AirwayText.tr('Inspection estimate', 'निरीक्षण का अनुमान'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             if (quote != null) ...[
               const SizedBox(height: 8),
               Text('Quote v${quote['version']} • ${quoteStatus.replaceAll('_', ' ')}',
@@ -538,7 +539,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
               ],
               if (quoteStatus == 'pending_customer') ...[
                 const SizedBox(height: 8),
-                const Text('Waiting for the customer to approve or request a revision.',
+                Text(AirwayText.tr('Waiting for the customer to approve or request a revision.', 'ग्राहक की स्वीकृति या संशोधन अनुरोध की प्रतीक्षा है।'),
                     style: TextStyle(color: AirwayColors.primary, fontWeight: FontWeight.w700, fontSize: 12)),
               ],
               if (quoteStatus == 'rejected' && quote?['customer_response_note']?.toString().isNotEmpty == true) ...[
@@ -580,24 +581,24 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Prepare inspection estimate'),
+        title: Text(AirwayText.tr('Prepare inspection estimate', 'निरीक्षण का अनुमान तैयार करें')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Align(alignment: Alignment.centerLeft, child: Text('Labour')),
-              TextField(controller: labourDescriptionController, decoration: const InputDecoration(labelText: 'Work description')),
-              TextField(controller: labourController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Labour amount (₹)')),
+              Align(alignment: Alignment.centerLeft, child: Text(AirwayText.tr('Labour', 'मज़दूरी'))),
+              TextField(controller: labourDescriptionController, decoration: const InputDecoration(labelText: AirwayText.tr('Work description', 'काम का विवरण'))),
+              TextField(controller: labourController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: AirwayText.tr('Labour amount (₹)', 'मज़दूरी की राशि (₹)'))),
               const SizedBox(height: 10),
-              const Align(alignment: Alignment.centerLeft, child: Text('Materials')),
-              TextField(controller: materialDescriptionController, decoration: const InputDecoration(labelText: 'Material description')),
-              TextField(controller: materialController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Material amount (₹)')),
+              Align(alignment: Alignment.centerLeft, child: Text(AirwayText.tr('Materials', 'सामग्री'))),
+              TextField(controller: materialDescriptionController, decoration: const InputDecoration(labelText: AirwayText.tr('Material description', 'सामग्री का विवरण'))),
+              TextField(controller: materialController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: AirwayText.tr('Material amount (₹)', 'सामग्री की राशि (₹)'))),
               const SizedBox(height: 10),
-              const Align(alignment: Alignment.centerLeft, child: Text('Other')),
-              TextField(controller: otherDescriptionController, decoration: const InputDecoration(labelText: 'Other work / charge')),
-              TextField(controller: otherController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Other amount (₹)')),
+              Align(alignment: Alignment.centerLeft, child: Text(AirwayText.tr('Other', 'अन्य'))),
+              TextField(controller: otherDescriptionController, decoration: const InputDecoration(labelText: AirwayText.tr('Other work / charge', 'अन्य काम / शुल्क'))),
+              TextField(controller: otherController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: AirwayText.tr('Other amount (₹)', 'अन्य राशि (₹)'))),
               const SizedBox(height: 10),
-              TextField(controller: notesController, maxLines: 3, maxLength: 500, decoration: const InputDecoration(labelText: 'Notes for customer')),
+              TextField(controller: notesController, maxLines: 3, maxLength: 500, decoration: const InputDecoration(labelText: AirwayText.tr('Notes for customer', 'ग्राहक के लिए नोट'))),
             ],
           ),
         ),
@@ -613,7 +614,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
               'other_description': otherDescriptionController.text.trim(),
               'notes': notesController.text.trim(),
             }),
-            child: const Text('Review estimate'),
+            child: Text(AirwayText.tr('Review estimate', 'अनुमान की समीक्षा करें')),
           ),
         ],
       ),
@@ -676,7 +677,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Work photos', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            Text(AirwayText.tr('Work photos', 'काम की फ़ोटो'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             const SizedBox(height: 6),
             Text('Capture the service condition before work and the completed result after work.',
                 style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
@@ -737,12 +738,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
         child: Wrap(children: [
           ListTile(
             leading: const Icon(Icons.camera_alt_outlined),
-            title: const Text('Take photo'),
+            title: Text(AirwayText.tr('Take photo', 'फ़ोटो लें')),
             onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
           ),
           ListTile(
             leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Choose from gallery'),
+            title: Text(AirwayText.tr('Choose from gallery', 'गैलरी से चुनें')),
             onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
           ),
         ]),
@@ -841,7 +842,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
             OutlinedButton.icon(
               onPressed: _isActionInProgress ? null : () => _rateCustomer(job),
               icon: const Icon(Icons.star_rounded),
-              label: const Text('Rate customer'),
+              label: Text(AirwayText.tr('Rate customer', 'ग्राहक को रेट करें')),
             ),
         ],
       );
@@ -877,7 +878,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Share your experience working with this customer.'),
+              Text(AirwayText.tr('Share your experience working with this customer.', 'इस ग्राहक के साथ काम करने का अपना अनुभव साझा करें।')),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -895,20 +896,20 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 maxLength: 500,
                 maxLines: 3,
                 decoration: const InputDecoration(
-                  labelText: 'Comment (optional)',
+                  labelText: AirwayText.tr('Comment (optional)', 'टिप्पणी (वैकल्पिक)'),
                   border: OutlineInputBorder(),
                 ),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not now')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Not now', 'अभी नहीं'))),
             FilledButton(
               onPressed: () => Navigator.pop(
                 dialogContext,
                 (rating: selectedRating, comment: commentController.text.trim()),
               ),
-              child: const Text('Submit rating'),
+              child: Text(AirwayText.tr('Submit rating', 'रेटिंग भेजें')),
             ),
           ],
         ),
@@ -975,7 +976,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AirwayColors.textSecondary)),
             const SizedBox(height: 20),
-            FilledButton(onPressed: _loadAssignedJob, child: const Text('Retry')),
+            FilledButton(onPressed: _loadAssignedJob, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
           ],
         ),
       ),
