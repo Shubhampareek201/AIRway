@@ -14,6 +14,8 @@ class NotificationListScreen extends StatefulWidget {
 
 class _NotificationListScreenState extends State<NotificationListScreen> {
   List<Notification> _notifications = [];
+  final Set<int> _deletingIds = <int>{};
+  final Set<int> _locallyDeletedIds = <int>{};
   bool _loading = true;
   String? _error;
   bool _markingAll = false;
@@ -35,7 +37,15 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     }
     try {
       final notifications = await NotificationApi.listNotifications();
-      if (mounted) setState(() => _notifications = notifications);
+      if (mounted) {
+        setState(() {
+          // A refresh that started before a swipe must not reinsert an item
+          // whose DELETE request has since succeeded.
+          _notifications = notifications
+              .where((item) => !_locallyDeletedIds.contains(item.id))
+              .toList();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Could not load notifications. Please try again.');
     } finally {
@@ -91,15 +101,39 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   Future<void> _delete(Notification item) async {
-    final previous = List<Notification>.from(_notifications);
-    setState(() => _notifications.removeWhere((n) => n.id == item.id));
+    if (_deletingIds.contains(item.id) ||
+        _locallyDeletedIds.contains(item.id)) {
+      return;
+    }
+
+    // Remove immutably and immediately. Keep a tombstone so an overlapping
+    // refresh cannot make the card reappear while DELETE is in flight.
+    setState(() {
+      _deletingIds.add(item.id);
+      _notifications = _notifications
+          .where((notification) => notification.id != item.id)
+          .toList();
+    });
+
     try {
       await NotificationApi.deleteNotification(item.id);
+      if (!mounted) return;
+      setState(() {
+        _deletingIds.remove(item.id);
+        _locallyDeletedIds.add(item.id);
+      });
     } catch (_) {
-      if (mounted) {
-        setState(() => _notifications = previous);
-        _message('Could not delete notification.');
-      }
+      if (!mounted) return;
+      setState(() {
+        _deletingIds.remove(item.id);
+        // Restore only this notification; do not overwrite other changes
+        // that may have happened while the request was in flight.
+        if (!_notifications.any((notification) => notification.id == item.id)) {
+          _notifications = [..._notifications, item]
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        }
+      });
+      _message('Could not delete notification. Please try again.');
     }
   }
 
