@@ -782,7 +782,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
+        Row(children: [
           Icon(Icons.calendar_month_rounded, color: violet, size: 19),
           SizedBox(width: 8),
           Text(AirwayText.tr('Your service schedule', 'आपका सेवा शेड्यूल'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
@@ -1045,7 +1045,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         if (status == 'completed' && worker != null) ...[
           const SizedBox(height: 8),
           if (row['customer_has_rated'] == true)
-            const Row(children: [
+            Row(children: [
               Icon(Icons.verified_rounded, size: 17, color: Color(0xFF2E7D52)),
               SizedBox(width: 7),
               Text(AirwayText.tr('Thank you for rating this professional.', 'इस प्रोफ़ेशनल को रेट करने के लिए धन्यवाद।'),
@@ -1337,7 +1337,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         const SizedBox(height: 8),
         Text(message, textAlign: TextAlign.center, style: const TextStyle(color: sub)),
         const SizedBox(height: 18),
-        FilledButton(onPressed: action, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
+        FilledButton(onPressed: action, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
       ]),
     ),
   );
