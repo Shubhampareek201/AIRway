@@ -1884,227 +1884,139 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final email = account['email']?.toString().trim();
     final phone = account['phone']?.toString().trim();
     final photoUrl = account['photo_url']?.toString();
+    final displayName = name?.isNotEmpty == true ? name! : (hi ? 'आपका AIRway खाता' : 'Your AIRway account');
+
+    Widget item(IconData icon, String title, String subtitle, VoidCallback onTap) => Material(
+      color: Colors.white,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(children: [
+            Container(width: 38, height: 38, alignment: Alignment.center,
+              decoration: BoxDecoration(color: const Color(0xFFE7F1EA), borderRadius: BorderRadius.circular(13)),
+              child: Icon(icon, color: _Ui.violet, size: 20)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: _Ui.ink)),
+              const SizedBox(height: 2),
+              Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: _Ui.sub)),
+            ])),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: Color(0xFF89958E)),
+          ]),
+        ),
+      ),
+    );
+    Widget group(List<Widget> children) => Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: const Color(0xFFE7ECE8)),
+        boxShadow: const [BoxShadow(color: Color(0x080E2E1D), blurRadius: 12, offset: Offset(0, 3))]),
+      clipBehavior: Clip.antiAlias, child: Column(children: children));
+    const sep = Divider(height: 1, thickness: 1, indent: 64, endIndent: 12, color: Color(0xFFEDF1EE));
+
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       children: [
-        Text(hi ? 'प्रोफ़ाइल' : 'Profile',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink),
-        ),
-        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: Text(hi ? 'प्रोफ़ाइल' : 'Profile',
+            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: _Ui.ink))),
+          TextButton(onPressed: _editAccountProfile, style: TextButton.styleFrom(foregroundColor: _Ui.violet),
+            child: Text(hi ? 'संपादित करें' : 'Edit', style: const TextStyle(fontWeight: FontWeight.w700))),
+        ]),
+        const SizedBox(height: 8),
         Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(22)),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: Colors.white,
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE7ECE8)),
+            boxShadow: const [BoxShadow(color: Color(0x080E2E1D), blurRadius: 12, offset: Offset(0, 3))]),
+          child: Row(children: [
+            Stack(clipBehavior: Clip.none, children: [
+              CircleAvatar(radius: 37, backgroundColor: const Color(0xFFE7F1EA),
                 backgroundImage: photoUrl != null && photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                child: photoUrl == null || photoUrl.isEmpty
-                    ? const Icon(Icons.person_outline, color: _Ui.violet, size: 30)
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name?.isNotEmpty == true ? name! : hi ? 'आपका AIRway खाता' : 'Your AIRway account',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _Ui.ink)),
-                    if (phone?.isNotEmpty == true)
-                      Text(phone!, style: const TextStyle(color: _Ui.sub)),
-                    if (email?.isNotEmpty == true)
-                      Text(email!, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: _Ui.sub, fontSize: 12)),
-                    Text(hi ? '${_addresses.length} सहेजे गए पते' : '${_addresses.length} saved addresses', style: const TextStyle(color: _Ui.sub, fontSize: 12)),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: hi ? 'व्यक्तिगत जानकारी संपादित करें' : 'Edit personal information',
-                onPressed: _editAccountProfile,
-                icon: const Icon(Icons.edit_outlined, color: _Ui.violet),
-              ),
-            ],
-          ),
+                child: photoUrl == null || photoUrl.isEmpty ? const Icon(Icons.person_rounded, color: _Ui.violet, size: 39) : null),
+              Positioned(right: -1, bottom: -1, child: Material(
+                color: _Ui.violet, shape: const CircleBorder(),
+                child: InkWell(customBorder: const CircleBorder(), onTap: _editAccountProfile,
+                  child: const Padding(padding: EdgeInsets.all(6),
+                    child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 13))))),
+            ]),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _Ui.ink)),
+              if (email?.isNotEmpty == true) ...[const SizedBox(height: 3), Text(email!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: _Ui.sub))],
+              if (phone?.isNotEmpty == true) ...[const SizedBox(height: 2), Text(phone!, style: const TextStyle(fontSize: 11.5, color: _Ui.sub))],
+              const SizedBox(height: 6),
+              Row(children: [const Icon(Icons.location_on_outlined, size: 13, color: _Ui.violet), const SizedBox(width: 3),
+                Expanded(child: Text(_addresses.length.toString() + (hi ? ' सहेजे गए पते' : ' saved addresses'),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: _Ui.sub)))]),
+            ])),
+          ]),
         ),
-        const SizedBox(height: 16),
-        if (_workerProfile != null) ...[
-          _buildWorkerStatusCard(),
-          const SizedBox(height: 16),
-        ],
+        const SizedBox(height: 14),
+        Container(
+          constraints: const BoxConstraints(minHeight: 88), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFE5F2E9), Color(0xFFF4F9F5)]),
+            borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFD7E9DC))),
+          child: Row(children: [
+            const Icon(Icons.spa_rounded, color: Color(0xFF347B50), size: 27), const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(hi ? 'आपके घर की देखभाल, आसान तरीके से' : 'Home care, made simple',
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF174B30))),
+              const SizedBox(height: 4),
+              Text(hi ? 'अपनी जानकारी और AIRway अनुभव प्रबंधित करें।' : 'Manage your details and AIRway experience.',
+                style: const TextStyle(fontSize: 11.5, height: 1.35, color: _Ui.sub)),
+            ])),
+            const Icon(Icons.home_work_outlined, color: Color(0xFF6A9B78), size: 42),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        if (_workerProfile != null) ...[_buildWorkerStatusCard(), const SizedBox(height: 12)],
         if (_workerStatus == null || _workerStatus == 'no_profile') ...[
-          Card(
-            color: Colors.white,
-            elevation: 0,
-            child: ListTile(
-              leading: const Icon(Icons.work_outline, color: _Ui.violet),
-              title: Text(hi ? 'वर्कर बनें' : 'Become a Worker'),
-              subtitle: Text(hi ? 'अपने क्षेत्र में सेवाएँ देने के लिए आवेदन करें' : 'Apply to provide services in your area'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _goToWorkerApplication,
-            ),
-          ),
-          const SizedBox(height: 8),
+          group([item(Icons.handyman_outlined, hi ? 'AIRway वर्कर बनें' : 'Become an AIRway Worker',
+            hi ? 'अपने क्षेत्र में सेवाएँ देने के लिए आवेदन करें' : 'Apply to provide services in your area', _goToWorkerApplication)]),
+          const SizedBox(height: 12),
         ],
-        Card(
-          color: Colors.white,
-          elevation: 0,
-          child: Column(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.person_outline_rounded, color: _Ui.violet),
-                title: Text(hi ? 'व्यक्तिगत जानकारी' : 'Personal information'),
-                subtitle: Text(hi ? 'नाम, ईमेल, प्रोफ़ाइल फोटो और फ़ोन' : 'Name, email, profile photo and phone'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _editAccountProfile,
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.location_on_outlined, color: _Ui.violet),
-                title: Text(hi ? 'पते प्रबंधित करें' : 'Manage addresses'),
-                subtitle: Text('${address['full_address'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _selectAddress,
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.calendar_month_outlined, color: _Ui.violet),
-                title: Text(hi ? 'मेरी बुकिंग' : 'My Bookings'),
-                subtitle: Text(hi ? 'आगामी, चालू और पूरी हुई सेवाएँ' : 'Upcoming, active and completed services'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => setState(() => _tab = 1),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.favorite_border_rounded, color: _Ui.violet),
-                title: Text(hi ? 'पसंदीदा सेवाएँ' : 'Favorite services'),
-                subtitle: Text(hi ? 'बाद के लिए सेव की गई सेवाएँ' : 'Services you saved for later'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => FavoriteServicesScreen(addressId: int.tryParse('${address['id']}'))),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet),
-                title: Text(hi ? 'वॉलेट' : 'Wallet'),
-                subtitle: Text(hi ? 'बैलेंस और लेन-देन देखें' : 'View balance and transactions'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const WalletScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet),
-                title: Text(hi ? 'मेरी रेटिंग' : 'My Ratings'),
-                subtitle: Text(hi ? 'आपकी सेवा प्रतिक्रिया और रेटिंग' : 'Your service feedback and ratings'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const RatingsScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.payments_outlined, color: _Ui.violet),
-                title: Text(hi ? 'भुगतान विकल्प' : 'Payment options'),
-                subtitle: Text(hi ? 'वॉलेट और सुरक्षित ऑनलाइन भुगतान के तरीके' : 'Wallet and secure online checkout methods'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PaymentOptionsScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.notifications_outlined, color: _Ui.violet),
-                title: Text(hi ? 'सूचना प्राथमिकताएँ' : 'Notification preferences'),
-                subtitle: Text(hi ? 'इस डिवाइस पर पुश नोटिफिकेशन नियंत्रित करें' : 'Control push notifications on this device'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _openNotificationPreferences,
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.card_giftcard_outlined, color: _Ui.violet),
-                title: Text(hi ? 'शेयर करें और कमाएँ' : 'Share & earn'),
-                subtitle: Text(hi ? 'दोस्त को ₹100 और खुद ₹200 पाएँ, पहली सेवा पूरी होने पर' : 'Your friend gets ₹100 and you get ₹200 after their first completed service'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AccountReferralsScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.tune_rounded, color: _Ui.violet),
-                title: Text(hi ? 'ऐप प्राथमिकताएँ' : 'App preferences'),
-                subtitle: Text(hi ? 'भाषा सेटिंग' : 'Language settings'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AccountPreferencesScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.security_outlined, color: _Ui.violet),
-                title: Text(hi ? 'पासवर्ड और सुरक्षा' : 'Password & security'),
-                subtitle: Text(hi ? 'अपने खाते का पासवर्ड बदलें या सेट करें' : 'Change or set your account password'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.description_outlined, color: _Ui.violet),
-                title: Text(hi ? 'नियम और गोपनीयता' : 'Terms & Privacy'),
-                subtitle: Text(hi ? 'AIRway के नियम और गोपनीयता जानकारी पढ़ें' : 'Read AIRway terms and privacy information'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.person_off_outlined, color: _Ui.violet),
-                title: Text(hi ? 'खाता हटाने का अनुरोध' : 'Delete account'),
-                subtitle: Text(hi ? 'अपना AIRway खाता बंद करने का अनुरोध भेजें' : 'Submit a request to close your AIRway account'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AccountDeletionScreen()),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.support_agent_outlined, color: _Ui.violet),
-                title: Text(hi ? 'मदद और सहायता' : 'Help & Support'),
-                subtitle: Text(hi ? 'बुकिंग, पते और भुगतान में सहायता' : 'Guidance for bookings, addresses and payments'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => HelpSupportScreen(
-                      onPrimaryAction: () => setState(() => _tab = 1),
-                      onSecondaryAction: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const PaymentOptionsScreen()),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.refresh_rounded, color: _Ui.violet),
-                title: Text(hi ? 'खाते की जानकारी रीफ़्रेश करें' : 'Refresh account data'),
-                onTap: _refresh,
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              ListTile(
-                leading: const Icon(Icons.logout_rounded, color: _Ui.violet),
-                title: Text(hi ? 'लॉग आउट' : 'Log out'),
-                onTap: _logout,
-              ),
-            ],
-          ),
-        ),
+        Text(hi ? 'आपका खाता' : 'YOUR ACCOUNT',
+          style: const TextStyle(fontSize: 10.5, letterSpacing: 1.1, fontWeight: FontWeight.w800, color: _Ui.sub)),
+        const SizedBox(height: 8),
+        group([
+          item(Icons.person_outline_rounded, hi ? 'व्यक्तिगत जानकारी' : 'Personal information', hi ? 'नाम, ईमेल, प्रोफ़ाइल फोटो और फ़ोन' : 'Name, email, profile photo and phone', _editAccountProfile), sep,
+          item(Icons.location_on_outlined, hi ? 'पते प्रबंधित करें' : 'Manage addresses',
+            address['full_address']?.toString() ?? (hi ? 'सहेजे गए पते' : 'Your saved addresses'), _selectAddress), sep,
+          item(Icons.calendar_month_outlined, hi ? 'मेरी बुकिंग' : 'My Bookings', hi ? 'आगामी, चालू और पूरी हुई सेवाएँ' : 'Upcoming, active and completed services', () => setState(() => _tab = 1)), sep,
+          item(Icons.favorite_border_rounded, hi ? 'पसंदीदा सेवाएँ' : 'Favorite services', hi ? 'बाद के लिए सेव की गई सेवाएँ' : 'Services you saved for later',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FavoriteServicesScreen(addressId: int.tryParse(address['id']?.toString() ?? ''))))), sep,
+          item(Icons.account_balance_wallet_outlined, hi ? 'वॉलेट' : 'Wallet', hi ? 'बैलेंस और लेन-देन देखें' : 'View balance and transactions',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen()))), sep,
+          item(Icons.rate_review_outlined, hi ? 'मेरी रेटिंग' : 'My Ratings', hi ? 'आपकी सेवा प्रतिक्रिया और रेटिंग' : 'Your service feedback and ratings',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RatingsScreen()))), sep,
+          item(Icons.payments_outlined, hi ? 'भुगतान विकल्प' : 'Payment options', hi ? 'वॉलेट और सुरक्षित ऑनलाइन भुगतान' : 'Wallet and secure online checkout methods',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PaymentOptionsScreen()))),
+        ]),
+        const SizedBox(height: 14),
+        Text(hi ? 'प्राथमिकताएँ और सहायता' : 'PREFERENCES & SUPPORT',
+          style: const TextStyle(fontSize: 10.5, letterSpacing: 1.1, fontWeight: FontWeight.w800, color: _Ui.sub)),
+        const SizedBox(height: 8),
+        group([
+          item(Icons.notifications_outlined, hi ? 'सूचना प्राथमिकताएँ' : 'Notification preferences', hi ? 'इस डिवाइस पर पुश नोटिफिकेशन नियंत्रित करें' : 'Control push notifications on this device', _openNotificationPreferences), sep,
+          item(Icons.card_giftcard_outlined, hi ? 'शेयर करें और कमाएँ' : 'Share & earn', hi ? 'पहली सेवा पूरी होने पर दोस्त को ₹100 और आपको ₹200' : 'Your friend gets ₹100 and you get ₹200 after their first completed service',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountReferralsScreen()))), sep,
+          item(Icons.tune_rounded, hi ? 'ऐप प्राथमिकताएँ' : 'App preferences', hi ? 'भाषा सेटिंग' : 'Language settings',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountPreferencesScreen()))), sep,
+          item(Icons.security_outlined, hi ? 'पासवर्ड और सुरक्षा' : 'Password & security', hi ? 'अपने खाते का पासवर्ड बदलें या सेट करें' : 'Change or set your account password',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountSecurityScreen()))), sep,
+          item(Icons.description_outlined, hi ? 'नियम और गोपनीयता' : 'Terms & Privacy', hi ? 'AIRway के नियम और गोपनीयता जानकारी पढ़ें' : 'Read AIRway terms and privacy information',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()))), sep,
+          item(Icons.person_off_outlined, hi ? 'खाता हटाने का अनुरोध' : 'Delete account', hi ? 'अपना AIRway खाता बंद करने का अनुरोध भेजें' : 'Submit a request to close your account',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountDeletionScreen()))), sep,
+          item(Icons.support_agent_outlined, hi ? 'मदद और सहायता' : 'Help & Support', hi ? 'बुकिंग, पते और भुगतान में सहायता' : 'Guidance for bookings, addresses and payments',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HelpSupportScreen(
+              onPrimaryAction: () => setState(() => _tab = 1),
+              onSecondaryAction: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PaymentOptionsScreen())))))), sep,
+          item(Icons.refresh_rounded, hi ? 'खाते की जानकारी रीफ़्रेश करें' : 'Refresh account data', hi ? 'प्रोफ़ाइल और खाते की जानकारी फिर से लोड करें' : 'Reload your profile and account information', _refresh), sep,
+          item(Icons.logout_rounded, hi ? 'लॉग आउट' : 'Log out', hi ? 'AIRway से सुरक्षित रूप से साइन आउट करें' : 'Sign out of AIRway securely', _logout),
+        ]),
       ],
     );
   }
