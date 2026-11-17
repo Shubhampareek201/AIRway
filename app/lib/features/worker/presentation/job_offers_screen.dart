@@ -102,7 +102,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
       await WorkerApi.acceptOffer(offerId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Offer accepted!')),
+          SnackBar(content: Text(AirwayText.tr('Offer accepted!', 'ऑफ़र स्वीकार कर लिया गया!'))),
         );
         _loadOffers();
       }
@@ -123,7 +123,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
       await WorkerApi.declineOffer(offerId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Offer declined')),
+          SnackBar(content: Text(AirwayText.tr('Offer declined', 'ऑफ़र अस्वीकार कर दिया गया'))),
         );
         _loadOffers();
       }
@@ -220,7 +220,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
-        title: Text('Booking #${offer.bookingId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(AirwayText.tr('Booking #${offer.bookingId}', 'बुकिंग #${offer.bookingId}'), style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
