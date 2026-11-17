@@ -32,6 +32,26 @@ class AccountApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> fetchDeletionRequest() async {
+    final result = await LocationApi.request('/api/v1/auth/delete-account/');
+    if (result is! Map) {
+      throw const FormatException('Unexpected account deletion response.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> requestAccountDeletion({String reason = ''}) async {
+    final result = await LocationApi.request(
+      '/api/v1/auth/delete-account/',
+      method: 'POST',
+      data: {'reason': reason.trim()},
+    );
+    if (result is! Map) {
+      throw const FormatException('Unexpected account deletion response.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> updateLanguage(String language) async {
     final result = await LocationApi.request(
       '/api/v1/auth/language/',
