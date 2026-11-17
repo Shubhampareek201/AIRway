@@ -19,6 +19,7 @@ import 'package:airway/features/account/presentation/account_profile_screen.dart
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_referrals_screen.dart';
+import 'package:airway/features/account/presentation/account_deletion_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/payment_options_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
@@ -2047,6 +2048,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.person_off_outlined, color: _Ui.violet),
+                title: const Text('Delete account'),
+                subtitle: const Text('Submit a request to close your AIRway account'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountDeletionScreen()),
                 ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
