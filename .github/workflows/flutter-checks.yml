@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - feat/airway-30-70-payment-lifecycle
+      - feat/airway-account-profile-preferences
     paths:
       - "app/**"
       - ".github/workflows/flutter-checks.yml"
   pull_request:
     branches:
       - feat/airway-30-70-payment-lifecycle
+      - feat/airway-account-profile-preferences
     paths:
       - "app/**"
       - ".github/workflows/flutter-checks.yml"
