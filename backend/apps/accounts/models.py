@@ -233,3 +233,39 @@ class CustomerVehicle(TimeStampedModel):
     def __str__(self):
         return self.nickname or self.custom_model or str(self.vehicle_model or self.get_vehicle_type_display())
 
+
+
+
+class AccountDeletionRequest(TimeStampedModel):
+    class Status(models.TextChoices):
+        REQUESTED = "requested", "Requested"
+        UNDER_REVIEW = "under_review", "Under review"
+        REJECTED = "rejected", "Rejected"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="account_deletion_requests",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.REQUESTED,
+        db_index=True,
+    )
+    reason = models.TextField(blank=True)
+    has_active_bookings = models.BooleanField(default=False)
+    active_booking_count = models.PositiveIntegerField(default=0)
+    admin_notes = models.TextField(blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Deletion request #{self.pk} for user {self.user_id} ({self.status})"
