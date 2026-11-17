@@ -8,6 +8,7 @@ import 'package:airway/features/auth/presentation/signup_screen.dart';
 import 'package:airway/features/auth/presentation/forgot_password_screen.dart';
 import 'package:airway/features/auth/presentation/phone_login_screen.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -131,11 +132,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AirwayText.tr;
     const green = Color(0xFF176B58);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Login'),
+        title: Text(t(t('Login', 'लॉगिन'), 'लॉगिन')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -145,12 +147,12 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const SizedBox(height: 20),
               const Text(
-                'Welcome Back',
+                t('Welcome Back', 'वापसी पर स्वागत है'),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Login with your phone number and password',
+                t('Login with your phone number and password', 'अपने फ़ोन नंबर और पासवर्ड से लॉगिन करें'),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
               const SizedBox(height: 32),
@@ -163,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         side: BorderSide(color: _useEmail ? Colors.grey : green),
                       ),
                       onPressed: () => setState(() => _useEmail = false),
-                      child: const Text('Phone'),
+                      child: Text(t('Phone', 'फ़ोन')),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -174,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         side: BorderSide(color: _useEmail ? green : Colors.grey),
                       ),
                       onPressed: () => setState(() => _useEmail = true),
-                      child: const Text('Email'),
+                      child: const Text(t('Email', 'ईमेल')),
                     ),
                   ),
                 ],
@@ -186,8 +188,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   keyboardType: TextInputType.phone,
                   maxLength: 10,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(
-                    labelText: 'Mobile Number',
+                  decoration: InputDecoration(
+                    labelText: t('Mobile Number', 'मोबाइल नंबर'),
                     prefixText: '+91 ',
                     border: OutlineInputBorder(),
                   ),
@@ -197,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: 'Email Address',
+                    labelText: t('Email Address', 'ईमेल पता'),
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -206,7 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _passwordController,
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
-                  labelText: 'Password',
+                  labelText: t('Password', 'पासवर्ड'),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
@@ -225,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
                     );
                   },
-                  child: const Text('Forgot Password?'),
+                  child: const Text(t('Forgot Password?', 'पासवर्ड भूल गए?')),
                 ),
               ),
               const SizedBox(height: 20),
@@ -241,21 +243,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Login'),
+                      : const Text(t(t('Login', 'लॉगिन'), 'लॉगिन')),
                 ),
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Don't have an account? "),
+                  Text(t("Don't have an account? ", 'खाता नहीं है? ')),
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const SignupScreen()),
                       );
                     },
-                    child: const Text('Sign Up'),
+                    child: const Text(t('Sign Up', 'साइन अप')),
                   ),
                 ],
               ),
@@ -265,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Expanded(child: Divider()),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('OR'),
+                    child: Text(t('OR', 'या')),
                   ),
                   Expanded(child: Divider()),
                 ],
@@ -276,7 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 height: 54,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.phone_android_rounded),
-                  label: const Text('Login with OTP'),
+                  label: const Text(t('Login with OTP', 'OTP से लॉगिन करें')),
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const PhoneLoginScreen()),
@@ -291,14 +293,14 @@ CheckboxListTile(
   value: _termsAccepted,
   onChanged: _loading ? null : (value) => setState(() => _termsAccepted = value ?? false),
   controlAffinity: ListTileControlAffinity.leading,
-  title: const Text('I agree to the Terms & Conditions'),
+  title: Text(t('I agree to the Terms & Conditions', 'मैं नियम और शर्तों से सहमत हूँ')),
 ),
 CheckboxListTile(
   contentPadding: EdgeInsets.zero,
   value: _privacyAccepted,
   onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
   controlAffinity: ListTileControlAffinity.leading,
-  title: const Text('I have read and agree to the Privacy Policy'),
+  title: const Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
 ),
 Align(
   alignment: Alignment.center,
@@ -306,7 +308,7 @@ Align(
     onPressed: () => Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
     ),
-    child: const Text('Read Terms & Privacy'),
+    child: const Text(t('Read Terms & Privacy', 'नियम और गोपनीयता पढ़ें')),
   ),
 ),
 SizedBox(
@@ -318,7 +320,7 @@ SizedBox(
       height: 24,
       errorBuilder: (_, _, _) => const Icon(Icons.g_mobiledata, size: 24),
     ),
-    label: const Text('Continue with Google'),
+    label: const Text(t('Continue with Google', 'Google से जारी रखें')),
     onPressed: _loading ? null : _loginWithGoogle,
   ),
 ),
