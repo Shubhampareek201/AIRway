@@ -19,6 +19,7 @@ import 'package:airway/features/account/presentation/account_profile_screen.dart
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
 import 'package:airway/core/localization/airway_locale.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/features/account/presentation/account_referrals_screen.dart';
 import 'package:airway/features/account/presentation/account_deletion_screen.dart';
 import 'package:airway/features/account/presentation/legal_documents_screen.dart';
@@ -245,7 +246,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   .firstOrNull;
               if (selectedVehicleCategory == null) {
                 ScaffoldMessenger.of(vehicleContext).showSnackBar(
-                  SnackBar(content: Text('The $vehicleSlug service category is not configured yet.')),
+                  SnackBar(content: Text(AirwayText.tr('The $vehicleSlug service category is not configured yet.', '$vehicleSlug सेवा श्रेणी अभी कॉन्फ़िगर नहीं है।'))),
                 );
                 return;
               }
@@ -270,7 +271,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 final categoriesToShow = filteredVehicleCategory.children;
                 if (categoriesToShow.isEmpty) {
                   ScaffoldMessenger.of(vehicleContext).showSnackBar(
-                    SnackBar(content: Text('No service categories are configured for $vehicleSlug yet.')),
+                    SnackBar(content: Text(AirwayText.tr('No service categories are configured for $vehicleSlug yet.', '$vehicleSlug के लिए सेवा श्रेणियाँ अभी उपलब्ध नहीं हैं।'))),
                   );
                   return;
                 }
@@ -289,7 +290,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               } catch (e) {
                 if (!vehicleContext.mounted) return;
                 ScaffoldMessenger.of(vehicleContext).showSnackBar(
-                  SnackBar(content: Text('Could not load matching vehicle categories: $e')),
+                  SnackBar(content: Text(AirwayText.tr('Could not load matching vehicle categories: $e', 'वाहन की संबंधित श्रेणियाँ लोड नहीं हो सकीं: $e'))),
                 );
               }
             },
@@ -583,14 +584,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Invite & Earn'),
+        title: Text(AirwayText.tr('Invite & Earn', 'दोस्तों को बुलाएँ और कमाएँ')),
         content: const Text(
           'Referral tracking and rewards will activate after the referral rules and wallet ledger are connected. No reward is being promised or credited yet.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Got it'),
+            child: Text(AirwayText.tr('Got it', 'समझ गया')),
           ),
         ],
       ),
@@ -600,7 +601,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _switchToWorkerMode() async {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Switching to Worker mode...')),
+      SnackBar(content: Text(AirwayText.tr('Switching to Worker mode...', 'वर्कर मोड पर जा रहे हैं...'))),
     );
     try {
       await WorkerAppApi.switchToWorkerMode(
@@ -609,7 +610,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Successfully switched to Worker mode!')),
+        SnackBar(content: Text(AirwayText.tr('Successfully switched to Worker mode!', 'वर्कर मोड सफलतापूर्वक चालू हो गया!'))),
       );
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const WorkerDashboardScreen()),
@@ -618,7 +619,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to switch mode: $e')));
+          .showSnackBar(SnackBar(content: Text(AirwayText.tr('Failed to switch mode: $e', 'मोड बदलना विफल: $e'))));
     }
   }
 
@@ -662,16 +663,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text('You can sign in again using your mobile number.'),
+        title: Text(AirwayText.tr('Log out?', 'लॉग आउट करें?')),
+        content: Text(AirwayText.tr('You can sign in again using your mobile number.', 'आप अपने मोबाइल नंबर से फिर से लॉगिन कर सकते हैं।')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancel'),
+            child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Log out'),
+            child: Text(AirwayText.tr('Log out', 'लॉग आउट')),
           ),
         ],
       ),
@@ -936,7 +937,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
               IconButton(
-                tooltip: 'Your cart',
+                tooltip: AirwayText.tr('Your cart', 'आपकी कार्ट'),
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const CustomerCartScreen()),
@@ -1254,7 +1255,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                   );
                 },
-                child: const Text('View'),
+                child: Text(AirwayText.tr('View', 'देखें')),
               ),
             ],
           ),
@@ -1308,7 +1309,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     borderRadius: BorderRadius.circular(13),
                   ),
                 ),
-                child: const Text('Invite'),
+                child: Text(AirwayText.tr('Invite', 'आमंत्रित करें')),
               ),
             ],
           ),
@@ -1347,7 +1348,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     final id = _active?['id'];
                     if (id != null) _loadNearbyWorkers(id.toString());
                   },
-                  child: const Text('Retry'),
+                  child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
                 ),
               ],
             ),
@@ -1500,17 +1501,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     textInputAction: TextInputAction.search,
     onChanged: (v) => setState(() => _query = v),
     decoration: InputDecoration(
-      hintText: 'Search services…',
+      hintText: AirwayText.tr('Search services…', 'सेवाएँ खोजें…'),
       hintStyle: const TextStyle(fontSize: 12.5, color: _Ui.sub),
       prefixIcon: const Icon(Icons.search_rounded, color: _Ui.sub),
       suffixIcon: _query.isEmpty
           ? IconButton(
-              tooltip: 'Search by voice',
+              tooltip: AirwayText.tr('Search by voice', 'आवाज़ से खोजें'),
               onPressed: _startVoiceSearch,
               icon: const Icon(Icons.mic_none_rounded, color: _Ui.sub),
             )
           : IconButton(
-              tooltip: 'Clear search',
+              tooltip: AirwayText.tr('Clear search', 'खोज हटाएँ'),
               onPressed: () {
                 _search.clear();
                 _searchFocus.unfocus();
@@ -2190,7 +2191,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         child: FilledButton.icon(
                           onPressed: _switchToWorkerMode,
                           icon: const Icon(Icons.arrow_forward_rounded, size: 17),
-                          label: const Text('Continue as Worker'),
+                          label: Text(AirwayText.tr('Continue as Worker', 'वर्कर के रूप में जारी रखें')),
                           style: FilledButton.styleFrom(
                             backgroundColor: _Ui.violet,
                             foregroundColor: Colors.white,
@@ -2273,16 +2274,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           style: TextStyle(fontWeight: FontWeight.w800, color: iconColor),
         ),
         subtitle: isApproved
-            ? const Text('You can accept jobs as a verified worker')
+            ? Text(AirwayText.tr('You can accept jobs as a verified worker', 'वेरिफ़ाइड वर्कर के रूप में आप जॉब स्वीकार कर सकते हैं'))
             : isPending
-            ? const Text('Awaiting admin verification')
+            ? Text(AirwayText.tr('Awaiting admin verification', 'एडमिन वेरिफ़िकेशन की प्रतीक्षा है'))
             : isRejected
             ? Text(
                 _workerRejectionReason?.isNotEmpty == true
                     ? 'Reason: $_workerRejectionReason'
                     : 'Your application was not approved',
               )
-            : const Text('Register to earn by providing services'),
+            : Text(AirwayText.tr('Register to earn by providing services', 'सेवाएँ देकर कमाई करने के लिए रजिस्टर करें')),
         trailing: isApproved
             ? Switch(value: true, onChanged: (_) => _switchToWorkerMode())
             : isPending
@@ -2290,7 +2291,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             : isRejected
             ? TextButton(
                 onPressed: _viewWorkerStatus,
-                child: const Text('Reapply'),
+                child: Text(AirwayText.tr('Reapply', 'फिर से आवेदन करें')),
               )
             : IconButton(
                 icon: const Icon(Icons.chevron_right),
