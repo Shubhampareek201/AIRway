@@ -97,8 +97,8 @@ class AirwayTheme {
         backgroundColor: AirwayColors.surface,
         indicatorColor: AirwayColors.primary.withValues(alpha: 0.16),
         iconTheme: const WidgetStatePropertyAll<IconThemeData?>(
-  IconThemeData(color: AirwayColors.textTertiary),
-),
+          IconThemeData(color: AirwayColors.textTertiary),
+        ),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       ),
       snackBarTheme: const SnackBarThemeData(
@@ -110,44 +110,6 @@ class AirwayTheme {
         shape: const ContinuousRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(24)),
         ),
-      ),
-    );
-  }
-}
-
-/// Dark Material theme for the app-wide appearance preference.
-extension AirwayDarkTheme on AirwayTheme {
-  static ThemeData get dark {
-    const background = Color(0xFF121713);
-    const surface = Color(0xFF1C241F);
-    const foreground = Color(0xFFE8EEE9);
-    final scheme = ColorScheme.fromSeed(
-      seedColor: AirwayColors.primary,
-      brightness: Brightness.dark,
-    ).copyWith(
-      primary: const Color(0xFF9BC5A8),
-      onPrimary: const Color(0xFF102016),
-      secondary: const Color(0xFFD0B28E),
-      surface: surface,
-      onSurface: foreground,
-      outline: const Color(0xFF46534A),
-    );
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: background,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: background,
-        foregroundColor: foreground,
-        elevation: 0,
-      ),
-      cardTheme: const CardThemeData(color: surface, elevation: 0, margin: EdgeInsets.zero),
-      dialogTheme: const DialogThemeData(backgroundColor: surface),
-      bottomSheetTheme: const BottomSheetThemeData(backgroundColor: surface),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: surface,
-        indicatorColor: scheme.primary.withValues(alpha: 0.18),
       ),
     );
   }
