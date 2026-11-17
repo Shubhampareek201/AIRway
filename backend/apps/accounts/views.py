@@ -149,7 +149,16 @@ class RegisterView(APIView):
             if isinstance(error_msg, list):
                 error_msg = error_msg[0]
             return Response({"error": error_msg}, status=status.HTTP_400_BAD_REQUEST)
-        user = serializer.save()
+        try:
+            with transaction.atomic():
+                user = serializer.save()
+                referral_code = request.data.get("referral_code")
+                if referral_code:
+                    from .referrals import apply_referral_code
+                    apply_referral_code(user, referral_code)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         refresh = RefreshToken.for_user(user)
         return Response({
             "access": str(refresh.access_token),
@@ -341,8 +350,14 @@ class CustomerReferralView(APIView):
 
     def get(self, request):
         referrals = Referral.objects.filter(referrer=request.user).select_related("referred").order_by("-created_at")
+        applied = Referral.objects.filter(referred=request.user).select_related("referrer").first()
         return Response({
             "referral_code": request.user.referral_code,
+            "applied_referral": ({
+                "code": applied.referrer.referral_code,
+                "rewarded": applied.rewarded,
+                "rewarded_at": applied.rewarded_at.isoformat() if applied.rewarded_at else None,
+            } if applied else None),
             "new_customer_credit": "100.00",
             "referrer_reward": "200.00",
             "reward_condition": "Both rewards are credited after the referred customer's first service is successfully completed.",
