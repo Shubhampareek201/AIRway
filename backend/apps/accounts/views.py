@@ -489,14 +489,33 @@ class AccountDeletionRequestView(APIView):
         item = AccountDeletionRequest.objects.filter(user=request.user).first()
         if item is None:
             return Response({"has_request": False})
+
+        from .deletion import get_account_deletion_obligations
+        obligations = get_account_deletion_obligations(request.user)
+        for field, value in obligations.items():
+            setattr(item, field, value)
+        if item.status in (
+            AccountDeletionRequest.Status.REQUESTED,
+            AccountDeletionRequest.Status.UNDER_REVIEW,
+        ):
+            item.status = (
+                AccountDeletionRequest.Status.UNDER_REVIEW
+                if obligations["has_active_bookings"] or obligations["has_financial_obligations"]
+                else AccountDeletionRequest.Status.REQUESTED
+            )
+        item.save(update_fields=[
+            "has_active_bookings",
+            "has_financial_obligations",
+            "active_booking_count",
+            "status",
+            "updated_at",
+        ])
         return Response({
             "has_request": True,
             "id": item.pk,
             "status": item.status,
             "reason": item.reason,
-            "has_active_bookings": item.has_active_bookings,
-            "has_financial_obligations": item.has_financial_obligations,
-            "active_booking_count": item.active_booking_count,
+            **obligations,
             "created_at": item.created_at.isoformat(),
             "updated_at": item.updated_at.isoformat(),
             "admin_notes": item.admin_notes,
@@ -520,64 +539,22 @@ class AccountDeletionRequestView(APIView):
             ),
         ).first()
         if existing:
-            return Response({
-                "detail": "Your account deletion request is already under review.",
-                "status": existing.status,
-                "id": existing.pk,
-            }, status=status.HTTP_200_OK)
+            current = self.get(request)
+            current.status_code = status.HTTP_200_OK
+            return current
 
-        from apps.bookings.models import Booking, BookingAssignment
-        active_statuses = (
-            Booking.Status.PENDING,
-            Booking.Status.CONFIRMED,
-            Booking.Status.ASSIGNED,
-            Booking.Status.IN_PROGRESS,
-            Booking.Status.DISPUTED,
-        )
-        active_ids = set(
-            request.user.bookings.filter(status__in=active_statuses)
-            .values_list("id", flat=True)
-        )
-        try:
-            worker_profile = request.user.worker_profile
-        except WorkerProfile.DoesNotExist:
-            worker_profile = None
-        if worker_profile is not None:
-            active_ids.update(
-                BookingAssignment.objects.filter(
-                    worker=worker_profile,
-                    booking__status__in=active_statuses,
-                ).values_list("booking_id", flat=True)
-            )
-
-        active_count = len(active_ids)
-        wallet = getattr(request.user, "wallet", None)
-        has_financial_obligations = bool(
-            wallet and (
-                wallet.balance > 0
-                or wallet.pending_balance > 0
-                or wallet.reservations.filter(status="reserved").exists()
-            )
-        )
-        from apps.payments.models import Payment, PaymentRefund
-        has_financial_obligations = has_financial_obligations or Payment.objects.filter(
-            customer=request.user,
-            status=Payment.Status.PENDING,
-        ).exists() or PaymentRefund.objects.filter(
-            payment__customer=request.user,
-            status__in=(PaymentRefund.Status.PROCESSING, PaymentRefund.Status.PENDING),
-        ).exists()
+        from .deletion import get_account_deletion_obligations
+        obligations = get_account_deletion_obligations(request.user)
+        blocked = obligations["has_active_bookings"] or obligations["has_financial_obligations"]
         item = AccountDeletionRequest.objects.create(
             user=request.user,
             status=(
                 AccountDeletionRequest.Status.UNDER_REVIEW
-                if active_count or has_financial_obligations
+                if blocked
                 else AccountDeletionRequest.Status.REQUESTED
             ),
             reason=reason,
-            has_active_bookings=active_count > 0,
-            has_financial_obligations=has_financial_obligations,
-            active_booking_count=active_count,
+            **obligations,
         )
         return Response({
             "detail": (
@@ -589,9 +566,7 @@ class AccountDeletionRequestView(APIView):
             ),
             "id": item.pk,
             "status": item.status,
-            "has_active_bookings": item.has_active_bookings,
-            "has_financial_obligations": item.has_financial_obligations,
-            "active_booking_count": item.active_booking_count,
+            **obligations,
         }, status=status.HTTP_201_CREATED)
 
 
