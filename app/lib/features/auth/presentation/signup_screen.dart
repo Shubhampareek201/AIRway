@@ -60,11 +60,11 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
     if (email.isNotEmpty && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
-      _message('Enter a valid email address.');
+      _message(AirwayText.tr('Enter a valid email address.', 'सही ईमेल पता दर्ज करें।'));
       return;
     }
     if (password.length < 6) {
-      _message('Password must be at least 6 characters.');
+      _message(AirwayText.tr('Password must be at least 6 characters.', 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।'));
       return;
     }
     if (password != confirmPassword) {
