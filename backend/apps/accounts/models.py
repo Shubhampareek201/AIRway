@@ -264,7 +264,7 @@ class AccountDeletionRequest(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["user", "status"]),
+            models.Index(fields=["user", "status"], name="accounts_ac_user_i_6a2f90_idx"),
         ]
 
     def __str__(self):
