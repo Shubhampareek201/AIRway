@@ -1807,7 +1807,7 @@ class WorkerAcceptancePaymentTest(TestCase):
             1,
         )
         self.assertTrue(Notification.objects.filter(
-            user=self.customer_user, title="Finding a replacement professional"
+            user=self.customer_user, title="Professional update"
         ).exists())
 
     def test_suspension_after_job_started_escalates_without_auto_reassignment(self):
