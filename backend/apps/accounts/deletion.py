@@ -2,6 +2,7 @@ def get_account_deletion_obligations(user):
     """Return current booking and financial blockers before an account is closed."""
     from apps.bookings.models import Booking, BookingAssignment
     from apps.payments.models import Payment, PaymentRefund
+    from apps.workers.models import WorkerProfile
 
     active_statuses = (
         Booking.Status.PENDING,
@@ -16,7 +17,7 @@ def get_account_deletion_obligations(user):
 
     try:
         worker_profile = user.worker_profile
-    except Exception:
+    except WorkerProfile.DoesNotExist:
         worker_profile = None
     if worker_profile is not None:
         active_booking_ids.update(
