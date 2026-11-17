@@ -21,6 +21,7 @@ import 'package:airway/features/notification/presentation/notification_bell_butt
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
+import 'package:airway/features/account/presentation/help_support_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -752,6 +753,30 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       ),
       const SizedBox(height: 14),
       OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined), label: const Text('Edit profile details')),
+      const SizedBox(height: 16),
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.support_agent_outlined),
+          title: const Text('Help & Support'),
+          subtitle: const Text('Guidance for job offers, work profile and earnings'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => HelpSupportScreen(
+                workerMode: true,
+                onPrimaryAction: () {
+                  Navigator.of(context).pop();
+                  setState(() => _selectedTab = 1);
+                },
+                onSecondaryAction: () {
+                  Navigator.of(context).pop();
+                  setState(() => _selectedTab = 2);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
       const SizedBox(height: 16),
       _sectionHeading('Account'),
       Card(
