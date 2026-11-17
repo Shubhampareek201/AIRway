@@ -184,7 +184,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
                           ? AirwayText.tr('Nothing upcoming yet', 'अभी कोई आगामी बुकिंग नहीं है')
                           : AirwayText.tr('No bookings yet', 'अभी कोई बुकिंग नहीं है'),
                       AirwayText.tr('Your upcoming, active and completed services will appear here.', 'आपकी आने वाली, चालू और पूरी हो चुकी सेवाएँ यहाँ दिखाई देंगी।'),
-                      Icons.event_note_rounded, widget.onBookNew ?? _goBack)
+                      Icons.event_note_rounded, widget.onBookNew ?? _goBack,
+                      actionLabel: AirwayText.tr('Book a service', 'सेवा बुक करें'))
                   else ...[
                     if (filteredOrders.isNotEmpty) ...[
                       _sectionLabel(AirwayText.tr('Service Orders', 'सेवा ऑर्डर')),
@@ -402,7 +403,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
     child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)));
 
-  Widget _emptyState(String title, String message, IconData icon, VoidCallback action) => Padding(
+  Widget _emptyState(String title, String message, IconData icon, VoidCallback action, {String? actionLabel}) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 36, 16, 24),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 68, height: 68,
@@ -416,7 +417,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
         style: const TextStyle(fontSize: 12, height: 1.4, color: sub)),
       const SizedBox(height: 16),
       TextButton(onPressed: action,
-        child: Text(AirwayText.tr('Try again', 'फिर कोशिश करें'),
+        child: Text(actionLabel ?? AirwayText.tr('Try again', 'फिर कोशिश करें'),
           style: const TextStyle(color: green, fontWeight: FontWeight.w700))),
     ]),
   );
