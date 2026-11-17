@@ -666,7 +666,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(stageLabel, style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
                 const SizedBox(height: 5),
-                Text('Order total ₹${total.toStringAsFixed(2)}', style: const TextStyle(color: sub)),
+                Text(AirwayText.tr('Order total ₹${total.toStringAsFixed(2)}', 'ऑर्डर कुल ₹${total.toStringAsFixed(2)}'), style: const TextStyle(color: sub)),
                 const SizedBox(height: 3),
                 Text(AirwayText.tr('Due now ₹${dueNow.toStringAsFixed(2)}', 'अभी देय ₹${dueNow.toStringAsFixed(2)}'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: violet)),
               ]),
@@ -686,8 +686,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   const SizedBox(height: 5),
                   Text(
                     walletLoading
-                        ? 'Loading available balance…'
-                        : 'Available balance: ₹${walletBalance.toStringAsFixed(2)}',
+                        ? AirwayText.tr('Loading available balance…', 'उपलब्ध बैलेंस लोड हो रहा है…')
+                        : AirwayText.tr('Available balance: ₹${walletBalance.toStringAsFixed(2)}', 'उपलब्ध बैलेंस: ₹${walletBalance.toStringAsFixed(2)}'),
                     style: const TextStyle(color: sub, fontSize: 13),
                   ),
                   const SizedBox(height: 10),
@@ -1080,7 +1080,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Expanded(child: Text('Inspection estimate', style: TextStyle(fontWeight: FontWeight.w900, color: ink))),
+            Expanded(child: Text(AirwayText.tr('Inspection estimate', 'निरीक्षण का अनुमान'), style: TextStyle(fontWeight: FontWeight.w900, color: ink))),
             Text('v${quote['version']}', style: const TextStyle(color: sub, fontSize: 11)),
           ]),
           const SizedBox(height: 7),
@@ -1107,12 +1107,12 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 7),
           Text(
             quoteStatus == 'pending_customer'
-                ? 'Please review this estimate and choose whether to approve it or request a revision.'
+                ? AirwayText.tr('Please review this estimate and choose whether to approve it or request a revision.', 'इस अनुमान की समीक्षा करें और इसे स्वीकार करें या संशोधन माँगें।')
                 : quoteStatus == 'accepted'
-                    ? 'You approved this estimate.'
+                    ? AirwayText.tr('You approved this estimate.', 'आपने यह अनुमान स्वीकार कर लिया है।')
                     : quoteStatus == 'rejected'
-                        ? 'You requested a revised estimate.'
-                        : 'Estimate status: ${quoteStatus.replaceAll('_', ' ')}',
+                        ? AirwayText.tr('You requested a revised estimate.', 'आपने संशोधित अनुमान माँगा है।')
+                        : AirwayText.tr('Estimate status: ${quoteStatus.replaceAll('_', ' ')}', 'अनुमान की स्थिति: ${quoteStatus.replaceAll('_', ' ')}'),
             style: const TextStyle(color: sub, fontSize: 12),
           ),
           if (quoteStatus == 'pending_customer' && row['booking_status'] == 'in_progress') ...[
