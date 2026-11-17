@@ -129,7 +129,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(AirwayText.tr('Complete Your Profile', 'अपनी प्रोफ़ाइल पूरी करें')),
+        title: Text(AirwayText.tr('Complete Your Profile', 'अपनी प्रोफ़ाइल पूरी करें')),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -139,19 +139,19 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 AirwayText.tr('Welcome to AIRway!', 'AIRway में आपका स्वागत है!'),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 AirwayText.tr('Please complete your profile to continue.', 'आगे बढ़ने के लिए अपनी प्रोफ़ाइल पूरी करें।'),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
               const SizedBox(height: 32),
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: AirwayText.tr('Full Name *', 'पूरा नाम *'),
                   border: OutlineInputBorder(),
                 ),
@@ -161,7 +161,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: AirwayText.tr('Email Address', 'ईमेल पता'),
                   border: OutlineInputBorder(),
                   helperText: AirwayText.tr('Optional, but recommended for account recovery', 'वैकल्पिक, लेकिन खाता रिकवरी के लिए उपयोगी'),
@@ -198,7 +198,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text(AirwayText.tr('Continue', 'जारी रखें')),
+                      : Text(AirwayText.tr('Continue', 'जारी रखें')),
                 ),
               ),
               const SizedBox(height: 16),
@@ -217,7 +217,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                           height: 24,
                           errorBuilder: (_, __, ____) => const Icon(Icons.g_mobiledata, size: 24),
                         ),
-                  label: const Text('Fill from Google Account'),
+                  label: Text(AirwayText.tr('Fill from Google Account', 'Google खाते से भरें')),
                   onPressed: _googleLoading ? null : _fillFromGoogle,
                 ),
               ),
