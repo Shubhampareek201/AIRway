@@ -20,6 +20,12 @@ class NotificationViewSet(viewsets.ModelViewSet):
         from .serializers import NotificationSerializer as NS
         return NS
 
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        """Return the authenticated user's unread notification count."""
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({"unread_count": count})
+
     @action(detail=True, methods=["post"], url_path="mark-read")
     def mark_read(self, request, pk=None):
         """Mark a notification as read."""
