@@ -465,6 +465,14 @@ class AccountDeletionRequestView(APIView):
                 or wallet.reservations.filter(status="reserved").exists()
             )
         )
+        from apps.payments.models import Payment, PaymentRefund
+        has_financial_obligations = has_financial_obligations or Payment.objects.filter(
+            customer=request.user,
+            status=Payment.Status.PENDING,
+        ).exists() or PaymentRefund.objects.filter(
+            payment__customer=request.user,
+            status__in=(PaymentRefund.Status.PROCESSING, PaymentRefund.Status.PENDING),
+        ).exists()
         item = AccountDeletionRequest.objects.create(
             user=request.user,
             status=(
