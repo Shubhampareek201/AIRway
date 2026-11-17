@@ -16,6 +16,32 @@ class AccountApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> fetchReferrals() async {
+    final result = await LocationApi.request('/api/v1/auth/referrals/');
+    if (result is! Map) throw const FormatException('Unexpected referral response.');
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> applyReferralCode(String code) async {
+    final result = await LocationApi.request(
+      '/api/v1/auth/referrals/',
+      method: 'POST',
+      data: {'referral_code': code.trim().toUpperCase()},
+    );
+    if (result is! Map) throw const FormatException('Unexpected referral response.');
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> updateLanguage(String language) async {
+    final result = await LocationApi.request(
+      '/api/v1/auth/language/',
+      method: 'PATCH',
+      data: {'language': language},
+    );
+    if (result is! Map) throw const FormatException('Unexpected language response.');
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> updateProfile({
     required Map<String, dynamic> data,
     File? photo,
