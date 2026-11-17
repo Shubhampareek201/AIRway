@@ -1268,7 +1268,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF075B3C), size: 19),
               SizedBox(width: 7),
