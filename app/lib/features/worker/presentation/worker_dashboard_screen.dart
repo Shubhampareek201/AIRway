@@ -17,6 +17,7 @@ import 'package:airway/features/worker/presentation/job_offers_screen.dart';
 import 'package:airway/features/worker/presentation/worker_profile_edit_screen.dart';
 import 'package:airway/features/worker/presentation/worker_service_management_screen.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
+import 'package:airway/features/notification/presentation/notification_bell_button.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
   const WorkerDashboardScreen({super.key});
@@ -458,6 +459,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       appBar: AppBar(
         title: Text(_tabTitles[_selectedTab]),
         actions: [
+          const NotificationBellButton(),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _refresh,
