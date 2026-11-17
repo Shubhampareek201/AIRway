@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
 import 'package:airway/features/auth/presentation/startup_gate.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 class ProfileCompletionScreen extends StatefulWidget {
   const ProfileCompletionScreen({super.key});
@@ -40,11 +41,11 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     final gender = _selectedGender;
 
     if (name.isEmpty) {
-      _message('Please enter your full name.');
+      _message(AirwayText.tr('Please enter your full name.', 'कृपया अपना पूरा नाम दर्ज करें।'));
       return;
     }
     if (email.isNotEmpty && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
-      _message('Enter a valid email address.');
+      _message(AirwayText.tr('Enter a valid email address.', 'सही ईमेल पता दर्ज करें।'));
       return;
     }
     if (_loading) return;
@@ -54,7 +55,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     try {
       final session = await SecureSessionStorage.readSession();
       if (session == null) {
-        _message('Session expired. Please login again.');
+        _message(AirwayText.tr('Session expired. Please login again.', 'सेशन समाप्त हो गया। कृपया फिर से लॉगिन करें।'));
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const StartupGate()),
@@ -77,14 +78,14 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
           (route) => false,
         );
       } else {
-        _message('Profile completion failed. Please try again.');
+        _message(AirwayText.tr('Profile completion failed. Please try again.', 'प्रोफ़ाइल पूरी नहीं हो सकी। फिर से कोशिश करें।'));
       }
     } on AuthApiException catch (error) {
       if (!mounted) return;
       _message(error.message);
     } catch (_) {
       if (!mounted) return;
-      _message('Unable to complete profile. Please try again.');
+      _message(AirwayText.tr('Unable to complete profile. Please try again.', 'प्रोफ़ाइल पूरी नहीं हो सकी। फिर से कोशिश करें।'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -102,7 +103,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
       final GoogleSignInAccount? account = await googleSignIn.signIn();
 
       if (account == null) {
-        _message('Google Sign-In cancelled.');
+        _message(AirwayText.tr('Google Sign-In cancelled.', 'Google साइन-इन रद्द किया गया।'));
         return;
       }
 
@@ -113,7 +114,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
       _emailController.text = account.email;
 
       // For gender, we can't get it from Google directly, so leave as is
-      _message('Name and email filled from Google account.');
+      _message(AirwayText.tr('Name and email filled from Google account.', 'Google खाते से नाम और ईमेल भर दिए गए।'));
     } on Exception catch (e) {
       if (!mounted) return;
       _message('Google Sign-In failed: ${e.toString()}');
@@ -128,7 +129,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Complete Your Profile'),
+        title: const Text(AirwayText.tr('Complete Your Profile', 'अपनी प्रोफ़ाइल पूरी करें')),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -139,19 +140,19 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
             children: [
               const SizedBox(height: 10),
               const Text(
-                'Welcome to AIRway!',
+                AirwayText.tr('Welcome to AIRway!', 'AIRway में आपका स्वागत है!'),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Please complete your profile to continue.',
+                AirwayText.tr('Please complete your profile to continue.', 'आगे बढ़ने के लिए अपनी प्रोफ़ाइल पूरी करें।'),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
               const SizedBox(height: 32),
               TextField(
                 controller: _nameController,
                 decoration: const InputDecoration(
-                  labelText: 'Full Name *',
+                  labelText: AirwayText.tr('Full Name *', 'पूरा नाम *'),
                   border: OutlineInputBorder(),
                 ),
                 textCapitalization: TextCapitalization.words,
@@ -161,16 +162,16 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
-                  labelText: 'Email Address',
+                  labelText: AirwayText.tr('Email Address', 'ईमेल पता'),
                   border: OutlineInputBorder(),
-                  helperText: 'Optional, but recommended for account recovery',
+                  helperText: AirwayText.tr('Optional, but recommended for account recovery', 'वैकल्पिक, लेकिन खाता रिकवरी के लिए उपयोगी'),
                 ),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: _selectedGender,
                 decoration: const InputDecoration(
-                  labelText: 'Gender',
+                  labelText: AirwayText.tr('Gender', 'लिंग'),
                   border: OutlineInputBorder(),
                 ),
                 items: _genders
@@ -197,7 +198,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Continue'),
+                      : const Text(AirwayText.tr('Continue', 'जारी रखें')),
                 ),
               ),
               const SizedBox(height: 16),
