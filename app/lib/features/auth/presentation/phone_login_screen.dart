@@ -5,6 +5,7 @@ import 'package:airway/features/auth/presentation/startup_gate.dart';
 import 'package:flutter/services.dart';
 import 'package:airway/core/network/auth_api.dart';
 import 'package:airway/core/storage/secure_session_storage.dart';
+import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 class PhoneLoginScreen extends StatefulWidget {
   const PhoneLoginScreen({super.key});
 
@@ -21,6 +22,8 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   bool _loading = false;
   bool _otpSent = false;
   bool _verified = false;
+  bool _termsAccepted = false;
+  bool _privacyAccepted = false;
   String? _verificationId;
 
   @override
@@ -155,6 +158,8 @@ Future<void> _signInWithCredential(
       referralCode: _referralCodeController.text.trim().isEmpty
           ? null
           : _referralCodeController.text.trim(),
+      termsAccepted: _termsAccepted,
+      privacyAccepted: _privacyAccepted,
     );
     await SecureSessionStorage.saveSession(
       accessToken: response['access'] as String,
@@ -187,6 +192,51 @@ Navigator.of(context).pushAndRemoveUntil(
     _message('Unable to complete AIRway login. Please try again.');
   }
 }
+
+  Future<void> _retryBackendLogin() async {
+    if (_loading) return;
+    if (!_termsAccepted || !_privacyAccepted) {
+      _message('Please accept the Terms & Conditions and Privacy Policy.');
+      return;
+    }
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) {
+      _message('Please verify your phone number again.');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final idToken = await firebaseUser.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        throw const AuthApiException('Unable to retrieve Firebase ID token.');
+      }
+      final response = await AuthApi.firebaseLogin(
+        idToken: idToken,
+        referralCode: _referralCodeController.text.trim().isEmpty
+            ? null
+            : _referralCodeController.text.trim(),
+        termsAccepted: true,
+        privacyAccepted: true,
+      );
+      await SecureSessionStorage.saveSession(
+        accessToken: response['access'] as String,
+        refreshToken: response['refresh'] as String,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const StartupGate()),
+        (route) => false,
+      );
+    } on AuthApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _message(error.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _message('Unable to complete AIRway login. Please try again.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -257,6 +307,30 @@ Navigator.of(context).pushAndRemoveUntil(
 
               if (!_verified) ...[
                 const SizedBox(height: 14),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _termsAccepted,
+                  onChanged: _loading ? null : (value) => setState(() => _termsAccepted = value ?? false),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('I agree to the Terms & Conditions'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _privacyAccepted,
+                  onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('I have read and agree to the Privacy Policy'),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
+                    ),
+                    child: const Text('Read Terms & Privacy'),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 TextField(
                   controller: _referralCodeController,
                   textCapitalization: TextCapitalization.characters,
@@ -321,6 +395,15 @@ Navigator.of(context).pushAndRemoveUntil(
                           });
                         },
                   child: const Text('Change Mobile Number'),
+                ),
+
+              if (!_verified && _auth.currentUser != null && !_loading)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _retryBackendLogin,
+                    child: const Text('Continue after accepting policies'),
+                  ),
                 ),
 
               if (_verified)
