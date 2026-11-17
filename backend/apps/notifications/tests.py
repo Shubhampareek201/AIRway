@@ -236,6 +236,28 @@ class NotificationAPITest(TestCase):
         results = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
         self.assertEqual(len(results), 1)
 
+    def test_dispatch_progress_is_not_returned_in_inbox_or_unread_count(self):
+        Notification.objects.create(
+            user=self.user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="We're still finding your professional",
+            body="Dispatch progress belongs in the booking journey.",
+        )
+        Notification.objects.create(
+            user=self.user,
+            type=Notification.Type.BOOKING_CONFIRMED,
+            title="Booking Confirmed",
+            body="Your booking is confirmed.",
+        )
+
+        inbox = self.client.get("/api/v1/notifications/")
+        unread = self.client.get("/api/v1/notifications/unread-count/")
+
+        results = inbox.data.get("results", inbox.data) if isinstance(inbox.data, dict) else inbox.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "Booking Confirmed")
+        self.assertEqual(unread.data["unread_count"], 1)
+
     def test_mark_notification_read(self):
         """Should mark a notification as read."""
         notification = Notification.objects.create(
