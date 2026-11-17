@@ -82,6 +82,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
             'has_request': true,
             'status': result['status'],
             'has_active_bookings': result['has_active_bookings'],
+            'has_financial_obligations': result['has_financial_obligations'],
             'active_booking_count': result['active_booking_count'],
             'detail': result['detail'],
           });
@@ -168,7 +169,9 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                               Text(request['detail']?.toString() ??
                                   (request['has_active_bookings'] == true
                                       ? 'There are ${request['active_booking_count'] ?? 0} active bookings or disputes to resolve first.'
-                                      : 'Your request is waiting for admin review.')),
+                                      : request['has_financial_obligations'] == true
+                                          ? 'Outstanding wallet funds or reservations must be settled before closure.'
+                                          : 'Your request is waiting for admin review.')),
                               if (request['admin_notes']?.toString().isNotEmpty == true) ...[
                                 const SizedBox(height: 8),
                                 Text('AIRway review: ${request['admin_notes']}'),
