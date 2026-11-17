@@ -500,7 +500,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(AirwayText.tr('Application submitted! Your profile is under review. Please allow 24-48 hours for admin verification.', 'आवेदन भेज दिया गया है! आपकी प्रोफ़ाइल समीक्षा में है। एडमिन वेरिफ़िकेशन के लिए 24-48 घंटे दें।')),
           backgroundColor: Colors.green,
         ),
@@ -834,7 +834,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           label: Text(AirwayText.tr('Use my current location', 'मेरी वर्तमान लोकेशन इस्तेमाल करें')),
         )),
         if (_latitude != null && _longitude != null)
-          const Padding(padding: EdgeInsets.only(top: 4), child: Text(AirwayText.tr('GPS location attached. Service area selected automatically.', 'GPS लोकेशन जुड़ गई। सेवा क्षेत्र अपने आप चुना गया।'), style: TextStyle(color: Colors.green, fontSize: 12))),
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(AirwayText.tr('GPS location attached. Service area selected automatically.', 'GPS लोकेशन जुड़ गई। सेवा क्षेत्र अपने आप चुना गया।'), style: TextStyle(color: Colors.green, fontSize: 12))),
         const SizedBox(height: 10),
         TextField(controller: _landmarkController, decoration: InputDecoration(labelText: AirwayText.tr('Nearby landmark', 'नज़दीकी लैंडमार्क'), border: OutlineInputBorder())),
         const SizedBox(height: 10),
@@ -852,7 +852,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
 
   Widget _buildServicesSection() {
     if (_services.isEmpty) {
-      return const Text(AirwayText.tr('No active launch services are available for worker registration. Please contact AIRway support.', 'वर्कर रजिस्ट्रेशन के लिए अभी कोई सक्रिय सेवा उपलब्ध नहीं है। AIRway सपोर्ट से संपर्क करें।'));
+      return Text(AirwayText.tr('No active launch services are available for worker registration. Please contact AIRway support.', 'वर्कर रजिस्ट्रेशन के लिए अभी कोई सक्रिय सेवा उपलब्ध नहीं है। AIRway सपोर्ट से संपर्क करें।'));
     }
     return WorkerServicePicker(
       services: _services,
@@ -889,13 +889,13 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
               child: Text(_fieldErrors['zones']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
             ),
           const SizedBox(height: 8),
-          const Text(
-            'Your home address and working areas are different. Choose every active AIRway area you can travel to. GPS only suggests a nearby area; it never limits your selection.',
-            style: TextStyle(color: AirwayColors.textSecondary),
+          Text(
+            AirwayText.tr('Your home address and working areas are different. Choose every active AIRway area you can travel to. GPS only suggests a nearby area; it never limits your selection.', 'आपका घर का पता और कार्य क्षेत्र अलग हैं। वे सभी सक्रिय AIRway क्षेत्र चुनें जहाँ आप काम के लिए जा सकते हैं। GPS केवल नज़दीकी क्षेत्र सुझाता है; यह आपकी पसंद सीमित नहीं करता।'),
+            style: const TextStyle(color: AirwayColors.textSecondary),
           ),
           const SizedBox(height: 12),
           if (_zones.isEmpty)
-            const Text(AirwayText.tr('No active service areas are configured yet. Please contact AIRway support.', 'अभी कोई सक्रिय सेवा क्षेत्र कॉन्फ़िगर नहीं है। AIRway सपोर्ट से संपर्क करें।'))
+            Text(AirwayText.tr('No active service areas are configured yet. Please contact AIRway support.', 'अभी कोई सक्रिय सेवा क्षेत्र कॉन्फ़िगर नहीं है। AIRway सपोर्ट से संपर्क करें।'))
           else
             Wrap(
               spacing: 8,
@@ -965,7 +965,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
             child: Text(_fieldErrors['schedule']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
           ),
         const SizedBox(height: 6),
-        const Text(AirwayText.tr('Choose the days and exact hours when you can accept jobs.', 'वे दिन और सही समय चुनें जब आप काम स्वीकार कर सकते हैं।'), style: TextStyle(color: AirwayColors.textSecondary)),
+        Text(AirwayText.tr('Choose the days and exact hours when you can accept jobs.', 'वे दिन और सही समय चुनें जब आप काम स्वीकार कर सकते हैं।'), style: TextStyle(color: AirwayColors.textSecondary)),
         const SizedBox(height: 8),
         ...List.generate(7, (day) {
           final selected = _weeklySchedule.containsKey(day);
@@ -1020,9 +1020,9 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
             child: Text(_fieldErrors['id_document']!, style: const TextStyle(color: Colors.red, fontSize: 12)),
           ),
         const SizedBox(height: 8),
-        const Text(
-          'Please upload a valid government ID for verification. Aadhaar or any government-issued photo ID is accepted.',
-          style: TextStyle(color: AirwayColors.textSecondary),
+        Text(
+          AirwayText.tr('Please upload a valid government ID for verification. Aadhaar or any government-issued photo ID is accepted.', 'वेरिफ़िकेशन के लिए वैध सरकारी पहचान पत्र अपलोड करें। आधार या सरकार द्वारा जारी कोई भी फ़ोटो ID स्वीकार है।'),
+          style: const TextStyle(color: AirwayColors.textSecondary),
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
@@ -1093,9 +1093,9 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
           ),
         ],
         const SizedBox(height: 24),
-        const Text(
-          'Note: Your application will be reviewed by our team. You will receive a notification once approved.',
-          style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+        Text(
+          AirwayText.tr('Note: Your application will be reviewed by our team. You will receive a notification once approved.', 'नोट: हमारी टीम आपके आवेदन की समीक्षा करेगी। स्वीकृति मिलने पर आपको नोटिफ़िकेशन मिलेगा।'),
+          style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
         ),
       ],
     );
