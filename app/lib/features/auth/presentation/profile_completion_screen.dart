@@ -117,7 +117,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
       _message(AirwayText.tr('Name and email filled from Google account.', 'Google खाते से नाम और ईमेल भर दिए गए।'));
     } on Exception catch (e) {
       if (!mounted) return;
-      _message('Google Sign-In failed: ${e.toString()}');
+      _message(AirwayText.tr('Google Sign-In failed: ${e.toString()}', 'Google साइन-इन विफल: ${e.toString()}'));
     } finally {
       if (mounted) setState(() => _googleLoading = false);
     }
@@ -170,17 +170,19 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 initialValue: _selectedGender,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: AirwayText.tr('Gender', 'लिंग'),
                   border: OutlineInputBorder(),
                 ),
                 items: _genders
                     .map((g) => DropdownMenuItem(
                           value: g,
-                          child: Text(g
-                              .split('_')
-                              .map((w) => w[0].toUpperCase() + w.substring(1))
-                              .join(' ')),
+                          child: Text({
+                            'male': AirwayText.tr('Male', 'पुरुष'),
+                            'female': AirwayText.tr('Female', 'महिला'),
+                            'other': AirwayText.tr('Other', 'अन्य'),
+                            'prefer_not_to_say': AirwayText.tr('Prefer not to say', 'बताना नहीं चाहते'),
+                          }[g]!),
                         ))
                     .toList(),
                 onChanged: (v) => setState(() => _selectedGender = v),
@@ -224,7 +226,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
               const SizedBox(height: 16),
               Center(
                 child: Text(
-                  'You can update this information later in Settings.',
+                  AirwayText.tr('You can update this information later in Settings.', 'आप यह जानकारी बाद में सेटिंग्स में बदल सकते हैं।'),
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ),
