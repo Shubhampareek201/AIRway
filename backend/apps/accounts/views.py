@@ -577,6 +577,29 @@ class AccountDeletionRequestView(APIView):
             **obligations,
         }, status=status.HTTP_201_CREATED)
 
+    @transaction.atomic
+    def delete(self, request):
+        item = AccountDeletionRequest.objects.select_for_update().filter(
+            user=request.user,
+            status__in=(
+                AccountDeletionRequest.Status.REQUESTED,
+                AccountDeletionRequest.Status.UNDER_REVIEW,
+            ),
+        ).first()
+        if item is None:
+            return Response(
+                {"detail": "There is no active account deletion request to cancel."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item.status = AccountDeletionRequest.Status.CANCELLED
+        item.reviewed_at = timezone.now()
+        item.save(update_fields=["status", "reviewed_at", "updated_at"])
+        return Response({
+            "detail": "Your account deletion request has been cancelled. Your AIRway account remains active.",
+            "status": item.status,
+        })
+
 
 class AccountProfileView(APIView):
     """Update the shared account identity used in customer and worker modes."""
