@@ -602,7 +602,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                             for (final field in visibleFields) buildFormField(field),
                           ],
                           const SizedBox(height: 5),
-                          const Align(
+                          Align(
                             alignment: Alignment.centerLeft,
                             child: Text(AirwayText.tr('Anything we should know?', 'क्या हमें कुछ और जानना चाहिए?'),
                               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AirwayColors.text)),
