@@ -128,12 +128,12 @@ class _SignupScreenState extends State<SignupScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 t('Sign Up', 'साइन अप'),
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 t('Create your account to get started', 'शुरू करने के लिए अपना खाता बनाएँ'),
                 style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
@@ -151,7 +151,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 keyboardType: TextInputType.phone,
                 maxLength: 10,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: t('Mobile Number', 'मोबाइल नंबर'),
                   prefixText: '+91 ',
                   border: OutlineInputBorder(),
@@ -161,7 +161,7 @@ class _SignupScreenState extends State<SignupScreen> {
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: t('Email (Optional)', 'ईमेल (वैकल्पिक)'),
                   border: OutlineInputBorder(),
                 ),
@@ -171,7 +171,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: _referralCodeController,
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: t('Referral Code (Optional)', 'रेफ़रल कोड (वैकल्पिक)'),
                   helperText: t('Enter your friend’s code to receive ₹100 after your first completed service.', 'पहली सेवा पूरी होने पर ₹100 पाने के लिए दोस्त का कोड दर्ज करें।'),
                   border: OutlineInputBorder(),
@@ -219,7 +219,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 value: _privacyAccepted,
                 onChanged: _loading ? null : (value) => setState(() => _privacyAccepted = value ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
+                title: Text(t('I have read and agree to the Privacy Policy', 'मैंने गोपनीयता नीति पढ़ ली है और सहमत हूँ')),
               ),
               Align(
                 alignment: Alignment.centerLeft,
@@ -243,19 +243,19 @@ class _SignupScreenState extends State<SignupScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text(t('Sign Up', 'साइन अप')),
+                      : Text(t('Sign Up', 'साइन अप')),
                 ),
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Already have an account? "),
+                  Text(t("Already have an account? ", "पहले से खाता है? ")),
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).pop();
                     },
-                    child: const Text(t('Login', 'लॉगिन')),
+                    child: Text(t('Login', 'लॉगिन')),
                   ),
                 ],
               ),
