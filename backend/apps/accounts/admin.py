@@ -66,7 +66,7 @@ class CustomerVehicleAdmin(ModelAdmin):
 @admin.register(AccountDeletionRequest)
 class AccountDeletionRequestAdmin(ModelAdmin):
     list_display = ("user", "status", "has_active_bookings", "has_financial_obligations", "active_booking_count", "created_at", "reviewed_at")
-    list_filter = ("status", "has_active_bookings")
+    list_filter = ("status", "has_active_bookings", "has_financial_obligations")
     search_fields = ("user__phone", "user__name")
     readonly_fields = ("user", "created_at", "updated_at", "has_active_bookings", "has_financial_obligations", "active_booking_count")
 
