@@ -65,3 +65,32 @@ class CustomerReferralAPITests(APITestCase):
         self.assertEqual(response.data["new_customer_credit"], "100.00")
         self.assertEqual(response.data["referrer_reward"], "200.00")
         self.assertIn("first service", response.data["reward_condition"].lower())
+
+
+    def test_first_completed_service_credits_both_wallets_once(self):
+        from types import SimpleNamespace
+        from apps.accounts.referrals import reward_referral_for_first_completed_booking
+
+        referral = Referral.objects.create(
+            referrer=self.referrer,
+            referred=self.referred,
+        )
+        completed_booking = SimpleNamespace(
+            status="completed",
+            customer=self.referred,
+            pk=987654,
+        )
+
+        self.assertTrue(reward_referral_for_first_completed_booking(completed_booking))
+        self.assertFalse(reward_referral_for_first_completed_booking(completed_booking))
+
+        referral.refresh_from_db()
+        self.assertTrue(referral.rewarded)
+        self.assertIsNotNone(referral.rewarded_at)
+
+        referrer_wallet = Wallet.objects.get(user=self.referrer)
+        referred_wallet = Wallet.objects.get(user=self.referred)
+        self.assertEqual(str(referrer_wallet.balance), "200.00")
+        self.assertEqual(str(referred_wallet.balance), "100.00")
+        self.assertEqual(WalletTransaction.objects.filter(wallet=referrer_wallet).count(), 1)
+        self.assertEqual(WalletTransaction.objects.filter(wallet=referred_wallet).count(), 1)
