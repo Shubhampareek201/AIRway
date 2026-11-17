@@ -26,10 +26,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import City, Zone
+from apps.catalog.models import Service
 from apps.workers.models import WorkerDocument
 
 from .firebase_service import verify_firebase_token
-from .models import Address, DeviceToken, CustomerVehicle
+from .models import Address, DeviceToken, CustomerVehicle, FavoriteService
 from .serializers import (
     AddressCreateSerializer,
     AddressSerializer,
@@ -42,6 +43,7 @@ from .serializers import (
     ProfileCompletionSerializer,
     AccountProfileUpdateSerializer,
     CustomerVehicleSerializer,
+    FavoriteServiceSerializer,
 )
 
 User = get_user_model()
@@ -1054,6 +1056,74 @@ class LocationReverseView(APIView):
 
         cache.set(key, result, timeout=3600)
         return Response(result)
+
+
+class FavoriteServiceListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        favorites = FavoriteService.objects.filter(
+            user=request.user,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service", "service__category")
+        service_id = request.query_params.get("service_id")
+        if service_id:
+            if not service_id.isdigit():
+                return Response(
+                    {"service_id": ["Enter a valid service ID."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            favorites = favorites.filter(service_id=int(service_id))
+        return Response(
+            FavoriteServiceSerializer(
+                favorites, many=True, context={"request": request}
+            ).data
+        )
+
+    def post(self, request):
+        service_id = request.data.get("service_id")
+        try:
+            service_id = int(service_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"service_id": ["A valid service ID is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        service = Service.objects.filter(
+            pk=service_id,
+            is_active=True,
+            category__is_active=True,
+        ).first()
+        if service is None:
+            return Response(
+                {"detail": "This service is not available to save."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        favorite, created = FavoriteService.objects.get_or_create(
+            user=request.user,
+            service=service,
+        )
+        return Response(
+            FavoriteServiceSerializer(favorite, context={"request": request}).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class FavoriteServiceDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, favorite_id):
+        deleted, _ = FavoriteService.objects.filter(
+            user=request.user,
+            pk=favorite_id,
+        ).delete()
+        if not deleted:
+            return Response(
+                {"detail": "Favorite not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CustomerVehicleListCreateView(APIView):
