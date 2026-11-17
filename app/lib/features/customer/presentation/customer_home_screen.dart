@@ -15,6 +15,8 @@ import 'package:airway/features/notification/data/push_notification_service.dart
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
 import 'package:airway/features/notification/presentation/notification_bell_button.dart';
 import 'package:airway/features/ratings/presentation/ratings_screen.dart';
+import 'package:airway/features/account/presentation/account_profile_screen.dart';
+import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/wallet/presentation/wallet_screen.dart';
 import 'package:airway/features/worker/presentation/worker_application_screen.dart';
 import 'package:airway/features/worker/presentation/worker_dashboard_screen.dart';
@@ -61,6 +63,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   int _tab = 0;
   String _query = '';
   String _customerName = 'there';
+  Map<String, dynamic>? _accountData;
   List<Map<String, dynamic>> _nearbyWorkers = [];
   bool _workersLoading = false;
   String? _workersError;
@@ -465,6 +468,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final data = response['user'] is Map
           ? Map<String, dynamic>.from(response['user'] as Map)
           : Map<String, dynamic>.from(response);
+      if (mounted) setState(() => _accountData = data);
       final fullName = '${data['full_name'] ?? data['name'] ?? ''}'.trim();
       final firstName = '${data['first_name'] ?? ''}'.trim();
       final username = '${data['username'] ?? ''}'.trim();
@@ -500,6 +504,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     } catch (_) {
       // The home screen remains usable if the profile endpoint is temporarily unavailable.
     }
+  }
+
+  Future<void> _editAccountProfile() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const AccountProfileScreen()),
+    );
+    if (changed == true && mounted) await _loadCustomerName();
+  }
+
+  Future<void> _openNotificationPreferences() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const NotificationPreferencesScreen()),
+    );
   }
 
   Future<void> _loadNearbyWorkers(String addressId) async {
@@ -1850,143 +1867,150 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Widget _bookings() => const BookingListScreen();
 
-  Widget _profile(Map<String, dynamic> address) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      const Text(
-        'Profile',
-        style: TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w900,
-          color: _Ui.ink,
+  Widget _profile(Map<String, dynamic> address) {
+    final account = _accountData ?? const <String, dynamic>{};
+    final name = account['name']?.toString().trim();
+    final email = account['email']?.toString().trim();
+    final phone = account['phone']?.toString().trim();
+    final photoUrl = account['photo_url']?.toString();
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          'Profile',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _Ui.ink),
         ),
-      ),
-      const SizedBox(height: 16),
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _Ui.pale,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 24,
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person_outline, color: _Ui.violet),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Your AIRway account',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: _Ui.ink,
-                    ),
-                  ),
-                  Text(
-                    '${_addresses.length} saved addresses',
-                    style: const TextStyle(color: _Ui.sub),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 16),
-
-      // Worker application status
-      if (_workerProfile != null) ...[
-        _buildWorkerStatusCard(),
         const SizedBox(height: 16),
-      ],
-
-      // Show registration only when no application exists
-      if (_workerStatus == null || _workerStatus == 'no_profile') ...[
-        Card(
-          color: Colors.white,
-          elevation: 2,
-          child: ListTile(
-            leading: const Icon(Icons.work, color: _Ui.violet),
-            title: const Text('Become a Worker'),
-            subtitle: const Text('Earn money providing services in your area'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _goToWorkerApplication,
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(color: _Ui.pale, borderRadius: BorderRadius.circular(22)),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: Colors.white,
+                backgroundImage: photoUrl != null && photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                child: photoUrl == null || photoUrl.isEmpty
+                    ? const Icon(Icons.person_outline, color: _Ui.violet, size: 30)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name?.isNotEmpty == true ? name! : 'Your AIRway account',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _Ui.ink)),
+                    if (phone?.isNotEmpty == true)
+                      Text(phone!, style: const TextStyle(color: _Ui.sub)),
+                    if (email?.isNotEmpty == true)
+                      Text(email!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: _Ui.sub, fontSize: 12)),
+                    Text('${_addresses.length} saved addresses', style: const TextStyle(color: _Ui.sub, fontSize: 12)),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Edit personal information',
+                onPressed: _editAccountProfile,
+                icon: const Icon(Icons.edit_outlined, color: _Ui.violet),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
-      ],
-
-      Card(
-        color: Colors.white,
-        elevation: 0,
-        child: Column(
-          children: [
-            ListTile(
-              leading: const Icon(
-                Icons.location_on_outlined,
-                color: _Ui.violet,
-              ),
-              title: const Text('Manage addresses'),
-              subtitle: Text(
-                '${address['full_address'] ?? ''}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+        const SizedBox(height: 16),
+        if (_workerProfile != null) ...[
+          _buildWorkerStatusCard(),
+          const SizedBox(height: 16),
+        ],
+        if (_workerStatus == null || _workerStatus == 'no_profile') ...[
+          Card(
+            color: Colors.white,
+            elevation: 0,
+            child: ListTile(
+              leading: const Icon(Icons.work_outline, color: _Ui.violet),
+              title: const Text('Become a Worker'),
+              subtitle: const Text('Apply to provide services in your area'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _selectAddress,
+              onTap: _goToWorkerApplication,
             ),
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            ListTile(
-              leading: const Icon(
-                Icons.account_balance_wallet_outlined,
-                color: _Ui.violet,
+          ),
+          const SizedBox(height: 8),
+        ],
+        Card(
+          color: Colors.white,
+          elevation: 0,
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person_outline_rounded, color: _Ui.violet),
+                title: const Text('Personal information'),
+                subtitle: const Text('Name, email, profile photo and phone'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _editAccountProfile,
               ),
-              title: const Text('Wallet'),
-              subtitle: const Text('View balance and transactions'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const WalletScreen()),
-                );
-              },
-            ),
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            ListTile(
-              leading: const Icon(Icons.refresh, color: _Ui.violet),
-              title: const Text('Refresh account data'),
-              onTap: _refresh,
-            ),
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            ListTile(
-              leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet),
-              title: const Text('My Ratings'),
-              subtitle: const Text('Rate your service providers'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const RatingsScreen(),
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1, indent: 16, endIndent: 16),
-            ListTile(
-              leading: const Icon(Icons.logout_rounded, color: _Ui.violet),
-              title: const Text('Log out'),
-              onTap: _logout,
-            ),
-          ],
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.location_on_outlined, color: _Ui.violet),
+                title: const Text('Manage addresses'),
+                subtitle: Text('${address['full_address'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _selectAddress,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.calendar_month_outlined, color: _Ui.violet),
+                title: const Text('My Bookings'),
+                subtitle: const Text('Upcoming, active and completed services'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => setState(() => _tab = 1),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet_outlined, color: _Ui.violet),
+                title: const Text('Wallet'),
+                subtitle: const Text('View balance and transactions'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WalletScreen()),
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.rate_review_rounded, color: _Ui.violet),
+                title: const Text('My Ratings'),
+                subtitle: const Text('Your service feedback and ratings'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const RatingsScreen()),
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.notifications_outlined, color: _Ui.violet),
+                title: const Text('Notification preferences'),
+                subtitle: const Text('Control push notifications on this device'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openNotificationPreferences,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.refresh_rounded, color: _Ui.violet),
+                title: const Text('Refresh account data'),
+                onTap: _refresh,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.logout_rounded, color: _Ui.violet),
+                title: const Text('Log out'),
+                onTap: _logout,
+              ),
+            ],
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
   Widget _buildWorkerHomeStatusCard() {
     final status = _workerStatus;
