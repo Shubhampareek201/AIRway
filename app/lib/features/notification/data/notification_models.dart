@@ -89,7 +89,7 @@ class Notification {
       readAt: map['read_at'] != null ? DateTime.parse(map['read_at']) : null,
       createdAt: DateTime.parse(map['created_at']),
       data: data,
-      bookingId: data != null ? data['booking_id'] as int? : null,
+      bookingId: data != null ? int.tryParse(data['booking_id']?.toString() ?? '') : null,
     );
   }
 
