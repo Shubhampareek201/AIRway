@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/core/theme/airway_spacing.dart';
 import 'package:airway/core/widgets/airway_components.dart';
@@ -135,7 +136,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
             .toList();
         if (vehicleBranches.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('No $vehicleSlug categories are configured yet.')),
+            SnackBar(content: Text(AirwayText.tr('No $vehicleSlug categories are configured yet.', '$vehicleSlug की श्रेणियाँ अभी कॉन्फ़िगर नहीं हैं।'))),
           );
           return;
         }
@@ -171,7 +172,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         if (target.length != 1) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('The next category is not configured correctly. Please contact support.'),
+              content: Text(AirwayText.tr('The next category is not configured correctly. Please contact support.', 'अगली श्रेणी सही तरीके से कॉन्फ़िगर नहीं है। कृपया सपोर्ट से संपर्क करें।')),
             ),
           );
           return;
@@ -214,7 +215,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load matching categories: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not load matching categories: $e', 'संबंधित श्रेणियाँ लोड नहीं हो सकीं: $e'))),
         );
         return;
       }
@@ -261,7 +262,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       }
       if (children.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No matching service categories are configured yet.')),
+          SnackBar(content: Text(AirwayText.tr('No matching service categories are configured yet.', 'सेवा की संबंधित श्रेणियाँ अभी कॉन्फ़िगर नहीं हैं।'))),
         );
         return;
       }
@@ -499,11 +500,11 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         children: [
           const Icon(Icons.category_outlined, size: 64, color: AirwayColors.textSecondary),
           const SizedBox(height: 20),
-          const Text('No categories available', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AirwayColors.text)),
+          Text(AirwayText.tr('No categories available', 'कोई श्रेणी उपलब्ध नहीं है'), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AirwayColors.text)),
           const SizedBox(height: 8),
-          const Text('Services for this area will appear here once they are available.', style: TextStyle(color: AirwayColors.textSecondary), textAlign: TextAlign.center),
+          Text(AirwayText.tr('Services for this area will appear here once they are available.', 'इस क्षेत्र में सेवाएँ उपलब्ध होते ही यहाँ दिखाई देंगी।'), style: TextStyle(color: AirwayColors.textSecondary), textAlign: TextAlign.center),
           const SizedBox(height: 20),
-          FilledButton(onPressed: _loadCategories, child: const Text('Retry')),
+          FilledButton(onPressed: _loadCategories, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
         ],
       ),
     ),
@@ -519,7 +520,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           const SizedBox(height: 14),
           Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AirwayColors.textSecondary)),
           const SizedBox(height: 20),
-          FilledButton(onPressed: _loadCategories, child: const Text('Retry')),
+          FilledButton(onPressed: _loadCategories, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
         ],
       ),
     ),
