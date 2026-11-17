@@ -21,6 +21,8 @@ import 'package:airway/features/notification/presentation/notification_bell_butt
 import 'package:airway/features/account/presentation/account_profile_screen.dart';
 import 'package:airway/features/account/presentation/notification_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
+import 'package:airway/features/account/presentation/account_deletion_screen.dart';
+import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
 
@@ -713,6 +715,26 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AccountPreferencesScreen()),
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Terms & Privacy'),
+            subtitle: const Text('Read AIRway terms and privacy information'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.person_off_outlined),
+            title: const Text('Delete account'),
+            subtitle: const Text('Submit a request to close your AIRway account'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AccountDeletionScreen()),
             ),
           ),
           const Divider(height: 1),
