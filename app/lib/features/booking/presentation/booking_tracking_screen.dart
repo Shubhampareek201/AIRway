@@ -181,8 +181,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                         Text(AirwayText.tr('Your professional', 'आपके प्रोफ़ेशनल'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
                         const SizedBox(height: 12),
                         if (_tracking['worker_unavailable'] == true)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 10),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
                             child: Text(
                               AirwayText.tr('This professional is temporarily unavailable. AIRway operations is reviewing your booking.', 'यह प्रोफ़ेशनल अभी उपलब्ध नहीं है। AIRway टीम आपकी बुकिंग की समीक्षा कर रही है।'),
                               style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
@@ -240,8 +240,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                     style: const TextStyle(color: _muted, fontSize: 12)),
                             ]),
                           ),
-                        const Padding(
-                          padding: EdgeInsets.only(top: 12),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
                           child: Text(AirwayText.tr('Your contact details stay private. Contact AIRway Support if you need help.', 'आपकी संपर्क जानकारी निजी रहती है। मदद के लिए AIRway सपोर्ट से संपर्क करें।'),
                               style: TextStyle(color: _muted, fontSize: 11, height: 1.4)),
                         ),
@@ -251,7 +251,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _line)),
-                    child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Icon(Icons.location_searching_rounded, color: _green),
                       SizedBox(width: 10),
                       Expanded(child: Text(
@@ -262,7 +262,7 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                   ),
                   const SizedBox(height: 14),
                   if (!_terminal)
-                    const Center(child: Text(AirwayText.tr('Status refreshes automatically every 20 seconds', 'स्थिति हर 20 सेकंड में अपने आप अपडेट होती है'),
+                    Center(child: Text(AirwayText.tr('Status refreshes automatically every 20 seconds', 'स्थिति हर 20 सेकंड में अपने आप अपडेट होती है'),
                         style: TextStyle(color: _muted, fontSize: 11))),
                 ],
               ),
@@ -270,17 +270,36 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     );
   }
 
-  Widget _step(String title, bool complete, String detail) => Padding(
-        padding: const EdgeInsets.only(bottom: 18),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(complete ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-              color: complete ? _green : const Color(0xFFB9C2BB), size: 22),
-          const SizedBox(width: 11),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
-            const SizedBox(height: 3),
-            Text(detail, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
-          ])),
-        ]),
-      );
+  Widget _step(String title, bool complete, String detail) {
+    final titleHindi = switch (title) {
+      'Booking placed' => 'बुकिंग की गई',
+      'Professional assigned' => 'प्रोफ़ेशनल असाइन हुआ',
+      'Service started' => 'सेवा शुरू हुई',
+      'Service completed' => 'सेवा पूरी हुई',
+      _ => title,
+    };
+    final detailHindi = switch (detail) {
+      'Your service request has been received.' => 'आपकी सेवा रिक्वेस्ट मिल गई है।',
+      'A professional has accepted your service.' => 'एक प्रोफ़ेशनल ने आपकी सेवा स्वीकार कर ली है।',
+      'We are looking for an available professional.' => 'हम उपलब्ध प्रोफ़ेशनल खोज रहे हैं।',
+      'Your professional has started the job.' => 'आपके प्रोफ़ेशनल ने काम शुरू कर दिया है।',
+      'Updates when work begins.' => 'काम शुरू होने पर अपडेट मिलेगा।',
+      'Your service is complete.' => 'आपकी सेवा पूरी हो गई है।',
+      'Waiting for completion.' => 'सेवा पूरी होने की प्रतीक्षा है।',
+      _ => detail,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(complete ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+            color: complete ? _green : const Color(0xFFB9C2BB), size: 22),
+        const SizedBox(width: 11),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(AirwayText.tr(title, titleHindi), style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
+          const SizedBox(height: 3),
+          Text(AirwayText.tr(detail, detailHindi), style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+        ])),
+      ]),
+    );
+  }
 }
