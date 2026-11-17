@@ -307,11 +307,12 @@ class FavoriteServiceSerializer(serializers.ModelSerializer):
     service_id = serializers.IntegerField(source="service.id", read_only=True)
     service_title = serializers.CharField(source="service.title", read_only=True)
     category_title = serializers.CharField(source="service.category.title", read_only=True)
+    service_is_active = serializers.BooleanField(source="service.is_active", read_only=True)
     image = serializers.SerializerMethodField()
 
     class Meta:
         model = FavoriteService
-        fields = ["id", "service_id", "service_title", "category_title", "image", "created_at"]
+        fields = ["id", "service_id", "service_title", "category_title", "service_is_active", "image", "created_at"]
         read_only_fields = fields
 
     def get_image(self, obj):
