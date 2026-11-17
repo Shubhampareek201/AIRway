@@ -153,7 +153,10 @@ class FirebaseLoginView(APIView):
                     **lookup,
                     defaults=defaults,
                 )
-                if created:
+                if created or (
+                    request.data.get("terms_accepted") is True
+                    and request.data.get("privacy_accepted") is True
+                ):
                     _record_legal_consent(user, request)
                 referral_code = request.data.get("referral_code")
                 if referral_code and not created:
