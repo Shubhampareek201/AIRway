@@ -800,7 +800,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
             border: const OutlineInputBorder(),
             errorText: _fieldErrors['gender'],
           ),
-          items: const [
+          items: [
             DropdownMenuItem(value: 'male', child: Text(AirwayText.tr('Male', 'पुरुष'))),
             DropdownMenuItem(value: 'female', child: Text(AirwayText.tr('Female', 'महिला'))),
             DropdownMenuItem(value: 'other', child: Text(AirwayText.tr('Other', 'अन्य'))),
@@ -1027,7 +1027,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           initialValue: _selectedIdType,
-          items: const [
+          items: [
             DropdownMenuItem(value: 'aadhaar', child: Text(AirwayText.tr('Aadhaar (Recommended)', 'आधार (अनुशंसित)'))),
             DropdownMenuItem(value: 'id', child: Text(AirwayText.tr('Other ID', 'अन्य पहचान पत्र'))),
           ],
