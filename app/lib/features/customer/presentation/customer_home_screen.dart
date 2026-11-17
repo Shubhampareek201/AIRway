@@ -1976,7 +1976,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 subtitle: const Text('Services you saved for later'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const FavoriteServicesScreen()),
+                  MaterialPageRoute(builder: (_) => FavoriteServicesScreen(addressId: int.tryParse('${address['id']}'))),
                 ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
