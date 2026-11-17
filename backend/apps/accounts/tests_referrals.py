@@ -135,3 +135,8 @@ class CustomerReferralAPITests(APITestCase):
         self.assertEqual(str(referred_wallet.balance), "100.00")
         self.assertEqual(WalletTransaction.objects.filter(wallet=referrer_wallet).count(), 1)
         self.assertEqual(WalletTransaction.objects.filter(wallet=referred_wallet).count(), 1)
+        from apps.notifications.models import Notification
+        self.assertEqual(
+            Notification.objects.filter(type=Notification.Type.REFERRAL_REWARD).count(),
+            2,
+        )
