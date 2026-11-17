@@ -824,7 +824,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Card(
+          Card(
             child: ListTile(
               leading: Icon(Icons.check_circle),
               title: Text(AirwayText.tr('Job Status', 'जॉब की स्थिति')),
@@ -850,8 +850,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
 
     if (status == BookingStatus.confirmed) {
       return Card(
-        child: const ListTile(
-          leading: Icon(Icons.pending_outlined),
+        child: ListTile(
+          leading: const Icon(Icons.pending_outlined),
           title: Text(AirwayText.tr('Job Status', 'जॉब की स्थिति')),
           subtitle: Text(AirwayText.tr('Payment pending - awaiting worker assignment', 'भुगतान लंबित है - वर्कर असाइन होने की प्रतीक्षा है')),
         ),
