@@ -20,6 +20,7 @@ import 'package:airway/features/account/presentation/notification_preferences_sc
 import 'package:airway/features/account/presentation/account_preferences_screen.dart';
 import 'package:airway/features/account/presentation/account_referrals_screen.dart';
 import 'package:airway/features/account/presentation/account_deletion_screen.dart';
+import 'package:airway/features/account/presentation/legal_documents_screen.dart';
 import 'package:airway/features/account/presentation/account_security_screen.dart';
 import 'package:airway/features/account/presentation/payment_options_screen.dart';
 import 'package:airway/features/account/presentation/help_support_screen.dart';
@@ -2048,6 +2049,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
+                ),
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.description_outlined, color: _Ui.violet),
+                title: const Text('Terms & Privacy'),
+                subtitle: const Text('Read AIRway terms and privacy information'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LegalDocumentsScreen()),
                 ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
