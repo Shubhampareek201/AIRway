@@ -26,6 +26,7 @@ class AuthApi {
     required String password,
     required String confirmPassword,
     String? email,
+    String? referralCode,
   }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
@@ -42,6 +43,7 @@ class AuthApi {
           'password': password,
           'confirm_password': confirmPassword,
           if (email != null && email.isNotEmpty) 'email': email,
+          if (referralCode != null && referralCode.trim().isNotEmpty) 'referral_code': referralCode.trim().toUpperCase(),
         }),
       );
 
