@@ -1018,8 +1018,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
-                'See All',
+              child: Text(
+                AirwayText.tr('See All', 'सभी देखें'),
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
               ),
             ),
@@ -1849,8 +1849,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: const Text(
-                                      'Book Now',
+                                    child: Text(
+                                      AirwayText.tr('Book Now', 'अभी बुक करें'),
                                       style: TextStyle(
                                         color: _Ui.violet,
                                         fontSize: 11.5,
