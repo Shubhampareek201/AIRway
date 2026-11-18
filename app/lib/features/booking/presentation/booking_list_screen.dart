@@ -281,7 +281,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
   }
 
   Widget _summaryStrip() {
-    final individual = bookings.where((booking) => booking.orderId == null);
+    final individual = bookings.where((booking) =>
+        _orderListUnavailable || booking.orderId == null);
     final allCount = orders.length + individual.length;
     final upcomingCount = orders.where((order) => _orderCategory(order) == 'upcoming').length +
         individual.where((booking) => _bookingCategory(booking.status) == 'upcoming').length;
