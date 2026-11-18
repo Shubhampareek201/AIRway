@@ -1573,6 +1573,10 @@ class CustomerOrderDetailView(APIView):
         return Response({
             "id": order.id,
             "status": order.status,
+            "scheduling": (order.metadata or {}).get(
+                "scheduling_v1",
+                {"mode": "separate", "shared_appointment_at": None},
+            ),
             "currency": order.currency,
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
@@ -1701,6 +1705,10 @@ class CustomerOrderListView(APIView):
                 "total_amount": str(order.total_amount),
                 "created_at": order.created_at,
                 "item_count": order.items.count(),
+                "scheduling": (order.metadata or {}).get(
+                    "scheduling_v1",
+                    {"mode": "separate", "shared_appointment_at": None},
+                ),
                 "items": [
                     {
                         "booking_id": item.booking_id,
