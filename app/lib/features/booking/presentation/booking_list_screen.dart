@@ -211,9 +211,11 @@ class _BookingListScreenState extends State<BookingListScreen> {
                     _emptyState(
                       selectedFilter == 'history'
                         ? AirwayText.tr('No booking history', 'बुकिंग इतिहास नहीं है')
-                        : selectedFilter == 'upcoming'
-                          ? AirwayText.tr('Nothing upcoming yet', 'अभी कोई आगामी बुकिंग नहीं है')
-                          : AirwayText.tr('No bookings yet', 'अभी कोई बुकिंग नहीं है'),
+                        : selectedFilter == 'in_progress'
+                          ? AirwayText.tr('No services in progress', 'अभी कोई सेवा जारी नहीं है')
+                          : selectedFilter == 'upcoming'
+                            ? AirwayText.tr('Nothing upcoming yet', 'अभी कोई आगामी बुकिंग नहीं है')
+                            : AirwayText.tr('No bookings yet', 'अभी कोई बुकिंग नहीं है'),
                       AirwayText.tr('Your upcoming, active and completed services will appear here.', 'आपकी आने वाली, चालू और पूरी हो चुकी सेवाएँ यहाँ दिखाई देंगी।'),
                       Icons.event_note_rounded, widget.onBookNew ?? _goBack,
                       actionLabel: AirwayText.tr('Book a service', 'सेवा बुक करें'))
@@ -337,70 +339,145 @@ class _BookingListScreenState extends State<BookingListScreen> {
 
   Widget orderCard(Map<String, dynamic> order) {
     final id = int.tryParse(order['id']?.toString() ?? '');
-    final statusValue = order['status']?.toString() ?? '';
-    final ready = order['ready_for_payment'] == true;
-    final paid = statusValue == 'paid';
     final total = double.tryParse(order['total_amount']?.toString() ?? '') ?? 0;
     final items = (order['items'] as List? ?? [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
-    final serviceNames = items.map((item) => item['service_title']?.toString() ?? '')
-        .where((name) => name.isNotEmpty).toSet().toList();
-    final serviceSummary = serviceNames.take(2).join(' • ');
-    final status = paid
-      ? AirwayText.tr('Paid', 'भुगतान हो गया')
-      : ready
-        ? AirwayText.tr('Payment due', 'भुगतान बाकी')
-        : statusValue == 'partially_cancelled'
-          ? AirwayText.tr('Partially cancelled', 'आंशिक रूप से रद्द')
-          : AirwayText.tr('In progress', 'जारी');
-    final color = statusColor(statusValue);
-    final orderDate = items.isNotEmpty
-        ? DateTime.tryParse(items.first['scheduled_at']?.toString() ?? '')
-        : _orderDate(order);
+    final statuses = items
+        .map((item) => item['status']?.toString().toLowerCase() ?? '')
+        .where((status) => status.isNotEmpty)
+        .toList();
+
+    String serviceStatus;
+    if (statuses.isNotEmpty && statuses.every((status) => status == BookingStatus.completed)) {
+      serviceStatus = BookingStatus.completed;
+    } else if (statuses.isNotEmpty && statuses.every((status) => status == BookingStatus.cancelled)) {
+      serviceStatus = BookingStatus.cancelled;
+    } else if (statuses.any((status) => status == BookingStatus.inProgress)) {
+      serviceStatus = BookingStatus.inProgress;
+    } else if (statuses.any((status) => status == BookingStatus.assigned)) {
+      serviceStatus = BookingStatus.assigned;
+    } else if (statuses.any((status) => status == BookingStatus.confirmed)) {
+      serviceStatus = BookingStatus.confirmed;
+    } else {
+      serviceStatus = BookingStatus.pending;
+    }
+
+    String paymentStatus;
+    Color paymentColor;
+    if (order['ready_for_balance'] == true) {
+      paymentStatus = AirwayText.tr('Balance due', 'शेष भुगतान बाकी');
+      paymentColor = const Color(0xFFB7791F);
+    } else if (order['ready_for_advance'] == true) {
+      paymentStatus = AirwayText.tr('30% advance due', '30% अग्रिम बाकी');
+      paymentColor = const Color(0xFFB7791F);
+    } else if (order['balance_paid'] == true) {
+      paymentStatus = AirwayText.tr('Fully paid', 'पूरा भुगतान');
+      paymentColor = const Color(0xFF2E7D52);
+    } else if (order['advance_paid'] == true) {
+      paymentStatus = AirwayText.tr('Advance paid', 'अग्रिम भुगतान');
+      paymentColor = const Color(0xFF2E7D52);
+    } else {
+      paymentStatus = AirwayText.tr('Payment pending', 'भुगतान लंबित');
+      paymentColor = sub;
+    }
+
+    final orderDate = _orderDate(order);
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(17),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: id == null ? null : () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => CustomerOrderScreen(orderId: id))),
+        borderRadius: BorderRadius.circular(17),
+        onTap: id == null ? null : () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CustomerOrderScreen(orderId: id)),
+        ),
         child: Container(
-          padding: const EdgeInsets.all(13),
+          padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16), border: Border.all(color: line),
-            boxShadow: const [BoxShadow(color: Color(0x0714211B), blurRadius: 8, offset: Offset(0, 2))]),
-          child: Row(children: [
-            Container(width: 42, height: 42,
-              decoration: const BoxDecoration(color: greenSoft, shape: BoxShape.circle),
-              child: const Icon(Icons.home_repair_service_rounded, color: green, size: 21)),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: line),
+            boxShadow: const [
+              BoxShadow(color: Color(0x0714211B), blurRadius: 10, offset: Offset(0, 3)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(children: [
-                Expanded(child: Text(AirwayText.tr('Order #$id', 'ऑर्डर #$id'),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: ink))),
-                _statusPill(status, color),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(color: greenSoft, shape: BoxShape.circle),
+                  child: const Icon(Icons.home_repair_service_rounded, color: green, size: 21),
+                ),
+                const SizedBox(width: 11),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(AirwayText.tr('Order #' + (id?.toString() ?? '—'), 'ऑर्डर #' + (id?.toString() ?? '—')),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: ink)),
+                    if (orderDate.millisecondsSinceEpoch != 0)
+                      Text(DateFormat('EEE, dd MMM yyyy • hh:mm a').format(orderDate.toLocal()),
+                        style: const TextStyle(fontSize: 10.5, color: sub)),
+                  ],
+                )),
+                const Icon(Icons.chevron_right_rounded, color: sub),
               ]),
-              const SizedBox(height: 5),
-              Text(
-                serviceSummary.isNotEmpty
-                    ? (serviceNames.length > 2 ? '$serviceSummary + ${serviceNames.length - 2} more' : serviceSummary)
-                    : AirwayText.tr('${order['item_count'] ?? 0} services', '${order['item_count'] ?? 0} सेवाएँ'),
-                maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11.5, color: sub)),
-              if (orderDate != null) ...[
-                const SizedBox(height: 5),
-                Text(DateFormat('EEE, dd MMM yyyy • hh:mm a').format(orderDate.toLocal()),
-                  style: const TextStyle(fontSize: 10.5, color: sub)),
-              ],
-              const SizedBox(height: 5),
-              Text('₹${total.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: green)),
-            ])),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, color: sub),
-          ]),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 7,
+                runSpacing: 6,
+                children: [
+                  _statusPill(localizedStatus(serviceStatus), statusColor(serviceStatus)),
+                  _statusPill(paymentStatus, paymentColor),
+                ],
+              ),
+              const SizedBox(height: 11),
+              for (final item in items.take(3)) Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Row(children: [
+                  const Icon(Icons.circle, size: 5, color: green),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(
+                    item['service_title']?.toString() ?? AirwayText.tr('Service', 'सेवा'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11.5, color: ink, fontWeight: FontWeight.w700),
+                  )),
+                  const SizedBox(width: 8),
+                  Text(
+                    localizedStatus(item['status']?.toString() ?? ''),
+                    style: TextStyle(fontSize: 10, color: statusColor(item['status']?.toString() ?? ''), fontWeight: FontWeight.w700),
+                  ),
+                ]),
+              ),
+              if (items.length > 3)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    AirwayText.tr(
+                      '+ ' + (items.length - 3).toString() + ' more services',
+                      '+ ' + (items.length - 3).toString() + ' अन्य सेवाएँ',
+                    ),
+                    style: const TextStyle(fontSize: 10.5, color: sub),
+                  ),
+                ),
+              const Divider(height: 15, color: line),
+              Row(children: [
+                Expanded(child: Text(
+                  AirwayText.tr(
+                    items.length.toString() + ' services in this order',
+                    'इस ऑर्डर में ' + items.length.toString() + ' सेवाएँ',
+                  ),
+                  style: const TextStyle(fontSize: 10.5, color: sub),
+                )),
+                Text('₹' + total.toStringAsFixed(0),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: ink)),
+              ]),
+            ],
+          ),
         ),
       ),
     );
