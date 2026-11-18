@@ -29,6 +29,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   bool loading = true;
   bool busy = false;
   String? error;
+  String _scheduleMode = 'separate';
   final Map<int, DateTime> dates = {};
   final Map<int, TimeOfDay> times = {};
   final Map<int, TimeOfDay> dropTimes = {};
@@ -66,19 +67,101 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     if (date == null || time == null || !_slotConfirmed.contains(sourceId)) return;
     final sourceItems = items.where((item) => item['id'] == sourceId).toList();
     final sourceUsesPickupDrop = sourceItems.isNotEmpty && sourceItems.first['booking_mode'] == 'pickup_drop';
+    final sourceDropTime = sourceUsesPickupDrop ? dropTimes[sourceId] : null;
     setState(() {
       for (final item in items) {
         final id = item['id'] as int;
         dates[id] = date;
         times[id] = time;
-        if (sourceUsesPickupDrop && item['booking_mode'] == 'pickup_drop') {
-          dropTimes[id] = dropTimes[sourceId]!;
+        if (sourceDropTime != null &&
+            item['booking_mode'] == 'pickup_drop') {
+          dropTimes[id] = sourceDropTime;
         }
         _slotConfirmed.add(id);
       }
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(airway_localization.AirwayText.tr('This date and time has been applied to every service. Availability will be checked for each service at checkout.', 'यह तारीख और समय सभी सेवाओं पर लागू कर दिया गया है। चेकआउट पर हर सेवा की उपलब्धता जाँची जाएगी।'))),
+    );
+  }
+
+  Widget scheduleModeCard() {
+    if (items.length < 2) return const SizedBox.shrink();
+    final sameAppointment = _scheduleMode == 'same_appointment';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            airway_localization.AirwayText.tr(
+              'How would you like to schedule?',
+              'आप सेवाओं का समय कैसे रखना चाहेंगे?',
+            ),
+            style: const TextStyle(
+              color: ink, fontWeight: FontWeight.w900, fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: Text(airway_localization.AirwayText.tr(
+                  'One appointment for all',
+                  'सभी सेवाओं के लिए एक समय',
+                )),
+                selected: sameAppointment,
+                onSelected: busy ? null : (_) => setState(() {
+                  _scheduleMode = 'same_appointment';
+                }),
+                selectedColor: AirwayColors.primarySoft,
+                labelStyle: TextStyle(
+                  color: sameAppointment ? violet : ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                ),
+              ),
+              ChoiceChip(
+                label: Text(airway_localization.AirwayText.tr(
+                  'Different appointments',
+                  'अलग-अलग समय',
+                )),
+                selected: !sameAppointment,
+                onSelected: busy ? null : (_) => setState(() {
+                  _scheduleMode = 'separate';
+                }),
+                selectedColor: AirwayColors.primarySoft,
+                labelStyle: TextStyle(
+                  color: !sameAppointment ? violet : ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            sameAppointment
+              ? airway_localization.AirwayText.tr(
+                  'Choose a time for one service, then use “Apply this time to all services”. AIRway checks every service separately before creating the order. Different professionals may be assigned.',
+                  'एक सेवा का समय चुनें, फिर “यह समय सभी सेवाओं पर लागू करें” चुनें। ऑर्डर बनने से पहले AIRway हर सेवा की उपलब्धता अलग से जाँचेगा। अलग-अलग प्रोफेशनल मिल सकते हैं।',
+                )
+              : airway_localization.AirwayText.tr(
+                  'Choose a date and time separately for each service.',
+                  'हर सेवा के लिए अलग तारीख और समय चुनें।',
+                ),
+            style: const TextStyle(color: sub, fontSize: 11, height: 1.4),
+          ),
+        ],
+      ),
     );
   }
 
@@ -308,7 +391,20 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         }
         return row;
       }).toList();
-      final result = await BookingApi.checkoutCart(items: schedules);
+      if (_scheduleMode == 'same_appointment') {
+        final appointmentTimes = schedules
+            .map((row) => row['scheduled_at']?.toString())
+            .toSet();
+        if (appointmentTimes.length != 1) {
+          throw Exception(
+            'For one shared appointment, apply the same date and time to every service.',
+          );
+        }
+      }
+      final result = await BookingApi.checkoutCart(
+        items: schedules,
+        scheduleMode: _scheduleMode,
+      );
       CustomerCartState.itemCount.value = 0;
       if (!mounted) return;
       setState(() => busy = false);
@@ -415,7 +511,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             ),
             const SizedBox(height: 18),
             addressCard(),
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
+            scheduleModeCard(),
+            const SizedBox(height: 8),
             Row(children: [
               Expanded(child: Text(airway_localization.AirwayText.tr('Your services', 'आपकी सेवाएँ'), style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: ink))),
               Text(items.length.toString() + ' items', style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w700)),
