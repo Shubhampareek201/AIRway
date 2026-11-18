@@ -3814,6 +3814,73 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {order.items.first().booking.scheduled_at},
         )
 
+    def test_shared_appointment_mode_persists_common_schedule(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        shared_time = (timezone.now() + timedelta(days=2)).isoformat()
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "same_appointment",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": shared_time},
+                    {"cart_item_id": second_item.id, "scheduled_at": shared_time},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        self.assertEqual(order.metadata["scheduling_v1"]["mode"], "same_appointment")
+        self.assertIsNotNone(order.metadata["scheduling_v1"]["shared_appointment_at"])
+        self.assertEqual(
+            order.items.values_list("booking__scheduled_at", flat=True).distinct().count(),
+            1,
+        )
+
+    def test_shared_appointment_rejects_different_service_times_atomically(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        first_time = timezone.now() + timedelta(days=2)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "same_appointment",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
+                    {
+                        "cart_item_id": second_item.id,
+                        "scheduled_at": (first_time + timedelta(hours=1)).isoformat(),
+                    },
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("same date and time", response.data["detail"].lower())
+        self.assertTrue(self.cart.items.filter(pk=self.cart_item.id).exists())
+        self.assertTrue(self.cart.items.filter(pk=second_item.id).exists())
+        self.assertFalse(Order.objects.filter(customer=self.customer).exists())
+        self.assertFalse(Booking.objects.filter(customer=self.customer).exists())
+
     def test_multi_service_order_dispatches_each_line_to_its_own_eligible_workers(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
