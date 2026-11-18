@@ -206,7 +206,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(18, 2, 18, 22),
                 children: [
-                  _promoBanner(),
+                  _summaryStrip(),
                   if (filteredOrders.isEmpty && filteredBookings.isEmpty)
                     _emptyState(
                       selectedFilter == 'history'
@@ -245,8 +245,9 @@ class _BookingListScreenState extends State<BookingListScreen> {
 
   Widget _filterTabs() {
     final tabs = [
-      ('all', AirwayText.tr('All Bookings', 'सभी बुकिंग')),
+      ('all', AirwayText.tr('All', 'सभी')),
       ('upcoming', AirwayText.tr('Upcoming', 'आगामी')),
+      ('in_progress', AirwayText.tr('In progress', 'जारी')),
       ('history', AirwayText.tr('History', 'इतिहास')),
     ];
     return Container(
@@ -274,25 +275,43 @@ class _BookingListScreenState extends State<BookingListScreen> {
     );
   }
 
-  Widget _promoBanner() => Container(
-    margin: const EdgeInsets.only(bottom: 15),
-    padding: const EdgeInsets.fromLTRB(15, 15, 12, 13),
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(colors: [Color(0xFFE3F2E9), Color(0xFFF3FAF5)]),
-      borderRadius: BorderRadius.circular(15)),
-    child: Row(children: [
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(AirwayText.tr('A happier home starts here', 'खुशहाल घर की शुरुआत यहाँ से'),
-          style: const TextStyle(fontSize: 16, height: 1.2, fontWeight: FontWeight.w800, color: greenDark)),
-        const SizedBox(height: 6),
-        Text(AirwayText.tr('Manage your services and book again whenever you need.', 'अपनी सेवाएँ संभालें और ज़रूरत पड़ने पर दोबारा बुक करें।'),
-          style: const TextStyle(fontSize: 11.5, height: 1.35, color: sub)),
-      ])),
-      const SizedBox(width: 8),
-      Container(width: 75, height: 68,
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.65), shape: BoxShape.circle),
-        child: const Icon(Icons.home_work_rounded, size: 39, color: Color(0xFF39815A))),
-    ]),
+  Widget _summaryStrip() {
+    final individual = bookings.where((booking) => booking.orderId == null);
+    final allCount = orders.length + individual.length;
+    final upcomingCount = orders.where((order) => _orderCategory(order) == 'upcoming').length +
+        individual.where((booking) => _bookingCategory(booking.status) == 'upcoming').length;
+    final activeCount = orders.where((order) => _orderCategory(order) == 'in_progress').length +
+        individual.where((booking) => _bookingCategory(booking.status) == 'in_progress').length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: line),
+      ),
+      child: Row(children: [
+        _summaryMetric('TOTAL', allCount.toString()),
+        const Spacer(),
+        _summaryMetric('UPCOMING', upcomingCount.toString()),
+        const Spacer(),
+        _summaryMetric('IN PROGRESS', activeCount.toString()),
+      ]),
+    );
+  }
+
+  Widget _summaryMetric(String label, String value) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(value, style: const TextStyle(
+        color: ink, fontSize: 18, fontWeight: FontWeight.w900,
+      )),
+      const SizedBox(height: 2),
+      Text(label, style: const TextStyle(
+        color: sub, fontSize: 8, fontWeight: FontWeight.w800,
+        letterSpacing: .6,
+      )),
+    ],
   );
 
   Widget _sectionLabel(String title) => Padding(
