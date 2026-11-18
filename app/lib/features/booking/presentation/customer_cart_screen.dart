@@ -247,6 +247,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       CustomerCartState.updateFromCart(value);
       if (mounted) setState(() {
         cart = value;
+        if ((value['items'] as List? ?? []).length < 2) {
+          _scheduleMode = 'separate';
+        }
         dates.remove(id);
         times.remove(id);
         dropTimes.remove(id);
@@ -828,7 +831,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 label: Text(airway_localization.AirwayText.tr('Edit service preferences', 'सेवा की पसंद बदलें')),
                 style: OutlinedButton.styleFrom(foregroundColor: violet, side: const BorderSide(color: AirwayColors.borderStrong), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               )),
-              if (scheduled && items.length > 1)
+              if (scheduled &&
+                  items.length > 1 &&
+                  _scheduleMode == 'same_appointment')
                 Align(alignment: Alignment.centerLeft, child: TextButton.icon(
                   onPressed: busy ? null : () => applyScheduleToAll(id),
                   icon: const Icon(Icons.copy_all_rounded, size: 16),
