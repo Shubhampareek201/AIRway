@@ -316,11 +316,15 @@ class BookingApi {
 
   static Future<Map<String, dynamic>> checkoutCart({
     required List<Map<String, dynamic>> items,
+    String scheduleMode = 'separate',
   }) async {
     final result = await request(
       '/api/v1/bookings/cart/checkout/',
       method: 'POST',
-      data: {'items': items},
+      data: {
+        'items': items,
+        'schedule_mode': scheduleMode,
+      },
     );
     return Map<String, dynamic>.from(result);
   }
