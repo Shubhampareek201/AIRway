@@ -61,28 +61,101 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     return groups;
   }
 
-  void applyScheduleToAll(int sourceId) {
+  Future<void> applyScheduleToAll(int sourceId) async {
     final date = dates[sourceId];
     final time = times[sourceId];
     if (date == null || time == null || !_slotConfirmed.contains(sourceId)) return;
+
     final sourceItems = items.where((item) => item['id'] == sourceId).toList();
-    final sourceUsesPickupDrop = sourceItems.isNotEmpty && sourceItems.first['booking_mode'] == 'pickup_drop';
+    final sourceUsesPickupDrop = sourceItems.isNotEmpty &&
+        sourceItems.first['booking_mode'] == 'pickup_drop';
     final sourceDropTime = sourceUsesPickupDrop ? dropTimes[sourceId] : null;
-    setState(() {
+    final sharedStart = DateTime(
+      date.year, date.month, date.day, time.hour, time.minute,
+    );
+
+    setState(() => busy = true);
+    try {
+      // Validate the proposed common start against every service before
+      // marking any cart line as scheduled. Checkout repeats these checks.
       for (final item in items) {
         final id = item['id'] as int;
-        dates[id] = date;
-        times[id] = time;
-        if (sourceDropTime != null &&
-            item['booking_mode'] == 'pickup_drop') {
-          dropTimes[id] = sourceDropTime;
+        final mode = item['booking_mode']?.toString() ?? 'scheduled';
+        TimeOfDay? targetDrop = dropTimes[id];
+        if (sourceDropTime != null && mode == 'pickup_drop') {
+          targetDrop = sourceDropTime;
         }
-        _slotConfirmed.add(id);
+        DateTime? dropAt;
+        if (mode == 'pickup_drop') {
+          if (targetDrop == null) {
+            throw Exception(
+              'Choose a drop-off time for ${item['service_title'] ?? 'this service'} first.',
+            );
+          }
+          dropAt = DateTime(
+            date.year, date.month, date.day,
+            targetDrop.hour, targetDrop.minute,
+          );
+          if (!dropAt.isAfter(sharedStart)) {
+            throw Exception(
+              'Drop-off must be later than the shared pickup time for '
+              '${item['service_title'] ?? 'this service'}.',
+            );
+          }
+        }
+
+        final serviceId = int.tryParse(item['service']?.toString() ?? '');
+        final addressId = int.tryParse(cart?['address']?.toString() ?? '');
+        if (serviceId == null || addressId == null) {
+          throw Exception('A service or address is missing. Refresh your cart and try again.');
+        }
+        final availability = await BookingApi.checkAvailability(
+          serviceId: serviceId,
+          scheduledAt: sharedStart,
+          dropScheduledAt: dropAt,
+          variantId: int.tryParse(item['variant']?.toString() ?? ''),
+          addressId: addressId,
+          quantity: int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
+          bookingMode: mode,
+          categoryAnswers: Map<String, dynamic>.from(
+            item['category_answers'] as Map? ?? const {},
+          ),
+        );
+        if (availability['available'] != true) {
+          throw Exception(
+            '${item['service_title'] ?? 'A service'} is not available at this shared time. '
+            '${availability['message'] ?? 'Choose another time or schedule services separately.'}',
+          );
+        }
       }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(airway_localization.AirwayText.tr('This date and time has been applied to every service. Availability will be checked for each service at checkout.', 'यह तारीख और समय सभी सेवाओं पर लागू कर दिया गया है। चेकआउट पर हर सेवा की उपलब्धता जाँची जाएगी।'))),
-    );
+
+      if (!mounted) return;
+      setState(() {
+        for (final item in items) {
+          final id = item['id'] as int;
+          dates[id] = date;
+          times[id] = time;
+          if (sourceDropTime != null &&
+              item['booking_mode'] == 'pickup_drop') {
+            dropTimes[id] = sourceDropTime;
+          }
+          _slotConfirmed.add(id);
+        }
+        busy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(airway_localization.AirwayText.tr(
+          'This shared time is available for every service.',
+          'यह साझा समय सभी सेवाओं के लिए उपलब्ध है।',
+        ))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   Widget scheduleModeCard() {
