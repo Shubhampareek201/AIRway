@@ -350,6 +350,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
 
   Widget orderCard(Map<String, dynamic> order) {
     final id = int.tryParse(order['id']?.toString() ?? '');
+    final orderStatus = order['status']?.toString().toLowerCase() ?? '';
     final total = double.tryParse(order['total_amount']?.toString() ?? '') ?? 0;
     final items = (order['items'] as List? ?? [])
         .whereType<Map>()
@@ -383,12 +384,15 @@ class _BookingListScreenState extends State<BookingListScreen> {
     } else if (order['ready_for_advance'] == true) {
       paymentStatus = AirwayText.tr('30% advance due', '30% अग्रिम बाकी');
       paymentColor = const Color(0xFFB7791F);
-    } else if (order['balance_paid'] == true) {
+    } else if (order['balance_paid'] == true || orderStatus == 'paid') {
       paymentStatus = AirwayText.tr('Fully paid', 'पूरा भुगतान');
       paymentColor = const Color(0xFF2E7D52);
     } else if (order['advance_paid'] == true) {
       paymentStatus = AirwayText.tr('Advance paid', 'अग्रिम भुगतान');
       paymentColor = const Color(0xFF2E7D52);
+    } else if (order['ready_for_payment'] == true) {
+      paymentStatus = AirwayText.tr('Payment due', 'भुगतान बाकी');
+      paymentColor = const Color(0xFFB7791F);
     } else {
       paymentStatus = AirwayText.tr('Payment pending', 'भुगतान लंबित');
       paymentColor = sub;
