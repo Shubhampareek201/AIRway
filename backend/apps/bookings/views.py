@@ -1079,6 +1079,13 @@ class CustomerCheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        schedule_mode = str(request.data.get("schedule_mode", "separate")).strip().lower()
+        if schedule_mode not in ("separate", "same_appointment"):
+            return Response(
+                {"schedule_mode": "Choose separate or same_appointment."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         prepared = []
         for item in items:
             try:
@@ -1114,8 +1121,22 @@ class CustomerCheckoutView(APIView):
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
 
-        # Each cart line is an independently scheduled service. Overlapping
-        # start times are allowed; dispatch assigns each line to an eligible worker.
+        # A shared appointment means every service starts at the same instant.
+        # Each service is still validated independently for its own duration,
+        # booking mode, zone and worker eligibility. Worker assignment remains
+        # independent; a shared start time never promises one common worker.
+        shared_appointment_at = None
+        if schedule_mode == "same_appointment":
+            scheduled_values = [
+                serializer.validated_data.get("scheduled_at")
+                for _, serializer in prepared
+            ]
+            if any(value is None for value in scheduled_values) or len(set(scheduled_values)) != 1:
+                return Response(
+                    {"detail": "For one shared appointment, choose the exact same date and time for every service."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            shared_appointment_at = scheduled_values[0]
 
         order = Order.objects.create(
             customer=request.user,
@@ -1304,6 +1325,13 @@ class CustomerCheckoutView(APIView):
             })
         order.metadata = {
             **(order.metadata or {}),
+            "scheduling_v1": {
+                "mode": schedule_mode,
+                "shared_appointment_at": (
+                    shared_appointment_at.isoformat()
+                    if shared_appointment_at is not None else None
+                ),
+            },
             "payment_allocation_v1": {
                 "percentage": str(advance_percentage),
                 "advance_total": str(advance_total),
