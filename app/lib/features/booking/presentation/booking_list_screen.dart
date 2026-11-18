@@ -93,6 +93,13 @@ class _BookingListScreenState extends State<BookingListScreen> {
     if (statuses.any((status) => status == BookingStatus.inProgress)) {
       return 'in_progress';
     }
+    // A completed service order still needs attention while an advance,
+    // balance or legacy payment is due; keep it out of History until settled.
+    if (order['ready_for_advance'] == true ||
+        order['ready_for_balance'] == true ||
+        order['ready_for_payment'] == true) {
+      return 'upcoming';
+    }
     if (statuses.every(_isHistoryStatus)) return 'history';
     return 'upcoming';
   }
