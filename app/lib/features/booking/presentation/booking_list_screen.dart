@@ -26,6 +26,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
   List<Booking> bookings = [];
   List<Map<String, dynamic>> orders = [];
   bool loading = true;
+  bool _orderListUnavailable = false;
   String? error;
   int? trackingId;
   String selectedFilter = 'all';
@@ -41,14 +42,16 @@ class _BookingListScreenState extends State<BookingListScreen> {
     try {
       final result = await BookingApi.listBookings();
       List<Map<String, dynamic>> parentOrders = [];
+      var orderListUnavailable = false;
       try {
         parentOrders = await BookingApi.listOrders();
       } catch (_) {
-        // Keep individual bookings visible if the parent-order endpoint is unavailable.
+        orderListUnavailable = true;
       }
       if (mounted) setState(() {
         bookings = result;
         orders = parentOrders;
+        _orderListUnavailable = orderListUnavailable;
         loading = false;
       });
     } catch (e) {
@@ -73,7 +76,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
 
   List<Booking> get filteredBookings => bookings
       .where((booking) =>
-          booking.orderId == null &&
+          (_orderListUnavailable || booking.orderId == null) &&
           _matchesSelectedCategory(_bookingCategory(booking.status)))
       .toList()
     ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
@@ -293,11 +296,11 @@ class _BookingListScreenState extends State<BookingListScreen> {
         border: Border.all(color: line),
       ),
       child: Row(children: [
-        _summaryMetric('TOTAL', allCount.toString()),
+        _summaryMetric(AirwayText.tr('TOTAL', 'कुल'), allCount.toString()),
         const Spacer(),
-        _summaryMetric('UPCOMING', upcomingCount.toString()),
+        _summaryMetric(AirwayText.tr('UPCOMING', 'आगामी'), upcomingCount.toString()),
         const Spacer(),
-        _summaryMetric('IN PROGRESS', activeCount.toString()),
+        _summaryMetric(AirwayText.tr('IN PROGRESS', 'जारी'), activeCount.toString()),
       ]),
     );
   }
