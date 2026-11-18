@@ -61,37 +61,55 @@ class _BookingListScreenState extends State<BookingListScreen> {
     'refunded', 'failed', 'closed',
   }.contains(status.toLowerCase());
 
-  bool _matchesFilter(String status) {
-    if (selectedFilter == 'all') return true;
-    final history = _isHistoryStatus(status);
-    return selectedFilter == 'history' ? history : !history;
+  String _bookingCategory(String status) {
+    final value = status.toLowerCase();
+    if (_isHistoryStatus(value)) return 'history';
+    if (value == BookingStatus.inProgress) return 'in_progress';
+    return 'upcoming';
   }
 
+  bool _matchesSelectedCategory(String category) =>
+      selectedFilter == 'all' || selectedFilter == category;
+
   List<Booking> get filteredBookings => bookings
-      .where((b) => b.orderId == null && _matchesFilter(b.status)).toList()
+      .where((booking) =>
+          booking.orderId == null &&
+          _matchesSelectedCategory(_bookingCategory(booking.status)))
+      .toList()
     ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
 
-  bool _orderIsHistory(Map<String, dynamic> order) {
-    final items = (order['items'] as List? ?? [])
+  String _orderCategory(Map<String, dynamic> order) {
+    final statuses = (order['items'] as List? ?? [])
         .whereType<Map>()
         .map((item) => item['status']?.toString().toLowerCase() ?? '')
+        .where((status) => status.isNotEmpty)
         .toList();
-    if (items.isNotEmpty) {
-      return items.every((status) => _isHistoryStatus(status));
+    if (statuses.isEmpty) {
+      return _bookingCategory(order['status']?.toString() ?? '');
     }
-    return _isHistoryStatus(order['status']?.toString() ?? '');
+    if (statuses.any((status) => status == BookingStatus.inProgress)) {
+      return 'in_progress';
+    }
+    if (statuses.every(_isHistoryStatus)) return 'history';
+    return 'upcoming';
   }
 
   List<Map<String, dynamic>> get filteredOrders => orders
-      .where((order) => selectedFilter == 'all' ||
-          (selectedFilter == 'history' ? _orderIsHistory(order) : !_orderIsHistory(order)))
+      .where((order) => _matchesSelectedCategory(_orderCategory(order)))
       .toList()
     ..sort((a, b) => _orderDate(b).compareTo(_orderDate(a)));
 
-  DateTime _orderDate(Map<String, dynamic> order) =>
-      DateTime.tryParse(order['scheduled_at']?.toString() ?? '') ??
-      DateTime.tryParse(order['created_at']?.toString() ?? '') ??
-      DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _orderDate(Map<String, dynamic> order) {
+    final scheduled = (order['items'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => DateTime.tryParse(item['scheduled_at']?.toString() ?? ''))
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+    if (scheduled.isNotEmpty) return scheduled.first;
+    return DateTime.tryParse(order['created_at']?.toString() ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
 
   Color statusColor(String status) {
     switch (status.toLowerCase()) {
