@@ -109,7 +109,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         if (serviceId == null || addressId == null) {
           throw Exception('A service or address is missing. Refresh your cart and try again.');
         }
-        final availability = await BookingApi.checkAvailability(
+        final availability = await BookingApi.checkSlotAvailability(
           serviceId: serviceId,
           scheduledAt: sharedStart,
           dropScheduledAt: dropAt,
