@@ -1346,6 +1346,9 @@ class CustomerCheckoutView(APIView):
         # Payment webhook/verification triggers DispatcherService.dispatch_order.
 
         cart.items.all().delete()
+        if cart.schedule_mode != "separate":
+            cart.schedule_mode = "separate"
+            cart.save(update_fields=["schedule_mode", "updated_at"])
         return Response({
             "order_id": order.id,
             "status": order.status,
@@ -2098,6 +2101,9 @@ class CustomerCartItemView(APIView):
         if isinstance(form_photos, dict):
             stored_paths.extend(path for path in form_photos.values() if path)
         item.delete()
+        if cart.items.count() < 2 and cart.schedule_mode != "separate":
+            cart.schedule_mode = "separate"
+            cart.save(update_fields=["schedule_mode", "updated_at"])
         storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
         for stored_path in stored_paths:
             storage.delete(stored_path)
