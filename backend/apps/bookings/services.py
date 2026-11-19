@@ -47,6 +47,7 @@ def check_slot_availability(
     booking_mode: str,
     drop_scheduled_at: timezone.datetime = None,
     exclude_booking_id: int = None,
+    exclude_booking_ids=None,
 ) -> bool:
     """
     Check whether a service slot overlaps an active booking.
@@ -69,10 +70,16 @@ def check_slot_availability(
         drop_scheduled_at if booking_mode == Booking.BookingMode.PICKUP_DROP else None,
     )
 
+    existing_bookings = Booking.objects.filter(
+        service=service, status__in=active_statuses
+    )
+    excluded_ids = set(exclude_booking_ids or [])
+    if exclude_booking_id is not None:
+        excluded_ids.add(exclude_booking_id)
+    if excluded_ids:
+        existing_bookings = existing_bookings.exclude(pk__in=excluded_ids)
     existing_bookings = (
-        Booking.objects.filter(service=service, status__in=active_statuses)
-        .exclude(pk=exclude_booking_id)
-        .select_related("variant")
+        existing_bookings.select_related("variant")
         .only(
             "id", "scheduled_at", "drop_scheduled_at", "booking_mode",
             "service__duration_minutes", "service__buffer_minutes",
