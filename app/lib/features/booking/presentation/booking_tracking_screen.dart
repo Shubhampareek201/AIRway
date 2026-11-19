@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/core/localization/airway_text.dart';
 
@@ -95,6 +97,10 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     final assigned = _tracking['is_assigned'] == true;
+    final workerLatitude = double.tryParse(_tracking['worker_latitude']?.toString() ?? '');
+    final workerLongitude = double.tryParse(_tracking['worker_longitude']?.toString() ?? '');
+    final locationIsFresh = _tracking['location_is_fresh'] == true &&
+        workerLatitude != null && workerLongitude != null;
     final started = _status == 'in_progress' || _status == 'completed';
     final completed = _status == 'completed';
     final cancelled = _status == 'cancelled';
@@ -173,6 +179,90 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                     ]),
                   ),
                   const SizedBox(height: 16),
+                  if (locationIsFresh)
+                    Container(
+                      height: 238,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: _line),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.my_location_rounded, color: _green, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    AirwayText.tr('Professional live location', 'प्रोफ़ेशनल की लाइव लोकेशन'),
+                                    style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
+                                  ),
+                                ),
+                                const Text('LIVE', style: TextStyle(color: _green, fontSize: 10, fontWeight: FontWeight.w900)),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: FlutterMap(
+                              options: MapOptions(
+                                initialCenter: LatLng(workerLatitude!, workerLongitude!),
+                                initialZoom: 15,
+                                interactionOptions: const InteractionOptions(
+                                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                                ),
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName: 'com.airwayservices.airway',
+                                ),
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: LatLng(workerLatitude, workerLongitude),
+                                      width: 46,
+                                      height: 46,
+                                      child: const Icon(Icons.location_on_rounded, color: _green, size: 42),
+                                    ),
+                                  ],
+                                ),
+                                RichAttributionWidget(
+                                  attributions: [
+                                    TextSourceAttribution('© OpenStreetMap contributors'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!locationIsFresh && assigned)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _line)),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.location_searching_rounded, color: _green),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              AirwayText.tr(
+                                'Live location is not available right now. Your booking status will continue to update automatically.',
+                                'लाइव लोकेशन अभी उपलब्ध नहीं है। आपकी बुकिंग की स्थिति अपने आप अपडेट होती रहेगी।',
+                              ),
+                              style: const TextStyle(color: _muted, fontSize: 12, height: 1.45),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (assigned)
                     Container(
                       padding: const EdgeInsets.all(18),
@@ -248,18 +338,6 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                       ]),
                     ),
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: _line)),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Icon(Icons.location_searching_rounded, color: _green),
-                      SizedBox(width: 10),
-                      Expanded(child: Text(
-                        AirwayText.tr('Live map and ETA will appear when the assigned professional shares verified GPS location. We will not display a guessed location.', 'असाइन किया गया प्रोफ़ेशनल सत्यापित GPS लोकेशन साझा करेगा, तब लाइव मैप और पहुँचने का समय दिखेगा। अनुमानित लोकेशन नहीं दिखाई जाएगी।'),
-                        style: TextStyle(color: _muted, fontSize: 12, height: 1.45),
-                      )),
-                    ]),
-                  ),
                   const SizedBox(height: 14),
                   if (!_terminal)
                     Center(child: Text(AirwayText.tr('Status refreshes automatically every 20 seconds', 'स्थिति हर 20 सेकंड में अपने आप अपडेट होती है'),
