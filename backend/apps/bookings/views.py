@@ -1667,6 +1667,7 @@ class CustomerOrderDetailView(APIView):
                         completion_expires_at = otp_record.expires_at.isoformat()
             service_snapshot = dict(row.service_snapshot or {})
             service_snapshot.setdefault("unit_label", booking.service.unit_label)
+            service_snapshot.setdefault("category_answers", booking.customer_answers or {})
             latest_quote = booking.quotes.order_by("-version").first()
             quote_data = None
             if latest_quote:
