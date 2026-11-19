@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.conf import settings
 from decimal import Decimal
@@ -625,17 +626,29 @@ class BookingViewSet(viewsets.ModelViewSet):
         if appointment_group is not None:
             import secrets
             from datetime import timedelta
+            arrival_code = f"{secrets.randbelow(1_000_000):06d}"
             appointment_group.scheduled_at = new_time
-            appointment_group.arrival_otp = f"{secrets.randbelow(1_000_000):06d}"
+            appointment_group.arrival_otp_hash = make_password(arrival_code)
             appointment_group.arrival_otp_expires_at = new_time + timedelta(hours=6)
             appointment_group.arrival_otp_verified_at = None
             appointment_group.arrival_otp_attempts = 0
             appointment_group.arrival_otp_locked_until = None
             appointment_group.save(update_fields=[
-                "scheduled_at", "arrival_otp", "arrival_otp_expires_at",
+                "scheduled_at", "arrival_otp_hash", "arrival_otp_expires_at",
                 "arrival_otp_verified_at", "arrival_otp_attempts",
                 "arrival_otp_locked_until", "updated_at",
             ])
+            Notification.objects.create(
+                user=booking.customer,
+                type=Notification.Type.BOOKING_CONFIRMED,
+                title=f"{appointment_group.category_title_snapshot} appointment arrival code updated",
+                body="Your appointment was rescheduled. Share this new six-digit code with your professional only when they arrive.",
+                data={
+                    "purpose": "appointment_arrival_otp",
+                    "appointment_group_id": appointment_group.pk,
+                    "arrival_code": arrival_code,
+                },
+            )
             WorkerOffer.objects.filter(
                 appointment_group=appointment_group,
                 status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
@@ -1602,19 +1615,34 @@ class CustomerCheckoutView(APIView):
             status=Order.Status.AWAITING_ASSIGNMENT,
         )
         appointment_groups = {}
+        arrival_codes_by_group_id = {}
         for root_id, group_data in grouped_by_root.items():
             category = group_data["category"]
             import secrets
             from datetime import timedelta
-            appointment_groups[root_id] = AppointmentGroup.objects.create(
+            arrival_code = f"{secrets.randbelow(1_000_000):06d}"
+            group = AppointmentGroup.objects.create(
                 order=order,
                 root_category=category,
                 category_slug_snapshot=category.slug,
                 category_title_snapshot=category.title,
                 scheduled_at=group_data["scheduled_at"],
                 customer_message=group_messages.get(category.slug, ""),
-                arrival_otp=f"{secrets.randbelow(1_000_000):06d}",
+                arrival_otp_hash=make_password(arrival_code),
                 arrival_otp_expires_at=group_data["scheduled_at"] + timedelta(hours=6),
+            )
+            appointment_groups[root_id] = group
+            arrival_codes_by_group_id[group.pk] = arrival_code
+            Notification.objects.create(
+                user=request.user,
+                type=Notification.Type.BOOKING_CONFIRMED,
+                title=f"{category.title} appointment arrival code",
+                body="Share this six-digit code with your professional only when they arrive.",
+                data={
+                    "purpose": "appointment_arrival_otp",
+                    "appointment_group_id": group.pk,
+                    "arrival_code": arrival_code,
+                },
             )
 
         subtotal = Decimal("0")
@@ -1861,7 +1889,7 @@ class CustomerCheckoutView(APIView):
                     "category_title": group.category_title_snapshot,
                     "scheduled_at": group.scheduled_at.isoformat(),
                     "customer_message": group.customer_message,
-                    "arrival_otp": group.arrival_otp,
+                    "arrival_otp": arrival_codes_by_group_id.get(group.pk),
                     "arrival_otp_expires_at": (
                         group.arrival_otp_expires_at.isoformat()
                         if group.arrival_otp_expires_at else None
