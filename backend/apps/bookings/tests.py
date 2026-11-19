@@ -4194,6 +4194,19 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {worker.pk},
         )
 
+        follow_up_service = self._create_service(
+            child_category, title="Follow-up Cleaning"
+        )
+        WorkerService.objects.create(worker=worker, service=follow_up_service)
+        follow_up_candidates = DispatcherService._get_eligible_workers(
+            service=follow_up_service,
+            zone=self.address.zone,
+            scheduled_at=scheduled_at + timedelta(minutes=90),
+            duration_minutes=30,
+            exclude_customer_id=self.customer.pk,
+        )
+        self.assertFalse(follow_up_candidates.filter(pk=worker.pk).exists())
+
     def test_parent_order_is_partially_assigned_when_only_one_group_has_a_worker(self):
         from datetime import time
         from apps.bookings.dispatcher import DispatcherService
