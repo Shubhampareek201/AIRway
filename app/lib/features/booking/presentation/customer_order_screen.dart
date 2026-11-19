@@ -5,6 +5,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/booking/presentation/booking_tracking_screen.dart';
+import 'package:airway/features/booking/presentation/booking_schedule_screen.dart';
 import 'package:airway/features/payment/data/payment_api.dart';
 import 'package:airway/features/ratings/data/rating_api.dart';
 import 'package:airway/core/localization/airway_text.dart';
@@ -310,6 +311,79 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AirwayText.tr('Could not cancel this service: $e', 'सेवा रद्द नहीं हो सकी: $e'))),
+      );
+    }
+  }
+
+  Future<void> rescheduleService(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    final service = row['service'] is Map
+        ? Map<String, dynamic>.from(row['service'] as Map)
+        : <String, dynamic>{};
+    final serviceId = int.tryParse(service['service_id']?.toString() ?? '');
+    final addressId = int.tryParse(order?['address_id']?.toString() ?? '');
+    final scheduledAt = DateTime.tryParse(row['scheduled_at']?.toString() ?? '');
+    if (bookingId == null || serviceId == null || addressId == null || scheduledAt == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Rescheduling details are unavailable. Please refresh the order.', 'रीशेड्यूल की जानकारी उपलब्ध नहीं है। ऑर्डर रीफ़्रेश करें।'))),
+      );
+      return;
+    }
+
+    final categoryAnswers = service['category_answers'] is Map
+        ? Map<String, dynamic>.from(service['category_answers'] as Map)
+        : <String, dynamic>{};
+    final dropAt = DateTime.tryParse(row['drop_scheduled_at']?.toString() ?? '');
+    final result = await Navigator.of(context).push<BookingScheduleResult>(
+      MaterialPageRoute(
+        builder: (_) => BookingScheduleScreen(
+          serviceId: serviceId,
+          addressId: addressId,
+          variantId: int.tryParse(service['variant_id']?.toString() ?? ''),
+          quantity: int.tryParse(row['quantity']?.toString() ?? '1') ?? 1,
+          bookingMode: row['booking_mode']?.toString() ?? 'scheduled',
+          categoryAnswers: categoryAnswers,
+          excludeBookingId: bookingId,
+          initialDate: scheduledAt.toLocal(),
+          initialTime: TimeOfDay.fromDateTime(scheduledAt.toLocal()),
+          initialDropTime: dropAt == null ? null : TimeOfDay.fromDateTime(dropAt.toLocal()),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    final shared = (order?['scheduling'] as Map?)?['mode'] == 'same_appointment';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AirwayText.tr('Confirm reschedule', 'नया समय पक्का करें')),
+        content: Text(shared
+            ? AirwayText.tr('This order uses one shared appointment. All eligible services in this order will move to the new time.', 'इस ऑर्डर में सभी सेवाओं का समय एक है। इस ऑर्डर की सभी योग्य सेवाओं का समय बदल जाएगा।')
+            : AirwayText.tr('Only this service will move to the selected time.', 'केवल इस सेवा का समय बदलेगा।')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(AirwayText.tr('Keep current time', 'पुराना समय रखें'))),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(AirwayText.tr('Confirm', 'पक्का करें'))),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await BookingApi.rescheduleBooking(
+        bookingId: bookingId,
+        scheduledAt: result.scheduledAt,
+        dropScheduledAt: result.dropScheduledAt,
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Booking time updated successfully.', 'बुकिंग का समय सफलतापूर्वक बदल गया।'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not reschedule: $e', 'समय नहीं बदला जा सका: $e'))),
       );
     }
   }
@@ -1030,6 +1104,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           icon: const Icon(Icons.location_searching_rounded, size: 17),
           label: Text(AirwayText.tr('Track this service', 'यह सेवा ट्रैक करें')),
         )),
+        if (row['can_reschedule'] == true) ...[
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => rescheduleService(row),
+            icon: const Icon(Icons.edit_calendar_outlined, size: 17),
+            label: Text(AirwayText.tr('Reschedule service', 'सेवा का समय बदलें')),
+          )),
+        ],
         if (row['can_cancel'] == true) ...[
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton.icon(
