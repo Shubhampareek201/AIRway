@@ -4042,6 +4042,40 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertFalse(self.cart.items.exists())
 
+    def test_cart_schedule_and_mode_are_persisted(self):
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
+        schedule_data = {"scheduled_at": scheduled_at}
+
+        item_response = self.client.patch(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/",
+            {"schedule_data": schedule_data},
+            format="json",
+        )
+        self.assertEqual(item_response.status_code, 200, item_response.data)
+        self.cart_item.refresh_from_db()
+        self.assertEqual(
+            self.cart_item.schedule_data["scheduled_at"],
+            scheduled_at,
+        )
+
+        mode_response = self.client.patch(
+            "/api/v1/bookings/cart/",
+            {"schedule_mode": "same_appointment"},
+            format="json",
+        )
+        self.assertEqual(mode_response.status_code, 200, mode_response.data)
+        self.cart.refresh_from_db()
+        self.assertEqual(self.cart.schedule_mode, "same_appointment")
+
+        cart_response = self.client.get("/api/v1/bookings/cart/")
+        self.assertEqual(cart_response.status_code, 200, cart_response.data)
+        self.assertEqual(cart_response.data["schedule_mode"], "same_appointment")
+        self.assertEqual(
+            cart_response.data["items"][0]["schedule_data"]["scheduled_at"],
+            scheduled_at,
+        )
+
+
 class PartialCancellationBalanceSettlementTest(BookingAPITestMixin, TestCase):
     """The final balance is due only for completed, non-cancelled order lines."""
 
