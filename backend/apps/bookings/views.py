@@ -623,8 +623,19 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
 
         if appointment_group is not None:
+            import secrets
+            from datetime import timedelta
             appointment_group.scheduled_at = new_time
-            appointment_group.save(update_fields=["scheduled_at", "updated_at"])
+            appointment_group.arrival_otp = f"{secrets.randbelow(1_000_000):06d}"
+            appointment_group.arrival_otp_expires_at = new_time + timedelta(hours=6)
+            appointment_group.arrival_otp_verified_at = None
+            appointment_group.arrival_otp_attempts = 0
+            appointment_group.arrival_otp_locked_until = None
+            appointment_group.save(update_fields=[
+                "scheduled_at", "arrival_otp", "arrival_otp_expires_at",
+                "arrival_otp_verified_at", "arrival_otp_attempts",
+                "arrival_otp_locked_until", "updated_at",
+            ])
             WorkerOffer.objects.filter(
                 appointment_group=appointment_group,
                 status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
@@ -1548,6 +1559,8 @@ class CustomerCheckoutView(APIView):
         appointment_groups = {}
         for root_id, group_data in grouped_by_root.items():
             category = group_data["category"]
+            import secrets
+            from datetime import timedelta
             appointment_groups[root_id] = AppointmentGroup.objects.create(
                 order=order,
                 root_category=category,
@@ -1555,6 +1568,8 @@ class CustomerCheckoutView(APIView):
                 category_title_snapshot=category.title,
                 scheduled_at=group_data["scheduled_at"],
                 customer_message=group_messages.get(category.slug, ""),
+                arrival_otp=f"{secrets.randbelow(1_000_000):06d}",
+                arrival_otp_expires_at=group_data["scheduled_at"] + timedelta(hours=6),
             )
 
         subtotal = Decimal("0")
@@ -1801,6 +1816,11 @@ class CustomerCheckoutView(APIView):
                     "category_title": group.category_title_snapshot,
                     "scheduled_at": group.scheduled_at.isoformat(),
                     "customer_message": group.customer_message,
+                    "arrival_otp": group.arrival_otp,
+                    "arrival_otp_expires_at": (
+                        group.arrival_otp_expires_at.isoformat()
+                        if group.arrival_otp_expires_at else None
+                    ),
                     "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
                 }
                 for group in order.appointment_groups.select_related("root_category").all()
@@ -2072,6 +2092,21 @@ class CustomerOrderDetailView(APIView):
                     "category_title": group.category_title_snapshot,
                     "scheduled_at": group.scheduled_at.isoformat(),
                     "customer_message": group.customer_message,
+                    "arrival_otp": (
+                        group.arrival_otp
+                        if not group.arrival_otp_verified_at
+                        and group.arrival_otp_expires_at
+                        and group.arrival_otp_expires_at > timezone.now()
+                        else None
+                    ),
+                    "arrival_otp_expires_at": (
+                        group.arrival_otp_expires_at.isoformat()
+                        if group.arrival_otp_expires_at else None
+                    ),
+                    "arrival_otp_verified_at": (
+                        group.arrival_otp_verified_at.isoformat()
+                        if group.arrival_otp_verified_at else None
+                    ),
                     "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
                 }
                 for group in order.appointment_groups.select_related("root_category").all()
