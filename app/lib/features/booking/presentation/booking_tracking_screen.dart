@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/core/localization/airway_text.dart';
@@ -257,8 +258,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                             child: Text(
                               !locationWindowOpen && locationAvailableAt != null
                                   ? AirwayText.tr(
-                                      'Live location becomes visible 30 minutes before your appointment (from ${DateFormatForOrder.format(locationAvailableAt)}).',
-                                      'लाइव लोकेशन आपके अपॉइंटमेंट से 30 मिनट पहले (${DateFormatForOrder.format(locationAvailableAt)}) दिखेगी।',
+                                      'Live location becomes visible 30 minutes before your appointment (from ${DateFormat('dd MMM, h:mm a').format(DateTime.parse(locationAvailableAt).toLocal())}).',
+                                      'लाइव लोकेशन आपके अपॉइंटमेंट से 30 मिनट पहले (${DateFormat('dd MMM, h:mm a').format(DateTime.parse(locationAvailableAt).toLocal())}) दिखेगी।',
                                     )
                                   : AirwayText.tr(
                                       'Live location is not available right now. Your booking status will continue to update automatically.',
