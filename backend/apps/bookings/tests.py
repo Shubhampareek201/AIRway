@@ -1471,6 +1471,83 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_stale_worker_location_is_not_exposed_to_customer(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.ASSIGNED,
+        )
+        BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            live_latitude=Decimal("24.5812"),
+            live_longitude=Decimal("74.3294"),
+            live_location_updated_at=timezone.now() - timezone.timedelta(minutes=3),
+        )
+
+        response = self.customer_client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["location_is_fresh"])
+        self.assertIsNone(response.data["worker_latitude"])
+        self.assertIsNone(response.data["worker_longitude"])
+
+    def test_terminal_booking_location_is_not_exposed(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.DISPUTED,
+        )
+        BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            live_latitude=Decimal("24.5812"),
+            live_longitude=Decimal("74.3294"),
+            live_location_updated_at=timezone.now(),
+        )
+
+        response = self.customer_client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["location_is_fresh"])
+        self.assertIsNone(response.data["worker_latitude"])
+
+    def test_invalid_worker_coordinates_are_rejected(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+        response = self.worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/location/",
+            {"latitude": 91, "longitude": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_worker_must_accept_job_before_sharing_location(self):
         from apps.bookings.models import Booking, BookingAssignment
 
