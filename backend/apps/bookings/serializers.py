@@ -937,7 +937,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
             "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "has_form_photos", "form_photo_keys", "notes",
-            "pricing_snapshot", "line_total",
+            "pricing_snapshot", "line_total", "schedule_data",
         ]
         read_only_fields = ["id", "service_title", "variant_title", "pricing_snapshot", "line_total"]
 
@@ -1164,6 +1164,12 @@ class CartItemSerializer(serializers.ModelSerializer):
             if existing_photo:
                 answers["_airway_issue_photo"] = existing_photo
             validated_data["category_answers"] = answers
+        schedule_affecting_fields = {
+            "service", "variant", "quantity", "addon_selections",
+            "form_answers", "category_answers", "notes",
+        }
+        if schedule_affecting_fields.intersection(validated_data):
+            instance.schedule_data = {}
         for key, value in validated_data.items():
             setattr(instance, key, value)
         instance.pricing_snapshot = snapshot
@@ -1178,7 +1184,7 @@ class CustomerCartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomerCart
-        fields = ["id", "address", "items", "item_count", "subtotal", "updated_at"]
+        fields = ["id", "address", "schedule_mode", "items", "item_count", "subtotal", "updated_at"]
         read_only_fields = fields
 
     def get_subtotal(self, obj):
