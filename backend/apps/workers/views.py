@@ -1177,6 +1177,42 @@ class WorkerJobStartView(APIView):
                             status=status.HTTP_409_CONFLICT,
                         )
                 now = timezone.now()
+                if not group.arrival_otp_verified_at:
+                    import secrets
+                    if group.arrival_otp_locked_until and group.arrival_otp_locked_until > now:
+                        return Response(
+                            {"detail": "Too many incorrect arrival codes. Try again after the temporary lock expires."},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS,
+                        )
+                    if (
+                        not group.arrival_otp
+                        or not group.arrival_otp_expires_at
+                        or group.arrival_otp_expires_at <= now
+                    ):
+                        return Response(
+                            {"detail": "The arrival code has expired. Ask the customer to contact AIRway support."},
+                            status=status.HTTP_410_GONE,
+                        )
+                    provided_otp = str(request.data.get("arrival_otp", "")).strip()
+                    if not secrets.compare_digest(provided_otp, group.arrival_otp):
+                        group.arrival_otp_attempts += 1
+                        if group.arrival_otp_attempts >= 5:
+                            from datetime import timedelta
+                            group.arrival_otp_locked_until = now + timedelta(minutes=10)
+                        group.save(update_fields=[
+                            "arrival_otp_attempts", "arrival_otp_locked_until", "updated_at",
+                        ])
+                        return Response(
+                            {"detail": "Incorrect arrival code. Ask the customer to share the code shown in their AIRway app."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    group.arrival_otp_verified_at = now
+                    group.arrival_otp_attempts = 0
+                    group.arrival_otp_locked_until = None
+                    group.save(update_fields=[
+                        "arrival_otp_verified_at", "arrival_otp_attempts",
+                        "arrival_otp_locked_until", "updated_at",
+                    ])
                 started_ids = []
                 for group_booking in group_bookings:
                     group_assignment = assignments[group_booking.pk]
