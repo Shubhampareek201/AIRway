@@ -762,8 +762,8 @@ class DispatcherService:
                         continue
                     seen_appointment_groups.add(appointment_group.pk)
                     group_bookings = list(
-                        appointment_group.bookings.exclude(
-                            status=Booking.Status.CANCELLED
+                        appointment_group.bookings.filter(
+                            status__in=active_statuses
                         ).select_related("service", "variant", "order_item")
                     )
                     existing_duration = 0
