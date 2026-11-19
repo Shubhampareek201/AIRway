@@ -32,6 +32,11 @@ class Migration(migrations.Migration):
             name="appointment_group",
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="bookings", to="bookings.appointmentgroup"),
         ),
+        migrations.AddField(
+            model_name="historicalbooking",
+            name="appointment_group",
+            field=models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name="+", to="bookings.appointmentgroup"),
+        ),
         migrations.AddConstraint(
             model_name="appointmentgroup",
             constraint=models.UniqueConstraint(fields=("order", "root_category"), name="unique_order_root_appointment_group"),
