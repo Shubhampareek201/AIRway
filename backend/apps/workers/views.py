@@ -558,7 +558,11 @@ class WorkerJobListView(APIView):
         query = (
             BookingAssignment.objects
             .filter(worker=profile)
-            .select_related("booking__service", "booking__customer", "booking__address")
+            .select_related(
+                "booking__service", "booking__customer", "booking__address",
+                "booking__appointment_group",
+            )
+            .prefetch_related("booking__appointment_group__bookings__service")
         )
         if status_param:
             query = query.filter(booking__status=status_param)
@@ -567,15 +571,28 @@ class WorkerJobListView(APIView):
         results = []
         for assign in query:
             booking = assign.booking
+            appointment_group = booking.appointment_group
+            group_service_titles = (
+                [row.service.title for row in appointment_group.bookings.all()]
+                if appointment_group else []
+            )
             payment_label = _worker_payment_label(booking)
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
+                "appointment_group_title": appointment_group.category_title_snapshot if appointment_group else None,
+                "appointment_group_message": appointment_group.customer_message if appointment_group else "",
+                "appointment_group_service_titles": group_service_titles,
                 "status": booking.status,
                 "service_title": booking.service.title,
                 "customer_name": booking.customer.name or "AIRway Customer",
                 "address": booking.address.full_address,
-                "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
+                "scheduled_at": (
+                    appointment_group.scheduled_at.isoformat()
+                    if appointment_group else
+                    booking.scheduled_at.isoformat() if booking.scheduled_at else ""
+                ),
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
                 "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
                 "payment_label": payment_label,
