@@ -424,6 +424,7 @@ class CustomerCart(TimeStampedModel):
     """One active cart per customer; cart is separate from confirmed bookings."""
     customer = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="service_cart")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_carts")
+    schedule_mode = models.CharField(max_length=24, default="separate")
 
     def __str__(self):
         return f"Cart - {self.customer.phone}"
@@ -443,6 +444,7 @@ class CartItem(TimeStampedModel):
     category_answers = models.JSONField(default=dict, blank=True)
     notes = models.TextField(blank=True)
     pricing_snapshot = models.JSONField(default=dict, blank=True)
+    schedule_data = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["created_at"]
