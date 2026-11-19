@@ -29,7 +29,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   bool loading = true;
   bool busy = false;
   String? error;
-  String _scheduleMode = 'separate';
   final Map<int, DateTime> dates = {};
   final Map<int, TimeOfDay> times = {};
   final Map<int, TimeOfDay> dropTimes = {};
@@ -58,162 +57,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   }
 
   double number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
-
-  Map<String, List<Map<String, dynamic>>> get scheduleGroups {
-    final groups = <String, List<Map<String, dynamic>>>{};
-    for (final item in items) {
-      final id = item['id'] as int;
-      final date = dates[id];
-      final time = times[id];
-      if (!_slotConfirmed.contains(id) || date == null || time == null) continue;
-      final slot = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-      groups.putIfAbsent(slot.toIso8601String(), () => []).add(item);
-    }
-    return groups;
-  }
-
-  Future<void> applyScheduleToAll(int sourceId) async {
-    final date = dates[sourceId];
-    final time = times[sourceId];
-    if (date == null || time == null || !_slotConfirmed.contains(sourceId)) return;
-
-    final sourceItems = items.where((item) => item['id'] == sourceId).toList();
-    final sourceUsesPickupDrop = sourceItems.isNotEmpty &&
-        sourceItems.first['booking_mode'] == 'pickup_drop';
-    final sourceDropTime = sourceUsesPickupDrop ? dropTimes[sourceId] : null;
-    final sharedStart = DateTime(
-      date.year, date.month, date.day, time.hour, time.minute,
-    );
-
-    setState(() => busy = true);
-    try {
-      // Validate the proposed common start against every service before
-      // marking any cart line as scheduled. Checkout repeats these checks.
-      for (final item in items) {
-        final id = item['id'] as int;
-        final mode = item['booking_mode']?.toString() ?? 'scheduled';
-        TimeOfDay? targetDrop = dropTimes[id];
-        if (sourceDropTime != null && mode == 'pickup_drop') {
-          targetDrop = sourceDropTime;
-        }
-        DateTime? dropAt;
-        if (mode == 'pickup_drop') {
-          if (targetDrop == null) {
-            throw Exception(
-              'Choose a drop-off time for ${item['service_title'] ?? 'this service'} first.',
-            );
-          }
-          dropAt = DateTime(
-            date.year, date.month, date.day,
-            targetDrop.hour, targetDrop.minute,
-          );
-          if (!dropAt.isAfter(sharedStart)) {
-            throw Exception(
-              'Drop-off must be later than the shared pickup time for '
-              '${item['service_title'] ?? 'this service'}.',
-            );
-          }
-        }
-
-        final serviceId = int.tryParse(item['service']?.toString() ?? '');
-        final addressId = int.tryParse(cart?['address']?.toString() ?? '');
-        if (serviceId == null || addressId == null) {
-          throw Exception('A service or address is missing. Refresh your cart and try again.');
-        }
-        final availability = await BookingApi.checkSlotAvailability(
-          serviceId: serviceId,
-          scheduledAt: sharedStart,
-          dropScheduledAt: dropAt,
-          variantId: int.tryParse(item['variant']?.toString() ?? ''),
-          addressId: addressId,
-          quantity: int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
-          bookingMode: mode,
-          categoryAnswers: Map<String, dynamic>.from(
-            item['category_answers'] as Map? ?? const {},
-          ),
-        );
-        if (availability['available'] != true) {
-          throw Exception(
-            '${item['service_title'] ?? 'A service'} is not available at this shared time. '
-            '${availability['message'] ?? 'Choose another time or schedule services separately.'}',
-          );
-        }
-      }
-
-      if (!mounted) return;
-      // Persist every validated line before showing the shared schedule
-      // as saved. Checkout still performs its own final availability check.
-      for (final item in items) {
-        final id = item['id'] as int;
-        final mode = item['booking_mode']?.toString() ?? 'scheduled';
-        final drop = mode == 'pickup_drop'
-            ? (sourceDropTime ?? dropTimes[id])
-            : null;
-        final data = <String, dynamic>{
-          'scheduled_at': sharedStart.toUtc().toIso8601String(),
-        };
-        if (drop != null) {
-          final dropAt = DateTime(
-            date.year, date.month, date.day, drop.hour, drop.minute,
-          );
-          data['drop_scheduled_at'] = dropAt.toUtc().toIso8601String();
-        }
-        await BookingApi.updateCartItem(
-          itemId: id,
-          data: {'schedule_data': data},
-        );
-      }
-      if (!mounted) return;
-      setState(() {
-        for (final item in items) {
-          final id = item['id'] as int;
-          dates[id] = date;
-          times[id] = time;
-          if (sourceDropTime != null &&
-              item['booking_mode'] == 'pickup_drop') {
-            dropTimes[id] = sourceDropTime;
-          }
-          _slotConfirmed.add(id);
-        }
-        busy = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(airway_localization.AirwayText.tr(
-          'This shared time is available for every service.',
-          'यह साझा समय सभी सेवाओं के लिए उपलब्ध है।',
-        ))),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
-    }
-  }
-
-  Future<void> setScheduleMode(String mode) async {
-    if (mode == _scheduleMode || busy) return;
-    setState(() => busy = true);
-    try {
-      final updatedCart = await BookingApi.updateCartScheduleMode(mode);
-      if (!mounted) return;
-      setState(() {
-        cart = updatedCart;
-        _scheduleMode = mode;
-        busy = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(airway_localization.AirwayText.tr(
-          'Could not save your scheduling preference. Please try again.',
-          'शेड्यूलिंग विकल्प सेव नहीं हुआ। कृपया दोबारा कोशिश करें।',
-        ))),
-      );
-    }
-  }
 
   Widget scheduleModeCard() {
     if (items.length < 2) return const SizedBox.shrink();
@@ -396,58 +239,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     }
   }
 
-  Widget scheduleOverviewCard() {
-    final groups = scheduleGroups;
-    if (groups.isEmpty) return const SizedBox.shrink();
-    final entries = groups.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AirwayColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.event_available_rounded, color: violet),
-            const SizedBox(width: 9),
-            Expanded(child: Text(airway_localization.AirwayText.tr('Your schedule', 'आपका शेड्यूल'), style: TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 15))),
-            Text(airway_localization.AirwayText.tr('${groups.length} time slots', '${groups.length} समय स्लॉट'), style: const TextStyle(color: violet, fontWeight: FontWeight.w800, fontSize: 12)),
-          ]),
-          const SizedBox(height: 5),
-          Text(airway_localization.AirwayText.tr('${_slotConfirmed.length} of ${items.length} services scheduled', '${items.length} में से ${_slotConfirmed.length} सेवाएँ शेड्यूल हुईं'), style: const TextStyle(color: sub, fontSize: 12)),
-          const SizedBox(height: 10),
-          for (final entry in entries) ...[
-            const Divider(height: 12, color: line),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.schedule_rounded, color: violet, size: 18),
-              const SizedBox(width: 9),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    DateFormat('EEE, dd MMM').format(DateTime.parse(entry.key)) +
-                    ' · ' + TimeOfDay.fromDateTime(DateTime.parse(entry.key)).format(context),
-                    style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 12),
-                  ),
-                  Text(
-                    entry.value.map((item) => item['service_title']?.toString() ?? 'Service').join(' · '),
-                    style: const TextStyle(color: sub, fontSize: 11),
-                  ),
-                ],
-              )),
-              Text('${entry.value.length}', style: const TextStyle(color: violet, fontWeight: FontWeight.w900)),
-            ]),
-          ],
-        ],
-      ),
-    );
-  }
-
   Future<void> loadCart() async {
     dates.clear();
     times.clear();
@@ -456,7 +247,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() { loading = true; error = null; });
     try {
       final value = await BookingApi.getCart();
-      _scheduleMode = 'separate';
       CustomerCartState.updateFromCart(value);
       final rawMessages = Map<String, dynamic>.from(value['group_messages'] as Map? ?? const {});
       final activeSlugs = <String>{};
@@ -1035,8 +825,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
 
   Widget itemCard(Map<String, dynamic> item) {
     final id = item['id'] as int;
-    final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
-    final time = times[id] ?? const TimeOfDay(hour: 10, minute: 0);
     final snapshot = Map<String, dynamic>.from(item['pricing_snapshot'] ?? {});
     final addons = snapshot['addons'] as List? ?? [];
     final expanded = _expandedItems.contains(id);
