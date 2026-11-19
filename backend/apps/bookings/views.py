@@ -638,6 +638,17 @@ class BookingViewSet(viewsets.ModelViewSet):
                 "arrival_otp_verified_at", "arrival_otp_attempts",
                 "arrival_otp_locked_until", "updated_at",
             ])
+            old_arrival_notices = Notification.objects.filter(
+                user=booking.customer,
+                data__purpose="appointment_arrival_otp",
+                data__appointment_group_id=appointment_group.pk,
+            )
+            for old_notice in old_arrival_notices:
+                old_data = dict(old_notice.data or {})
+                old_data["arrival_code"] = None
+                old_data["superseded"] = True
+                old_notice.data = old_data
+                old_notice.save(update_fields=["data", "updated_at"])
             Notification.objects.create(
                 user=booking.customer,
                 type=Notification.Type.BOOKING_CONFIRMED,
