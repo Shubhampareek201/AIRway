@@ -4029,6 +4029,43 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(AppointmentGroup.objects.count(), 0)
         self.assertEqual(self.cart.items.count(), 2)
 
+    def test_cart_schedule_update_propagates_to_every_service_in_the_same_group(self):
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Specialist Cleaning",
+            slug="checkout-group-cart-schedule-child",
+        )
+        second_service = self._create_service(child_category, title="Window Cleaning")
+        second_variant = self._create_variant(second_service, price=400, mrp=500)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            pricing_snapshot={"line_total": "400.00"},
+        )
+        scheduled_at = timezone.now() + timedelta(days=5)
+        response = self.client.patch(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/",
+            {"schedule_data": {"scheduled_at": scheduled_at.isoformat()}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.cart_item.refresh_from_db()
+        second_item.refresh_from_db()
+        self.assertEqual(
+            self.cart_item.schedule_data["scheduled_at"],
+            second_item.schedule_data["scheduled_at"],
+        )
+        self.assertEqual(
+            timezone.datetime.fromisoformat(self.cart_item.schedule_data["scheduled_at"]),
+            scheduled_at,
+        )
+
     def test_group_dispatch_creates_one_offer_and_assigns_same_worker_to_every_service(self):
         from datetime import time
         from apps.bookings.dispatcher import DispatcherService
