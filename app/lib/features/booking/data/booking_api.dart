@@ -419,6 +419,25 @@ class BookingApi {
     return Booking.fromMap(Map<String, dynamic>.from(result));
   }
 
+  static Future<Map<String, dynamic>> rescheduleBooking({
+    required int bookingId,
+    required DateTime scheduledAt,
+    DateTime? dropScheduledAt,
+  }) async {
+    final data = <String, dynamic>{
+      'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+    };
+    if (dropScheduledAt != null) {
+      data['drop_scheduled_at'] = dropScheduledAt.toUtc().toIso8601String();
+    }
+    final result = await request(
+      '/api/v1/bookings/$bookingId/reschedule/',
+      method: 'POST',
+      data: data,
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<void> cancelBooking(int id, {String? reason}) async {
     final data = <String, dynamic>{};
     if (reason != null && reason.isNotEmpty) {
@@ -471,6 +490,7 @@ class BookingApi {
     int quantity = 1,
     String bookingMode = 'scheduled',
     Map<String, dynamic> categoryAnswers = const {},
+    int? excludeBookingId,
   }) async {
     final data = {
       'service': serviceId,
@@ -480,6 +500,7 @@ class BookingApi {
       'quantity': quantity,
     };
     if (addressId != null) data['address_id'] = addressId;
+    if (excludeBookingId != null) data['exclude_booking_id'] = excludeBookingId;
 
     if (dropScheduledAt != null) {
       data['drop_scheduled_at'] = dropScheduledAt.toUtc().toIso8601String();
