@@ -1611,7 +1611,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                         if booking.variant_id and booking.variant.duration_minutes
                         else booking.service.duration_minutes
                     ) or 60
-                    row_quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                    row_quantity = (
+                        booking.order_item.quantity
+                        if hasattr(booking, "order_item")
+                        else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                    )
                     group_duration += row_duration * (
                         1 if booking.service.pricing_type == "per_unit" else row_quantity
                     )
