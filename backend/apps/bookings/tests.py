@@ -4390,6 +4390,134 @@ class PartialCancellationBalanceSettlementTest(BookingAPITestMixin, TestCase):
 
 
 
+class GroupedOrderCancellationIntegrityTest(BookingAPITestMixin, TestCase):
+    """Cancelling one child service must not disturb the other order lines."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from apps.payments.models import Payment
+        from apps.workers.models import WorkerProfile
+
+        self.customer = self._create_user("+919876543277")
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.customer)
+        self.category = Category.objects.create(
+            title="Grouped cancellation", slug="grouped-cancellation"
+        )
+        self.service = self._create_service(self.category, title="Exterior Wash")
+        self.second_service = self._create_service(
+            self.category, title="Interior Cleaning"
+        )
+        self.address = self._create_address(self.customer)
+        self.worker_user = self._create_user("+919876543278")
+        self.worker = WorkerProfile.objects.create(
+            user=self.worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        self.first = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "100.00"},
+        )
+        self.second = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.second_service,
+            scheduled_at=timezone.now() + timedelta(days=1, hours=2),
+            status=Booking.Status.PENDING,
+            pricing_snapshot={"total": "100.00"},
+        )
+        self.order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            total_amount=Decimal("200.00"),
+            metadata={
+                "payment_allocation_v1": {
+                    "percentage": "30",
+                    "advance_total": "60.00",
+                    "balance_total": "140.00",
+                    "advance": [],
+                    "balance": [],
+                }
+            },
+        )
+        self.first_item = OrderItem.objects.create(
+            order=self.order, booking=self.first, line_total=Decimal("100.00")
+        )
+        self.second_item = OrderItem.objects.create(
+            order=self.order, booking=self.second, line_total=Decimal("100.00")
+        )
+        self.order.metadata["payment_allocation_v1"]["advance"] = [
+            {"order_item_id": self.first_item.pk, "booking_id": self.first.pk, "amount": "30.00"},
+            {"order_item_id": self.second_item.pk, "booking_id": self.second.pk, "amount": "30.00"},
+        ]
+        self.order.metadata["payment_allocation_v1"]["balance"] = [
+            {"order_item_id": self.first_item.pk, "booking_id": self.first.pk, "amount": "70.00"},
+            {"order_item_id": self.second_item.pk, "booking_id": self.second.pk, "amount": "70.00"},
+        ]
+        self.order.save(update_fields=["metadata", "updated_at"])
+        Payment.objects.create(
+            order=self.order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal("60.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="test_grouped_cancellation_advance",
+        )
+        BookingAssignment.objects.create(
+            booking=self.first, worker=self.worker, accepted_at=timezone.now()
+        )
+        expiry = timezone.now() + timedelta(minutes=10)
+        self.first_offer = WorkerOffer.objects.create(
+            booking=self.first,
+            worker=self.worker,
+            status=WorkerOffer.Status.ACCEPTED,
+            expires_at=expiry,
+            accepted_at=timezone.now(),
+            responded_at=timezone.now(),
+        )
+        self.second_offer = WorkerOffer.objects.create(
+            booking=self.second,
+            worker=self.worker,
+            status=WorkerOffer.Status.PENDING,
+            expires_at=expiry,
+        )
+
+    def test_cancelling_assigned_order_line_preserves_other_service_offer(self):
+        response = self.client.post(
+            f"/api/v1/bookings/{self.first.pk}/cancel/",
+            {"reason": "Customer cancelled exterior wash"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.order.refresh_from_db()
+        self.first_offer.refresh_from_db()
+        self.second_offer.refresh_from_db()
+
+        self.assertEqual(self.first.status, Booking.Status.CANCELLED)
+        self.assertFalse(BookingAssignment.objects.filter(booking=self.first).exists())
+        self.assertEqual(self.first_offer.status, WorkerOffer.Status.WITHDRAWN)
+        self.assertEqual(self.second.status, Booking.Status.PENDING)
+        self.assertEqual(self.second_offer.status, WorkerOffer.Status.PENDING)
+        self.assertEqual(self.order.status, Order.Status.PARTIALLY_CANCELLED)
+        self.assertEqual(
+            WorkerOffer.objects.filter(
+                booking=self.second,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).count(),
+            1,
+        )
+
+
 class ServiceRefundLifecycleTest(BookingAPITestMixin, TestCase):
     """Cancellation refunds must follow immutable per-service payment splits."""
 
