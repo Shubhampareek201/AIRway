@@ -4140,7 +4140,15 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(checkout.status_code, 201, checkout.data)
         order = Order.objects.get(pk=checkout.data["order_id"])
         group = AppointmentGroup.objects.get(order=order)
-        self.assertRegex(group.arrival_otp, r"^\d{6}$")
+        from apps.notifications.models import Notification
+        arrival_notice = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="appointment_arrival_otp",
+            data__appointment_group_id=group.pk,
+        ).latest("created_at")
+        arrival_code = arrival_notice.data["arrival_code"]
+        self.assertRegex(arrival_code, r"^\d{6}$")
+        self.assertNotEqual(group.arrival_otp_hash, arrival_code)
         self.assertIsNone(group.arrival_otp_verified_at)
 
         worker_user = self._create_user("+919876543298")
@@ -4212,7 +4220,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(group.arrival_otp_attempts, 1)
         started = worker_client.post(
             f"/api/v1/workers/jobs/{assignment.pk}/start/",
-            {"arrival_otp": group.arrival_otp},
+            {"arrival_otp": arrival_code},
             format="json",
         )
         self.assertEqual(started.status_code, 200, started.data)
@@ -4426,7 +4434,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         first_booking = beauty_group.bookings.order_by("id").first()
         second_booking = beauty_group.bookings.exclude(pk=first_booking.pk).get()
         car_booking = car_group.bookings.get()
-        old_arrival_otp = beauty_group.arrival_otp
+        from apps.notifications.models import Notification
+        old_arrival_otp = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="appointment_arrival_otp",
+            data__appointment_group_id=beauty_group.pk,
+        ).latest("created_at").data["arrival_code"]
         new_time = beauty_time + timedelta(days=2)
 
         response = self.client.post(
@@ -4443,7 +4456,12 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(first_booking.scheduled_at, new_time)
         self.assertEqual(second_booking.scheduled_at, new_time)
         self.assertEqual(beauty_group.scheduled_at, new_time)
-        self.assertNotEqual(beauty_group.arrival_otp, old_arrival_otp)
+        new_arrival_otp = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="appointment_arrival_otp",
+            data__appointment_group_id=beauty_group.pk,
+        ).latest("created_at").data["arrival_code"]
+        self.assertNotEqual(new_arrival_otp, old_arrival_otp)
         self.assertIsNone(beauty_group.arrival_otp_verified_at)
         self.assertEqual(car_booking.scheduled_at, car_time)
         self.assertEqual(car_group.scheduled_at, car_time)
