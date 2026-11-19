@@ -4518,6 +4518,37 @@ class GroupedOrderCancellationIntegrityTest(BookingAPITestMixin, TestCase):
         )
 
 
+    def test_cancelling_every_service_marks_grouped_order_cancelled(self):
+        first_response = self.client.post(
+            f"/api/v1/bookings/{self.first.pk}/cancel/",
+            {"reason": "Cancel first service"},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, 200, first_response.data)
+
+        second_response = self.client.post(
+            f"/api/v1/bookings/{self.second.pk}/cancel/",
+            {"reason": "Cancel remaining service"},
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, 200, second_response.data)
+
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.order.refresh_from_db()
+        self.first_offer.refresh_from_db()
+        self.second_offer.refresh_from_db()
+
+        self.assertEqual(self.first.status, Booking.Status.CANCELLED)
+        self.assertEqual(self.second.status, Booking.Status.CANCELLED)
+        self.assertEqual(self.order.status, Order.Status.CANCELLED)
+        self.assertEqual(self.first_offer.status, WorkerOffer.Status.WITHDRAWN)
+        self.assertEqual(self.second_offer.status, WorkerOffer.Status.WITHDRAWN)
+        self.assertFalse(BookingAssignment.objects.filter(
+            booking__in=(self.first, self.second)
+        ).exists())
+
+
 class ServiceRefundLifecycleTest(BookingAPITestMixin, TestCase):
     """Cancellation refunds must follow immutable per-service payment splits."""
 
