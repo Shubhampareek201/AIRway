@@ -344,7 +344,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AirwayColors.primary.withValues(alpha: 0.06),
+                  color: AirwayColors.primarySoft,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
