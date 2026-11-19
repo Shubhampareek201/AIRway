@@ -998,6 +998,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             and assignment.live_location_updated_at >= timezone.now() - timedelta(minutes=2)
             and assignment.live_latitude is not None
             and assignment.live_longitude is not None
+            and (assignment.live_accuracy_m is None or assignment.live_accuracy_m <= 150)
         )
         return Response({
             "is_assigned": True,
@@ -1238,6 +1239,12 @@ class BookingViewSet(viewsets.ModelViewSet):
             if worker_notes:
                 locked_booking.worker_notes = worker_notes
             locked_booking.save(update_fields=["status", "completed_at", "worker_notes", "updated_at"])
+            BookingAssignment.objects.filter(booking=locked_booking).update(
+                live_latitude=None,
+                live_longitude=None,
+                live_accuracy_m=None,
+                live_location_updated_at=None,
+            )
             from apps.bookings.models import RecurringWashVisit, RecurringWashPlan
             recurring_visit = RecurringWashVisit.objects.select_for_update().filter(
                 booking=locked_booking
