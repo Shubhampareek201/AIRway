@@ -1337,9 +1337,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
             if not completion_feedback.skipped:
                 from apps.ratings.models import BookingRating, RatingSummary
-                overall_rating = round(
-                    (completion_feedback.service_quality + completion_feedback.worker_behaviour) / 2
-                )
+                overall_rating = (
+                    completion_feedback.service_quality
+                    + completion_feedback.worker_behaviour
+                    + 1
+                ) // 2
                 BookingRating.objects.get_or_create(
                     booking=locked_booking,
                     rater=locked_booking.customer,
@@ -2053,7 +2055,10 @@ class CustomerOrderDetailView(APIView):
                 "completion_feedback_skipped": (
                     completion_feedback.skipped if completion_feedback else False
                 ),
-                "customer_has_rated": booking.id in rated_booking_ids,
+                "customer_has_rated": (
+                    booking.id in rated_booking_ids
+                    or bool(completion_feedback and completion_feedback.skipped)
+                ),
                 "completion_otp": (
                     {
                         "code": completion_code,
