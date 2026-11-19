@@ -117,7 +117,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           timeLimit: Duration(seconds: 12),
         ),
       );
-      if (!mounted || _sharingAssignmentId != assignmentId) return;
+      if (!mounted ||
+          _sharingAssignmentId != assignmentId ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
       await WorkerApi.updateJobLocation(
         assignmentId,
         latitude: position.latitude,
