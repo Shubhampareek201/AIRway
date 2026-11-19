@@ -4060,6 +4060,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.cart.refresh_from_db()
         self.assertEqual(self.cart.group_messages, {})
 
+    @override_settings(PRIVATE_UPLOAD_ROOT="/tmp/airway-test-private-uploads")
     def test_cart_schedule_update_propagates_to_every_service_in_the_same_group(self):
         child_category = Category.objects.create(
             parent=self.category,
@@ -4658,7 +4659,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertFalse(Booking.objects.filter(customer=self.customer).exists())
 
     def test_multi_service_order_dispatches_each_line_to_its_own_eligible_workers(self):
-        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        other_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-dispatch-car-care",
+        )
+        second_service = self._create_service(other_category, title="Exterior Car Wash")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
         workers = []
         for phone, service in (("+919876543281", self.service), ("+919876543282", second_service)):
@@ -4712,7 +4717,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
 
     def test_different_workers_can_accept_different_lines_of_one_order(self):
-        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        other_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-different-workers-car-care",
+        )
+        second_service = self._create_service(other_category, title="Exterior Car Wash")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
         workers = []
         for phone, service in (("+919876543283", self.service), ("+919876543284", second_service)):
@@ -4802,7 +4811,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
                     },
                     {
                         "cart_item_id": second_item.id,
-                        "scheduled_at": (timezone.now() + timedelta(days=3)).isoformat(),
+                        "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
                     },
                 ]
             },
