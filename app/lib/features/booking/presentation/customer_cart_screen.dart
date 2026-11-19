@@ -181,6 +181,29 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     }
   }
 
+  Future<void> setScheduleMode(String mode) async {
+    if (mode == _scheduleMode || busy) return;
+    setState(() => busy = true);
+    try {
+      final updatedCart = await BookingApi.updateCartScheduleMode(mode);
+      if (!mounted) return;
+      setState(() {
+        cart = updatedCart;
+        _scheduleMode = mode;
+        busy = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(airway_localization.AirwayText.tr(
+          'Could not save your scheduling preference. Please try again.',
+          'शेड्यूलिंग विकल्प सेव नहीं हुआ। कृपया दोबारा कोशिश करें।',
+        ))),
+      );
+    }
+  }
+
   Widget scheduleModeCard() {
     if (items.length < 2) return const SizedBox.shrink();
     final sameAppointment = _scheduleMode == 'same_appointment';
@@ -215,9 +238,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                   'सभी सेवाओं के लिए एक समय',
                 )),
                 selected: sameAppointment,
-                onSelected: busy ? null : (_) => setState(() {
-                  _scheduleMode = 'same_appointment';
-                }),
+                onSelected: busy ? null : (_) {
+                  setScheduleMode('same_appointment');
+                },
                 selectedColor: AirwayColors.primarySoft,
                 labelStyle: TextStyle(
                   color: sameAppointment ? violet : ink,
@@ -231,9 +254,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                   'अलग-अलग समय',
                 )),
                 selected: !sameAppointment,
-                onSelected: busy ? null : (_) => setState(() {
-                  _scheduleMode = 'separate';
-                }),
+                onSelected: busy ? null : (_) {
+                  setScheduleMode('separate');
+                },
                 selectedColor: AirwayColors.primarySoft,
                 labelStyle: TextStyle(
                   color: !sameAppointment ? violet : ink,
