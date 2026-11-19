@@ -1036,8 +1036,20 @@ class BookingViewSet(viewsets.ModelViewSet):
             service__is_active=True,
             service__category__is_active=True,
         ).select_related("service", "service__category").order_by("service__title") if worker_is_approved else worker.worker_services.none()
+        scheduled_at = (
+            booking.appointment_group.scheduled_at
+            if booking.appointment_group_id else booking.scheduled_at
+        )
+        now = timezone.now()
+        location_available_at = (
+            scheduled_at - timedelta(minutes=30) if scheduled_at else None
+        )
+        location_visibility_window_open = bool(
+            location_available_at and now >= location_available_at
+        )
         location_is_fresh = bool(
             worker_is_approved
+            and location_visibility_window_open
             and assignment.accepted_at
             and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
             and assignment.live_location_updated_at
@@ -1074,6 +1086,8 @@ class BookingViewSet(viewsets.ModelViewSet):
             "worker_location_accuracy_m": float(assignment.live_accuracy_m) if location_is_fresh and assignment.live_accuracy_m is not None else None,
             "worker_location_updated_at": assignment.live_location_updated_at.isoformat() if location_is_fresh else None,
             "location_is_fresh": location_is_fresh,
+            "location_visibility_window_open": location_visibility_window_open,
+            "location_available_at": location_available_at.isoformat() if location_available_at else None,
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
