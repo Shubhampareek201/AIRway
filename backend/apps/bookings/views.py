@@ -1769,6 +1769,7 @@ class CustomerOrderDetailView(APIView):
             Order.objects.prefetch_related(
                 "items__booking__assignment__worker__user",
                 "items__booking__payment_refunds",
+                "appointment_groups__bookings",
                 "payments",
             ),
             pk=order_id,
@@ -1992,6 +1993,18 @@ class CustomerOrderDetailView(APIView):
                 "scheduling_v1",
                 {"mode": "separate", "shared_appointment_at": None},
             ),
+            "appointment_groups": [
+                {
+                    "id": group.pk,
+                    "category_root_id": group.root_category_id,
+                    "category_slug": group.category_slug_snapshot,
+                    "category_title": group.category_title_snapshot,
+                    "scheduled_at": group.scheduled_at.isoformat(),
+                    "customer_message": group.customer_message,
+                    "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                }
+                for group in order.appointment_groups.select_related("root_category").all()
+            ],
             "currency": order.currency,
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
@@ -2124,6 +2137,18 @@ class CustomerOrderListView(APIView):
                     "scheduling_v1",
                     {"mode": "separate", "shared_appointment_at": None},
                 ),
+                "appointment_groups": [
+                    {
+                        "id": group.pk,
+                        "category_root_id": group.root_category_id,
+                        "category_slug": group.category_slug_snapshot,
+                        "category_title": group.category_title_snapshot,
+                        "scheduled_at": group.scheduled_at.isoformat(),
+                        "customer_message": group.customer_message,
+                        "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                    }
+                    for group in order.appointment_groups.select_related("root_category").all()
+                ],
                 "items": [
                     {
                         "booking_id": item.booking_id,
