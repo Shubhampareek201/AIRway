@@ -1615,6 +1615,9 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             booking=booking,
             worker=self.worker_profile,
             started_at=timezone.now(),
+            live_latitude=Decimal("24.5812"),
+            live_longitude=Decimal("74.3294"),
+            live_location_updated_at=timezone.now(),
         )
 
         complete_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/complete/", format="json")
@@ -1639,6 +1642,10 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
 
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.Status.COMPLETED)
+        assignment.refresh_from_db()
+        self.assertIsNone(assignment.live_latitude)
+        self.assertIsNone(assignment.live_longitude)
+        self.assertIsNone(assignment.live_location_updated_at)
 
     def test_cannot_start_job_not_assigned(self):
         """Cannot start a job without assignment."""
