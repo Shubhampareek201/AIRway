@@ -1155,7 +1155,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 12),
           _quoteCard(row),
         ],
-        if (row['completion_otp_requested'] == true &&
+        if (row['appointment_group_id'] != null &&
+            row['completion_otp_requested'] == true &&
             row['completion_feedback_submitted'] != true) ...[
           const SizedBox(height: 12),
           Container(
