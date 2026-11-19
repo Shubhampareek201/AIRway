@@ -22,6 +22,7 @@ from django.contrib.auth.hashers import make_password
 from apps.availability.models import WorkerBlockedSlot
 from apps.notifications.models import Notification
 from apps.bookings.serializers import CartItemSerializer
+from apps.bookings.services import SlotConflictError
 
 
 class BookingAPITestMixin:
