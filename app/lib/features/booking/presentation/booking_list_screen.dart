@@ -223,7 +223,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
                 children: [
                   _summaryStrip(),
                   if (_orderListUnavailable) _orderLoadWarning(),
-                  if (filteredOrders.isEmpty && filteredBookings.isEmpty)
+                  if (filteredOrders.isEmpty && filteredBookings.isEmpty && !_orderListUnavailable)
                     _emptyState(
                       selectedFilter == 'history'
                         ? AirwayText.tr('No booking history', 'बुकिंग इतिहास नहीं है')
@@ -235,7 +235,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
                       AirwayText.tr('Your upcoming, active and completed services will appear here.', 'आपकी आने वाली, चालू और पूरी हो चुकी सेवाएँ यहाँ दिखाई देंगी।'),
                       Icons.event_note_rounded, widget.onBookNew ?? _goBack,
                       actionLabel: AirwayText.tr('Book a service', 'सेवा बुक करें'))
-                  else ...[
+                  else if (filteredOrders.isNotEmpty || filteredBookings.isNotEmpty) ...[
                     _sectionLabel(AirwayText.tr('Your bookings', 'आपकी बुकिंग')),
                     ..._bookingFeed(),
                   ],
