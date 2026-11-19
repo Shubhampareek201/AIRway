@@ -297,7 +297,26 @@ class BookingViewSet(viewsets.ModelViewSet):
     def cancel(self, request, pk=None):
         from apps.bookings.models import WorkerOffer
 
+        # Keep the same parent-order -> child-booking lock order used by
+        # dispatch and reschedule. Locking the booking first can deadlock when
+        # dispatch holds the order row and is waiting for this booking.
         booking = self.get_object()
+        order_item_ref = OrderItem.objects.filter(
+            booking_id=booking.pk
+        ).values("order_id").first()
+        order = None
+        if order_item_ref:
+            order = get_object_or_404(
+                Order.objects.select_for_update(),
+                pk=order_item_ref["order_id"],
+                customer=request.user,
+            )
+        booking = get_object_or_404(
+            Booking.objects.select_for_update(of=("self",)).filter(
+                customer=request.user
+            ),
+            pk=booking.pk,
+        )
         recurring_plan = getattr(booking, "recurring_wash_plan", None)
         if recurring_plan and recurring_plan.status in (
             RecurringWashPlan.Status.PAID_PENDING_SETUP,
@@ -343,9 +362,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         # Cancel pending offers for the affected service. For grouped orders,
         # withdraw the shared order offer and redispatch only if active lines
         # remain unassigned and the required advance has already been captured.
-        order_item = getattr(booking, "order_item", None)
-        if order_item:
-            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+        if order is not None:
             active_remaining = order.items.exclude(
                 booking__status=Booking.Status.CANCELLED
             ).exists()
