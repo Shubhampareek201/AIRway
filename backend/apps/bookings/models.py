@@ -375,6 +375,7 @@ class Order(TimeStampedModel):
     class Status(models.TextChoices):
         AWAITING_ASSIGNMENT = "awaiting_assignment", "Awaiting Assignment"
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
+        PARTIALLY_ASSIGNED = "partially_assigned", "Partially Assigned"
         PAID = "paid", "Paid"
         PARTIALLY_CANCELLED = "partially_cancelled", "Partially Cancelled"
         CANCELLED = "cancelled", "Cancelled"
