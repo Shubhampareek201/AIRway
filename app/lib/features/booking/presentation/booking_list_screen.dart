@@ -74,9 +74,10 @@ class _BookingListScreenState extends State<BookingListScreen> {
   bool _matchesSelectedCategory(String category) =>
       selectedFilter == 'all' || selectedFilter == category;
 
+  // Never render child bookings as standalone cards when order loading fails.
   List<Booking> get filteredBookings => bookings
       .where((booking) =>
-          (_orderListUnavailable || booking.orderId == null) &&
+          booking.orderId == null &&
           _matchesSelectedCategory(_bookingCategory(booking.status)))
       .toList()
     ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
@@ -130,6 +131,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
       case 'failed':
       case 'refunded': return const Color(0xFFB42318);
       case BookingStatus.inProgress: return const Color(0xFFB7791F);
+      case 'partially_completed': return const Color(0xFF2E7D52);
+      case 'partially_cancelled': return const Color(0xFFB7791F);
       default: return green;
     }
   }
@@ -146,6 +149,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
       case 'paid': return AirwayText.tr('Paid', 'भुगतान हो गया');
       case 'refunded': return AirwayText.tr('Refunded', 'रिफंड हो गया');
       case 'failed': return AirwayText.tr('Payment failed', 'भुगतान विफल');
+      case 'partially_completed': return AirwayText.tr('Partially completed', 'आंशिक रूप से पूरी');
+      case 'partially_cancelled': return AirwayText.tr('Partially cancelled', 'आंशिक रूप से रद्द');
       default: return BookingStatus.display(status);
     }
   }
@@ -217,6 +222,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
                 padding: const EdgeInsets.fromLTRB(18, 2, 18, 22),
                 children: [
                   _summaryStrip(),
+                  if (_orderListUnavailable) _orderLoadWarning(),
                   if (filteredOrders.isEmpty && filteredBookings.isEmpty)
                     _emptyState(
                       selectedFilter == 'history'
@@ -288,8 +294,7 @@ class _BookingListScreenState extends State<BookingListScreen> {
   }
 
   Widget _summaryStrip() {
-    final individual = bookings.where((booking) =>
-        _orderListUnavailable || booking.orderId == null);
+    final individual = bookings.where((booking) => booking.orderId == null);
     final allCount = orders.length + individual.length;
     final upcomingCount = orders.where((order) => _orderCategory(order) == 'upcoming').length +
         individual.where((booking) => _bookingCategory(booking.status) == 'upcoming').length;
@@ -327,6 +332,31 @@ class _BookingListScreenState extends State<BookingListScreen> {
     ],
   );
 
+  Widget _orderLoadWarning() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF7E8),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFF2D7A5)),
+    ),
+    child: Row(children: [
+      const Icon(Icons.info_outline_rounded, color: Color(0xFF9A6700), size: 19),
+      const SizedBox(width: 9),
+      Expanded(child: Text(
+        AirwayText.tr(
+          'Some grouped orders could not be loaded. Your services are not duplicated; tap refresh to try again.',
+          'कुछ संयुक्त ऑर्डर लोड नहीं हो सके। सेवाएँ दोबारा नहीं दिखाई गई हैं; फिर कोशिश करने के लिए रीफ़्रेश करें।',
+        ),
+        style: const TextStyle(fontSize: 11, height: 1.35, color: Color(0xFF795500)),
+      )),
+      TextButton(
+        onPressed: loading ? null : loadBookings,
+        child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
+      ),
+    ]),
+  );
+
   Widget _sectionLabel(String title) => Padding(
     padding: const EdgeInsets.fromLTRB(1, 2, 1, 10),
     child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: ink)));
@@ -361,6 +391,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
         .where((status) => status.isNotEmpty)
         .toList();
 
+    final completedCount = statuses.where((status) => status == BookingStatus.completed).length;
+    final cancelledCount = statuses.where((status) => status == BookingStatus.cancelled).length;
     String serviceStatus;
     if (statuses.isNotEmpty && statuses.every((status) => status == BookingStatus.completed)) {
       serviceStatus = BookingStatus.completed;
@@ -368,6 +400,8 @@ class _BookingListScreenState extends State<BookingListScreen> {
       serviceStatus = BookingStatus.cancelled;
     } else if (statuses.any((status) => status == BookingStatus.inProgress)) {
       serviceStatus = BookingStatus.inProgress;
+    } else if (completedCount > 0 || cancelledCount > 0) {
+      serviceStatus = completedCount > 0 ? 'partially_completed' : 'partially_cancelled';
     } else if (statuses.any((status) => status == BookingStatus.assigned)) {
       serviceStatus = BookingStatus.assigned;
     } else if (statuses.any((status) => status == BookingStatus.confirmed)) {
@@ -449,6 +483,16 @@ class _BookingListScreenState extends State<BookingListScreen> {
                   _statusPill(paymentStatus, paymentColor),
                 ],
               ),
+              if (completedCount > 0 || cancelledCount > 0) ...[
+                const SizedBox(height: 7),
+                Text(
+                  [
+                    if (completedCount > 0) AirwayText.tr('$completedCount completed', '$completedCount पूरी'),
+                    if (cancelledCount > 0) AirwayText.tr('$cancelledCount cancelled', '$cancelledCount रद्द'),
+                  ].join(' • '),
+                  style: const TextStyle(fontSize: 10.5, color: sub, fontWeight: FontWeight.w600),
+                ),
+              ],
               const SizedBox(height: 11),
               for (final item in items.take(3)) Padding(
                 padding: const EdgeInsets.only(bottom: 7),
