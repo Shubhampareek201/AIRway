@@ -748,26 +748,65 @@ class DispatcherService:
                 worker=worker,
                 booking__status__in=active_statuses,
             ).exclude(booking_id=exclude_booking_id).select_related(
-                "booking__service", "booking__variant",
+                "booking__service", "booking__variant", "booking__appointment_group",
             )
             conflict = False
+            seen_appointment_groups = set()
             for assignment in assignments:
                 existing = assignment.booking
                 if not existing.scheduled_at:
                     continue
-                existing_duration = (
-                    existing.variant.duration_minutes
-                    if existing.variant_id and existing.variant.duration_minutes
-                    else existing.service.duration_minutes
-                ) or 60
-                occupied = _booking_intervals(
-                    existing.scheduled_at,
-                    existing_duration,
-                    existing.service.buffer_minutes,
-                    existing.drop_scheduled_at
-                    if existing.booking_mode == Booking.BookingMode.PICKUP_DROP
-                    else None,
-                )
+                appointment_group = existing.appointment_group
+                if appointment_group is not None:
+                    if appointment_group.pk in seen_appointment_groups:
+                        continue
+                    seen_appointment_groups.add(appointment_group.pk)
+                    group_bookings = list(
+                        appointment_group.bookings.exclude(
+                            status=Booking.Status.CANCELLED
+                        ).select_related("service", "variant", "order_item")
+                    )
+                    existing_duration = 0
+                    for group_booking in group_bookings:
+                        row_duration = (
+                            group_booking.variant.duration_minutes
+                            if group_booking.variant_id and group_booking.variant.duration_minutes
+                            else group_booking.service.duration_minutes
+                        ) or 60
+                        row_quantity = (
+                            group_booking.order_item.quantity
+                            if hasattr(group_booking, "order_item")
+                            else max(int((group_booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                        )
+                        existing_duration += row_duration * (
+                            1 if group_booking.service.pricing_type == "per_unit" else row_quantity
+                        )
+                    group_anchor = group_bookings[0] if group_bookings else existing
+                    group_drop = (
+                        group_anchor.drop_scheduled_at
+                        if group_anchor.booking_mode == Booking.BookingMode.PICKUP_DROP
+                        else None
+                    )
+                    occupied = _booking_intervals(
+                        appointment_group.scheduled_at,
+                        max(existing_duration, 1),
+                        group_anchor.service.buffer_minutes,
+                        group_drop,
+                    )
+                else:
+                    existing_duration = (
+                        existing.variant.duration_minutes
+                        if existing.variant_id and existing.variant.duration_minutes
+                        else existing.service.duration_minutes
+                    ) or 60
+                    occupied = _booking_intervals(
+                        existing.scheduled_at,
+                        existing_duration,
+                        existing.service.buffer_minutes,
+                        existing.drop_scheduled_at
+                        if existing.booking_mode == Booking.BookingMode.PICKUP_DROP
+                        else None,
+                    )
                 if any(
                     _intervals_overlap(requested, current)
                     for requested in requested_intervals
