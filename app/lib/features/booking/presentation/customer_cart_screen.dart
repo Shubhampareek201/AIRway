@@ -825,6 +825,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     final snapshot = Map<String, dynamic>.from(item['pricing_snapshot'] ?? {});
     final addons = snapshot['addons'] as List? ?? [];
     final expanded = _expandedItems.contains(id);
+    final scheduled = _slotConfirmed.contains(id);
     final quantity = item['quantity']?.toString() ?? '1';
     final unit = item['service_unit_label']?.toString() ?? '';
     final quantityLabel = unit.isNotEmpty ? '$quantity $unit' : 'Qty $quantity';
