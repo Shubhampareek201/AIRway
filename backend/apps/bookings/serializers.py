@@ -915,6 +915,9 @@ class CartItemSerializer(serializers.ModelSerializer):
     service_title = serializers.CharField(source="service.title", read_only=True)
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
+    category_root_id = serializers.SerializerMethodField()
+    category_root_title = serializers.SerializerMethodField()
+    category_root_slug = serializers.SerializerMethodField()
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     has_issue_photo = serializers.SerializerMethodField()
     has_form_photos = serializers.SerializerMethodField()
@@ -933,10 +936,27 @@ class CartItemSerializer(serializers.ModelSerializer):
         photo_map = (obj.category_answers or {}).get("_airway_form_photos", {})
         return list(photo_map.keys()) if isinstance(photo_map, dict) else []
 
+    @staticmethod
+    def _root_category(obj):
+        category = obj.service.category
+        while category.parent_id:
+            category = category.parent
+        return category
+
+    def get_category_root_id(self, obj):
+        return self._root_category(obj).pk
+
+    def get_category_root_title(self, obj):
+        return self._root_category(obj).title
+
+    def get_category_root_slug(self, obj):
+        return self._root_category(obj).slug
+
     class Meta:
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
+            "category_root_id", "category_root_title", "category_root_slug",
             "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "has_form_photos", "form_photo_keys", "notes",
             "pricing_snapshot", "line_total", "schedule_data",
         ]
