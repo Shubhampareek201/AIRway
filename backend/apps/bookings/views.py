@@ -112,7 +112,12 @@ class CustomerRecurringWashPlanCancelView(APIView):
                     assignment.delete()
                 WorkerOffer.objects.filter(
                     booking=booking,
-                    status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+                    status__in=(
+                    WorkerOffer.Status.PENDING,
+                    WorkerOffer.Status.ACCEPTED,
+                    WorkerOffer.Status.DECLINED,
+                    WorkerOffer.Status.EXPIRED,
+                ),
                 ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
                 booking.status = Booking.Status.CANCELLED
                 booking.cancelled_at = now
