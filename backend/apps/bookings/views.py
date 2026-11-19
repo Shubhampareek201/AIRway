@@ -391,6 +391,216 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         return Response({"detail": "Booking cancelled successfully.", "status": booking.status})
 
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def reschedule(self, request, pk=None):
+        """Reschedule an eligible booking, preserving shared-order appointment rules."""
+        from django.utils.dateparse import parse_datetime
+
+        booking = get_object_or_404(
+            Booking.objects.select_for_update().select_related(
+                "service__category", "variant", "address__zone__city"
+            ),
+            pk=pk,
+            customer=request.user,
+        )
+        recurring_plan = getattr(booking, "recurring_wash_plan", None)
+        if recurring_plan and recurring_plan.status in (
+            RecurringWashPlan.Status.PAID_PENDING_SETUP,
+            RecurringWashPlan.Status.ACTIVE,
+            RecurringWashPlan.Status.PAUSED,
+        ):
+            return Response(
+                {"detail": "Reschedule this visit from the recurring plan controls."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        raw_time = request.data.get("scheduled_at")
+        new_time = parse_datetime(str(raw_time)) if raw_time else None
+        if new_time is None or timezone.is_naive(new_time):
+            return Response(
+                {"scheduled_at": "Provide a valid timezone-aware ISO 8601 date and time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_time <= timezone.now():
+            return Response(
+                {"scheduled_at": "Choose a future date and time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_drop = request.data.get("drop_scheduled_at")
+        new_drop = parse_datetime(str(raw_drop)) if raw_drop else None
+        if raw_drop and (new_drop is None or timezone.is_naive(new_drop)):
+            return Response(
+                {"drop_scheduled_at": "Provide a valid timezone-aware ISO 8601 date and time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if booking.booking_mode == Booking.BookingMode.PICKUP_DROP:
+            if new_drop is None or new_drop <= new_time:
+                return Response(
+                    {"drop_scheduled_at": "Choose a drop-off time after pickup."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif new_drop is not None:
+            return Response(
+                {"drop_scheduled_at": "Drop-off time is only valid for Pickup & Drop bookings."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order_item = getattr(booking, "order_item", None)
+        order = None
+        targets = [booking]
+        shared_appointment = False
+        if order_item:
+            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+            scheduling = (order.metadata or {}).get("scheduling_v1", {})
+            shared_appointment = scheduling.get("mode") == "same_appointment"
+            if shared_appointment:
+                targets = list(
+                    Booking.objects.select_for_update().filter(
+                        order_item__order=order
+                    ).exclude(status=Booking.Status.CANCELLED).select_related(
+                        "service__category", "variant", "address__zone__city"
+                    ).order_by("id")
+                )
+
+        for target in targets:
+            if target.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+                return Response(
+                    {"detail": "This service or a service in its shared appointment is already assigned, started, completed or cancelled. Contact AIRway support to change it."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if BookingAssignment.objects.filter(booking=target).exists():
+                return Response(
+                    {"detail": "A professional is already assigned to this service. Contact AIRway support to reschedule."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if target.booking_mode != booking.booking_mode:
+                return Response(
+                    {"detail": "Services with different booking modes cannot be moved as one shared appointment."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        target_ids = [target.pk for target in targets]
+        try:
+            for target in targets:
+                check_service_available(target.service, address=target.address)
+                duration = (
+                    target.variant.duration_minutes
+                    if target.variant_id and target.variant.duration_minutes
+                    else target.service.duration_minutes
+                ) or 60
+                quantity = max(
+                    int((target.pricing_snapshot or {}).get("quantity", 1) or 1), 1
+                )
+                duration *= (
+                    1 if target.service.pricing_type == "per_unit" else quantity
+                )
+                if target.booking_mode == Booking.BookingMode.PICKUP_DROP:
+                    # Preserve each service's pickup-to-drop interval when the
+                    # shared appointment is moved together.
+                    if shared_appointment:
+                        old_drop = target.drop_scheduled_at
+                        drop_time = new_drop or (
+                            new_time + (old_drop - target.scheduled_at)
+                            if old_drop else None
+                        )
+                    else:
+                        drop_time = new_drop
+                else:
+                    drop_time = None
+                check_slot_availability(
+                    service=target.service,
+                    scheduled_at=new_time,
+                    duration_minutes=duration,
+                    booking_mode=target.booking_mode,
+                    drop_scheduled_at=drop_time,
+                    exclude_booking_ids=target_ids,
+                )
+        except (SlotConflictError, ServiceUnavailableError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+        now = timezone.now()
+        old_times = {target.pk: target.scheduled_at for target in targets}
+        for target in targets:
+            old_status = target.status
+            if target.booking_mode == Booking.BookingMode.PICKUP_DROP:
+                if shared_appointment:
+                    old_drop = target.drop_scheduled_at
+                    target.drop_scheduled_at = new_drop or (
+                        new_time + (old_drop - target.scheduled_at)
+                        if old_drop else None
+                    )
+                else:
+                    target.drop_scheduled_at = new_drop
+            target.scheduled_at = new_time
+            target.save(update_fields=["scheduled_at", "drop_scheduled_at", "updated_at"])
+            WorkerOffer.objects.filter(
+                booking=target,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).update(
+                status=WorkerOffer.Status.WITHDRAWN,
+                responded_at=now,
+            )
+            BookingStatusHistory.objects.create(
+                booking=target,
+                from_status=old_status,
+                to_status=old_status,
+                changed_by=request.user,
+                note=(
+                    f"Customer rescheduled from {old_times[target.pk].isoformat()} "
+                    f"to {new_time.isoformat()}."
+                ),
+            )
+
+        if order and shared_appointment:
+            metadata = dict(order.metadata or {})
+            scheduling = dict(metadata.get("scheduling_v1", {}))
+            scheduling["shared_appointment_at"] = new_time.isoformat()
+            metadata["scheduling_v1"] = scheduling
+            order.metadata = metadata
+            order.save(update_fields=["metadata", "updated_at"])
+
+        Notification.objects.create(
+            user=request.user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Service rescheduled",
+            body=(
+                f"{len(targets)} services in your shared appointment"
+                if shared_appointment and len(targets) > 1
+                else f"Your service"
+            ) + f" are now scheduled for {timezone.localtime(new_time).strftime('%d %b %Y, %I:%M %p')}.",
+            channel=Notification.Channel.IN_APP,
+            data={
+                "booking_id": booking.pk,
+                "order_id": order.pk if order else None,
+                "rescheduled_booking_ids": target_ids,
+            },
+        )
+
+        if order:
+            from apps.bookings.dispatcher import DispatcherService
+            transaction.on_commit(
+                lambda order_id=order.pk: DispatcherService.dispatch_order(
+                    Order.objects.get(pk=order_id)
+                )
+            )
+        elif booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
+            from apps.bookings.dispatcher import DispatcherService
+            transaction.on_commit(
+                lambda booking_id=booking.pk: DispatcherService.dispatch_offers(
+                    Booking.objects.get(pk=booking_id)
+                )
+            )
+
+        return Response({
+            "detail": "Booking rescheduled successfully.",
+            "booking_id": booking.pk,
+            "scheduled_at": new_time.isoformat(),
+            "rescheduled_booking_ids": target_ids,
+            "shared_appointment": shared_appointment,
+        })
+
     @action(detail=True, methods=["post"], url_path="quote/respond")
     @transaction.atomic
     def respond_to_quote(self, request, pk=None):
