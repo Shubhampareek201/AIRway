@@ -220,13 +220,27 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
-        title: Text(AirwayText.tr('Booking #${offer.bookingId}', 'बुकिंग #${offer.bookingId}'), style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          offer.appointmentGroupTitle?.isNotEmpty == true
+              ? AirwayText.tr('Appointment • ${offer.appointmentGroupTitle}', 'अपॉइंटमेंट • ${offer.appointmentGroupTitle}')
+              : AirwayText.tr('Booking #${offer.bookingId}', 'बुकिंग #${offer.bookingId}'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (offer.serviceTitle?.isNotEmpty == true)
+            if (offer.appointmentGroupTitle == null && offer.serviceTitle?.isNotEmpty == true)
               Text(offer.serviceTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
-            if (offer.variantTitle?.isNotEmpty == true || offer.quantity > 1)
+            if (offer.orderServices.length > 1)
+              Text(
+                AirwayText.tr(
+                  'Services: ${offer.orderServices.map((row) => row['service_title']?.toString() ?? 'Service').join(' • ')}',
+                  'सेवाएँ: ${offer.orderServices.map((row) => row['service_title']?.toString() ?? 'सेवा').join(' • ')}',
+                ),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+            if (offer.appointmentGroupTitle == null &&
+                (offer.variantTitle?.isNotEmpty == true || offer.quantity > 1))
               Text(
                 [
                   if (offer.variantTitle?.isNotEmpty == true) offer.variantTitle!,
