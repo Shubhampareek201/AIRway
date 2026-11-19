@@ -1051,6 +1051,14 @@ class WorkerJobRejectView(APIView):
         booking.cancelled_by = request.user
         booking.cancelled_at = timezone.now()
         booking.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at"])
+        assign.live_latitude = None
+        assign.live_longitude = None
+        assign.live_accuracy_m = None
+        assign.live_location_updated_at = None
+        assign.save(update_fields=[
+            "live_latitude", "live_longitude", "live_accuracy_m",
+            "live_location_updated_at", "updated_at",
+        ])
         BookingStatusHistory.objects.create(
             booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
             changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
