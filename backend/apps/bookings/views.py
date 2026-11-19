@@ -2183,7 +2183,13 @@ class CustomerOrderDetailView(APIView):
                     "scheduled_at": group.scheduled_at.isoformat(),
                     "customer_message": group.customer_message,
                     "arrival_otp": (
-                        group.arrival_otp
+                        Notification.objects.filter(
+                            user=request.user,
+                            data__purpose="appointment_arrival_otp",
+                            data__appointment_group_id=group.pk,
+                        ).order_by("-created_at").values_list(
+                            "data__arrival_code", flat=True
+                        ).first()
                         if not group.arrival_otp_verified_at
                         and group.arrival_otp_expires_at
                         and group.arrival_otp_expires_at > timezone.now()
