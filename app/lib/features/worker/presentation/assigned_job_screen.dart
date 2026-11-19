@@ -209,22 +209,63 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   Future<void> _startJob() async {
     if (!mounted || _jobDetail == null) return;
 
+    String? arrivalOtp;
+    if (_jobDetail!.appointmentGroup != null &&
+        _jobDetail!.assignment.startedAt == null) {
+      final controller = TextEditingController();
+      arrivalOtp = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(AirwayText.tr('Verify customer arrival', 'ग्राहक के आगमन की पुष्टि करें')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: InputDecoration(
+              labelText: AirwayText.tr('6-digit arrival code', '6 अंकों का आगमन कोड'),
+              hintText: '000000',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.length == 6) Navigator.pop(dialogContext, value);
+              },
+              child: Text(AirwayText.tr('Verify & start', 'सत्यापित करें और शुरू करें')),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (arrivalOtp == null) return;
+    }
+
     setState(() {
       _isActionInProgress = true;
     });
 
     try {
-      await WorkerApi.startJob(_jobDetail!.assignmentId);
+      await WorkerApi.startJob(
+        _jobDetail!.assignmentId,
+        arrivalOtp: arrivalOtp,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Job started', 'काम शुरू हो गया')) ),
+          SnackBar(content: Text(AirwayText.tr('Appointment started', 'अपॉइंटमेंट शुरू हो गया'))),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Failed to start job: $e', 'काम शुरू नहीं हो सका: $e'))),
+          SnackBar(content: Text(AirwayText.tr('Could not verify/start: $e', 'सत्यापन/काम शुरू नहीं हो सका: $e'))),
         );
       }
     } finally {
