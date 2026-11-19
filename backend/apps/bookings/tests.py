@@ -4139,6 +4139,8 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(checkout.status_code, 201, checkout.data)
         order = Order.objects.get(pk=checkout.data["order_id"])
         group = AppointmentGroup.objects.get(order=order)
+        self.assertRegex(group.arrival_otp, r"^\d{6}$")
+        self.assertIsNone(group.arrival_otp_verified_at)
 
         worker_user = self._create_user("+919876543298")
         worker = WorkerProfile.objects.create(
@@ -4179,6 +4181,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         from apps.bookings.serializers import WorkerOfferSerializer
         offer_data = WorkerOfferSerializer(offer).data
         self.assertEqual(offer_data["appointment_group_id"], group.pk)
+        self.assertNotIn("arrival_otp", offer_data)
         self.assertEqual(len(offer_data["order_services"]), 2)
         self.assertIn("Please call once before arriving.", offer_data["booking_notes"])
 
