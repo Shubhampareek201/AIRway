@@ -1394,7 +1394,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 changed_by=request.user,
                 note="Service completion verified with customer-shared OTP.",
             )
-            if not completion_feedback.skipped:
+            if completion_feedback is not None and not completion_feedback.skipped:
                 from apps.ratings.models import BookingRating, RatingSummary
                 overall_rating = (
                     completion_feedback.service_quality
