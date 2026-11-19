@@ -824,6 +824,18 @@ class BookingViewSet(viewsets.ModelViewSet):
         scheduled_at = data["scheduled_at"]
         drop_scheduled_at = data.get("drop_scheduled_at")
         category_answers = data.get("category_answers", {})
+        exclude_booking_ids = []
+        if data.get("exclude_booking_id"):
+            existing_booking = Booking.objects.filter(
+                pk=data["exclude_booking_id"], customer=request.user,
+                service=service,
+            ).first()
+            if existing_booking is None:
+                return Response(
+                    {"detail": "Booking cannot be excluded from this availability check."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            exclude_booking_ids.append(existing_booking.pk)
 
         from apps.workers.eligibility import required_worker_gender_for_booking
         try:
@@ -860,6 +872,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 duration_minutes=duration,
                 booking_mode=booking_mode,
                 drop_scheduled_at=drop_scheduled_at,
+                exclude_booking_ids=exclude_booking_ids,
             )
             if required_gender:
                 from apps.bookings.services import has_eligible_worker_for_slot
