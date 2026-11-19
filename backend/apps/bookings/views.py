@@ -359,6 +359,27 @@ class BookingViewSet(viewsets.ModelViewSet):
             changed_by=request.user,
             note=f"Cancelled by customer. Reason: {reason}",
         )
+        if booking.appointment_group_id:
+            appointment_group = booking.appointment_group
+            if not appointment_group.bookings.exclude(
+                status=Booking.Status.CANCELLED
+            ).exists():
+                appointment_group.arrival_otp_hash = ""
+                appointment_group.arrival_otp_expires_at = None
+                appointment_group.save(update_fields=[
+                    "arrival_otp_hash", "arrival_otp_expires_at", "updated_at",
+                ])
+                old_arrival_notices = Notification.objects.filter(
+                    user=request.user,
+                    data__purpose="appointment_arrival_otp",
+                    data__appointment_group_id=appointment_group.pk,
+                )
+                for old_notice in old_arrival_notices:
+                    old_data = dict(old_notice.data or {})
+                    old_data["arrival_code"] = None
+                    old_data["superseded"] = True
+                    old_notice.data = old_data
+                    old_notice.save(update_fields=["data", "updated_at"])
 
         # Cancel pending offers for the affected service. For grouped orders,
         # withdraw the shared order offer and redispatch only if active lines
