@@ -1473,6 +1473,34 @@ class CustomerCheckoutView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             group["scheduled_at"] = next(iter(group_times))
+            group_modes = {item.service.booking_mode for item, _ in group["items"]}
+            if len(group_modes) != 1:
+                return Response(
+                    {
+                        "detail": (
+                            f"Services in {group['category'].title} use different "
+                            "appointment modes and cannot share one appointment."
+                        ),
+                        "category_root": group["category"].slug,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if next(iter(group_modes)) == Booking.BookingMode.PICKUP_DROP:
+                group_drop_times = {
+                    serializer.validated_data.get("drop_scheduled_at")
+                    for _, serializer in group["items"]
+                }
+                if None in group_drop_times or len(group_drop_times) != 1:
+                    return Response(
+                        {
+                            "detail": (
+                                f"Pickup & Drop services in {group['category'].title} "
+                                "must share the same drop-off time."
+                            ),
+                            "category_root": group["category"].slug,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
         raw_group_messages = request.data.get("group_messages", cart.group_messages or {})
         if not isinstance(raw_group_messages, dict):
@@ -2589,6 +2617,11 @@ class CustomerCartItemView(APIView):
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         requested_schedule = serializer.validated_data.get("schedule_data") if "schedule_data" in request.data else None
         if requested_schedule is not None:
+            if not item.cart.address_id:
+                return Response(
+                    {"detail": "Select a service address before choosing an appointment time."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             from django.utils.dateparse import parse_datetime
             if not isinstance(requested_schedule, dict):
                 return Response(
