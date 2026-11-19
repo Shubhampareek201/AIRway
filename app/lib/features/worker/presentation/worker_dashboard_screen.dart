@@ -891,9 +891,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     final keys = <String>{};
     for (final job in jobs) {
       final groupId = job['appointment_group_id']?.toString();
+      final bookingId = job['booking_id'] ?? job['id'];
       keys.add(groupId != null && groupId.isNotEmpty
           ? 'group:$groupId'
-          : 'booking:${job['booking_id'] ?? job['id']}');
+          : 'booking:$bookingId');
     }
     return keys.length;
   }
@@ -918,9 +919,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         'एक ही अपॉइंटमेंट: $groupServices • $time',
       );
     }
+    final bookingId = job['booking_id'] ?? job['id'];
     return AirwayText.tr(
-      'Booking #${job['booking_id'] ?? job['id']} • $time',
-      'बुकिंग #${job['booking_id'] ?? job['id']} • $time',
+      'Booking #$bookingId • $time',
+      'बुकिंग #$bookingId • $time',
     );
   }
 
