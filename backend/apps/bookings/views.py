@@ -1476,7 +1476,7 @@ class CustomerCheckoutView(APIView):
                     {
                         "detail": (
                             f"All services in {group['category'].title} must use "
-                            "the same appointment date and time. Other service "
+                            "the same date and time for one appointment. Other service "
                             "categories can have their own schedule."
                         ),
                         "category_root": group["category"].slug,
