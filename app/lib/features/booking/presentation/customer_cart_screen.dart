@@ -130,6 +130,29 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       }
 
       if (!mounted) return;
+      // Persist every validated line before showing the shared schedule
+      // as saved. Checkout still performs its own final availability check.
+      for (final item in items) {
+        final id = item['id'] as int;
+        final mode = item['booking_mode']?.toString() ?? 'scheduled';
+        final drop = mode == 'pickup_drop'
+            ? (sourceDropTime ?? dropTimes[id])
+            : null;
+        final data = <String, dynamic>{
+          'scheduled_at': sharedStart.toUtc().toIso8601String(),
+        };
+        if (drop != null) {
+          final dropAt = DateTime(
+            date.year, date.month, date.day, drop.hour, drop.minute,
+          );
+          data['drop_scheduled_at'] = dropAt.toUtc().toIso8601String();
+        }
+        await BookingApi.updateCartItem(
+          itemId: id,
+          data: {'schedule_data': data},
+        );
+      }
+      if (!mounted) return;
       setState(() {
         for (final item in items) {
           final id = item['id'] as int;
@@ -294,6 +317,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() { loading = true; error = null; });
     try {
       final value = await BookingApi.getCart();
+      _scheduleMode = value['schedule_mode']?.toString() == 'same_appointment'
+          ? 'same_appointment'
+          : 'separate';
       CustomerCartState.updateFromCart(value);
       try {
         final rawAddresses = await BookingApi.request('/api/v1/auth/addresses/');
@@ -303,9 +329,29 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       final tomorrow = DateTime.now().add(const Duration(days: 1));
       for (final row in (value['items'] as List? ?? []).whereType<Map>()) {
         final id = row['id'] as int;
-        dates.putIfAbsent(id, () => DateTime(tomorrow.year, tomorrow.month, tomorrow.day));
-        times.putIfAbsent(id, () => const TimeOfDay(hour: 10, minute: 0));
-        dropTimes.putIfAbsent(id, () => const TimeOfDay(hour: 17, minute: 0));
+        final savedSchedule = row['schedule_data'] is Map
+            ? Map<String, dynamic>.from(row['schedule_data'] as Map)
+            : <String, dynamic>{};
+        final savedStart = DateTime.tryParse(
+          savedSchedule['scheduled_at']?.toString() ?? '',
+        )?.toLocal();
+        final savedDrop = DateTime.tryParse(
+          savedSchedule['drop_scheduled_at']?.toString() ?? '',
+        )?.toLocal();
+        if (savedStart != null && savedStart.isAfter(DateTime.now())) {
+          dates[id] = DateTime(savedStart.year, savedStart.month, savedStart.day);
+          times[id] = TimeOfDay.fromDateTime(savedStart);
+          _slotConfirmed.add(id);
+        } else {
+          dates.putIfAbsent(id, () => DateTime(tomorrow.year, tomorrow.month, tomorrow.day));
+          times.putIfAbsent(id, () => const TimeOfDay(hour: 10, minute: 0));
+          _slotConfirmed.remove(id);
+        }
+        if (savedDrop != null && savedDrop.isAfter(DateTime.now())) {
+          dropTimes[id] = TimeOfDay.fromDateTime(savedDrop);
+        } else {
+          dropTimes.putIfAbsent(id, () => const TimeOfDay(hour: 17, minute: 0));
+        }
       }
       if (mounted) setState(() { cart = value; loading = false; });
     } catch (e) {
@@ -397,6 +443,35 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     );
 
     if (result == null || !mounted) return;
+    final scheduleData = <String, dynamic>{
+      'scheduled_at': result.scheduledAt.toUtc().toIso8601String(),
+    };
+    if (result.dropScheduledAt != null) {
+      scheduleData['drop_scheduled_at'] =
+          result.dropScheduledAt!.toUtc().toIso8601String();
+    }
+    try {
+      final updatedCart = await BookingApi.updateCartItem(
+        itemId: id,
+        data: {
+          'category_answers': result.categoryAnswers,
+          'schedule_data': scheduleData,
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        cart = updatedCart;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(airway_localization.AirwayText.tr(
+          'Could not save this time. Please try again.',
+          'यह समय सेव नहीं हो पाया। कृपया दोबारा कोशिश करें।',
+        ))),
+      );
+      return;
+    }
     setState(() {
       dates[id] = result.scheduledAt;
       times[id] = TimeOfDay.fromDateTime(result.scheduledAt);
