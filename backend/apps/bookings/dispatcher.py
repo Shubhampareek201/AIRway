@@ -136,7 +136,9 @@ class DispatcherService:
             order = Order.objects.select_for_update().get(pk=order.pk)
             config = DispatchConfiguration.get_solo()
             if not config.is_enabled or order.status not in (
-                Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED
+                Order.Status.AWAITING_ASSIGNMENT,
+                Order.Status.PARTIALLY_ASSIGNED,
+                Order.Status.PARTIALLY_CANCELLED,
             ):
                 return []
             if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
