@@ -1474,7 +1474,7 @@ class CustomerCheckoutView(APIView):
                 )
             group["scheduled_at"] = next(iter(group_times))
 
-        raw_group_messages = request.data.get("group_messages", {})
+        raw_group_messages = request.data.get("group_messages", cart.group_messages or {})
         if not isinstance(raw_group_messages, dict):
             return Response(
                 {"group_messages": "Provide one optional message per appointment group."},
@@ -1751,9 +1751,12 @@ class CustomerCheckoutView(APIView):
         # Payment webhook/verification triggers DispatcherService.dispatch_order.
 
         cart.items.all().delete()
+        cart.group_messages = {}
+        update_fields = ["group_messages", "updated_at"]
         if cart.schedule_mode != "separate":
             cart.schedule_mode = "separate"
-            cart.save(update_fields=["schedule_mode", "updated_at"])
+            update_fields.append("schedule_mode")
+        cart.save(update_fields=update_fields)
         return Response({
             "order_id": order.id,
             "status": order.status,
@@ -2523,6 +2526,36 @@ class CustomerCartView(APIView):
                 )
             cart.schedule_mode = schedule_mode
             update_fields.append("schedule_mode")
+
+        if "group_messages" in request.data:
+            raw_messages = request.data.get("group_messages")
+            if not isinstance(raw_messages, dict):
+                return Response(
+                    {"group_messages": "Provide an object keyed by service category slug."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            allowed_slugs = set()
+            for item in cart.items.select_related("service__category__parent"):
+                root_category = item.service.category
+                while root_category.parent_id:
+                    root_category = root_category.parent
+                allowed_slugs.add(root_category.slug)
+            cleaned_messages = {}
+            for slug, message in raw_messages.items():
+                if slug not in allowed_slugs:
+                    return Response(
+                        {"group_messages": f"Unknown appointment group: {slug}."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if not isinstance(message, str) or len(message.strip()) > 500:
+                    return Response(
+                        {"group_messages": "Each message must be text up to 500 characters."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if message.strip():
+                    cleaned_messages[slug] = message.strip()
+            cart.group_messages = cleaned_messages
+            update_fields.append("group_messages")
 
         if update_fields:
             cart.save(update_fields=[*update_fields, "updated_at"])
