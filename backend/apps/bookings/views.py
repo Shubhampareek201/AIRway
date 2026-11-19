@@ -1891,15 +1891,23 @@ class CustomerOrderDetailView(APIView):
             assignment = getattr(booking, "assignment", None)
             completion_code = None
             completion_expires_at = None
+            completion_otp_requested = False
+            completion_feedback = None
             if booking.status == Booking.Status.IN_PROGRESS:
                 from apps.bookings.models import BookingCompletionOTP
                 from apps.notifications.models import Notification
+                from apps.ratings.models import BookingCompletionFeedback
                 otp_record = BookingCompletionOTP.objects.filter(
                     booking=booking,
                     verified_at__isnull=True,
                     expires_at__gt=timezone.now(),
                 ).first()
-                if otp_record:
+                completion_otp_requested = otp_record is not None
+                completion_feedback = BookingCompletionFeedback.objects.filter(
+                    booking=booking,
+                    customer=request.user,
+                ).first()
+                if otp_record and completion_feedback:
                     otp_notice = Notification.objects.filter(
                         user=request.user,
                         data__booking_id=booking.id,
@@ -2010,6 +2018,11 @@ class CustomerOrderDetailView(APIView):
                 "advance_amount": advance_rows.get(row.id, {}).get("amount"),
                 "balance_amount": balance_rows.get(row.id, {}).get("amount"),
                 "completion_verified": booking.status == Booking.Status.COMPLETED,
+                "completion_otp_requested": completion_otp_requested,
+                "completion_feedback_submitted": completion_feedback is not None,
+                "completion_feedback_skipped": (
+                    completion_feedback.skipped if completion_feedback else False
+                ),
                 "customer_has_rated": booking.id in rated_booking_ids,
                 "completion_otp": (
                     {
