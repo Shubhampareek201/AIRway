@@ -1921,6 +1921,11 @@ class CustomerOrderDetailView(APIView):
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
+                "appointment_group_id": booking.appointment_group_id,
+                "appointment_group_title": (
+                    booking.appointment_group.category_title_snapshot
+                    if booking.appointment_group_id else None
+                ),
                 "service": service_snapshot,
                 "booking_status": booking.status,
                 "booking_mode": booking.booking_mode,
@@ -2218,6 +2223,7 @@ class CustomerOrderListView(APIView):
                 "items": [
                     {
                         "booking_id": item.booking_id,
+                        "appointment_group_id": item.booking.appointment_group_id,
                         "service_title": item.booking.service.title,
                         "variant_title": item.booking.variant.title if item.booking.variant_id else "",
                         "scheduled_at": item.booking.scheduled_at,
