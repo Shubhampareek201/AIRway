@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_api.dart';
@@ -19,17 +21,97 @@ class AssignedJobScreen extends StatefulWidget {
   State<AssignedJobScreen> createState() => _AssignedJobScreenState();
 }
 
-class _AssignedJobScreenState extends State<AssignedJobScreen> {
+class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindingObserver {
   WorkerAssignmentDetail? _jobDetail;
   bool _loading = true;
   String? _error;
   bool _isActionInProgress = false;
   bool _hasRatedCustomer = false;
+  Timer? _locationTimer;
+  int? _sharingAssignmentId;
+  bool _locationRequestInProgress = false;
+  bool _locationPermissionBlocked = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAssignedJob();
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _jobDetail != null) {
+      _configureLocationSharing(_jobDetail!);
+    } else if (state != AppLifecycleState.resumed) {
+      _locationTimer?.cancel();
+      _locationTimer = null;
+    }
+  }
+
+  bool _canShareLocation(WorkerAssignmentDetail job) =>
+      job.status == BookingStatus.assigned ||
+      job.status == BookingStatus.inProgress;
+
+  void _configureLocationSharing(WorkerAssignmentDetail job) {
+    if (!_canShareLocation(job)) {
+      _locationTimer?.cancel();
+      _locationTimer = null;
+      _sharingAssignmentId = null;
+      return;
+    }
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    if (_sharingAssignmentId != job.assignmentId) {
+      _locationTimer?.cancel();
+      _sharingAssignmentId = job.assignmentId;
+      _publishCurrentLocation(job.assignmentId);
+      _locationTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => _publishCurrentLocation(job.assignmentId),
+      );
+    }
+  }
+
+  Future<void> _publishCurrentLocation(int assignmentId) async {
+    if (!mounted || _locationRequestInProgress || _locationPermissionBlocked ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    _locationRequestInProgress = true;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _locationPermissionBlocked = true;
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      if (!mounted || _sharingAssignmentId != assignmentId) return;
+      await WorkerApi.updateJobLocation(
+        assignmentId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracyMeters: position.accuracy,
+      );
+    } catch (_) {
+      // Location is optional; the job lifecycle remains usable without GPS/network.
+    } finally {
+      _locationRequestInProgress = false;
+    }
   }
 
   Future<void> _loadAssignedJob() async {
@@ -85,6 +167,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> {
           _hasRatedCustomer = hasRatedCustomer;
           _loading = false;
         });
+        _configureLocationSharing(parsedDetail);
       }
     } catch (e) {
       if (mounted) {
