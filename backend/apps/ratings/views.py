@@ -100,7 +100,7 @@ class BookingRatingViewSet(viewsets.ModelViewSet):
             allowed_satisfaction = {
                 choice for choice, _ in BookingCompletionFeedback.SatisfactionLevel.choices
             }
-            if satisfaction not in allowed_satisfaction:
+            if not isinstance(satisfaction, str) or satisfaction not in allowed_satisfaction:
                 return Response(
                     {"satisfaction_level": "Choose a valid satisfaction level."},
                     status=status.HTTP_400_BAD_REQUEST,
