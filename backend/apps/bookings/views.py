@@ -378,6 +378,17 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=WorkerOffer.Status.WITHDRAWN,
                 responded_at=timezone.now(),
             )
+            if booking.appointment_group_id:
+                # A pending group offer includes every active service in the
+                # appointment. Withdraw it and let dispatch rebuild the offer
+                # for the remaining services only.
+                WorkerOffer.objects.filter(
+                    appointment_group_id=booking.appointment_group_id,
+                    status=WorkerOffer.Status.PENDING,
+                ).update(
+                    status=WorkerOffer.Status.WITHDRAWN,
+                    responded_at=timezone.now(),
+                )
             # Also close any pre-transition whole-order offer still pending.
             WorkerOffer.objects.filter(
                 order=order, status=WorkerOffer.Status.PENDING
