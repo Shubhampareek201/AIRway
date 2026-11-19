@@ -2003,8 +2003,10 @@ class CustomerCartView(APIView):
 
     def patch(self, request):
         cart = self.get_cart(request.user)
+        update_fields = []
         if "address_id" in request.data:
             address_id = request.data.get("address_id")
+            previous_address_id = cart.address_id
             if address_id in (None, ""):
                 cart.address = None
             else:
@@ -2014,8 +2016,8 @@ class CustomerCartView(APIView):
                     user=request.user,
                     deleted_at__isnull=True,
                 )
-                # Changing Jaipur to another city must not leave unavailable
-                # services silently attached to the cart.
+                # Changing the service address invalidates every previously
+                # selected slot; availability must be checked for the new area.
                 for item in cart.items.select_related("service"):
                     try:
                         check_service_available(
@@ -2033,7 +2035,22 @@ class CustomerCartView(APIView):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
                 cart.address = address
-            cart.save(update_fields=["address", "updated_at"])
+            if cart.address_id != previous_address_id:
+                cart.items.update(schedule_data={})
+            update_fields.append("address")
+
+        if "schedule_mode" in request.data:
+            schedule_mode = str(request.data.get("schedule_mode", "")).strip().lower()
+            if schedule_mode not in ("separate", "same_appointment"):
+                return Response(
+                    {"schedule_mode": "Choose separate or same_appointment."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            cart.schedule_mode = schedule_mode
+            update_fields.append("schedule_mode")
+
+        if update_fields:
+            cart.save(update_fields=[*update_fields, "updated_at"])
         return Response(CustomerCartSerializer(cart, context={"request": request}).data)
 
 
