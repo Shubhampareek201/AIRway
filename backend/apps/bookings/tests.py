@@ -4800,6 +4800,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             quantity=1,
             pricing_snapshot={"line_total": "500.00"},
         )
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
 
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
@@ -4807,11 +4808,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
                 "items": [
                     {
                         "cart_item_id": self.cart_item.id,
-                        "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                        "scheduled_at": scheduled_at,
                     },
                     {
                         "cart_item_id": second_item.id,
-                        "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                        "scheduled_at": scheduled_at,
                     },
                 ]
             },
