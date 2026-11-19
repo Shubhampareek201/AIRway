@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.storage import FileSystemStorage
@@ -990,6 +990,15 @@ class BookingViewSet(viewsets.ModelViewSet):
             service__is_active=True,
             service__category__is_active=True,
         ).select_related("service", "service__category").order_by("service__title") if worker_is_approved else worker.worker_services.none()
+        location_is_fresh = bool(
+            worker_is_approved
+            and assignment.accepted_at
+            and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+            and assignment.live_location_updated_at
+            and assignment.live_location_updated_at >= timezone.now() - timedelta(minutes=2)
+            and assignment.live_latitude is not None
+            and assignment.live_longitude is not None
+        )
         return Response({
             "is_assigned": True,
             "worker_id": worker.id,
@@ -1013,8 +1022,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             "status": booking.status,
             "assigned_at": assignment.assigned_at,
             "started_at": assignment.started_at,
-            "worker_latitude": None,
-            "worker_longitude": None,
+            "worker_latitude": float(assignment.live_latitude) if location_is_fresh else None,
+            "worker_longitude": float(assignment.live_longitude) if location_is_fresh else None,
+            "worker_location_accuracy_m": float(assignment.live_accuracy_m) if location_is_fresh and assignment.live_accuracy_m is not None else None,
+            "worker_location_updated_at": assignment.live_location_updated_at.isoformat() if location_is_fresh else None,
+            "location_is_fresh": location_is_fresh,
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
