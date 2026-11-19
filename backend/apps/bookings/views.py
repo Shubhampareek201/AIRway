@@ -1892,21 +1892,20 @@ class CustomerOrderDetailView(APIView):
             completion_code = None
             completion_expires_at = None
             completion_otp_requested = False
-            completion_feedback = None
+            from apps.ratings.models import BookingCompletionFeedback
+            completion_feedback = BookingCompletionFeedback.objects.filter(
+                booking=booking,
+                customer=request.user,
+            ).first()
             if booking.status == Booking.Status.IN_PROGRESS:
                 from apps.bookings.models import BookingCompletionOTP
                 from apps.notifications.models import Notification
-                from apps.ratings.models import BookingCompletionFeedback
                 otp_record = BookingCompletionOTP.objects.filter(
                     booking=booking,
                     verified_at__isnull=True,
                     expires_at__gt=timezone.now(),
                 ).first()
                 completion_otp_requested = otp_record is not None
-                completion_feedback = BookingCompletionFeedback.objects.filter(
-                    booking=booking,
-                    customer=request.user,
-                ).first()
                 if otp_record and completion_feedback:
                     otp_notice = Notification.objects.filter(
                         user=request.user,
