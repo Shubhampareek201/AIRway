@@ -4062,7 +4062,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             second_item.schedule_data["scheduled_at"],
         )
         self.assertEqual(
-            timezone.datetime.fromisoformat(self.cart_item.schedule_data["scheduled_at"]),
+            datetime.fromisoformat(self.cart_item.schedule_data["scheduled_at"]),
             scheduled_at,
         )
 
