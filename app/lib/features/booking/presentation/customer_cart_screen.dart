@@ -261,7 +261,19 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     if (groupItems.isEmpty) return const SizedBox.shrink();
     final firstId = groupItems.first['id'] as int;
     final title = groupItems.first['category_root_title']?.toString() ?? 'Appointment';
-    final scheduled = groupItems.every((row) => _slotConfirmed.contains(row['id']));
+    final groupScheduleKeys = groupItems.map((row) {
+      final rowId = row['id'] as int;
+      final rowDate = dates[rowId];
+      final rowTime = times[rowId];
+      if (!_slotConfirmed.contains(rowId) || rowDate == null || rowTime == null) {
+        return '';
+      }
+      return DateTime(
+        rowDate.year, rowDate.month, rowDate.day,
+        rowTime.hour, rowTime.minute,
+      ).toIso8601String();
+    }).toSet();
+    final scheduled = groupScheduleKeys.length == 1 && !groupScheduleKeys.contains('');
     final date = dates[firstId];
     final time = times[firstId];
     final savedMessages = Map<String, dynamic>.from(cart?['group_messages'] as Map? ?? const {});
@@ -656,6 +668,22 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     }
     setState(() => busy = true);
     try {
+      for (final entry in appointmentGroups.entries) {
+        final keys = entry.value.map((item) {
+          final id = item['id'] as int;
+          final date = dates[id];
+          final time = times[id];
+          if (!_slotConfirmed.contains(id) || date == null || time == null) return '';
+          return DateTime(
+            date.year, date.month, date.day, time.hour, time.minute,
+          ).toIso8601String();
+        }).toSet();
+        if (keys.length != 1 || keys.contains('')) {
+          throw Exception(
+            'Choose one common date and time for every service in ${entry.value.first['category_root_title'] ?? 'this appointment'}.',
+          );
+        }
+      }
       final schedules = items.map((item) {
         final id = item['id'] as int;
         final date = dates[id] ?? DateTime.now().add(const Duration(days: 1));
