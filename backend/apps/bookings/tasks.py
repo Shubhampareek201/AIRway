@@ -70,7 +70,11 @@ def retry_failed_dispatches():
         return 0
     dispatched = 0
     orders = Order.objects.filter(
-        status__in=[Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED]
+        status__in=[
+            Order.Status.AWAITING_ASSIGNMENT,
+            Order.Status.PARTIALLY_ASSIGNED,
+            Order.Status.PARTIALLY_CANCELLED,
+        ]
     ).order_by("created_at")
     for order in orders:
         if WorkerOffer.objects.filter(order=order, status__in=[
