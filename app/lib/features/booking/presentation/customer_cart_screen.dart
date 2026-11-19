@@ -337,6 +337,10 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   }
 
   Future<void> loadCart() async {
+    dates.clear();
+    times.clear();
+    dropTimes.clear();
+    _slotConfirmed.clear();
     setState(() { loading = true; error = null; });
     try {
       final value = await BookingApi.getCart();
@@ -800,7 +804,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             tooltip: airway_localization.AirwayText.tr('Change address', 'पता बदलें'),
             icon: const Icon(Icons.edit_location_alt_rounded, color: violet),
             onSelected: (id) async {
-              setState(() { busy = true; _slotConfirmed.clear(); });
+              setState(() {
+                busy = true;
+                dates.clear();
+                times.clear();
+                dropTimes.clear();
+                _slotConfirmed.clear();
+              });
               try {
                 final updated = await BookingApi.updateCartAddress(id);
                 if (mounted) setState(() { cart = updated; busy = false; });
