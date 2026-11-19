@@ -1437,6 +1437,37 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         self.assertEqual(tracking.data["worker_latitude"], 24.5812)
         self.assertEqual(tracking.data["worker_longitude"], 74.3294)
 
+    def test_live_location_is_hidden_until_30_minutes_before_appointment(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=timezone.now() + timedelta(minutes=60),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            live_latitude=Decimal("24.5812"),
+            live_longitude=Decimal("74.3294"),
+            live_location_updated_at=timezone.now(),
+        )
+
+        tracking = self.customer_client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(tracking.status_code, 200)
+        self.assertFalse(tracking.data["location_visibility_window_open"])
+        self.assertFalse(tracking.data["location_is_fresh"])
+        self.assertIsNone(tracking.data["worker_latitude"])
+        self.assertEqual(
+            datetime.fromisoformat(tracking.data["location_available_at"]),
+            booking.scheduled_at - timedelta(minutes=30),
+        )
+
     def test_unrelated_worker_cannot_update_assigned_job_location(self):
         from apps.bookings.models import Booking, BookingAssignment
         from apps.workers.models import WorkerProfile
