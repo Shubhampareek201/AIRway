@@ -423,7 +423,7 @@ class DispatcherService:
                 from decimal import Decimal
                 payment_context = payment_order
                 allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
-                group_order_item_ids = {row.order_item_id for row in group_bookings if hasattr(row, "order_item")}
+                group_order_item_ids = {row.order_item.pk for row in group_bookings if hasattr(row, "order_item")}
                 customer_total_value = sum(
                     (row.order_item.line_total for row in group_bookings if hasattr(row, "order_item")),
                     Decimal("0.00"),
