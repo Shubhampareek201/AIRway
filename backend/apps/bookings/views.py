@@ -1720,6 +1720,8 @@ class CustomerOrderDetailView(APIView):
                 "can_cancel": booking.can_cancel,
                 "can_reschedule": (
                     shared_reschedule_eligible
+                    and booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                    and not assignment
                     if shared_appointment
                     else (
                         not recurring_order
