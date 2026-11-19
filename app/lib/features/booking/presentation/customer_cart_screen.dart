@@ -303,14 +303,12 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           OutlinedButton.icon(
             onPressed: busy ? null : () => chooseSchedule(firstId),
             icon: Icon(scheduled ? Icons.event_available_rounded : Icons.calendar_month_rounded, size: 17),
-            label: Expanded(
-              child: Text(
-                scheduled && date != null && time != null
-                    ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context)
-                    : airway_localization.AirwayText.tr('Choose appointment date & time', 'अपॉइंटमेंट की तारीख और समय चुनें'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            label: Text(
+              scheduled && date != null && time != null
+                  ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context)
+                  : airway_localization.AirwayText.tr('Choose appointment date & time', 'अपॉइंटमेंट की तारीख और समय चुनें'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             style: OutlinedButton.styleFrom(
               foregroundColor: violet,
