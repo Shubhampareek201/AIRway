@@ -768,7 +768,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
-    booking_notes = serializers.CharField(source="booking.notes", read_only=True)
+    booking_notes = serializers.SerializerMethodField()
     expected_duration_minutes = serializers.SerializerMethodField()
     customer_answers = serializers.SerializerMethodField()
     professional_preference = serializers.SerializerMethodField()
@@ -863,6 +863,16 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "scheduled_at": item.booking.scheduled_at,
             "quantity": item.quantity,
         } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
+
+    def get_booking_notes(self, obj):
+        booking = obj.booking
+        notes = []
+        group = getattr(booking, "appointment_group", None)
+        if group and group.customer_message:
+            notes.append(f"Appointment message: {group.customer_message}")
+        if booking.notes:
+            notes.append(f"Service notes: {booking.notes}")
+        return "\n".join(notes)
 
     def get_expected_duration_minutes(self, obj):
         booking = obj.booking
