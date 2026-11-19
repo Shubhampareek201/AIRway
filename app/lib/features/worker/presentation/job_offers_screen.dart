@@ -216,6 +216,9 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
 
   Widget _buildOfferCard(WorkerOffer offer, {required bool isAccepted}) {
     final inProgress = _actionInProgress == offer.id;
+    final groupServiceTitles = offer.orderServices
+        .map((row) => row['service_title']?.toString() ?? 'Service')
+        .join(' • ');
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -234,8 +237,8 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
             if (offer.orderServices.length > 1)
               Text(
                 AirwayText.tr(
-                  'Services: ${offer.orderServices.map((row) => row['service_title']?.toString() ?? 'Service').join(' • ')}',
-                  'सेवाएँ: ${offer.orderServices.map((row) => row['service_title']?.toString() ?? 'सेवा').join(' • ')}',
+                  'Services: $groupServiceTitles',
+                  'सेवाएँ: $groupServiceTitles',
                 ),
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
               ),
