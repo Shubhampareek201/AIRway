@@ -501,9 +501,9 @@ class BookingViewSet(viewsets.ModelViewSet):
                     # shared appointment is moved together.
                     if shared_appointment:
                         old_drop = target.drop_scheduled_at
-                        drop_time = new_drop or (
-                            new_time + (old_drop - target.scheduled_at)
-                            if old_drop else None
+                        drop_time = (
+                            new_drop if target.pk == booking.pk else
+                            (new_time + (old_drop - target.scheduled_at) if old_drop else None)
                         )
                     else:
                         drop_time = new_drop
@@ -527,9 +527,9 @@ class BookingViewSet(viewsets.ModelViewSet):
             if target.booking_mode == Booking.BookingMode.PICKUP_DROP:
                 if shared_appointment:
                     old_drop = target.drop_scheduled_at
-                    target.drop_scheduled_at = new_drop or (
-                        new_time + (old_drop - target.scheduled_at)
-                        if old_drop else None
+                    target.drop_scheduled_at = (
+                        new_drop if target.pk == booking.pk else
+                        (new_time + (old_drop - target.scheduled_at) if old_drop else None)
                     )
                 else:
                     target.drop_scheduled_at = new_drop
