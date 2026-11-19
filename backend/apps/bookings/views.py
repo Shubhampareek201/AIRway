@@ -1270,6 +1270,16 @@ class BookingViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Completion code expired. Request a new code."}, status=status.HTTP_400_BAD_REQUEST)
             if otp_record.attempts >= 5:
                 return Response({"detail": "Too many incorrect attempts. Request a new code after it expires."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            from apps.ratings.models import BookingCompletionFeedback
+            completion_feedback = BookingCompletionFeedback.objects.select_for_update().filter(
+                booking=locked_booking,
+                customer=locked_booking.customer,
+            ).first()
+            if completion_feedback is None:
+                return Response(
+                    {"detail": "Customer feedback or the explicit skip action is required before completion verification."},
+                    status=status.HTTP_409_CONFLICT,
+                )
             if len(supplied_code) != 6 or not supplied_code.isdigit() or not check_password(supplied_code, otp_record.code_hash):
                 otp_record.attempts += 1
                 otp_record.save(update_fields=["attempts", "updated_at"])
@@ -1325,6 +1335,25 @@ class BookingViewSet(viewsets.ModelViewSet):
                 changed_by=request.user,
                 note="Service completion verified with customer-shared OTP.",
             )
+            if not completion_feedback.skipped:
+                from apps.ratings.models import BookingRating, RatingSummary
+                overall_rating = round(
+                    (completion_feedback.service_quality + completion_feedback.worker_behaviour) / 2
+                )
+                BookingRating.objects.get_or_create(
+                    booking=locked_booking,
+                    rater=locked_booking.customer,
+                    defaults={
+                        "rated": assignment.worker.user,
+                        "rating_type": "customer",
+                        "rating": overall_rating,
+                        "comment": completion_feedback.comment,
+                    },
+                )
+                summary, _ = RatingSummary.objects.get_or_create(
+                    user=assignment.worker.user
+                )
+                summary.update_stats()
 
             # Referral reward is earned only on the referred customer's first
             # successfully OTP-verified completed service.
