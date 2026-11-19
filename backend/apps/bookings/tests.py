@@ -3137,6 +3137,61 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(actual_ratings, expected_order)
 
 
+    def test_dispatcher_prioritizes_dedicated_then_related_then_multi_category_workers(self):
+        from apps.bookings.dispatcher import DispatcherService
+
+        dedicated = self._create_eligible_worker(rating=3.0, suffix="81")
+        related = self._create_eligible_worker(rating=5.0, suffix="82")
+        multi_category = self._create_eligible_worker(rating=4.5, suffix="83")
+
+        same_root_child = Category.objects.create(
+            parent=self.category,
+            title="Window Cleaning",
+            slug="dispatcher-window-cleaning",
+        )
+        related_service = Service.objects.create(
+            category=same_root_child,
+            title="Window Cleaning",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            is_active=True,
+        )
+        other_root = Category.objects.create(
+            title="Car Care",
+            slug="dispatcher-car-care",
+        )
+        other_service = Service.objects.create(
+            category=other_root,
+            title="Exterior Car Wash",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            is_active=True,
+        )
+        WorkerService.objects.create(worker=related, service=related_service)
+        WorkerService.objects.create(worker=multi_category, service=other_service)
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_service_scope_priority", paid_at=timezone.now(),
+        )
+
+        offers = DispatcherService.dispatch_offers(booking)
+        self.assertEqual(
+            [offer.worker_id for offer in offers],
+            [dedicated.pk, related.pk, multi_category.pk],
+        )
+
+
     def test_dispatcher_never_offers_booking_to_its_own_customer_worker(self):
         """A customer who is also an approved worker must not receive their own job."""
         from apps.bookings.dispatcher import DispatcherService
