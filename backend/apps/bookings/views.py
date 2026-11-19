@@ -15,7 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, AppointmentGroup, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -1406,6 +1406,60 @@ class CustomerCheckoutView(APIView):
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
 
+        # Services below the same root catalogue category form one appointment.
+        # Each group has one shared start time; different root categories remain
+        # independently schedulable inside the same parent checkout.
+        grouped_by_root = {}
+        for item, serializer in prepared:
+            root_category = item.service.category
+            while root_category.parent_id:
+                root_category = root_category.parent
+            group = grouped_by_root.setdefault(root_category.pk, {
+                "category": root_category,
+                "items": [],
+            })
+            group["items"].append((item, serializer))
+
+        for group in grouped_by_root.values():
+            group_times = {
+                serializer.validated_data.get("scheduled_at")
+                for _, serializer in group["items"]
+            }
+            if None in group_times or len(group_times) != 1:
+                return Response(
+                    {
+                        "detail": (
+                            f"All services in {group['category'].title} must use "
+                            "the same appointment date and time. Other service "
+                            "categories can have their own schedule."
+                        ),
+                        "category_root": group["category"].slug,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            group["scheduled_at"] = next(iter(group_times))
+
+        raw_group_messages = request.data.get("group_messages", {})
+        if not isinstance(raw_group_messages, dict):
+            return Response(
+                {"group_messages": "Provide one optional message per appointment group."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        valid_group_slugs = {group["category"].slug for group in grouped_by_root.values()}
+        group_messages = {}
+        for slug, raw_message in raw_group_messages.items():
+            if slug not in valid_group_slugs:
+                return Response(
+                    {"group_messages": f"Unknown appointment group: {slug}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not isinstance(raw_message, str) or len(raw_message.strip()) > 500:
+                return Response(
+                    {"group_messages": "Each appointment message must be text up to 500 characters."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            group_messages[slug] = raw_message.strip()
+
         # A shared appointment means every service starts at the same instant.
         # Each service is still validated independently for its own duration,
         # booking mode, zone and worker eligibility. Worker assignment remains
@@ -1428,6 +1482,18 @@ class CustomerCheckoutView(APIView):
             address=cart.address,
             status=Order.Status.AWAITING_ASSIGNMENT,
         )
+        appointment_groups = {}
+        for root_id, group_data in grouped_by_root.items():
+            category = group_data["category"]
+            appointment_groups[root_id] = AppointmentGroup.objects.create(
+                order=order,
+                root_category=category,
+                category_slug_snapshot=category.slug,
+                category_title_snapshot=category.title,
+                scheduled_at=group_data["scheduled_at"],
+                customer_message=group_messages.get(category.slug, ""),
+            )
+
         subtotal = Decimal("0")
         tax_total = Decimal("0")
         grand_total = Decimal("0")
@@ -1435,6 +1501,11 @@ class CustomerCheckoutView(APIView):
 
         for item, serializer in prepared:
             booking = serializer.save()
+            root_category = item.service.category
+            while root_category.parent_id:
+                root_category = root_category.parent
+            booking.appointment_group = appointment_groups[root_category.pk]
+            booking.save(update_fields=["appointment_group", "updated_at"])
             quantity = item.quantity
             base_snapshot = dict(booking.pricing_snapshot or {})
             unit_subtotal = Decimal(str(base_snapshot.get("subtotal", "0")))
@@ -1494,6 +1565,9 @@ class CustomerCheckoutView(APIView):
                     "variant_id": item.variant_id,
                     "variant_title": item.variant.title if item.variant else None,
                     "cart_item_id": item.id,
+                    "appointment_group_id": booking.appointment_group_id,
+                    "appointment_group_slug": booking.appointment_group.category_slug_snapshot,
+                    "appointment_group_title": booking.appointment_group.category_title_snapshot,
                     "form_answers": item.form_answers,
                     "category_answers": item.category_answers,
                     "notes": item.notes,
@@ -1617,6 +1691,17 @@ class CustomerCheckoutView(APIView):
                     if shared_appointment_at is not None else None
                 ),
             },
+            "appointment_groups_v1": [
+                {
+                    "id": group.pk,
+                    "category_root_id": group.root_category_id,
+                    "category_slug": group.category_slug_snapshot,
+                    "category_title": group.category_title_snapshot,
+                    "scheduled_at": group.scheduled_at.isoformat(),
+                    "customer_message": group.customer_message,
+                }
+                for group in appointment_groups.values()
+            ],
             "payment_allocation_v1": {
                 "percentage": str(advance_percentage),
                 "advance_total": str(advance_total),
@@ -1642,15 +1727,28 @@ class CustomerCheckoutView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "appointment_groups": [
+                {
+                    "id": group.pk,
+                    "category_root_id": group.root_category_id,
+                    "category_slug": group.category_slug_snapshot,
+                    "category_title": group.category_title_snapshot,
+                    "scheduled_at": group.scheduled_at.isoformat(),
+                    "customer_message": group.customer_message,
+                    "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                }
+                for group in order.appointment_groups.select_related("root_category").all()
+            ],
             "items": [
                 {
                     "order_item_id": row.id,
                     "booking_id": row.booking_id,
+                    "appointment_group_id": row.booking.appointment_group_id,
                     "service": row.service_snapshot,
                     "quantity": row.quantity,
                     "line_total": str(row.line_total),
                 }
-                for row in order.items.all()
+                for row in order.items.select_related("booking").all()
             ],
             "dispatch": {"offers_sent": 0, "deferred_until_advance_payment": True},
             "next_step": "Pay the 30% advance to start worker matching. The remaining 70% is due after all services are completed and verified.",
