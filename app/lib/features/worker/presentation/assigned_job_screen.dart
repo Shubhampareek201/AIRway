@@ -125,6 +125,9 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       final jobs = await WorkerApi.getAssignedJobs();
 
       if (jobs.isEmpty) {
+        _locationTimer?.cancel();
+        _locationTimer = null;
+        _sharingAssignmentId = null;
         if (mounted) {
           setState(() {
             _loading = false;
@@ -139,6 +142,9 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           ? jobs
           : jobs.where((job) => job['id'] == widget.assignmentId).toList();
       if (matchingJobs.isEmpty) {
+        _locationTimer?.cancel();
+        _locationTimer = null;
+        _sharingAssignmentId = null;
         if (mounted) {
           setState(() {
             _error = AirwayText.tr('This job is no longer assigned to your account.', 'यह जॉब अब आपके खाते को असाइन नहीं है।');
