@@ -1482,7 +1482,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
                 if not bookings:
                     return Response({"detail": "This order no longer has service bookings."}, status=status.HTTP_409_CONFLICT)
-                if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
+                if order.status not in (
+                    Order.Status.AWAITING_ASSIGNMENT,
+                    Order.Status.PARTIALLY_ASSIGNED,
+                    Order.Status.PARTIALLY_CANCELLED,
+                ):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
                 from apps.payments.models import Payment
                 if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
@@ -1716,16 +1720,27 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                         order.items.exclude(booking__status=Booking.Status.CANCELLED)
                         .values_list("booking_id", flat=True)
                     )
-                    if active_ids and all(
-                        BookingAssignment.objects.filter(booking_id=booking_id).exists()
-                        for booking_id in active_ids
-                    ):
+                    assigned_ids = set(
+                        BookingAssignment.objects.filter(
+                            booking_id__in=active_ids
+                        ).values_list("booking_id", flat=True)
+                    )
+                    has_cancelled_lines = order.items.filter(
+                        booking__status=Booking.Status.CANCELLED
+                    ).exists()
+                    if active_ids and set(active_ids).issubset(assigned_ids):
                         order.status = (
                             Order.Status.PARTIALLY_CANCELLED
-                            if order.items.filter(booking__status=Booking.Status.CANCELLED).exists()
-                            else Order.Status.AWAITING_PAYMENT
+                            if has_cancelled_lines else Order.Status.AWAITING_PAYMENT
                         )
-                        order.save(update_fields=["status", "updated_at"])
+                    elif assigned_ids:
+                        order.status = Order.Status.PARTIALLY_ASSIGNED
+                    else:
+                        order.status = (
+                            Order.Status.PARTIALLY_CANCELLED
+                            if has_cancelled_lines else Order.Status.AWAITING_ASSIGNMENT
+                        )
+                    order.save(update_fields=["status", "updated_at"])
 
         response_data = {
             "status": "accepted",
