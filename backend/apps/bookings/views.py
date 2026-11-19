@@ -293,6 +293,11 @@ class BookingViewSet(viewsets.ModelViewSet):
         from apps.bookings.models import WorkerOffer
 
         booking = self.get_object()
+        if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED) or BookingAssignment.objects.filter(booking=booking).exists():
+            return Response(
+                {"detail": "This booking is already assigned, started, completed or cancelled and cannot be rescheduled online."},
+                status=status.HTTP_409_CONFLICT,
+            )
         recurring_plan = getattr(booking, "recurring_wash_plan", None)
         if recurring_plan and recurring_plan.status in (
             RecurringWashPlan.Status.PAID_PENDING_SETUP,
