@@ -1275,7 +1275,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 booking=locked_booking,
                 customer=locked_booking.customer,
             ).first()
-            if completion_feedback is None:
+            if locked_booking.appointment_group_id and completion_feedback is None:
                 return Response(
                     {"detail": "Customer feedback or the explicit skip action is required before completion verification."},
                     status=status.HTTP_409_CONFLICT,
@@ -1935,7 +1935,9 @@ class CustomerOrderDetailView(APIView):
                     expires_at__gt=timezone.now(),
                 ).first()
                 completion_otp_requested = otp_record is not None
-                if otp_record and completion_feedback:
+                if otp_record and (
+                    completion_feedback is not None or not booking.appointment_group_id
+                ):
                     otp_notice = Notification.objects.filter(
                         user=request.user,
                         data__booking_id=booking.id,
