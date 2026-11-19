@@ -2569,6 +2569,7 @@ class CustomerCartItemView(APIView):
         cart = get_object_or_404(CustomerCart, customer=request.user)
         return get_object_or_404(CartItem, cart=cart, pk=item_id)
 
+    @transaction.atomic
     def patch(self, request, item_id):
         item = self.get_item(request, item_id)
         old_photo_map = (item.category_answers or {}).get("_airway_form_photos", {})
@@ -2586,6 +2587,99 @@ class CustomerCartItemView(APIView):
                 )
             except ServiceUnavailableError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        requested_schedule = serializer.validated_data.get("schedule_data") if "schedule_data" in request.data else None
+        if requested_schedule is not None:
+            from django.utils.dateparse import parse_datetime
+            if not isinstance(requested_schedule, dict):
+                return Response(
+                    {"schedule_data": "Provide a valid appointment schedule object."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            scheduled_at = parse_datetime(str(requested_schedule.get("scheduled_at", "")))
+            if scheduled_at is None or timezone.is_naive(scheduled_at) or scheduled_at <= timezone.now():
+                return Response(
+                    {"schedule_data": "Choose a valid future date and time."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            root_category = item.service.category
+            while root_category.parent_id:
+                root_category = root_category.parent
+            group_items = []
+            for candidate in item.cart.items.select_related(
+                "service__category__parent", "variant"
+            ).order_by("id"):
+                candidate_root = candidate.service.category
+                while candidate_root.parent_id:
+                    candidate_root = candidate_root.parent
+                if candidate_root.pk == root_category.pk:
+                    group_items.append(candidate)
+
+            modes = {candidate.service.booking_mode for candidate in group_items}
+            if len(modes) != 1:
+                return Response(
+                    {"schedule_data": "Services with different appointment modes cannot share one appointment group."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            booking_mode = item.service.booking_mode
+            drop_scheduled_at = None
+            if booking_mode == Booking.BookingMode.PICKUP_DROP:
+                drop_scheduled_at = parse_datetime(
+                    str(requested_schedule.get("drop_scheduled_at", ""))
+                )
+                if (
+                    drop_scheduled_at is None
+                    or timezone.is_naive(drop_scheduled_at)
+                    or drop_scheduled_at <= scheduled_at
+                ):
+                    return Response(
+                        {"schedule_data": "Choose a drop-off time after pickup."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            elif requested_schedule.get("drop_scheduled_at"):
+                return Response(
+                    {"schedule_data": "Drop-off time is only valid for Pickup & Drop services."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            for candidate in group_items:
+                try:
+                    check_service_available(
+                        service=candidate.service,
+                        address=item.cart.address,
+                        audience="all",
+                    )
+                    duration = (
+                        candidate.variant.duration_minutes
+                        if candidate.variant_id and candidate.variant.duration_minutes
+                        else candidate.service.duration_minutes
+                    ) or 60
+                    quantity = max(int(candidate.quantity or 1), 1)
+                    duration *= (
+                        1 if candidate.service.pricing_type == "per_unit" else quantity
+                    )
+                    check_slot_availability(
+                        service=candidate.service,
+                        scheduled_at=scheduled_at,
+                        duration_minutes=duration,
+                        booking_mode=candidate.service.booking_mode,
+                        drop_scheduled_at=drop_scheduled_at,
+                    )
+                except (SlotConflictError, ServiceUnavailableError) as exc:
+                    return Response(
+                        {"detail": str(exc), "cart_item_id": candidate.pk},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+            updated_schedule = {
+                "scheduled_at": scheduled_at.isoformat(),
+            }
+            if drop_scheduled_at:
+                updated_schedule["drop_scheduled_at"] = drop_scheduled_at.isoformat()
+            for candidate in group_items:
+                candidate.schedule_data = dict(updated_schedule)
+                candidate.save(update_fields=["schedule_data", "updated_at"])
+
         updated_item = serializer.save()
         new_photo_map = (updated_item.category_answers or {}).get("_airway_form_photos", {})
         new_photo_paths = set(new_photo_map.values()) if isinstance(new_photo_map, dict) else set()
