@@ -4835,6 +4835,7 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
     def test_customer_can_reschedule_an_unassigned_standalone_booking(
         self, dispatch_offers, check_service, check_slot
     ):
+        from apps.bookings.models import BookingStatusHistory
         booking = self._booking()
         response = self.client.post(
             f"/api/v1/bookings/{booking.pk}/reschedule/",
@@ -4919,6 +4920,7 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
     def test_slot_conflict_keeps_original_booking_time(
         self, check_service, check_slot
     ):
+        from apps.bookings.services import SlotConflictError
         booking = self._booking()
         response = self.client.post(
             f"/api/v1/bookings/{booking.pk}/reschedule/",
