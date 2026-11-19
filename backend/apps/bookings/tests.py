@@ -1403,6 +1403,97 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
                 is_active=True,
             )
 
+    def test_assigned_worker_can_share_location_with_booking_customer(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+
+        update = self.worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/location/",
+            {"latitude": 24.5812, "longitude": 74.3294, "accuracy_m": 18.5},
+            format="json",
+        )
+        self.assertEqual(update.status_code, 200, update.data)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.live_latitude, Decimal("24.5812"))
+        self.assertEqual(assignment.live_longitude, Decimal("74.3294"))
+
+        tracking = self.customer_client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(tracking.status_code, 200)
+        self.assertTrue(tracking.data["location_is_fresh"])
+        self.assertEqual(tracking.data["worker_latitude"], 24.5812)
+        self.assertEqual(tracking.data["worker_longitude"], 74.3294)
+
+    def test_unrelated_worker_cannot_update_assigned_job_location(self):
+        from apps.bookings.models import Booking, BookingAssignment
+        from apps.workers.models import WorkerProfile
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+        other_user = self._create_user("+919876543219")
+        WorkerProfile.objects.create(
+            user=other_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        other_client = APIClient()
+        other_client.force_authenticate(user=other_user)
+
+        response = other_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/location/",
+            {"latitude": 24.5812, "longitude": 74.3294},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_worker_must_accept_job_before_sharing_location(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+        )
+        response = self.worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.id}/location/",
+            {"latitude": 24.5812, "longitude": 74.3294},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+
     def test_worker_can_start_job(self):
         """Worker can mark a job as in progress."""
         from apps.bookings.models import Booking, BookingAssignment
