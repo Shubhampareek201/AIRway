@@ -1695,6 +1695,7 @@ class CustomerOrderDetailView(APIView):
                 "booking_id": booking.id,
                 "service": service_snapshot,
                 "booking_status": booking.status,
+                "booking_mode": booking.booking_mode,
                 "can_cancel": booking.can_cancel,
                 "can_reschedule": (
                     shared_reschedule_eligible
@@ -1823,6 +1824,7 @@ class CustomerOrderDetailView(APIView):
 
         return Response({
             "id": order.id,
+            "address_id": order.address_id,
             "status": order.status,
             "scheduling": (order.metadata or {}).get(
                 "scheduling_v1",
