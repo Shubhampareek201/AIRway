@@ -431,7 +431,7 @@ class AppointmentGroup(TimeStampedModel):
     category_title_snapshot = models.CharField(max_length=150)
     scheduled_at = models.DateTimeField()
     customer_message = models.CharField(max_length=500, blank=True)
-    arrival_otp = models.CharField(max_length=6, blank=True)
+    arrival_otp_hash = models.CharField(max_length=128, blank=True)
     arrival_otp_expires_at = models.DateTimeField(null=True, blank=True)
     arrival_otp_verified_at = models.DateTimeField(null=True, blank=True)
     arrival_otp_attempts = models.PositiveSmallIntegerField(default=0)
