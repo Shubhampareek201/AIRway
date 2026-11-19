@@ -566,10 +566,10 @@ class BookingViewSet(viewsets.ModelViewSet):
             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
             title="Service rescheduled",
             body=(
-                f"{len(targets)} services in your shared appointment"
+                f"{len(targets)} services in your shared appointment are now scheduled for "
                 if shared_appointment and len(targets) > 1
-                else f"Your service"
-            ) + f" are now scheduled for {timezone.localtime(new_time).strftime('%d %b %Y, %I:%M %p')}.",
+                else "Your service is now scheduled for "
+            ) + f"{timezone.localtime(new_time).strftime('%d %b %Y, %I:%M %p')}.",
             channel=Notification.Channel.IN_APP,
             data={
                 "booking_id": booking.pk,
