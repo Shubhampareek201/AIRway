@@ -4881,6 +4881,10 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
         OrderItem.objects.create(order=order, booking=first, line_total=Decimal("500.00"))
         OrderItem.objects.create(order=order, booking=second, line_total=Decimal("500.00"))
 
+        detail = self.client.get(f"/api/v1/bookings/orders/{order.pk}/")
+        self.assertEqual(detail.status_code, 200, detail.data)
+        self.assertTrue(all(item["can_reschedule"] for item in detail.data["items"]))
+
         response = self.client.post(
             f"/api/v1/bookings/{first.pk}/reschedule/",
             {"scheduled_at": self.new_time.isoformat()},
