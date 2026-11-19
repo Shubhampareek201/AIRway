@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -4042,6 +4042,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertFalse(self.cart.items.exists())
 
+    @override_settings(PRIVATE_UPLOAD_ROOT="/tmp/airway-test-private-uploads")
     def test_cart_schedule_and_mode_are_persisted(self):
         scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
         schedule_data = {"scheduled_at": scheduled_at}
