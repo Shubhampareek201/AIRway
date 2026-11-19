@@ -31,6 +31,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   int? _sharingAssignmentId;
   bool _locationRequestInProgress = false;
   bool _locationPermissionBlocked = false;
+  bool _locationSharingEnabled = false;
 
   @override
   void initState() {
@@ -49,6 +50,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _jobDetail != null) {
+      _locationPermissionBlocked = false;
       _configureLocationSharing(_jobDetail!);
     } else if (state != AppLifecycleState.resumed) {
       _locationTimer?.cancel();
@@ -61,7 +63,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       job.status == BookingStatus.inProgress;
 
   void _configureLocationSharing(WorkerAssignmentDetail job) {
-    if (!_canShareLocation(job)) {
+    if (!_canShareLocation(job) || !_locationSharingEnabled) {
       _locationTimer?.cancel();
       _locationTimer = null;
       _sharingAssignmentId = null;
@@ -77,6 +79,21 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         (_) => _publishCurrentLocation(job.assignmentId),
       );
     }
+  }
+
+  void _setLocationSharing(bool enabled) {
+    setState(() {
+      _locationSharingEnabled = enabled;
+      if (enabled) _locationPermissionBlocked = false;
+    });
+    if (!enabled) {
+      _locationTimer?.cancel();
+      _locationTimer = null;
+      _sharingAssignmentId = null;
+      return;
+    }
+    final job = _jobDetail;
+    if (job != null) _configureLocationSharing(job);
   }
 
   Future<void> _publishCurrentLocation(int assignmentId) async {
@@ -353,18 +370,40 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                   color: AirwayColors.primarySoft,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.location_on_outlined, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        AirwayText.tr(
-                          'While this active job is open, AIRway shares your current location with this booking’s customer. Sharing pauses when you leave this screen and stops when the job ends.',
-                          'यह सक्रिय जॉब खुली रहने पर AIRway आपकी मौजूदा लोकेशन इस बुकिंग के ग्राहक के साथ साझा करता है। स्क्रीन छोड़ने पर शेयरिंग रुकती है और जॉब खत्म होने पर बंद हो जाती है।',
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            AirwayText.tr(
+                              'Share your live location with this booking’s customer while this job screen is open. Sharing pauses in the background and stops when the job ends. This is optional.',
+                              'इस जॉब स्क्रीन के खुले रहने तक अपनी लाइव लोकेशन इस बुकिंग के ग्राहक के साथ साझा करें। बैकग्राउंड में शेयरिंग रुक जाती है और जॉब खत्म होने पर बंद हो जाती है। यह वैकल्पिक है।',
+                            ),
+                            style: const TextStyle(fontSize: 12, height: 1.4),
+                          ),
                         ),
-                        style: const TextStyle(fontSize: 12, height: 1.4),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _setLocationSharing(!_locationSharingEnabled),
+                        icon: Icon(
+                          _locationSharingEnabled
+                              ? Icons.location_off_outlined
+                              : Icons.my_location_rounded,
+                        ),
+                        label: Text(
+                          _locationSharingEnabled
+                              ? AirwayText.tr('Stop sharing', 'शेयरिंग बंद करें')
+                              : AirwayText.tr('Share live location', 'लाइव लोकेशन साझा करें'),
+                        ),
                       ),
                     ),
                   ],
