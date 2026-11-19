@@ -310,9 +310,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       CustomerCartState.updateFromCart(value);
       if (mounted) setState(() {
         cart = value;
-        if ((value['items'] as List? ?? []).length < 2) {
-          _scheduleMode = 'separate';
-        }
         dates.remove(id);
         times.remove(id);
         dropTimes.remove(id);
