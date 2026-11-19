@@ -35,6 +35,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   final Map<int, TimeOfDay> dropTimes = {};
   final Set<int> _slotConfirmed = {};
   final Set<int> _expandedItems = {};
+  final Map<String, TextEditingController> _groupMessageControllers = {};
   List<Map<String, dynamic>> addresses = [];
 
   @override
@@ -45,6 +46,16 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
 
   List<Map<String, dynamic>> get items => (cart?['items'] as List? ?? [])
       .whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+
+  Map<String, List<Map<String, dynamic>>> get appointmentGroups {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      final slug = item['category_root_slug']?.toString();
+      if (slug == null || slug.isEmpty) continue;
+      groups.putIfAbsent(slug, () => []).add(item);
+    }
+    return groups;
+  }
 
   double number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 
@@ -206,82 +217,173 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
 
   Widget scheduleModeCard() {
     if (items.length < 2) return const SizedBox.shrink();
-    final sameAppointment = _scheduleMode == 'same_appointment';
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: line),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            airway_localization.AirwayText.tr(
-              'How would you like to schedule?',
-              'आप सेवाओं का समय कैसे रखना चाहेंगे?',
+          const Icon(Icons.event_repeat_rounded, color: violet, size: 21),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  airway_localization.AirwayText.tr(
+                    'One appointment per service type',
+                    'हर सेवा-प्रकार के लिए एक अपॉइंटमेंट',
+                  ),
+                  style: const TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  airway_localization.AirwayText.tr(
+                    'Services in the same category share one date and time. Different categories can have independent appointments.',
+                    'एक ही कैटेगरी की सेवाओं का समय एक रहेगा। अलग कैटेगरी के लिए अलग तारीख और समय चुन सकते हैं।',
+                  ),
+                  style: const TextStyle(color: sub, fontSize: 11, height: 1.4),
+                ),
+              ],
             ),
-            style: const TextStyle(
-              color: ink, fontWeight: FontWeight.w900, fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ChoiceChip(
-                label: Text(airway_localization.AirwayText.tr(
-                  'One appointment for all',
-                  'सभी सेवाओं के लिए एक समय',
-                )),
-                selected: sameAppointment,
-                onSelected: busy ? null : (_) {
-                  setScheduleMode('same_appointment');
-                },
-                selectedColor: AirwayColors.primarySoft,
-                labelStyle: TextStyle(
-                  color: sameAppointment ? violet : ink,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                ),
-              ),
-              ChoiceChip(
-                label: Text(airway_localization.AirwayText.tr(
-                  'Different appointments',
-                  'अलग-अलग समय',
-                )),
-                selected: !sameAppointment,
-                onSelected: busy ? null : (_) {
-                  setScheduleMode('separate');
-                },
-                selectedColor: AirwayColors.primarySoft,
-                labelStyle: TextStyle(
-                  color: !sameAppointment ? violet : ink,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            sameAppointment
-              ? airway_localization.AirwayText.tr(
-                  'Choose a time for one service, then use “Apply this time to all services”. AIRway checks every service separately before creating the order. Different professionals may be assigned.',
-                  'एक सेवा का समय चुनें, फिर “यह समय सभी सेवाओं पर लागू करें” चुनें। ऑर्डर बनने से पहले AIRway हर सेवा की उपलब्धता अलग से जाँचेगा। अलग-अलग प्रोफेशनल मिल सकते हैं।',
-                )
-              : airway_localization.AirwayText.tr(
-                  'Choose a date and time separately for each service.',
-                  'हर सेवा के लिए अलग तारीख और समय चुनें।',
-                ),
-            style: const TextStyle(color: sub, fontSize: 11, height: 1.4),
           ),
         ],
       ),
     );
+  }
+
+  Widget appointmentGroupCard(String slug, List<Map<String, dynamic>> groupItems) {
+    if (groupItems.isEmpty) return const SizedBox.shrink();
+    final firstId = groupItems.first['id'] as int;
+    final title = groupItems.first['category_root_title']?.toString() ?? 'Appointment';
+    final scheduled = groupItems.every((row) => _slotConfirmed.contains(row['id']));
+    final date = dates[firstId];
+    final time = times[firstId];
+    final savedMessages = Map<String, dynamic>.from(cart?['group_messages'] as Map? ?? const {});
+    final savedMessage = savedMessages[slug]?.toString() ?? '';
+    final controller = _groupMessageControllers.putIfAbsent(
+      slug,
+      () => TextEditingController(text: savedMessage),
+    );
+    final messageChanged = controller.text.trim() != savedMessage;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.home_repair_service_rounded, color: violet, size: 20),
+            const SizedBox(width: 9),
+            Expanded(child: Text(title, style: const TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 15))),
+            Text(
+              airway_localization.AirwayText.tr(
+                '${groupItems.length} services',
+                '${groupItems.length} सेवाएँ',
+              ),
+              style: const TextStyle(color: violet, fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text(
+            groupItems.map((row) => row['service_title']?.toString() ?? 'Service').join(' · '),
+            style: const TextStyle(color: sub, fontSize: 11, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => chooseSchedule(firstId),
+            icon: Icon(scheduled ? Icons.event_available_rounded : Icons.calendar_month_rounded, size: 17),
+            label: Expanded(
+              child: Text(
+                scheduled && date != null && time != null
+                    ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context)
+                    : airway_localization.AirwayText.tr('Choose appointment date & time', 'अपॉइंटमेंट की तारीख और समय चुनें'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: violet,
+              side: const BorderSide(color: AirwayColors.borderStrong),
+              minimumSize: const Size.fromHeight(46),
+              alignment: Alignment.centerLeft,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            airway_localization.AirwayText.tr(
+              'MESSAGE FOR YOUR PROFESSIONAL (OPTIONAL)',
+              'प्रोफेशनल के लिए संदेश (वैकल्पिक)',
+            ),
+            style: const TextStyle(color: sub, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .7),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: controller,
+            maxLength: 500,
+            maxLines: 2,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: airway_localization.AirwayText.tr(
+                'Add one short instruction for this appointment',
+                'इस अपॉइंटमेंट के लिए एक छोटा संदेश लिखें',
+              ),
+              counterStyle: const TextStyle(fontSize: 9, color: sub),
+              filled: true,
+              fillColor: AirwayColors.surfaceVariant,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+          ),
+          if (messageChanged)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: busy ? null : () => saveGroupMessage(slug),
+                icon: const Icon(Icons.save_outlined, size: 16),
+                label: Text(airway_localization.AirwayText.tr('Save message', 'संदेश सेव करें')),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> saveGroupMessage(String slug) async {
+    final messages = <String, String>{};
+    for (final entry in _groupMessageControllers.entries) {
+      final value = entry.value.text.trim();
+      if (value.isNotEmpty) messages[entry.key] = value;
+    }
+    setState(() => busy = true);
+    try {
+      final updated = await BookingApi.updateCartGroupMessages(messages);
+      if (!mounted) return;
+      setState(() {
+        cart = updated;
+        busy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(airway_localization.AirwayText.tr('Message saved for this appointment.', 'इस अपॉइंटमेंट के लिए संदेश सेव हो गया।'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
   }
 
   Widget scheduleOverviewCard() {
@@ -344,10 +446,25 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
     setState(() { loading = true; error = null; });
     try {
       final value = await BookingApi.getCart();
-      _scheduleMode = value['schedule_mode']?.toString() == 'same_appointment'
-          ? 'same_appointment'
-          : 'separate';
+      _scheduleMode = 'separate';
       CustomerCartState.updateFromCart(value);
+      final rawMessages = Map<String, dynamic>.from(value['group_messages'] as Map? ?? const {});
+      final activeSlugs = <String>{};
+      for (final row in (value['items'] as List? ?? []).whereType<Map>()) {
+        final slug = row['category_root_slug']?.toString();
+        if (slug == null || slug.isEmpty) continue;
+        activeSlugs.add(slug);
+        final controller = _groupMessageControllers.putIfAbsent(
+          slug,
+          () => TextEditingController(),
+        );
+        controller.text = rawMessages[slug]?.toString() ?? '';
+      }
+      for (final slug in _groupMessageControllers.keys.toList()) {
+        if (!activeSlugs.contains(slug)) {
+          _groupMessageControllers.remove(slug)?.dispose();
+        }
+      }
       try {
         final rawAddresses = await BookingApi.request('/api/v1/auth/addresses/');
         final rawList = rawAddresses is List ? rawAddresses : (rawAddresses is Map ? rawAddresses['results'] : null);
@@ -488,6 +605,24 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       if (!mounted) return;
       setState(() {
         cart = updatedCart;
+        dates.clear();
+        times.clear();
+        dropTimes.clear();
+        _slotConfirmed.clear();
+        for (final row in (updatedCart['items'] as List? ?? []).whereType<Map>()) {
+          final rowId = row['id'] as int;
+          final saved = Map<String, dynamic>.from(row['schedule_data'] as Map? ?? const {});
+          final start = DateTime.tryParse(saved['scheduled_at']?.toString() ?? '')?.toLocal();
+          final drop = DateTime.tryParse(saved['drop_scheduled_at']?.toString() ?? '')?.toLocal();
+          if (start != null && start.isAfter(DateTime.now())) {
+            dates[rowId] = DateTime(start.year, start.month, start.day);
+            times[rowId] = TimeOfDay.fromDateTime(start);
+            _slotConfirmed.add(rowId);
+          }
+          if (drop != null && drop.isAfter(DateTime.now())) {
+            dropTimes[rowId] = TimeOfDay.fromDateTime(drop);
+          }
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -569,19 +704,15 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
         }
         return row;
       }).toList();
-      if (_scheduleMode == 'same_appointment') {
-        final appointmentTimes = schedules
-            .map((row) => row['scheduled_at']?.toString())
-            .toSet();
-        if (appointmentTimes.length != 1) {
-          throw Exception(
-            'For one shared appointment, apply the same date and time to every service.',
-          );
-        }
+      final groupMessages = <String, String>{};
+      for (final entry in _groupMessageControllers.entries) {
+        final message = entry.value.text.trim();
+        if (message.isNotEmpty) groupMessages[entry.key] = message;
       }
       final result = await BookingApi.checkoutCart(
         items: schedules,
-        scheduleMode: _scheduleMode,
+        scheduleMode: 'separate',
+        groupMessages: groupMessages,
       );
       CustomerCartState.itemCount.value = 0;
       if (!mounted) return;
@@ -691,7 +822,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             addressCard(),
             const SizedBox(height: 16),
             scheduleModeCard(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            for (final entry in appointmentGroups.entries)
+              appointmentGroupCard(entry.key, entry.value),
             Row(children: [
               Expanded(child: Text(airway_localization.AirwayText.tr('Your services', 'आपकी सेवाएँ'), style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: ink))),
               Text(items.length.toString() + ' items', style: const TextStyle(color: sub, fontSize: 12, fontWeight: FontWeight.w700)),
@@ -699,7 +832,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
             const SizedBox(height: 5),
             Text(airway_localization.AirwayText.tr('Tap a service to view details or update your preferences.', 'विवरण देखने या पसंद बदलने के लिए किसी सेवा पर टैप करें।'), style: TextStyle(fontSize: 12, color: sub)),
             const SizedBox(height: 13),
-            scheduleOverviewCard(),
             for (final item in items) ...[itemCard(item), const SizedBox(height: 13)],
             Container(
               padding: const EdgeInsets.all(18),
@@ -952,34 +1084,6 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
               ],
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: busy ? null : () => chooseSchedule(id),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              decoration: BoxDecoration(
-                color: scheduled ? AirwayColors.primarySoft : AirwayColors.warningSoft,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: scheduled ? AirwayColors.borderStrong : AirwayColors.borderStrong),
-              ),
-              child: Row(children: [
-                Icon(scheduled ? Icons.event_available_rounded : Icons.add_circle_outline_rounded, color: scheduled ? violet : AirwayColors.warning, size: 19),
-                const SizedBox(width: 9),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(scheduled ? DateFormat('EEE, dd MMM').format(date) + ' · ' + time.format(context) : 'Choose date & time',
-                    style: TextStyle(color: scheduled ? ink : AirwayColors.warning, fontWeight: FontWeight.w800, fontSize: 12)),
-                  Text(scheduled ? 'Tap to change your schedule' : 'Select a convenient service slot',
-                    style: TextStyle(color: scheduled ? sub : AirwayColors.textSecondary, fontSize: 10)),
-                ])),
-                Text(scheduled ? 'CHANGE' : 'SCHEDULE', style: const TextStyle(color: violet, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .5)),
-                const SizedBox(width: 3),
-                const Icon(Icons.chevron_right_rounded, color: violet, size: 18),
-              ]),
-            ),
-          ),
-        ),
         AnimatedCrossFade(
           duration: const Duration(milliseconds: 200),
           crossFadeState: expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
@@ -1012,15 +1116,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 label: Text(airway_localization.AirwayText.tr('Edit service preferences', 'सेवा की पसंद बदलें')),
                 style: OutlinedButton.styleFrom(foregroundColor: violet, side: const BorderSide(color: AirwayColors.borderStrong), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               )),
-              if (scheduled &&
-                  items.length > 1 &&
-                  _scheduleMode == 'same_appointment')
-                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
-                  onPressed: busy ? null : () => applyScheduleToAll(id),
-                  icon: const Icon(Icons.copy_all_rounded, size: 16),
-                  label: Text(airway_localization.AirwayText.tr('Apply this time to all services', 'यह समय सभी सेवाओं पर लागू करें')),
-                  style: TextButton.styleFrom(foregroundColor: violet, visualDensity: VisualDensity.compact),
-                )),
+
             ]),
           ),
         ),
@@ -1036,6 +1132,14 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       Text(value, style: const TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12)),
     ]),
   );
+
+  @override
+  void dispose() {
+    for (final controller in _groupMessageControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   Widget emptyState(String title, String message, IconData icon, VoidCallback action) => Center(
     child: Padding(
