@@ -709,6 +709,7 @@ class BookingAvailabilitySerializer(serializers.Serializer):
     address_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     quantity = serializers.IntegerField(required=False, min_value=1, max_value=10000, default=1)
     category_answers = serializers.DictField(required=False, default=dict)
+    exclude_booking_id = serializers.IntegerField(required=False, min_value=1, write_only=True)
 
     def validate_scheduled_at(self, value):
         from django.utils import timezone
