@@ -1608,13 +1608,17 @@ class CustomerOrderDetailView(APIView):
         scheduling = (order.metadata or {}).get("scheduling_v1", {})
         shared_appointment = scheduling.get("mode") == "same_appointment"
         recurring_order = RecurringWashPlan.objects.filter(order=order).exists()
+        active_order_items = [
+            row for row in order_items
+            if row.booking.status != Booking.Status.CANCELLED
+        ]
         shared_reschedule_eligible = (
-            not recurring_order
+            bool(active_order_items)
+            and not recurring_order
             and all(
                 row.booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
                 and not hasattr(row.booking, "assignment")
-                for row in order_items
-                if row.booking.status != Booking.Status.CANCELLED
+                for row in active_order_items
             )
         )
         rated_booking_ids = set(BookingRating.objects.filter(
