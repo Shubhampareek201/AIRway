@@ -373,7 +373,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             order.save(update_fields=["status", "updated_at"])
             WorkerOffer.objects.filter(
                 booking=booking, order__isnull=True,
-                status=WorkerOffer.Status.PENDING
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
             ).update(
                 status=WorkerOffer.Status.WITHDRAWN,
                 responded_at=timezone.now(),
@@ -390,9 +390,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                 DispatcherService.dispatch_order(order)
         else:
             WorkerOffer.objects.filter(
-                booking=booking, status=WorkerOffer.Status.PENDING
+                booking=booking,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
             ).update(
-                status=WorkerOffer.Status.EXPIRED,
+                status=WorkerOffer.Status.WITHDRAWN,
                 responded_at=timezone.now(),
             )
 
