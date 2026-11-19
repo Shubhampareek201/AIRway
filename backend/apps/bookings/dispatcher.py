@@ -509,6 +509,43 @@ class DispatcherService:
         return created
 
     @classmethod
+    def _rank_by_appointment_group(cls, workers, bookings):
+        """Rank workers dedicated to this exact service set before related and multi-category workers."""
+        if not workers:
+            return workers
+        from apps.workers.models import WorkerService
+
+        worker_ids = [worker.pk for worker in workers]
+        target_service_ids = {booking.service_id for booking in bookings}
+        category = bookings[0].service.category
+        while category.parent_id:
+            category = category.parent
+        target_root_id = category.pk
+        scopes = {worker_id: {"services": set(), "roots": set()} for worker_id in worker_ids}
+
+        rows = WorkerService.objects.filter(
+            worker_id__in=worker_ids,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service__category__parent")
+        for row in rows:
+            service_category = row.service.category
+            while service_category.parent_id:
+                service_category = service_category.parent
+            scopes[row.worker_id]["services"].add(row.service_id)
+            scopes[row.worker_id]["roots"].add(service_category.pk)
+
+        def tier(worker):
+            scope = scopes.get(worker.pk, {"services": set(), "roots": set()})
+            if scope["services"] == target_service_ids:
+                return 0
+            if scope["roots"] == {target_root_id}:
+                return 1
+            return 2
+
+        return sorted(workers, key=tier)
+
+    @classmethod
     def _rank_by_service_scope(cls, workers, requested_service):
         """Prefer dedicated service professionals, then same-category specialists, then multi-category workers.
 
