@@ -4194,6 +4194,85 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {worker.pk},
         )
 
+    def test_parent_order_is_partially_assigned_when_only_one_group_has_a_worker(self):
+        from datetime import time
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.bookings.models import AppointmentGroup
+        from apps.payments.models import Payment
+        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
+
+        car_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-partial-assignment-car-care",
+        )
+        car_service = self._create_service(car_category, title="Exterior Car Wash")
+        car_variant = self._create_variant(car_service, price=700, mrp=900)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=car_service,
+            defaults={"is_active": True},
+        )
+        car_item = CartItem.objects.create(
+            cart=self.cart,
+            service=car_service,
+            variant=car_variant,
+            pricing_snapshot={"line_total": "700.00"},
+        )
+        first_time = timezone.now() + timedelta(days=3)
+        second_time = first_time + timedelta(days=1)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.pk, "scheduled_at": first_time.isoformat()},
+                    {"cart_item_id": car_item.pk, "scheduled_at": second_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        self.assertEqual(AppointmentGroup.objects.filter(order=order).count(), 2)
+
+        worker_user = self._create_user("+919876543297")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker,
+                weekday=weekday,
+                is_active=True,
+                start_time=time(0, 0),
+                end_time=time(23, 59),
+            )
+        allocation = order.metadata["payment_allocation_v1"]
+        Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(allocation["advance_total"]),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="test_partial_group_assignment_advance",
+        )
+        offers = DispatcherService.dispatch_order(order)
+        self.assertEqual(len(offers), 1)
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offers[0].pk}/accept/",
+            {},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PARTIALLY_ASSIGNED)
+
     def test_rescheduling_one_appointment_group_does_not_move_other_groups(self):
         from apps.bookings.models import AppointmentGroup
 
