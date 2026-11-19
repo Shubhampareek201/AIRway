@@ -870,6 +870,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           'scheduled_at': group['scheduled_at']?.toString() ?? '',
           'services': serviceNames,
           'message': group['customer_message']?.toString() ?? '',
+          'arrival_otp': group['arrival_otp']?.toString() ?? '',
+          'arrival_otp_verified_at': group['arrival_otp_verified_at']?.toString(),
         });
       }
     } else {
@@ -941,6 +943,51 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   style: const TextStyle(color: sub, fontSize: 11, fontStyle: FontStyle.italic),
                 ),
               ],
+              if ((entries[i]['arrival_otp']?.toString() ?? '').isNotEmpty) ...[
+                const SizedBox(height: 9),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: pale,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_user_outlined, color: violet, size: 19),
+                      const SizedBox(width: 8),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AirwayText.tr('Arrival verification code', 'आगमन सत्यापन कोड'),
+                            style: const TextStyle(color: violet, fontWeight: FontWeight.w800, fontSize: 11),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            entries[i]['arrival_otp'].toString(),
+                            style: const TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 3),
+                          ),
+                          Text(
+                            AirwayText.tr(
+                              'Share this code with your professional only when they arrive.',
+                              'यह कोड प्रोफेशनल के पहुँचने पर ही उन्हें दें।',
+                            ),
+                            style: const TextStyle(color: sub, fontSize: 10),
+                          ),
+                        ],
+                      )),
+                    ],
+                  ),
+                ),
+              ],
+              if ((entries[i]['arrival_otp_verified_at']?.toString() ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 7),
+                  child: Text(
+                    AirwayText.tr('Arrival verified — work has started.', 'आगमन सत्यापित — काम शुरू हो गया है।'),
+                    style: const TextStyle(color: Color(0xFF2E7D52), fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                ),
             ])),
           ]),
         ],
