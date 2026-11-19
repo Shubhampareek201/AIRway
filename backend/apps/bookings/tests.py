@@ -5249,6 +5249,48 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
             2,
         )
 
+    @patch("apps.bookings.views.check_slot_availability")
+    @patch("apps.bookings.views.check_service_available")
+    def test_separate_appointments_reschedule_only_selected_order_service(
+        self, check_service, check_slot
+    ):
+        first = self._booking()
+        second_original_time = self.original_time + timedelta(hours=2)
+        second = self._booking(
+            service=self._create_service(self.category, "Separate service"),
+            scheduled_at=second_original_time,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            total_amount=Decimal("1000.00"),
+            metadata={
+                "scheduling_v1": {
+                    "mode": "separate",
+                    "shared_appointment_at": None,
+                }
+            },
+        )
+        OrderItem.objects.create(order=order, booking=first, line_total=Decimal("500.00"))
+        OrderItem.objects.create(order=order, booking=second, line_total=Decimal("500.00"))
+
+        response = self.client.post(
+            f"/api/v1/bookings/{first.pk}/reschedule/",
+            {"scheduled_at": self.new_time.isoformat()},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(first.scheduled_at, self.new_time)
+        self.assertEqual(second.scheduled_at, second_original_time)
+        self.assertEqual(response.data["rescheduled_booking_ids"], [first.pk])
+        self.assertEqual(order.metadata["scheduling_v1"]["mode"], "separate")
+        self.assertEqual(check_slot.call_count, 1)
+
     def test_assigned_booking_cannot_be_rescheduled(self):
         booking = self._booking(status=Booking.Status.ASSIGNED)
         response = self.client.post(
