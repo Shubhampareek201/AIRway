@@ -144,6 +144,9 @@ class WorkerOffer {
   final String? bookingNotes;
   final int expectedDurationMinutes;
   final List<Map<String, dynamic>> orderServices;
+  final int? appointmentGroupId;
+  final String? appointmentGroupTitle;
+  final String? appointmentGroupMessage;
   final Map<String, dynamic> customerAnswers;
   final List<Map<String, dynamic>> formResponses;
   final List<Map<String, dynamic>> addons;
@@ -172,6 +175,9 @@ class WorkerOffer {
     this.bookingNotes,
     this.expectedDurationMinutes = 60,
     this.orderServices = const [],
+    this.appointmentGroupId,
+    this.appointmentGroupTitle,
+    this.appointmentGroupMessage,
     this.customerAnswers = const {},
     this.formResponses = const [],
     this.addons = const [],
@@ -205,6 +211,9 @@ class WorkerOffer {
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList(),
+      appointmentGroupId: int.tryParse(map['appointment_group_id']?.toString() ?? ''),
+      appointmentGroupTitle: map['appointment_group_title']?.toString(),
+      appointmentGroupMessage: map['appointment_group_message']?.toString(),
       customerAnswers: Map<String, dynamic>.from(map['customer_answers'] as Map? ?? {}),
       formResponses: (map['form_responses'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
@@ -287,6 +296,7 @@ class WorkerAssignmentDetail {
   final bool canSubmitQuote;
   final List<Map<String, dynamic>> workEvidence;
   final Map<String, dynamic>? recurringVisit;
+  final Map<String, dynamic>? appointmentGroup;
   final WorkerAssignmentInfo assignment;
 
   WorkerAssignmentDetail({
@@ -316,6 +326,7 @@ class WorkerAssignmentDetail {
     this.canSubmitQuote = false,
     this.workEvidence = const [],
     this.recurringVisit,
+    this.appointmentGroup,
     required this.assignment,
   });
 
@@ -347,6 +358,9 @@ class WorkerAssignmentDetail {
       canSubmitQuote: map['can_submit_quote'] == true,
       workEvidence: (map['work_evidence'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       recurringVisit: map['recurring_visit'] is Map ? Map<String, dynamic>.from(map['recurring_visit']) : null,
+      appointmentGroup: map['appointment_group'] is Map
+          ? Map<String, dynamic>.from(map['appointment_group'])
+          : null,
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
     );
   }

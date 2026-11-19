@@ -1412,7 +1412,7 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=self._get_booking_time(),
+            scheduled_at=timezone.now() + timedelta(minutes=20),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
@@ -1436,6 +1436,37 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         self.assertTrue(tracking.data["location_is_fresh"])
         self.assertEqual(tracking.data["worker_latitude"], 24.5812)
         self.assertEqual(tracking.data["worker_longitude"], 74.3294)
+
+    def test_live_location_is_hidden_until_30_minutes_before_appointment(self):
+        from apps.bookings.models import Booking, BookingAssignment
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode="scheduled",
+            scheduled_at=timezone.now() + timedelta(minutes=60),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            live_latitude=Decimal("24.5812"),
+            live_longitude=Decimal("74.3294"),
+            live_location_updated_at=timezone.now(),
+        )
+
+        tracking = self.customer_client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(tracking.status_code, 200)
+        self.assertFalse(tracking.data["location_visibility_window_open"])
+        self.assertFalse(tracking.data["location_is_fresh"])
+        self.assertIsNone(tracking.data["worker_latitude"])
+        self.assertEqual(
+            datetime.fromisoformat(tracking.data["location_available_at"]),
+            booking.scheduled_at - timedelta(minutes=30),
+        )
 
     def test_unrelated_worker_cannot_update_assigned_job_location(self):
         from apps.bookings.models import Booking, BookingAssignment
@@ -3137,6 +3168,61 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(actual_ratings, expected_order)
 
 
+    def test_dispatcher_prioritizes_dedicated_then_related_then_multi_category_workers(self):
+        from apps.bookings.dispatcher import DispatcherService
+
+        dedicated = self._create_eligible_worker(rating=3.0, suffix="81")
+        related = self._create_eligible_worker(rating=5.0, suffix="82")
+        multi_category = self._create_eligible_worker(rating=4.5, suffix="83")
+
+        same_root_child = Category.objects.create(
+            parent=self.category,
+            title="Window Cleaning",
+            slug="dispatcher-window-cleaning",
+        )
+        related_service = Service.objects.create(
+            category=same_root_child,
+            title="Window Cleaning",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            is_active=True,
+        )
+        other_root = Category.objects.create(
+            title="Car Care",
+            slug="dispatcher-car-care",
+        )
+        other_service = Service.objects.create(
+            category=other_root,
+            title="Exterior Car Wash",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            is_active=True,
+        )
+        WorkerService.objects.create(worker=related, service=related_service)
+        WorkerService.objects.create(worker=multi_category, service=other_service)
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_service_scope_priority", paid_at=timezone.now(),
+        )
+
+        offers = DispatcherService.dispatch_offers(booking)
+        self.assertEqual(
+            [offer.worker_id for offer in offers],
+            [dedicated.pk, related.pk, multi_category.pk],
+        )
+
+
     def test_dispatcher_never_offers_booking_to_its_own_customer_worker(self):
         """A customer who is also an approved worker must not receive their own job."""
         from apps.bookings.dispatcher import DispatcherService
@@ -3833,6 +3919,585 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
         self.assertFalse(self.cart.items.exists())
 
+    def test_checkout_groups_same_root_category_services_into_one_appointment(self):
+        from apps.bookings.models import AppointmentGroup
+
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Specialist Cleaning",
+            slug="checkout-specialist-cleaning",
+        )
+        second_service = self._create_service(
+            child_category, title="Window Cleaning"
+        )
+        second_variant = self._create_variant(second_service, price=400, mrp=500)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            pricing_snapshot={"line_total": "400.00"},
+        )
+        scheduled_at = timezone.now() + timedelta(days=3)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": scheduled_at.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": scheduled_at.isoformat()},
+                ],
+                "group_messages": {
+                    self.category.slug: "Please call once before arriving.",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        self.assertEqual(AppointmentGroup.objects.filter(order=order).count(), 1)
+        group = AppointmentGroup.objects.get(order=order)
+        self.assertEqual(group.root_category, self.category)
+        self.assertEqual(group.bookings.count(), 2)
+        self.assertEqual(group.customer_message, "Please call once before arriving.")
+        self.assertEqual(
+            set(group.bookings.values_list("scheduled_at", flat=True)),
+            {group.scheduled_at},
+        )
+        self.assertEqual(
+            {row["appointment_group_id"] for row in response.data["items"]},
+            {group.pk},
+        )
+
+    def test_checkout_allows_different_times_for_different_root_categories(self):
+        from apps.bookings.models import AppointmentGroup
+
+        car_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-car-care",
+        )
+        car_service = self._create_service(car_category, title="Exterior Car Wash")
+        car_variant = self._create_variant(car_service, price=700, mrp=900)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=car_service,
+            defaults={"is_active": True},
+        )
+        car_item = CartItem.objects.create(
+            cart=self.cart,
+            service=car_service,
+            variant=car_variant,
+            pricing_snapshot={"line_total": "700.00"},
+        )
+        beauty_time = timezone.now() + timedelta(days=2)
+        car_time = beauty_time + timedelta(days=1, hours=2)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": beauty_time.isoformat()},
+                    {"cart_item_id": car_item.id, "scheduled_at": car_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        groups = list(AppointmentGroup.objects.filter(order=order).order_by("scheduled_at"))
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(
+            {group.root_category_id for group in groups},
+            {self.category.pk, car_category.pk},
+        )
+        self.assertEqual(
+            {group.scheduled_at for group in groups},
+            {beauty_time, car_time},
+        )
+
+    def test_checkout_rejects_different_times_inside_one_root_category_group(self):
+        from apps.bookings.models import AppointmentGroup
+
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Specialist Cleaning",
+            slug="checkout-specialist-cleaning-mismatch",
+        )
+        second_service = self._create_service(
+            child_category, title="Window Cleaning"
+        )
+        second_variant = self._create_variant(second_service, price=400, mrp=500)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            pricing_snapshot={"line_total": "400.00"},
+        )
+        first_time = timezone.now() + timedelta(days=3)
+        second_time = first_time + timedelta(hours=1)
+        response = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(Order.objects.filter(customer=self.customer).count(), 0)
+        self.assertEqual(AppointmentGroup.objects.count(), 0)
+        self.assertEqual(self.cart.items.count(), 2)
+
+    def test_saved_cart_group_message_is_attached_to_appointment_at_checkout(self):
+        from apps.bookings.models import AppointmentGroup
+
+        saved = self.client.patch(
+            "/api/v1/bookings/cart/",
+            {"group_messages": {self.category.slug: "Please ring the bell on arrival."}},
+            format="json",
+        )
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.cart.refresh_from_db()
+        self.assertEqual(
+            self.cart.group_messages[self.category.slug],
+            "Please ring the bell on arrival.",
+        )
+        scheduled_at = timezone.now() + timedelta(days=4)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [{
+                    "cart_item_id": self.cart_item.pk,
+                    "scheduled_at": scheduled_at.isoformat(),
+                }],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        group = AppointmentGroup.objects.get(order_id=checkout.data["order_id"])
+        self.assertEqual(group.customer_message, "Please ring the bell on arrival.")
+        self.cart.refresh_from_db()
+        self.assertEqual(self.cart.group_messages, {})
+
+    @override_settings(PRIVATE_UPLOAD_ROOT="/tmp/airway-test-private-uploads")
+    def test_cart_schedule_update_propagates_to_every_service_in_the_same_group(self):
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Specialist Cleaning",
+            slug="checkout-group-cart-schedule-child",
+        )
+        second_service = self._create_service(child_category, title="Window Cleaning")
+        second_variant = self._create_variant(second_service, price=400, mrp=500)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            pricing_snapshot={"line_total": "400.00"},
+        )
+        scheduled_at = timezone.now() + timedelta(days=5)
+        response = self.client.patch(
+            f"/api/v1/bookings/cart/items/{self.cart_item.pk}/",
+            {"schedule_data": {"scheduled_at": scheduled_at.isoformat()}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.cart_item.refresh_from_db()
+        second_item.refresh_from_db()
+        self.assertEqual(
+            self.cart_item.schedule_data["scheduled_at"],
+            second_item.schedule_data["scheduled_at"],
+        )
+        self.assertEqual(
+            datetime.fromisoformat(self.cart_item.schedule_data["scheduled_at"]),
+            scheduled_at,
+        )
+
+    def test_group_dispatch_creates_one_offer_and_assigns_same_worker_to_every_service(self):
+        from datetime import time
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.bookings.models import AppointmentGroup
+        from apps.payments.models import Payment
+        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
+
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Specialist Cleaning",
+            slug="checkout-group-dispatch-child",
+        )
+        second_service = self._create_service(child_category, title="Window Cleaning")
+        second_variant = self._create_variant(second_service, price=400, mrp=500)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            pricing_snapshot={"line_total": "400.00"},
+        )
+        scheduled_at = timezone.now() + timedelta(days=3)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": scheduled_at.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": scheduled_at.isoformat()},
+                ],
+                "group_messages": {
+                    self.category.slug: "Please call once before arriving.",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        group = AppointmentGroup.objects.get(order=order)
+        from apps.notifications.models import Notification
+        arrival_notice = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="appointment_arrival_otp",
+            data__appointment_group_id=group.pk,
+        ).latest("created_at")
+        arrival_code = arrival_notice.data["arrival_code"]
+        self.assertRegex(arrival_code, r"^\d{6}$")
+        self.assertNotEqual(group.arrival_otp_hash, arrival_code)
+        self.assertIsNone(group.arrival_otp_verified_at)
+
+        worker_user = self._create_user("+919876543298")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerService.objects.create(worker=worker, service=second_service)
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker,
+                weekday=weekday,
+                is_active=True,
+                start_time=time(0, 0),
+                end_time=time(23, 59),
+            )
+
+        allocation = order.metadata["payment_allocation_v1"]
+        Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(allocation["advance_total"]),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="test_appointment_group_advance",
+        )
+        offers = DispatcherService.dispatch_order(order)
+        self.assertEqual(len(offers), 1)
+        offer = offers[0]
+        self.assertEqual(offer.appointment_group_id, group.pk)
+        self.assertEqual(WorkerOffer.objects.filter(appointment_group=group).count(), 1)
+
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        from apps.bookings.serializers import WorkerOfferSerializer
+        offer_data = WorkerOfferSerializer(offer).data
+        self.assertEqual(offer_data["appointment_group_id"], group.pk)
+        self.assertNotIn("arrival_otp", offer_data)
+        self.assertEqual(len(offer_data["order_services"]), 2)
+        self.assertIn("Please call once before arriving.", offer_data["booking_notes"])
+
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offer.pk}/accept/",
+            {},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        self.assertEqual(set(accepted.data["assigned_booking_ids"]), set(group.bookings.values_list("id", flat=True)))
+        self.assertEqual(
+            set(group.bookings.values_list("assignment__worker_id", flat=True)),
+            {worker.pk},
+        )
+
+        assignment = BookingAssignment.objects.get(
+            booking=group.bookings.order_by("id").first(),
+            worker=worker,
+        )
+        missing_code = worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/start/",
+            {},
+            format="json",
+        )
+        self.assertEqual(missing_code.status_code, 400, missing_code.data)
+        group.refresh_from_db()
+        self.assertEqual(group.arrival_otp_attempts, 1)
+        started = worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/start/",
+            {"arrival_otp": arrival_code},
+            format="json",
+        )
+        self.assertEqual(started.status_code, 200, started.data)
+        group.refresh_from_db()
+        self.assertIsNotNone(group.arrival_otp_verified_at)
+        self.assertEqual(
+            set(group.bookings.values_list("status", flat=True)),
+            {Booking.Status.IN_PROGRESS},
+        )
+
+        follow_up_service = self._create_service(
+            child_category, title="Follow-up Cleaning"
+        )
+        WorkerService.objects.create(worker=worker, service=follow_up_service)
+        follow_up_candidates = DispatcherService._get_eligible_workers(
+            service=follow_up_service,
+            zone=self.address.zone,
+            scheduled_at=scheduled_at + timedelta(minutes=90),
+            duration_minutes=30,
+            exclude_customer_id=self.customer.pk,
+        )
+        self.assertFalse(follow_up_candidates.filter(pk=worker.pk).exists())
+
+        from apps.notifications.models import Notification
+        from apps.ratings.models import BookingRating, RatingSummary
+        first_booking = group.bookings.order_by("id").first()
+        completion_request = worker_client.post(
+            f"/api/v1/bookings/{first_booking.pk}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(completion_request.status_code, 200, completion_request.data)
+        completion_notice = Notification.objects.filter(
+            user=self.customer,
+            data__booking_id=first_booking.pk,
+            data__purpose="service_completion_otp",
+        ).latest("created_at")
+        completion_code = completion_notice.data["completion_code"]
+        blocked = worker_client.post(
+            f"/api/v1/bookings/{first_booking.pk}/complete/",
+            {"otp": completion_code},
+            format="json",
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.data)
+
+        feedback = self.client.post(
+            "/api/v1/ratings/completion-feedback/",
+            {
+                "booking_id": first_booking.pk,
+                "skipped": False,
+                "service_quality": 5,
+                "worker_behaviour": 4,
+                "satisfaction_level": "satisfied",
+                "comment": "Professional and careful work.",
+            },
+            format="json",
+        )
+        self.assertEqual(feedback.status_code, 201, feedback.data)
+        completed = worker_client.post(
+            f"/api/v1/bookings/{first_booking.pk}/complete/",
+            {"otp": completion_code},
+            format="json",
+        )
+        self.assertEqual(completed.status_code, 200, completed.data)
+        first_booking.refresh_from_db()
+        second_booking = group.bookings.exclude(pk=first_booking.pk).get()
+        self.assertEqual(first_booking.status, Booking.Status.COMPLETED)
+        self.assertEqual(second_booking.status, Booking.Status.IN_PROGRESS)
+        self.assertEqual(
+            BookingRating.objects.get(booking=first_booking, rater=self.customer).rating,
+            5,
+        )
+        summary = RatingSummary.objects.get(user=worker_user)
+        self.assertEqual(summary.total_ratings, 1)
+        self.assertEqual(summary.average_rating, Decimal("5.00"))
+
+    def test_parent_order_is_partially_assigned_when_only_one_group_has_a_worker(self):
+        from datetime import time
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.bookings.models import AppointmentGroup
+        from apps.payments.models import Payment
+        from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
+
+        car_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-partial-assignment-car-care",
+        )
+        car_service = self._create_service(car_category, title="Exterior Car Wash")
+        car_variant = self._create_variant(car_service, price=700, mrp=900)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=car_service,
+            defaults={"is_active": True},
+        )
+        car_item = CartItem.objects.create(
+            cart=self.cart,
+            service=car_service,
+            variant=car_variant,
+            pricing_snapshot={"line_total": "700.00"},
+        )
+        first_time = timezone.now() + timedelta(days=3)
+        second_time = first_time + timedelta(days=1)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.pk, "scheduled_at": first_time.isoformat()},
+                    {"cart_item_id": car_item.pk, "scheduled_at": second_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        self.assertEqual(AppointmentGroup.objects.filter(order=order).count(), 2)
+
+        worker_user = self._create_user("+919876543297")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker,
+                weekday=weekday,
+                is_active=True,
+                start_time=time(0, 0),
+                end_time=time(23, 59),
+            )
+        allocation = order.metadata["payment_allocation_v1"]
+        Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(allocation["advance_total"]),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="test_partial_group_assignment_advance",
+        )
+        offers = DispatcherService.dispatch_order(order)
+        self.assertEqual(len(offers), 1)
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offers[0].pk}/accept/",
+            {},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PARTIALLY_ASSIGNED)
+
+    def test_rescheduling_one_appointment_group_does_not_move_other_groups(self):
+        from apps.bookings.models import AppointmentGroup
+
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Specialist Cleaning",
+            slug="checkout-group-reschedule-child",
+        )
+        second_service = self._create_service(child_category, title="Window Cleaning")
+        second_variant = self._create_variant(second_service, price=400, mrp=500)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart,
+            service=second_service,
+            variant=second_variant,
+            pricing_snapshot={"line_total": "400.00"},
+        )
+        car_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-group-reschedule-car-care",
+        )
+        car_service = self._create_service(car_category, title="Exterior Car Wash")
+        car_variant = self._create_variant(car_service, price=700, mrp=900)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=car_service,
+            defaults={"is_active": True},
+        )
+        car_item = CartItem.objects.create(
+            cart=self.cart,
+            service=car_service,
+            variant=car_variant,
+            pricing_snapshot={"line_total": "700.00"},
+        )
+        beauty_time = timezone.now() + timedelta(days=4)
+        car_time = beauty_time + timedelta(days=1, hours=2)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": beauty_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": beauty_time.isoformat()},
+                    {"cart_item_id": car_item.id, "scheduled_at": car_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        beauty_group = AppointmentGroup.objects.get(order=order, root_category=self.category)
+        car_group = AppointmentGroup.objects.get(order=order, root_category=car_category)
+        first_booking = beauty_group.bookings.order_by("id").first()
+        second_booking = beauty_group.bookings.exclude(pk=first_booking.pk).get()
+        car_booking = car_group.bookings.get()
+        from apps.notifications.models import Notification
+        old_arrival_otp = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="appointment_arrival_otp",
+            data__appointment_group_id=beauty_group.pk,
+        ).latest("created_at").data["arrival_code"]
+        new_time = beauty_time + timedelta(days=2)
+
+        response = self.client.post(
+            f"/api/v1/bookings/{first_booking.pk}/reschedule/",
+            {"scheduled_at": new_time.isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        first_booking.refresh_from_db()
+        second_booking.refresh_from_db()
+        car_booking.refresh_from_db()
+        beauty_group.refresh_from_db()
+        car_group.refresh_from_db()
+        self.assertEqual(first_booking.scheduled_at, new_time)
+        self.assertEqual(second_booking.scheduled_at, new_time)
+        self.assertEqual(beauty_group.scheduled_at, new_time)
+        new_arrival_otp = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="appointment_arrival_otp",
+            data__appointment_group_id=beauty_group.pk,
+        ).latest("created_at").data["arrival_code"]
+        self.assertNotEqual(new_arrival_otp, old_arrival_otp)
+        self.assertIsNone(beauty_group.arrival_otp_verified_at)
+        self.assertEqual(car_booking.scheduled_at, car_time)
+        self.assertEqual(car_group.scheduled_at, car_time)
+        self.assertEqual(set(response.data["rescheduled_booking_ids"]), {first_booking.pk, second_booking.pk})
+
     def test_checkout_creates_recurring_wash_plan_from_customer_answers(self):
         category = Category.objects.create(
             title="Monthly Car Wash Plans",
@@ -4096,7 +4761,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertFalse(Booking.objects.filter(customer=self.customer).exists())
 
     def test_multi_service_order_dispatches_each_line_to_its_own_eligible_workers(self):
-        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        other_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-dispatch-car-care",
+        )
+        second_service = self._create_service(other_category, title="Exterior Car Wash")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
         workers = []
         for phone, service in (("+919876543281", self.service), ("+919876543282", second_service)):
@@ -4150,7 +4819,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
 
     def test_different_workers_can_accept_different_lines_of_one_order(self):
-        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        other_category = Category.objects.create(
+            title="Car Care",
+            slug="checkout-different-workers-car-care",
+        )
+        second_service = self._create_service(other_category, title="Exterior Car Wash")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
         workers = []
         for phone, service in (("+919876543283", self.service), ("+919876543284", second_service)):
@@ -4229,6 +4902,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             quantity=1,
             pricing_snapshot={"line_total": "500.00"},
         )
+        scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
 
         response = self.client.post(
             "/api/v1/bookings/cart/checkout/",
@@ -4236,11 +4910,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
                 "items": [
                     {
                         "cart_item_id": self.cart_item.id,
-                        "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                        "scheduled_at": scheduled_at,
                     },
                     {
                         "cart_item_id": second_item.id,
-                        "scheduled_at": (timezone.now() + timedelta(days=3)).isoformat(),
+                        "scheduled_at": scheduled_at,
                     },
                 ]
             },

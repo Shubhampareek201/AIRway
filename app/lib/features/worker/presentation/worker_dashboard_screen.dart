@@ -527,10 +527,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
 
   Widget _buildHomeTab(WorkerProfile profile) {
     final pendingCount = _offers.where((o) => o.status == WorkerOffer.pending).length;
-    final activeJobs = _assignedJobs.where((j) {
+    final activeJobs = _distinctJobCount(_assignedJobs.where((j) {
       final status = j['status']?.toString();
       return status != 'completed' && status != 'cancelled';
-    }).length;
+    }).toList());
 
     return _page([
       _buildWelcomeCard(profile),
@@ -887,6 +887,45 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     );
   }
 
+  int _distinctJobCount(List<Map<String, dynamic>> jobs) {
+    final keys = <String>{};
+    for (final job in jobs) {
+      final groupId = job['appointment_group_id']?.toString();
+      final bookingId = job['booking_id'] ?? job['id'];
+      keys.add(groupId != null && groupId.isNotEmpty
+          ? 'group:$groupId'
+          : 'booking:$bookingId');
+    }
+    return keys.length;
+  }
+
+  String _jobTitle(Map<String, dynamic> job) {
+    final groupTitle = job['appointment_group_title']?.toString();
+    final serviceTitle = job['service_title']?.toString() ?? 'Service job';
+    return groupTitle?.isNotEmpty == true
+        ? '$groupTitle • $serviceTitle'
+        : serviceTitle;
+  }
+
+  String _jobSubtitle(Map<String, dynamic> job) {
+    final groupServices = (job['appointment_group_service_titles'] as List? ?? [])
+        .map((value) => value.toString())
+        .toSet()
+        .join(' • ');
+    final time = _dateLabel(job['scheduled_at']);
+    if (groupServices.isNotEmpty) {
+      return AirwayText.tr(
+        'Same appointment: $groupServices • $time',
+        'एक ही अपॉइंटमेंट: $groupServices • $time',
+      );
+    }
+    final bookingId = job['booking_id'] ?? job['id'];
+    return AirwayText.tr(
+      'Booking #$bookingId • $time',
+      'बुकिंग #$bookingId • $time',
+    );
+  }
+
   Widget _buildNextJobCard() {
     if (_assignedJobs.isEmpty) {
       return const _EmptyCard(icon: Icons.event_available_outlined, title: 'Nothing scheduled yet', subtitle: 'Your assigned jobs will appear here.');
@@ -895,8 +934,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     return Card(
       child: ListTile(
         leading: Icon(Icons.assignment_outlined, color: AirwayColors.primary),
-        title: Text(job['service_title']?.toString() ?? 'Assigned service'),
-        subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
+        title: Text(_jobTitle(job)),
+        subtitle: Text(_jobSubtitle(job)),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
       ),
@@ -907,8 +946,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     return Card(
       child: ListTile(
         leading: Icon(Icons.work_outline, color: AirwayColors.primary),
-        title: Text(job['service_title']?.toString() ?? 'Service job'),
-        subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
+        title: Text(_jobTitle(job)),
+        subtitle: Text(_jobSubtitle(job)),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
       ),

@@ -45,6 +45,13 @@ class Booking(TimeStampedModel):
         blank=True,
         related_name="bookings",
     )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bookings",
+    )
 
     booking_mode = models.CharField(
         max_length=15,
@@ -322,7 +329,14 @@ class WorkerOffer(TimeStampedModel):
         null=True,
         blank=True,
         related_name="worker_offers",
-        help_text="Set for a parent-order offer covering every booking line.",
+        help_text="Set for a legacy parent-order offer covering every booking line.",
+    )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="worker_offers",
     )
     batch_number = models.PositiveIntegerField(default=1)
     worker = models.ForeignKey(
@@ -361,6 +375,7 @@ class Order(TimeStampedModel):
     class Status(models.TextChoices):
         AWAITING_ASSIGNMENT = "awaiting_assignment", "Awaiting Assignment"
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
+        PARTIALLY_ASSIGNED = "partially_assigned", "Partially Assigned"
         PAID = "paid", "Paid"
         PARTIALLY_CANCELLED = "partially_cancelled", "Partially Cancelled"
         CANCELLED = "cancelled", "Cancelled"
@@ -399,6 +414,48 @@ class Order(TimeStampedModel):
         return f"Order #{self.pk} - {self.customer.phone} - ₹{self.total_amount}"
 
 
+class AppointmentGroup(TimeStampedModel):
+    """One coordinated appointment for services under the same root category in an order."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="appointment_groups",
+    )
+    root_category = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.PROTECT,
+        related_name="appointment_groups",
+    )
+    category_slug_snapshot = models.SlugField(max_length=100)
+    category_title_snapshot = models.CharField(max_length=150)
+    scheduled_at = models.DateTimeField()
+    customer_message = models.CharField(max_length=500, blank=True)
+    arrival_otp_hash = models.CharField(max_length=128, blank=True)
+    arrival_otp_expires_at = models.DateTimeField(null=True, blank=True)
+    arrival_otp_verified_at = models.DateTimeField(null=True, blank=True)
+    arrival_otp_attempts = models.PositiveSmallIntegerField(default=0)
+    arrival_otp_locked_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["scheduled_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "root_category"],
+                name="unique_order_root_appointment_group",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["order", "scheduled_at"],
+                name="appt_group_order_time_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.category_title_snapshot} appointment for Order #{self.order_id}"
+
+
 class OrderItem(TimeStampedModel):
     """Immutable checkout snapshot linking one order line to one service booking."""
 
@@ -430,6 +487,7 @@ class CustomerCart(TimeStampedModel):
     customer = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="service_cart")
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_carts")
     schedule_mode = models.CharField(max_length=24, default="separate")
+    group_messages = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"Cart - {self.customer.phone}"

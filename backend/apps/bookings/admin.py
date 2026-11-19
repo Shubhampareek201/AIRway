@@ -13,6 +13,7 @@ from .models import (
     CustomerCart,
     CartItem,
     Order,
+    AppointmentGroup,
     OrderItem,
     DispatchConfiguration,
     BookingCompletionOTP,
@@ -58,7 +59,7 @@ class CustomerCartAdmin(ModelAdmin):
     list_display = ('customer', 'address', 'updated_at')
     search_fields = ('customer__phone', 'customer__name')
     list_filter = ('address__zone__city',)
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'group_messages')
     inlines = [CartItemInline]
 
 
@@ -80,6 +81,31 @@ class OrderItemInline(TabularInline):
             drop = timezone.localtime(booking.drop_scheduled_at).strftime("%d %b %Y, %I:%M %p")
             return f"Service: {scheduled} | Drop-off: {drop}"
         return scheduled
+
+
+@admin.register(AppointmentGroup)
+class AppointmentGroupAdmin(ModelAdmin):
+    list_display = (
+        "id", "order", "category_title_snapshot", "scheduled_at",
+        "customer_message", "created_at",
+    )
+    list_filter = ("category_slug_snapshot", "scheduled_at")
+    search_fields = ("order__id", "category_title_snapshot", "customer_message")
+    readonly_fields = (
+        "order", "root_category", "category_slug_snapshot",
+        "category_title_snapshot", "scheduled_at", "customer_message",
+        "created_at", "updated_at",
+    )
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Order)

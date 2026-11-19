@@ -205,7 +205,12 @@ def create_or_get_order_payment(
         if Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
             paid = Payment.objects.get(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID)
             return paid, paid.razorpay_order_id, True
-        if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED):
+        if order.status not in (
+            Order.Status.AWAITING_ASSIGNMENT,
+            Order.Status.PARTIALLY_ASSIGNED,
+            Order.Status.AWAITING_PAYMENT,
+            Order.Status.PARTIALLY_CANCELLED,
+        ):
             raise ValueError("This order is not eligible for an advance payment.")
     else:
         if not Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():

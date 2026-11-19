@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.conf import settings
 from decimal import Decimal
@@ -15,7 +16,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, AppointmentGroup, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -358,6 +359,27 @@ class BookingViewSet(viewsets.ModelViewSet):
             changed_by=request.user,
             note=f"Cancelled by customer. Reason: {reason}",
         )
+        if booking.appointment_group_id:
+            appointment_group = booking.appointment_group
+            if not appointment_group.bookings.exclude(
+                status=Booking.Status.CANCELLED
+            ).exists():
+                appointment_group.arrival_otp_hash = ""
+                appointment_group.arrival_otp_expires_at = None
+                appointment_group.save(update_fields=[
+                    "arrival_otp_hash", "arrival_otp_expires_at", "updated_at",
+                ])
+                old_arrival_notices = Notification.objects.filter(
+                    user=request.user,
+                    data__purpose="appointment_arrival_otp",
+                    data__appointment_group_id=appointment_group.pk,
+                )
+                for old_notice in old_arrival_notices:
+                    old_data = dict(old_notice.data or {})
+                    old_data["arrival_code"] = None
+                    old_data["superseded"] = True
+                    old_notice.data = old_data
+                    old_notice.save(update_fields=["data", "updated_at"])
 
         # Cancel pending offers for the affected service. For grouped orders,
         # withdraw the shared order offer and redispatch only if active lines
@@ -378,6 +400,17 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=WorkerOffer.Status.WITHDRAWN,
                 responded_at=timezone.now(),
             )
+            if booking.appointment_group_id:
+                # A pending group offer includes every active service in the
+                # appointment. Withdraw it and let dispatch rebuild the offer
+                # for the remaining services only.
+                WorkerOffer.objects.filter(
+                    appointment_group_id=booking.appointment_group_id,
+                    status=WorkerOffer.Status.PENDING,
+                ).update(
+                    status=WorkerOffer.Status.WITHDRAWN,
+                    responded_at=timezone.now(),
+                )
             # Also close any pre-transition whole-order offer still pending.
             WorkerOffer.objects.filter(
                 order=order, status=WorkerOffer.Status.PENDING
@@ -495,7 +528,19 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         targets = [booking]
         shared_appointment = False
-        if order is not None:
+        appointment_group = getattr(booking, "appointment_group", None)
+        if appointment_group is not None:
+            # A customer reschedules the complete service-type appointment,
+            # without moving other appointment groups in the same checkout.
+            targets = list(
+                Booking.objects.select_for_update(of=("self",)).filter(
+                    appointment_group=appointment_group
+                ).exclude(status=Booking.Status.CANCELLED).select_related(
+                    "service__category", "variant", "address__zone__city"
+                ).order_by("id")
+            )
+            shared_appointment = True
+        elif order is not None:
             scheduling = (order.metadata or {}).get("scheduling_v1", {})
             shared_appointment = scheduling.get("mode") == "same_appointment"
             if shared_appointment:
@@ -518,7 +563,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                     {"detail": "A professional is already assigned to this service. Contact AIRway support to reschedule."},
                     status=status.HTTP_409_CONFLICT,
                 )
-            if target.booking_mode != booking.booking_mode:
+            if (
+                appointment_group is None
+                and target.booking_mode != booking.booking_mode
+            ):
                 return Response(
                     {"detail": "Services with different booking modes cannot be moved as one shared appointment."},
                     status=status.HTTP_409_CONFLICT,
@@ -596,7 +644,49 @@ class BookingViewSet(viewsets.ModelViewSet):
                 ),
             )
 
-        if order and shared_appointment:
+        if appointment_group is not None:
+            import secrets
+            from datetime import timedelta
+            arrival_code = f"{secrets.randbelow(1_000_000):06d}"
+            appointment_group.scheduled_at = new_time
+            appointment_group.arrival_otp_hash = make_password(arrival_code)
+            appointment_group.arrival_otp_expires_at = new_time + timedelta(hours=6)
+            appointment_group.arrival_otp_verified_at = None
+            appointment_group.arrival_otp_attempts = 0
+            appointment_group.arrival_otp_locked_until = None
+            appointment_group.save(update_fields=[
+                "scheduled_at", "arrival_otp_hash", "arrival_otp_expires_at",
+                "arrival_otp_verified_at", "arrival_otp_attempts",
+                "arrival_otp_locked_until", "updated_at",
+            ])
+            old_arrival_notices = Notification.objects.filter(
+                user=booking.customer,
+                data__purpose="appointment_arrival_otp",
+                data__appointment_group_id=appointment_group.pk,
+            )
+            for old_notice in old_arrival_notices:
+                old_data = dict(old_notice.data or {})
+                old_data["arrival_code"] = None
+                old_data["superseded"] = True
+                old_notice.data = old_data
+                old_notice.save(update_fields=["data", "updated_at"])
+            Notification.objects.create(
+                user=booking.customer,
+                type=Notification.Type.BOOKING_CONFIRMED,
+                title=f"{appointment_group.category_title_snapshot} appointment arrival code updated",
+                body="Your appointment was rescheduled. Share this new six-digit code with your professional only when they arrive.",
+                data={
+                    "purpose": "appointment_arrival_otp",
+                    "appointment_group_id": appointment_group.pk,
+                    "arrival_code": arrival_code,
+                },
+            )
+            WorkerOffer.objects.filter(
+                appointment_group=appointment_group,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+
+        if order and shared_appointment and appointment_group is None:
             metadata = dict(order.metadata or {})
             scheduling = dict(metadata.get("scheduling_v1", {}))
             scheduling["shared_appointment_at"] = new_time.isoformat()
@@ -642,6 +732,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "scheduled_at": new_time.isoformat(),
             "rescheduled_booking_ids": target_ids,
             "shared_appointment": shared_appointment,
+            "appointment_group_id": appointment_group.pk if appointment_group else None,
         })
 
     @action(detail=True, methods=["post"], url_path="quote/respond")
@@ -990,8 +1081,20 @@ class BookingViewSet(viewsets.ModelViewSet):
             service__is_active=True,
             service__category__is_active=True,
         ).select_related("service", "service__category").order_by("service__title") if worker_is_approved else worker.worker_services.none()
+        scheduled_at = (
+            booking.appointment_group.scheduled_at
+            if booking.appointment_group_id else booking.scheduled_at
+        )
+        now = timezone.now()
+        location_available_at = (
+            scheduled_at - timedelta(minutes=30) if scheduled_at else None
+        )
+        location_visibility_window_open = bool(
+            location_available_at and now >= location_available_at
+        )
         location_is_fresh = bool(
             worker_is_approved
+            and location_visibility_window_open
             and assignment.accepted_at
             and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
             and assignment.live_location_updated_at
@@ -1028,6 +1131,8 @@ class BookingViewSet(viewsets.ModelViewSet):
             "worker_location_accuracy_m": float(assignment.live_accuracy_m) if location_is_fresh and assignment.live_accuracy_m is not None else None,
             "worker_location_updated_at": assignment.live_location_updated_at.isoformat() if location_is_fresh else None,
             "location_is_fresh": location_is_fresh,
+            "location_visibility_window_open": location_visibility_window_open,
+            "location_available_at": location_available_at.isoformat() if location_available_at else None,
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
@@ -1224,6 +1329,16 @@ class BookingViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Completion code expired. Request a new code."}, status=status.HTTP_400_BAD_REQUEST)
             if otp_record.attempts >= 5:
                 return Response({"detail": "Too many incorrect attempts. Request a new code after it expires."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            from apps.ratings.models import BookingCompletionFeedback
+            completion_feedback = BookingCompletionFeedback.objects.select_for_update().filter(
+                booking=locked_booking,
+                customer=locked_booking.customer,
+            ).first()
+            if locked_booking.appointment_group_id and completion_feedback is None:
+                return Response(
+                    {"detail": "Customer feedback or the explicit skip action is required before completion verification."},
+                    status=status.HTTP_409_CONFLICT,
+                )
             if len(supplied_code) != 6 or not supplied_code.isdigit() or not check_password(supplied_code, otp_record.code_hash):
                 otp_record.attempts += 1
                 otp_record.save(update_fields=["attempts", "updated_at"])
@@ -1279,6 +1394,27 @@ class BookingViewSet(viewsets.ModelViewSet):
                 changed_by=request.user,
                 note="Service completion verified with customer-shared OTP.",
             )
+            if completion_feedback is not None and not completion_feedback.skipped:
+                from apps.ratings.models import BookingRating, RatingSummary
+                overall_rating = (
+                    completion_feedback.service_quality
+                    + completion_feedback.worker_behaviour
+                    + 1
+                ) // 2
+                BookingRating.objects.get_or_create(
+                    booking=locked_booking,
+                    rater=locked_booking.customer,
+                    defaults={
+                        "rated": assignment.worker.user,
+                        "rating_type": "customer",
+                        "rating": overall_rating,
+                        "comment": completion_feedback.comment,
+                    },
+                )
+                summary, _ = RatingSummary.objects.get_or_create(
+                    user=assignment.worker.user
+                )
+                summary.update_stats()
 
             # Referral reward is earned only on the referred customer's first
             # successfully OTP-verified completed service.
@@ -1406,6 +1542,88 @@ class CustomerCheckoutView(APIView):
             serializer.is_valid(raise_exception=True)
             prepared.append((item, serializer))
 
+        # Services below the same root catalogue category form one appointment.
+        # Each group has one shared start time; different root categories remain
+        # independently schedulable inside the same parent checkout.
+        grouped_by_root = {}
+        for item, serializer in prepared:
+            root_category = item.service.category
+            while root_category.parent_id:
+                root_category = root_category.parent
+            group = grouped_by_root.setdefault(root_category.pk, {
+                "category": root_category,
+                "items": [],
+            })
+            group["items"].append((item, serializer))
+
+        for group in grouped_by_root.values():
+            group_times = {
+                serializer.validated_data.get("scheduled_at")
+                for _, serializer in group["items"]
+            }
+            if None in group_times or len(group_times) != 1:
+                return Response(
+                    {
+                        "detail": (
+                            f"All services in {group['category'].title} must use "
+                            "the same date and time for one appointment. Other service "
+                            "categories can have their own schedule."
+                        ),
+                        "category_root": group["category"].slug,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            group["scheduled_at"] = next(iter(group_times))
+            group_modes = {item.service.booking_mode for item, _ in group["items"]}
+            if len(group_modes) != 1:
+                return Response(
+                    {
+                        "detail": (
+                            f"Services in {group['category'].title} use different "
+                            "appointment modes and cannot share one appointment."
+                        ),
+                        "category_root": group["category"].slug,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if next(iter(group_modes)) == Booking.BookingMode.PICKUP_DROP:
+                group_drop_times = {
+                    serializer.validated_data.get("drop_scheduled_at")
+                    for _, serializer in group["items"]
+                }
+                if None in group_drop_times or len(group_drop_times) != 1:
+                    return Response(
+                        {
+                            "detail": (
+                                f"Pickup & Drop services in {group['category'].title} "
+                                "must share the same drop-off time."
+                            ),
+                            "category_root": group["category"].slug,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+        raw_group_messages = request.data.get("group_messages", cart.group_messages or {})
+        if not isinstance(raw_group_messages, dict):
+            return Response(
+                {"group_messages": "Provide one optional message per appointment group."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        valid_group_slugs = {group["category"].slug for group in grouped_by_root.values()}
+        group_messages = {}
+        for slug, raw_message in raw_group_messages.items():
+            if slug not in valid_group_slugs:
+                return Response(
+                    {"group_messages": f"Unknown appointment group: {slug}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not isinstance(raw_message, str) or len(raw_message.strip()) > 500:
+                return Response(
+                    {"group_messages": "Each appointment message must be text up to 500 characters."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            group_messages[slug] = raw_message.strip()
+
         # A shared appointment means every service starts at the same instant.
         # Each service is still validated independently for its own duration,
         # booking mode, zone and worker eligibility. Worker assignment remains
@@ -1428,6 +1646,37 @@ class CustomerCheckoutView(APIView):
             address=cart.address,
             status=Order.Status.AWAITING_ASSIGNMENT,
         )
+        appointment_groups = {}
+        arrival_codes_by_group_id = {}
+        for root_id, group_data in grouped_by_root.items():
+            category = group_data["category"]
+            import secrets
+            from datetime import timedelta
+            arrival_code = f"{secrets.randbelow(1_000_000):06d}"
+            group = AppointmentGroup.objects.create(
+                order=order,
+                root_category=category,
+                category_slug_snapshot=category.slug,
+                category_title_snapshot=category.title,
+                scheduled_at=group_data["scheduled_at"],
+                customer_message=group_messages.get(category.slug, ""),
+                arrival_otp_hash=make_password(arrival_code),
+                arrival_otp_expires_at=group_data["scheduled_at"] + timedelta(hours=6),
+            )
+            appointment_groups[root_id] = group
+            arrival_codes_by_group_id[group.pk] = arrival_code
+            Notification.objects.create(
+                user=request.user,
+                type=Notification.Type.BOOKING_CONFIRMED,
+                title=f"{category.title} appointment arrival code",
+                body="Share this six-digit code with your professional only when they arrive.",
+                data={
+                    "purpose": "appointment_arrival_otp",
+                    "appointment_group_id": group.pk,
+                    "arrival_code": arrival_code,
+                },
+            )
+
         subtotal = Decimal("0")
         tax_total = Decimal("0")
         grand_total = Decimal("0")
@@ -1435,6 +1684,11 @@ class CustomerCheckoutView(APIView):
 
         for item, serializer in prepared:
             booking = serializer.save()
+            root_category = item.service.category
+            while root_category.parent_id:
+                root_category = root_category.parent
+            booking.appointment_group = appointment_groups[root_category.pk]
+            booking.save(update_fields=["appointment_group", "updated_at"])
             quantity = item.quantity
             base_snapshot = dict(booking.pricing_snapshot or {})
             unit_subtotal = Decimal(str(base_snapshot.get("subtotal", "0")))
@@ -1494,6 +1748,9 @@ class CustomerCheckoutView(APIView):
                     "variant_id": item.variant_id,
                     "variant_title": item.variant.title if item.variant else None,
                     "cart_item_id": item.id,
+                    "appointment_group_id": booking.appointment_group_id,
+                    "appointment_group_slug": booking.appointment_group.category_slug_snapshot,
+                    "appointment_group_title": booking.appointment_group.category_title_snapshot,
                     "form_answers": item.form_answers,
                     "category_answers": item.category_answers,
                     "notes": item.notes,
@@ -1617,6 +1874,17 @@ class CustomerCheckoutView(APIView):
                     if shared_appointment_at is not None else None
                 ),
             },
+            "appointment_groups_v1": [
+                {
+                    "id": group.pk,
+                    "category_root_id": group.root_category_id,
+                    "category_slug": group.category_slug_snapshot,
+                    "category_title": group.category_title_snapshot,
+                    "scheduled_at": group.scheduled_at.isoformat(),
+                    "customer_message": group.customer_message,
+                }
+                for group in appointment_groups.values()
+            ],
             "payment_allocation_v1": {
                 "percentage": str(advance_percentage),
                 "advance_total": str(advance_total),
@@ -1631,9 +1899,12 @@ class CustomerCheckoutView(APIView):
         # Payment webhook/verification triggers DispatcherService.dispatch_order.
 
         cart.items.all().delete()
+        cart.group_messages = {}
+        update_fields = ["group_messages", "updated_at"]
         if cart.schedule_mode != "separate":
             cart.schedule_mode = "separate"
-            cart.save(update_fields=["schedule_mode", "updated_at"])
+            update_fields.append("schedule_mode")
+        cart.save(update_fields=update_fields)
         return Response({
             "order_id": order.id,
             "status": order.status,
@@ -1642,15 +1913,33 @@ class CustomerCheckoutView(APIView):
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
             "total_amount": str(order.total_amount),
+            "appointment_groups": [
+                {
+                    "id": group.pk,
+                    "category_root_id": group.root_category_id,
+                    "category_slug": group.category_slug_snapshot,
+                    "category_title": group.category_title_snapshot,
+                    "scheduled_at": group.scheduled_at.isoformat(),
+                    "customer_message": group.customer_message,
+                    "arrival_otp": arrival_codes_by_group_id.get(group.pk),
+                    "arrival_otp_expires_at": (
+                        group.arrival_otp_expires_at.isoformat()
+                        if group.arrival_otp_expires_at else None
+                    ),
+                    "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                }
+                for group in order.appointment_groups.select_related("root_category").all()
+            ],
             "items": [
                 {
                     "order_item_id": row.id,
                     "booking_id": row.booking_id,
+                    "appointment_group_id": row.booking.appointment_group_id,
                     "service": row.service_snapshot,
                     "quantity": row.quantity,
                     "line_total": str(row.line_total),
                 }
-                for row in order.items.all()
+                for row in order.items.select_related("booking").all()
             ],
             "dispatch": {"offers_sent": 0, "deferred_until_advance_payment": True},
             "next_step": "Pay the 30% advance to start worker matching. The remaining 70% is due after all services are completed and verified.",
@@ -1671,6 +1960,7 @@ class CustomerOrderDetailView(APIView):
             Order.objects.prefetch_related(
                 "items__booking__assignment__worker__user",
                 "items__booking__payment_refunds",
+                "appointment_groups__bookings",
                 "payments",
             ),
             pk=order_id,
@@ -1706,6 +1996,12 @@ class CustomerOrderDetailView(APIView):
             assignment = getattr(booking, "assignment", None)
             completion_code = None
             completion_expires_at = None
+            completion_otp_requested = False
+            from apps.ratings.models import BookingCompletionFeedback
+            completion_feedback = BookingCompletionFeedback.objects.filter(
+                booking=booking,
+                customer=request.user,
+            ).first()
             if booking.status == Booking.Status.IN_PROGRESS:
                 from apps.bookings.models import BookingCompletionOTP
                 from apps.notifications.models import Notification
@@ -1714,7 +2010,10 @@ class CustomerOrderDetailView(APIView):
                     verified_at__isnull=True,
                     expires_at__gt=timezone.now(),
                 ).first()
-                if otp_record:
+                completion_otp_requested = otp_record is not None
+                if otp_record and (
+                    completion_feedback is not None or not booking.appointment_group_id
+                ):
                     otp_notice = Notification.objects.filter(
                         user=request.user,
                         data__booking_id=booking.id,
@@ -1756,6 +2055,11 @@ class CustomerOrderDetailView(APIView):
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
+                "appointment_group_id": booking.appointment_group_id,
+                "appointment_group_title": (
+                    booking.appointment_group.category_title_snapshot
+                    if booking.appointment_group_id else None
+                ),
                 "service": service_snapshot,
                 "booking_status": booking.status,
                 "booking_mode": booking.booking_mode,
@@ -1820,7 +2124,15 @@ class CustomerOrderDetailView(APIView):
                 "advance_amount": advance_rows.get(row.id, {}).get("amount"),
                 "balance_amount": balance_rows.get(row.id, {}).get("amount"),
                 "completion_verified": booking.status == Booking.Status.COMPLETED,
-                "customer_has_rated": booking.id in rated_booking_ids,
+                "completion_otp_requested": completion_otp_requested,
+                "completion_feedback_submitted": completion_feedback is not None,
+                "completion_feedback_skipped": (
+                    completion_feedback.skipped if completion_feedback else False
+                ),
+                "customer_has_rated": (
+                    booking.id in rated_booking_ids
+                    or bool(completion_feedback and completion_feedback.skipped)
+                ),
                 "completion_otp": (
                     {
                         "code": completion_code,
@@ -1894,6 +2206,39 @@ class CustomerOrderDetailView(APIView):
                 "scheduling_v1",
                 {"mode": "separate", "shared_appointment_at": None},
             ),
+            "appointment_groups": [
+                {
+                    "id": group.pk,
+                    "category_root_id": group.root_category_id,
+                    "category_slug": group.category_slug_snapshot,
+                    "category_title": group.category_title_snapshot,
+                    "scheduled_at": group.scheduled_at.isoformat(),
+                    "customer_message": group.customer_message,
+                    "arrival_otp": (
+                        Notification.objects.filter(
+                            user=request.user,
+                            data__purpose="appointment_arrival_otp",
+                            data__appointment_group_id=group.pk,
+                        ).order_by("-created_at").values_list(
+                            "data__arrival_code", flat=True
+                        ).first()
+                        if not group.arrival_otp_verified_at
+                        and group.arrival_otp_expires_at
+                        and group.arrival_otp_expires_at > timezone.now()
+                        else None
+                    ),
+                    "arrival_otp_expires_at": (
+                        group.arrival_otp_expires_at.isoformat()
+                        if group.arrival_otp_expires_at else None
+                    ),
+                    "arrival_otp_verified_at": (
+                        group.arrival_otp_verified_at.isoformat()
+                        if group.arrival_otp_verified_at else None
+                    ),
+                    "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                }
+                for group in order.appointment_groups.select_related("root_category").all()
+            ],
             "currency": order.currency,
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
@@ -1909,7 +2254,12 @@ class CustomerOrderDetailView(APIView):
             "balance_due": str(balance_due),
             "legacy_payment_due": str(order.total_amount) if legacy_ready else "0.00",
             "amount_due": str(advance_due + balance_due) if is_staged_payment else (str(order.total_amount) if legacy_ready else "0.00"),
-            "ready_for_advance": is_staged_payment and not advance_payment and order.status in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED),
+            "ready_for_advance": is_staged_payment and not advance_payment and order.status in (
+                Order.Status.AWAITING_ASSIGNMENT,
+                Order.Status.PARTIALLY_ASSIGNED,
+                Order.Status.AWAITING_PAYMENT,
+                Order.Status.PARTIALLY_CANCELLED,
+            ),
             "ready_for_balance": ready_for_balance,
             "ready_for_legacy_payment": legacy_ready,
             "ready_for_payment": ready_for_balance or legacy_ready,
@@ -2026,9 +2376,22 @@ class CustomerOrderListView(APIView):
                     "scheduling_v1",
                     {"mode": "separate", "shared_appointment_at": None},
                 ),
+                "appointment_groups": [
+                    {
+                        "id": group.pk,
+                        "category_root_id": group.root_category_id,
+                        "category_slug": group.category_slug_snapshot,
+                        "category_title": group.category_title_snapshot,
+                        "scheduled_at": group.scheduled_at.isoformat(),
+                        "customer_message": group.customer_message,
+                        "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                    }
+                    for group in order.appointment_groups.select_related("root_category").all()
+                ],
                 "items": [
                     {
                         "booking_id": item.booking_id,
+                        "appointment_group_id": item.booking.appointment_group_id,
                         "service_title": item.booking.service.title,
                         "variant_title": item.booking.variant.title if item.booking.variant_id else "",
                         "scheduled_at": item.booking.scheduled_at,
@@ -2366,6 +2729,36 @@ class CustomerCartView(APIView):
             cart.schedule_mode = schedule_mode
             update_fields.append("schedule_mode")
 
+        if "group_messages" in request.data:
+            raw_messages = request.data.get("group_messages")
+            if not isinstance(raw_messages, dict):
+                return Response(
+                    {"group_messages": "Provide an object keyed by service category slug."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            allowed_slugs = set()
+            for item in cart.items.select_related("service__category__parent"):
+                root_category = item.service.category
+                while root_category.parent_id:
+                    root_category = root_category.parent
+                allowed_slugs.add(root_category.slug)
+            cleaned_messages = {}
+            for slug, message in raw_messages.items():
+                if slug not in allowed_slugs:
+                    return Response(
+                        {"group_messages": f"Unknown appointment group: {slug}."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if not isinstance(message, str) or len(message.strip()) > 500:
+                    return Response(
+                        {"group_messages": "Each message must be text up to 500 characters."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if message.strip():
+                    cleaned_messages[slug] = message.strip()
+            cart.group_messages = cleaned_messages
+            update_fields.append("group_messages")
+
         if update_fields:
             cart.save(update_fields=[*update_fields, "updated_at"])
         return Response(CustomerCartSerializer(cart, context={"request": request}).data)
@@ -2378,6 +2771,7 @@ class CustomerCartItemView(APIView):
         cart = get_object_or_404(CustomerCart, customer=request.user)
         return get_object_or_404(CartItem, cart=cart, pk=item_id)
 
+    @transaction.atomic
     def patch(self, request, item_id):
         item = self.get_item(request, item_id)
         old_photo_map = (item.category_answers or {}).get("_airway_form_photos", {})
@@ -2395,6 +2789,104 @@ class CustomerCartItemView(APIView):
                 )
             except ServiceUnavailableError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        requested_schedule = serializer.validated_data.get("schedule_data") if "schedule_data" in request.data else None
+        if requested_schedule is not None:
+            if not item.cart.address_id:
+                return Response(
+                    {"detail": "Select a service address before choosing an appointment time."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from django.utils.dateparse import parse_datetime
+            if not isinstance(requested_schedule, dict):
+                return Response(
+                    {"schedule_data": "Provide a valid appointment schedule object."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            scheduled_at = parse_datetime(str(requested_schedule.get("scheduled_at", "")))
+            if scheduled_at is None or timezone.is_naive(scheduled_at) or scheduled_at <= timezone.now():
+                return Response(
+                    {"schedule_data": "Choose a valid future date and time."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            root_category = item.service.category
+            while root_category.parent_id:
+                root_category = root_category.parent
+            group_items = []
+            for candidate in item.cart.items.select_related(
+                "service__category__parent", "variant"
+            ).order_by("id"):
+                candidate_root = candidate.service.category
+                while candidate_root.parent_id:
+                    candidate_root = candidate_root.parent
+                if candidate_root.pk == root_category.pk:
+                    group_items.append(candidate)
+
+            modes = {candidate.service.booking_mode for candidate in group_items}
+            if len(modes) != 1:
+                return Response(
+                    {"schedule_data": "Services with different appointment modes cannot share one appointment group."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            booking_mode = item.service.booking_mode
+            drop_scheduled_at = None
+            if booking_mode == Booking.BookingMode.PICKUP_DROP:
+                drop_scheduled_at = parse_datetime(
+                    str(requested_schedule.get("drop_scheduled_at", ""))
+                )
+                if (
+                    drop_scheduled_at is None
+                    or timezone.is_naive(drop_scheduled_at)
+                    or drop_scheduled_at <= scheduled_at
+                ):
+                    return Response(
+                        {"schedule_data": "Choose a drop-off time after pickup."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            elif requested_schedule.get("drop_scheduled_at"):
+                return Response(
+                    {"schedule_data": "Drop-off time is only valid for Pickup & Drop services."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            for candidate in group_items:
+                try:
+                    check_service_available(
+                        service=candidate.service,
+                        address=item.cart.address,
+                        audience="all",
+                    )
+                    duration = (
+                        candidate.variant.duration_minutes
+                        if candidate.variant_id and candidate.variant.duration_minutes
+                        else candidate.service.duration_minutes
+                    ) or 60
+                    quantity = max(int(candidate.quantity or 1), 1)
+                    duration *= (
+                        1 if candidate.service.pricing_type == "per_unit" else quantity
+                    )
+                    check_slot_availability(
+                        service=candidate.service,
+                        scheduled_at=scheduled_at,
+                        duration_minutes=duration,
+                        booking_mode=candidate.service.booking_mode,
+                        drop_scheduled_at=drop_scheduled_at,
+                    )
+                except (SlotConflictError, ServiceUnavailableError) as exc:
+                    return Response(
+                        {"detail": str(exc), "cart_item_id": candidate.pk},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+            updated_schedule = {
+                "scheduled_at": scheduled_at.isoformat(),
+            }
+            if drop_scheduled_at:
+                updated_schedule["drop_scheduled_at"] = drop_scheduled_at.isoformat()
+            for candidate in group_items:
+                candidate.schedule_data = dict(updated_schedule)
+                candidate.save(update_fields=["schedule_data", "updated_at"])
+
         updated_item = serializer.save()
         new_photo_map = (updated_item.category_answers or {}).get("_airway_form_photos", {})
         new_photo_paths = set(new_photo_map.values()) if isinstance(new_photo_map, dict) else set()
@@ -2406,6 +2898,10 @@ class CustomerCartItemView(APIView):
     def delete(self, request, item_id):
         item = self.get_item(request, item_id)
         cart = item.cart
+        root_category = item.service.category
+        while root_category.parent_id:
+            root_category = root_category.parent
+        removed_group_slug = root_category.slug
         answers = dict(item.category_answers or {})
         stored_paths = []
         issue_photo = answers.get("_airway_issue_photo")
@@ -2415,6 +2911,18 @@ class CustomerCartItemView(APIView):
         if isinstance(form_photos, dict):
             stored_paths.extend(path for path in form_photos.values() if path)
         item.delete()
+        remaining_group = False
+        for candidate in cart.items.select_related("service__category__parent"):
+            candidate_root = candidate.service.category
+            while candidate_root.parent_id:
+                candidate_root = candidate_root.parent
+            if candidate_root.slug == removed_group_slug:
+                remaining_group = True
+                break
+        if not remaining_group and removed_group_slug in (cart.group_messages or {}):
+            cart.group_messages = dict(cart.group_messages or {})
+            cart.group_messages.pop(removed_group_slug, None)
+            cart.save(update_fields=["group_messages", "updated_at"])
         if cart.items.count() < 2 and cart.schedule_mode != "separate":
             cart.schedule_mode = "separate"
             cart.save(update_fields=["schedule_mode", "updated_at"])

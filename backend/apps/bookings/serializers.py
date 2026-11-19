@@ -768,7 +768,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
-    booking_notes = serializers.CharField(source="booking.notes", read_only=True)
+    booking_notes = serializers.SerializerMethodField()
     expected_duration_minutes = serializers.SerializerMethodField()
     customer_answers = serializers.SerializerMethodField()
     professional_preference = serializers.SerializerMethodField()
@@ -777,6 +777,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     quantity = serializers.SerializerMethodField()
     order_services = serializers.SerializerMethodField()
     order_id = serializers.SerializerMethodField()
+    appointment_group_id = serializers.IntegerField(source="appointment_group.id", read_only=True, allow_null=True)
+    appointment_group_title = serializers.SerializerMethodField()
+    appointment_group_message = serializers.SerializerMethodField()
     customer_total = serializers.SerializerMethodField()
     advance_received = serializers.SerializerMethodField()
     remaining_balance = serializers.SerializerMethodField()
@@ -790,6 +793,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         model = __import__("apps.bookings.models", fromlist=["WorkerOffer"]).WorkerOffer
         fields = [
             "id", "booking", "order", "order_id", "order_services", "batch_number",
+            "appointment_group_id", "appointment_group_title", "appointment_group_message",
             "customer_total", "advance_received", "remaining_balance",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
@@ -807,7 +811,21 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         order_item = getattr(obj.booking, "order_item", None)
         return order_item.order_id if order_item else None
 
+    def get_appointment_group_title(self, obj):
+        group = obj.appointment_group
+        return group.category_title_snapshot if group else None
+
+    def get_appointment_group_message(self, obj):
+        group = obj.appointment_group
+        return group.customer_message if group else ""
+
     def get_customer_total(self, obj):
+        if obj.appointment_group_id:
+            from decimal import Decimal
+            return str(sum(
+                (row.order_item.line_total for row in obj.appointment_group.bookings.select_related("order_item")),
+                Decimal("0.00"),
+            ))
         if obj.order_id:
             return str(obj.order.total_amount)
         order_item = getattr(obj.booking, "order_item", None)
@@ -817,6 +835,22 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def get_advance_received(self, obj):
         from apps.payments.models import Payment
+        if obj.appointment_group_id:
+            allocation = (obj.appointment_group.order.metadata or {}).get("payment_allocation_v1", {})
+            group_order_item_ids = {
+                row.order_item.pk
+                for row in obj.appointment_group.bookings.select_related("order_item")
+                if hasattr(row, "order_item")
+            }
+            from decimal import Decimal
+            return str(sum(
+                (
+                    Decimal(str(entry.get("amount", "0")))
+                    for entry in allocation.get("advance", [])
+                    if entry.get("order_item_id") in group_order_item_ids
+                ),
+                Decimal("0.00"),
+            ))
         if obj.order_id:
             payment = Payment.objects.filter(
                 order=obj.order, stage=Payment.Stage.ADVANCE,
@@ -845,6 +879,18 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         return str(max(total - advance, Decimal("0.00")))
 
     def get_order_services(self, obj):
+        if obj.appointment_group_id:
+            return [{
+                "booking_id": row.pk,
+                "service_id": row.service_id,
+                "service_title": row.service.title,
+                "service_unit_label": row.service.unit_label,
+                "variant_title": row.variant.title if row.variant_id else None,
+                "scheduled_at": row.scheduled_at,
+                "quantity": row.order_item.quantity if hasattr(row, "order_item") else 1,
+            } for row in obj.appointment_group.bookings.select_related(
+                "service", "variant", "order_item"
+            ).order_by("created_at")]
         if not obj.order_id:
             return [{
                 "booking_id": obj.booking_id,
@@ -864,7 +910,36 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "quantity": item.quantity,
         } for item in obj.order.items.select_related("booking__service", "booking__variant").all()]
 
+    def get_booking_notes(self, obj):
+        booking = obj.booking
+        notes = []
+        group = getattr(booking, "appointment_group", None)
+        if group and group.customer_message:
+            notes.append(f"Appointment message: {group.customer_message}")
+        if booking.notes:
+            notes.append(f"Service notes: {booking.notes}")
+        return "\n".join(notes)
+
     def get_expected_duration_minutes(self, obj):
+        if obj.appointment_group_id:
+            total = 0
+            for booking in obj.appointment_group.bookings.select_related(
+                "service", "variant", "order_item"
+            ):
+                duration = (
+                    booking.variant.duration_minutes
+                    if booking.variant_id and booking.variant.duration_minutes
+                    else booking.service.duration_minutes
+                ) or 60
+                quantity = (
+                    booking.order_item.quantity
+                    if hasattr(booking, "order_item")
+                    else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                )
+                total += duration * (
+                    1 if booking.service.pricing_type == "per_unit" else quantity
+                )
+            return total
         booking = obj.booking
         duration = (
             booking.variant.duration_minutes
@@ -915,6 +990,9 @@ class CartItemSerializer(serializers.ModelSerializer):
     service_title = serializers.CharField(source="service.title", read_only=True)
     variant_title = serializers.CharField(source="variant.title", read_only=True)
     booking_mode = serializers.CharField(source="service.booking_mode", read_only=True)
+    category_root_id = serializers.SerializerMethodField()
+    category_root_title = serializers.SerializerMethodField()
+    category_root_slug = serializers.SerializerMethodField()
     service_unit_label = serializers.CharField(source="service.unit_label", read_only=True)
     has_issue_photo = serializers.SerializerMethodField()
     has_form_photos = serializers.SerializerMethodField()
@@ -933,10 +1011,27 @@ class CartItemSerializer(serializers.ModelSerializer):
         photo_map = (obj.category_answers or {}).get("_airway_form_photos", {})
         return list(photo_map.keys()) if isinstance(photo_map, dict) else []
 
+    @staticmethod
+    def _root_category(obj):
+        category = obj.service.category
+        while category.parent_id:
+            category = category.parent
+        return category
+
+    def get_category_root_id(self, obj):
+        return self._root_category(obj).pk
+
+    def get_category_root_title(self, obj):
+        return self._root_category(obj).title
+
+    def get_category_root_slug(self, obj):
+        return self._root_category(obj).slug
+
     class Meta:
         model = CartItem
         fields = [
             "id", "service", "service_title", "variant", "variant_title", "booking_mode",
+            "category_root_id", "category_root_title", "category_root_slug",
             "service_unit_label", "quantity", "addon_selections", "form_answers", "category_answers", "has_issue_photo", "has_form_photos", "form_photo_keys", "notes",
             "pricing_snapshot", "line_total", "schedule_data",
         ]
@@ -1185,7 +1280,7 @@ class CustomerCartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomerCart
-        fields = ["id", "address", "schedule_mode", "items", "item_count", "subtotal", "updated_at"]
+        fields = ["id", "address", "schedule_mode", "group_messages", "items", "item_count", "subtotal", "updated_at"]
         read_only_fields = fields
 
     def get_subtotal(self, obj):

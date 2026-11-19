@@ -558,7 +558,11 @@ class WorkerJobListView(APIView):
         query = (
             BookingAssignment.objects
             .filter(worker=profile)
-            .select_related("booking__service", "booking__customer", "booking__address")
+            .select_related(
+                "booking__service", "booking__customer", "booking__address",
+                "booking__appointment_group",
+            )
+            .prefetch_related("booking__appointment_group__bookings__service")
         )
         if status_param:
             query = query.filter(booking__status=status_param)
@@ -567,15 +571,28 @@ class WorkerJobListView(APIView):
         results = []
         for assign in query:
             booking = assign.booking
+            appointment_group = booking.appointment_group
+            group_service_titles = (
+                [row.service.title for row in appointment_group.bookings.all()]
+                if appointment_group else []
+            )
             payment_label = _worker_payment_label(booking)
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
+                "appointment_group_title": appointment_group.category_title_snapshot if appointment_group else None,
+                "appointment_group_message": appointment_group.customer_message if appointment_group else "",
+                "appointment_group_service_titles": group_service_titles,
                 "status": booking.status,
                 "service_title": booking.service.title,
                 "customer_name": booking.customer.name or "AIRway Customer",
                 "address": booking.address.full_address,
-                "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
+                "scheduled_at": (
+                    appointment_group.scheduled_at.isoformat()
+                    if appointment_group else
+                    booking.scheduled_at.isoformat() if booking.scheduled_at else ""
+                ),
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
                 "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
                 "payment_label": payment_label,
@@ -851,9 +868,34 @@ class WorkerJobDetailView(APIView):
         form_photo_paths = customer_answers.pop("_airway_form_photos", {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
+        appointment_group = booking.appointment_group
+        appointment_group_data = None
+        if appointment_group:
+            group_services = []
+            for group_booking in appointment_group.bookings.select_related(
+                "service", "variant", "order_item"
+            ).order_by("created_at"):
+                group_assignment = getattr(group_booking, "assignment", None)
+                group_services.append({
+                    "booking_id": group_booking.pk,
+                    "assignment_id": group_assignment.pk if group_assignment else None,
+                    "service_title": group_booking.service.title,
+                    "variant_title": group_booking.variant.title if group_booking.variant_id else None,
+                    "status": group_booking.status,
+                    "scheduled_at": group_booking.scheduled_at.isoformat() if group_booking.scheduled_at else None,
+                    "amount": str(group_booking.pricing_snapshot.get("total", 0) or 0),
+                })
+            appointment_group_data = {
+                "id": appointment_group.pk,
+                "title": appointment_group.category_title_snapshot,
+                "message": appointment_group.customer_message,
+                "scheduled_at": appointment_group.scheduled_at.isoformat(),
+                "services": group_services,
+            }
         return Response({
+            "appointment_group": appointment_group_data,
             "id": assign.id,
-"booking_id": booking.id,
+            "booking_id": booking.id,
             "status": booking.status,
             "booking_mode": booking.booking_mode,
             "pricing_type": booking.service.pricing_type,
@@ -1084,6 +1126,124 @@ class WorkerJobStartView(APIView):
                 {"detail": "Job not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        if booking.appointment_group_id:
+            from apps.bookings.models import AppointmentGroup, RecurringWashVisit
+            from django.db import transaction
+
+            with transaction.atomic():
+                group = AppointmentGroup.objects.select_for_update().get(
+                    pk=booking.appointment_group_id
+                )
+                group_bookings = list(
+                    group.bookings.select_for_update(of=("self",))
+                    .filter(status__in=(
+                        Booking.Status.ASSIGNED,
+                        Booking.Status.CONFIRMED,
+                        Booking.Status.IN_PROGRESS,
+                    ))
+                    .select_related("service", "order_item")
+                    .order_by("pk")
+                )
+                if not group_bookings:
+                    return Response(
+                        {"detail": "No active services remain in this appointment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                assignments = {
+                    row.booking_id: row
+                    for row in BookingAssignment.objects.select_for_update().filter(
+                        booking_id__in=[row.pk for row in group_bookings],
+                        worker=profile,
+                    )
+                }
+                if len(assignments) != len(group_bookings) or any(
+                    not assignments[row.pk].accepted_at for row in group_bookings
+                ):
+                    return Response(
+                        {"detail": "This worker has not accepted every active service in the appointment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                order = group.order
+                if "payment_allocation_v1" in (order.metadata or {}):
+                    from apps.payments.models import Payment
+                    if not Payment.objects.filter(
+                        order=order,
+                        stage=Payment.Stage.ADVANCE,
+                        status=Payment.Status.PAID,
+                    ).exists():
+                        return Response(
+                            {"detail": "The customer advance payment has not been verified."},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                now = timezone.now()
+                if not group.arrival_otp_verified_at:
+                    from django.contrib.auth.hashers import check_password
+                    if group.arrival_otp_locked_until and group.arrival_otp_locked_until > now:
+                        return Response(
+                            {"detail": "Too many incorrect arrival codes. Try again after the temporary lock expires."},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS,
+                        )
+                    if (
+                        not group.arrival_otp_hash
+                        or not group.arrival_otp_expires_at
+                        or group.arrival_otp_expires_at <= now
+                    ):
+                        return Response(
+                            {"detail": "The arrival code has expired. Ask the customer to contact AIRway support."},
+                            status=status.HTTP_410_GONE,
+                        )
+                    provided_otp = str(request.data.get("arrival_otp", "")).strip()
+                    if not check_password(provided_otp, group.arrival_otp_hash):
+                        group.arrival_otp_attempts += 1
+                        if group.arrival_otp_attempts >= 5:
+                            from datetime import timedelta
+                            group.arrival_otp_locked_until = now + timedelta(minutes=10)
+                        group.save(update_fields=[
+                            "arrival_otp_attempts", "arrival_otp_locked_until", "updated_at",
+                        ])
+                        return Response(
+                            {"detail": "Incorrect arrival code. Ask the customer to share the code shown in their AIRway app."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    group.arrival_otp_verified_at = now
+                    group.arrival_otp_attempts = 0
+                    group.arrival_otp_locked_until = None
+                    group.save(update_fields=[
+                        "arrival_otp_verified_at", "arrival_otp_attempts",
+                        "arrival_otp_locked_until", "updated_at",
+                    ])
+                started_ids = []
+                for group_booking in group_bookings:
+                    group_assignment = assignments[group_booking.pk]
+                    if not group_assignment.started_at:
+                        group_assignment.started_at = now
+                        group_assignment.save(update_fields=["started_at"])
+                    if group_booking.status != Booking.Status.IN_PROGRESS:
+                        old_status = group_booking.status
+                        group_booking.status = Booking.Status.IN_PROGRESS
+                        group_booking.save(update_fields=["status"])
+                        BookingStatusHistory.objects.create(
+                            booking=group_booking,
+                            from_status=old_status,
+                            to_status=Booking.Status.IN_PROGRESS,
+                            changed_by=request.user,
+                            note="Worker started the appointment group.",
+                        )
+                    RecurringWashVisit.objects.filter(
+                        booking=group_booking,
+                        status=RecurringWashVisit.Status.BOOKED,
+                    ).update(
+                        status=RecurringWashVisit.Status.IN_PROGRESS,
+                        updated_at=now,
+                    )
+                    started_ids.append(group_booking.pk)
+                return Response({
+                    "detail": "Appointment group started.",
+                    "status": Booking.Status.IN_PROGRESS,
+                    "started_booking_ids": started_ids,
+                    "appointment_group_id": group.pk,
+                })
 
         if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response(
@@ -1391,12 +1551,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
         ).select_related(
-            "booking__service", "booking__variant", "booking__address", "booking__order_item__order", "worker__user", "order"
+            "booking__service", "booking__variant", "booking__address", "booking__order_item__order",
+            "worker__user", "order", "appointment_group__order"
         ).prefetch_related(
             "booking__form_responses__form_field",
             "booking__booking_addons__addon",
             "order__items__booking__service",
             "order__items__booking__variant",
+            "appointment_group__bookings__service",
+            "appointment_group__bookings__variant",
+            "appointment_group__bookings__order_item",
         )
 
     def get_serializer_class(self):
@@ -1423,6 +1587,8 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
     def accept(self, request, pk=None):
         """Atomically accept either a standalone booking or every line in an order."""
         offer = self.get_object()
+        group_offer = bool(offer.appointment_group_id)
+        appointment_group = None
         payment_order_id = None
         now = timezone.now()
         with transaction.atomic():
@@ -1440,6 +1606,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 if parent_order_id:
                     order = Order.objects.select_for_update().get(pk=parent_order_id)
             offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
+            if group_offer:
+                from apps.bookings.models import AppointmentGroup
+                appointment_group = AppointmentGroup.objects.select_for_update().get(
+                    pk=offer.appointment_group_id
+                )
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
             if worker.user_id != request.user.id:
                 return Response({"detail": "This offer does not belong to you."}, status=status.HTTP_404_NOT_FOUND)
@@ -1471,7 +1642,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
                 if not bookings:
                     return Response({"detail": "This order no longer has service bookings."}, status=status.HTTP_409_CONFLICT)
-                if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
+                if order.status not in (
+                    Order.Status.AWAITING_ASSIGNMENT,
+                    Order.Status.PARTIALLY_ASSIGNED,
+                    Order.Status.PARTIALLY_CANCELLED,
+                ):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
                 from apps.payments.models import Payment
                 if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
@@ -1511,7 +1686,24 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                         {"detail": "The customer's verified 30% advance is required before accepting this service."},
                         status=status.HTTP_409_CONFLICT,
                     )
-                bookings = [standalone_booking]
+                if group_offer:
+                    bookings = list(
+                        appointment_group.bookings.select_for_update(of=("self",))
+                        .exclude(status=Booking.Status.CANCELLED)
+                        .select_related("service__category__parent", "variant", "address__zone__city")
+                        .order_by("pk")
+                    )
+                    if (
+                        not bookings
+                        or offer.booking_id not in {row.pk for row in bookings}
+                        or any(row.scheduled_at != appointment_group.scheduled_at for row in bookings)
+                    ):
+                        return Response(
+                            {"detail": "This appointment group is no longer valid for worker assignment."},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                else:
+                    bookings = [standalone_booking]
 
             if order_offer:
                 from apps.bookings.dispatcher import DispatcherService
@@ -1560,10 +1752,54 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     exclude_booking_id=booking.pk,
                     exclude_customer_id=booking.customer_id,
                     required_gender=required_gender,
+                    required_tasks=(
+                        booking.variant.included_tasks if booking.variant_id else []
+                    ),
                 ).filter(pk=worker.pk).exists()
                 if not eligible:
                     return Response(
-                        {"detail": "You are no longer eligible or available for every service in this order." if order_offer else "You are no longer eligible or available for this booking time."},
+                        {"detail": "You are no longer eligible or available for every service in this order or appointment." if (order_offer or group_offer) else "You are no longer eligible or available for this booking time."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+            if group_offer:
+                group_duration = 0
+                group_gender = None
+                for booking in bookings:
+                    row_duration = (
+                        booking.variant.duration_minutes
+                        if booking.variant_id and booking.variant.duration_minutes
+                        else booking.service.duration_minutes
+                    ) or 60
+                    row_quantity = (
+                        booking.order_item.quantity
+                        if hasattr(booking, "order_item")
+                        else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                    )
+                    group_duration += row_duration * (
+                        1 if booking.service.pricing_type == "per_unit" else row_quantity
+                    )
+                    row_gender = required_worker_gender_for_booking(
+                        booking.service, booking.customer_answers
+                    )
+                    if row_gender:
+                        group_gender = row_gender
+                anchor = bookings[0]
+                group_available = DispatcherService._get_eligible_workers(
+                    service=anchor.service,
+                    zone=anchor.address.zone if anchor.address_id else None,
+                    scheduled_at=appointment_group.scheduled_at,
+                    duration_minutes=group_duration,
+                    exclude_booking_id=anchor.pk,
+                    exclude_customer_id=anchor.customer_id,
+                    required_gender=group_gender,
+                    required_tasks=(
+                        anchor.variant.included_tasks if anchor.variant_id else []
+                    ),
+                ).filter(pk=worker.pk).exists()
+                if not group_available:
+                    return Response(
+                        {"detail": "You are no longer available for the complete appointment duration."},
                         status=status.HTTP_409_CONFLICT,
                     )
 
@@ -1579,7 +1815,12 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 BookingStatusHistory.objects.create(
                     booking=booking, from_status=old_status,
                     to_status=Booking.Status.ASSIGNED, changed_by=worker.user,
-                    note="Worker accepted complete order offer" if order_offer else "Worker accepted service line from parent order" if order else "Worker accepted job offer",
+                    note=(
+                        "Worker accepted complete order offer" if order_offer
+                        else "Worker accepted appointment group" if group_offer
+                        else "Worker accepted service line from parent order" if order
+                        else "Worker accepted job offer"
+                    ),
                 )
                 assignment_payload = {
                     "booking_id": booking.pk,
@@ -1623,32 +1864,55 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
                 order.save(update_fields=["status", "updated_at"])
             else:
-                # Each service line has its own offer and worker assignment.
-                WorkerOffer.objects.filter(
-                    booking=bookings[0], order__isnull=True,
-                    status=WorkerOffer.Status.PENDING,
-                ).exclude(pk=offer.pk).update(
-                    status=WorkerOffer.Status.WITHDRAWN, responded_at=now
-                )
+                if group_offer:
+                    WorkerOffer.objects.filter(
+                        appointment_group=appointment_group,
+                        status=WorkerOffer.Status.PENDING,
+                    ).exclude(pk=offer.pk).update(
+                        status=WorkerOffer.Status.WITHDRAWN, responded_at=now
+                    )
+                else:
+                    # Standalone service lines keep their independent offer lifecycle.
+                    WorkerOffer.objects.filter(
+                        booking=bookings[0], order__isnull=True,
+                        status=WorkerOffer.Status.PENDING,
+                    ).exclude(pk=offer.pk).update(
+                        status=WorkerOffer.Status.WITHDRAWN, responded_at=now
+                    )
                 if order:
                     active_ids = list(
                         order.items.exclude(booking__status=Booking.Status.CANCELLED)
                         .values_list("booking_id", flat=True)
                     )
-                    if active_ids and all(
-                        BookingAssignment.objects.filter(booking_id=booking_id).exists()
-                        for booking_id in active_ids
-                    ):
+                    assigned_ids = set(
+                        BookingAssignment.objects.filter(
+                            booking_id__in=active_ids
+                        ).values_list("booking_id", flat=True)
+                    )
+                    has_cancelled_lines = order.items.filter(
+                        booking__status=Booking.Status.CANCELLED
+                    ).exists()
+                    if active_ids and set(active_ids).issubset(assigned_ids):
                         order.status = (
                             Order.Status.PARTIALLY_CANCELLED
-                            if order.items.filter(booking__status=Booking.Status.CANCELLED).exists()
-                            else Order.Status.AWAITING_PAYMENT
+                            if has_cancelled_lines else Order.Status.AWAITING_PAYMENT
                         )
-                        order.save(update_fields=["status", "updated_at"])
+                    elif assigned_ids:
+                        order.status = Order.Status.PARTIALLY_ASSIGNED
+                    else:
+                        order.status = (
+                            Order.Status.PARTIALLY_CANCELLED
+                            if has_cancelled_lines else Order.Status.AWAITING_ASSIGNMENT
+                        )
+                    order.save(update_fields=["status", "updated_at"])
 
         response_data = {
             "status": "accepted",
-            "detail": "Complete order accepted successfully." if order_offer else "Offer accepted successfully.",
+            "detail": (
+                "Complete order accepted successfully." if order_offer
+                else "Appointment group accepted successfully." if group_offer
+                else "Offer accepted successfully."
+            ),
             "booking_status": bookings[0].status,
             "assignment_id": assignments[0].pk,
             "assigned_booking_ids": [booking.pk for booking in bookings],

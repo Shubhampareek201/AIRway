@@ -305,6 +305,40 @@ class BookingApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> submitCompletionFeedback({
+    required int bookingId,
+    required bool skipped,
+    int? serviceQuality,
+    int? workerBehaviour,
+    String? satisfactionLevel,
+    String comment = '',
+  }) async {
+    final result = await request(
+      '/api/v1/ratings/completion-feedback/',
+      method: 'POST',
+      data: {
+        'booking_id': bookingId,
+        'skipped': skipped,
+        if (!skipped) 'service_quality': serviceQuality,
+        if (!skipped) 'worker_behaviour': workerBehaviour,
+        if (!skipped) 'satisfaction_level': satisfactionLevel,
+        if (!skipped) 'comment': comment,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  static Future<Map<String, dynamic>> updateCartGroupMessages(
+    Map<String, String> groupMessages,
+  ) async {
+    final result = await request(
+      '/api/v1/bookings/cart/',
+      method: 'PATCH',
+      data: {'group_messages': groupMessages},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<Map<String, dynamic>> updateCartItem({
     required int itemId,
     required Map<String, dynamic> data,
@@ -328,6 +362,7 @@ class BookingApi {
   static Future<Map<String, dynamic>> checkoutCart({
     required List<Map<String, dynamic>> items,
     String scheduleMode = 'separate',
+    Map<String, String> groupMessages = const {},
   }) async {
     final result = await request(
       '/api/v1/bookings/cart/checkout/',
@@ -335,6 +370,7 @@ class BookingApi {
       data: {
         'items': items,
         'schedule_mode': scheduleMode,
+        'group_messages': groupMessages,
       },
     );
     return Map<String, dynamic>.from(result);

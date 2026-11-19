@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/core/localization/airway_text.dart';
@@ -101,6 +102,8 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     final workerLongitude = double.tryParse(_tracking['worker_longitude']?.toString() ?? '');
     final locationIsFresh = _tracking['location_is_fresh'] == true &&
         workerLatitude != null && workerLongitude != null;
+    final locationWindowOpen = _tracking['location_visibility_window_open'] == true;
+    final locationAvailableAt = _tracking['location_available_at']?.toString();
     final started = _status == 'in_progress' || _status == 'completed';
     final completed = _status == 'completed';
     final cancelled = _status == 'cancelled';
@@ -253,10 +256,15 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              AirwayText.tr(
-                                'Live location is not available right now. Your booking status will continue to update automatically.',
-                                'लाइव लोकेशन अभी उपलब्ध नहीं है। आपकी बुकिंग की स्थिति अपने आप अपडेट होती रहेगी।',
-                              ),
+                              !locationWindowOpen && locationAvailableAt != null
+                                  ? AirwayText.tr(
+                                      'Live location becomes visible 30 minutes before your appointment (from ${DateFormat('dd MMM, h:mm a').format(DateTime.parse(locationAvailableAt).toLocal())}).',
+                                      'लाइव लोकेशन आपके अपॉइंटमेंट से 30 मिनट पहले (${DateFormat('dd MMM, h:mm a').format(DateTime.parse(locationAvailableAt).toLocal())}) दिखेगी।',
+                                    )
+                                  : AirwayText.tr(
+                                      'Live location is not available right now. Your booking status will continue to update automatically.',
+                                      'लाइव लोकेशन अभी उपलब्ध नहीं है। आपकी बुकिंग की स्थिति अपने आप अपडेट होती रहेगी।',
+                                    ),
                               style: const TextStyle(color: _muted, fontSize: 12, height: 1.45),
                             ),
                           ),

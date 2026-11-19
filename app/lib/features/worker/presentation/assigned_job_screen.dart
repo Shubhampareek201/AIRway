@@ -209,22 +209,63 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   Future<void> _startJob() async {
     if (!mounted || _jobDetail == null) return;
 
+    String? arrivalOtp;
+    if (_jobDetail!.appointmentGroup != null &&
+        _jobDetail!.assignment.startedAt == null) {
+      final controller = TextEditingController();
+      arrivalOtp = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(AirwayText.tr('Verify customer arrival', 'ग्राहक के आगमन की पुष्टि करें')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: InputDecoration(
+              labelText: AirwayText.tr('6-digit arrival code', '6 अंकों का आगमन कोड'),
+              hintText: '000000',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.length == 6) Navigator.pop(dialogContext, value);
+              },
+              child: Text(AirwayText.tr('Verify & start', 'सत्यापित करें और शुरू करें')),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (arrivalOtp == null) return;
+    }
+
     setState(() {
       _isActionInProgress = true;
     });
 
     try {
-      await WorkerApi.startJob(_jobDetail!.assignmentId);
+      await WorkerApi.startJob(
+        _jobDetail!.assignmentId,
+        arrivalOtp: arrivalOtp,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Job started', 'काम शुरू हो गया')) ),
+          SnackBar(content: Text(AirwayText.tr('Appointment started', 'अपॉइंटमेंट शुरू हो गया'))),
         );
         await _loadAssignedJob();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Failed to start job: $e', 'काम शुरू नहीं हो सका: $e'))),
+          SnackBar(content: Text(AirwayText.tr('Could not verify/start: $e', 'सत्यापन/काम शुरू नहीं हो सका: $e'))),
         );
       }
     } finally {
@@ -422,6 +463,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   }
 
   Widget _buildServiceInfo(WorkerAssignmentDetail job) {
+    final group = job.appointmentGroup;
+    final groupTitle = group?['title']?.toString() ?? 'Appointment';
+    final groupServices = (group?['services'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -437,6 +484,62 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                 ),
               ],
             ),
+            if (group != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AirwayColors.primary.withOpacity(.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AirwayColors.primary.withOpacity(.18)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AirwayText.tr(
+                        '$groupTitle appointment',
+                        '$groupTitle अपॉइंटमेंट',
+                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    if (groupServices.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        AirwayText.tr('Services in this visit', 'इस विज़िट की सेवाएँ'),
+                        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                      for (final service in groupServices)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle_outline, size: 15, color: AirwayColors.primary),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text(
+                                service['service_title']?.toString() ?? 'Service',
+                                style: const TextStyle(fontSize: 12),
+                              )),
+                              Text(
+                                service['status']?.toString() ?? '',
+                                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                    if (group['message']?.toString().trim().isNotEmpty == true) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        AirwayText.tr('Customer message: ', 'ग्राहक का संदेश: ') + group['message'].toString(),
+                        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             if (job.variantTitle?.isNotEmpty == true || job.quantity > 1) ...[
               const SizedBox(height: 8),
               Text(

@@ -845,29 +845,77 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
 
   Widget scheduleOverview(List<Map<String, dynamic>> rows) {
-    final groups = <String, List<String>>{};
-    for (final row in rows) {
-      final raw = row['scheduled_at']?.toString();
-      if (raw == null || raw.isEmpty) continue;
-      final service = row['service'] is Map
-          ? (row['service']['service_title']?.toString() ?? 'Service')
-          : 'Service';
-      groups.putIfAbsent(raw, () => <String>[]).add(service);
+    final entries = <Map<String, dynamic>>[];
+    final rawAppointmentGroups = (order?['appointment_groups'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+
+    if (rawAppointmentGroups.isNotEmpty) {
+      for (final group in rawAppointmentGroups) {
+        final bookingIds = (group['booking_ids'] as List? ?? [])
+            .map((value) => int.tryParse(value.toString()))
+            .whereType<int>()
+            .toSet();
+        final serviceNames = rows
+            .where((row) => bookingIds.contains(
+                  int.tryParse(row['booking_id']?.toString() ?? ''),
+                ))
+            .map((row) => (row['service'] is Map
+                ? row['service']['service_title']?.toString()
+                : null) ?? 'Service')
+            .toList();
+        entries.add({
+          'title': group['category_title']?.toString() ?? 'Appointment',
+          'scheduled_at': group['scheduled_at']?.toString() ?? '',
+          'services': serviceNames,
+          'message': group['customer_message']?.toString() ?? '',
+          'arrival_otp': group['arrival_otp']?.toString() ?? '',
+          'arrival_otp_verified_at': group['arrival_otp_verified_at']?.toString(),
+        });
+      }
+    } else {
+      final legacyGroups = <String, List<String>>{};
+      for (final row in rows) {
+        final raw = row['scheduled_at']?.toString();
+        if (raw == null || raw.isEmpty) continue;
+        final service = row['service'] is Map
+            ? (row['service']['service_title']?.toString() ?? 'Service')
+            : 'Service';
+        legacyGroups.putIfAbsent(raw, () => <String>[]).add(service);
+      }
+      for (final entry in legacyGroups.entries) {
+        entries.add({
+          'title': 'Appointment',
+          'scheduled_at': entry.key,
+          'services': entry.value,
+          'message': '',
+        });
+      }
     }
-    if (groups.isEmpty) return const SizedBox.shrink();
-    final entries = groups.entries.toList()
-      ..sort((a, b) => DateTime.tryParse(a.key)?.compareTo(DateTime.tryParse(b.key) ?? DateTime(9999)) ?? 0);
+
+    if (entries.isEmpty) return const SizedBox.shrink();
+    entries.sort((a, b) =>
+        DateTime.tryParse(a['scheduled_at']?.toString() ?? '')
+                ?.compareTo(DateTime.tryParse(b['scheduled_at']?.toString() ?? '') ?? DateTime(9999)) ??
+            0);
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(Icons.calendar_month_rounded, color: violet, size: 19),
-          SizedBox(width: 8),
-          Text(AirwayText.tr('Your service schedule', 'आपका सेवा शेड्यूल'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+          const Icon(Icons.calendar_month_rounded, color: violet, size: 19),
+          const SizedBox(width: 8),
+          Text(AirwayText.tr('Your appointments', 'आपके अपॉइंटमेंट'), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         ]),
         const SizedBox(height: 5),
-        Text(AirwayText.tr('Services sharing the same appointment are grouped together.', 'एक ही अपॉइंटमेंट वाली सेवाएँ एक साथ दिखाई गई हैं।'), style: TextStyle(color: sub, fontSize: 12)),
+        Text(
+          AirwayText.tr(
+            'Each service type has its own appointment and worker assignment.',
+            'हर सेवा-प्रकार का अपना अपॉइंटमेंट और प्रोफेशनल असाइनमेंट है।',
+          ),
+          style: const TextStyle(color: sub, fontSize: 12),
+        ),
         const SizedBox(height: 10),
         for (var i = 0; i < entries.length; i++) ...[
           if (i > 0) const Divider(height: 16),
@@ -880,9 +928,66 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ),
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(DateFormatForOrder.format(entries[i].key), style: const TextStyle(color: ink, fontWeight: FontWeight.w800)),
+              Text(entries[i]['title']?.toString() ?? 'Appointment', style: const TextStyle(color: ink, fontWeight: FontWeight.w900)),
               const SizedBox(height: 3),
-              Text(entries[i].value.join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+              Text(
+                DateFormatForOrder.format(entries[i]['scheduled_at']?.toString() ?? ''),
+                style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 12),
+              ),
+              const SizedBox(height: 3),
+              Text((entries[i]['services'] as List? ?? []).join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+              if ((entries[i]['message']?.toString() ?? '').isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(
+                  AirwayText.tr('Your message: ', 'आपका संदेश: ') + entries[i]['message'].toString(),
+                  style: const TextStyle(color: sub, fontSize: 11, fontStyle: FontStyle.italic),
+                ),
+              ],
+              if ((entries[i]['arrival_otp']?.toString() ?? '').isNotEmpty) ...[
+                const SizedBox(height: 9),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: pale,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_user_outlined, color: violet, size: 19),
+                      const SizedBox(width: 8),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AirwayText.tr('Arrival verification code', 'आगमन सत्यापन कोड'),
+                            style: const TextStyle(color: violet, fontWeight: FontWeight.w800, fontSize: 11),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            entries[i]['arrival_otp'].toString(),
+                            style: const TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 3),
+                          ),
+                          Text(
+                            AirwayText.tr(
+                              'Share this code with your professional only when they arrive.',
+                              'यह कोड प्रोफेशनल के पहुँचने पर ही उन्हें दें।',
+                            ),
+                            style: const TextStyle(color: sub, fontSize: 10),
+                          ),
+                        ],
+                      )),
+                    ],
+                  ),
+                ),
+              ],
+              if ((entries[i]['arrival_otp_verified_at']?.toString() ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 7),
+                  child: Text(
+                    AirwayText.tr('Arrival verified — work has started.', 'आगमन सत्यापित — काम शुरू हो गया है।'),
+                    style: const TextStyle(color: Color(0xFF2E7D52), fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                ),
             ])),
           ]),
         ],
@@ -897,23 +1002,30 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final activeRows = rows
         .where((row) => row['booking_status']?.toString() != 'cancelled')
         .toList();
-    final assigned = activeRows.isNotEmpty && activeRows.every((row) {
+    final assignedCount = activeRows.where((row) {
       final status = row['booking_status']?.toString();
       return status == 'assigned' || status == 'in_progress' || status == 'completed';
-    });
+    }).length;
+    final assigned = activeRows.isNotEmpty && assignedCount == activeRows.length;
+    final partiallyAssigned = assignedCount > 0 && !assigned;
     final completed = activeRows.isNotEmpty &&
         activeRows.every((row) => row['booking_status']?.toString() == 'completed');
+    final assignmentDescription = assigned
+        ? 'Every appointment group has a professional.'
+        : partiallyAssigned
+            ? '$assignedCount of ${activeRows.length} services have a professional. AIRway is still matching the other appointment groups.'
+            : 'Waiting for worker acceptance.';
     final steps = staged
         ? <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
             (firstPaymentLabel, advancePaid ? 'Initial payment verified.' : 'Pay the initial amount to start worker matching.', advancePaid),
-            ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+            ('Professionals assigned', assignmentDescription, assigned),
             ('Service completion', completed ? 'All services are verified with customer OTP.' : 'Each service is verified after the customer shares a code.', completed),
             (remainingLabel, paid ? 'Final balance paid. Order complete.' : completed ? 'Final balance is now due.' : 'Unlocked after all active services are verified.', paid),
           ]
         : <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
-            ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+            ('Professionals assigned', assignmentDescription, assigned),
             ('Full payment', paid ? 'Payment verified successfully.' : 'Complete payment to confirm your order.', paid),
             ('Service completion', completed ? 'Services completed.' : 'Updates appear as work progresses.', completed),
           ];
@@ -921,7 +1033,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(AirwayText.tr('Order progress', 'ऑर्डर की प्रगति'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+        Text(AirwayText.tr('Order progress', 'ऑर्डर की प्रगति'), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         const SizedBox(height: 12),
         for (var i = 0; i < steps.length; i++) ...[
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1042,6 +1154,41 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         if (row['quote'] is Map) ...[
           const SizedBox(height: 12),
           _quoteCard(row),
+        ],
+        if (row['appointment_group_id'] != null &&
+            row['completion_otp_requested'] == true &&
+            row['completion_feedback_submitted'] != true) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F1FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD8C9FF)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AirwayText.tr('Your professional marked this service ready for completion.', 'प्रोफ़ेशनल ने इस सेवा को पूरा बताया है।'),
+                  style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  AirwayText.tr('Review the service or skip feedback. Your completion code will appear after that.', 'सेवा का फीडबैक दें या छोड़ दें। उसके बाद completion code दिखेगा।'),
+                  style: const TextStyle(color: sub, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => submitCompletionFeedback(row),
+                    child: Text(AirwayText.tr('Review service', 'सेवा का फीडबैक दें')),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
@@ -1270,6 +1417,118 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       }
     } finally {
       if (mounted) setState(() => _quoteResponding = false);
+    }
+  }
+
+  Future<void> submitCompletionFeedback(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    var serviceQuality = 5;
+    var workerBehaviour = 5;
+    var satisfaction = 'very_satisfied';
+    final commentController = TextEditingController();
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(AirwayText.tr('Review completed service', 'पूरी हुई सेवा का फीडबैक')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(AirwayText.tr('Service quality', 'सेवा की गुणवत्ता')),
+                DropdownButtonFormField<int>(
+                  value: serviceQuality,
+                  items: List.generate(5, (index) => DropdownMenuItem(
+                    value: index + 1,
+                    child: Text('${index + 1} / 5'),
+                  )),
+                  onChanged: (value) => setDialogState(() => serviceQuality = value ?? 5),
+                ),
+                const SizedBox(height: 12),
+                Text(AirwayText.tr('Professional behaviour', 'प्रोफ़ेशनल का व्यवहार')),
+                DropdownButtonFormField<int>(
+                  value: workerBehaviour,
+                  items: List.generate(5, (index) => DropdownMenuItem(
+                    value: index + 1,
+                    child: Text('${index + 1} / 5'),
+                  )),
+                  onChanged: (value) => setDialogState(() => workerBehaviour = value ?? 5),
+                ),
+                const SizedBox(height: 12),
+                Text(AirwayText.tr('Your satisfaction', 'आपकी संतुष्टि')),
+                DropdownButtonFormField<String>(
+                  value: satisfaction,
+                  items: [
+                    DropdownMenuItem(value: 'very_satisfied', child: Text(AirwayText.tr('Very satisfied', 'बहुत संतुष्ट'))),
+                    DropdownMenuItem(value: 'satisfied', child: Text(AirwayText.tr('Satisfied', 'संतुष्ट'))),
+                    DropdownMenuItem(value: 'neutral', child: Text(AirwayText.tr('Neutral', 'सामान्य'))),
+                    DropdownMenuItem(value: 'unsatisfied', child: Text(AirwayText.tr('Unsatisfied', 'असंतुष्ट'))),
+                    DropdownMenuItem(value: 'very_unsatisfied', child: Text(AirwayText.tr('Very unsatisfied', 'बहुत असंतुष्ट'))),
+                  ],
+                  onChanged: (value) => setDialogState(() => satisfaction = value ?? 'very_satisfied'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: commentController,
+                  maxLength: 1000,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: AirwayText.tr('Comment (optional)', 'टिप्पणी (वैकल्पिक)'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, {'skipped': true}),
+              child: Text(AirwayText.tr('Skip feedback', 'फीडबैक छोड़ें')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'skipped': false,
+                'service_quality': serviceQuality,
+                'worker_behaviour': workerBehaviour,
+                'satisfaction_level': satisfaction,
+                'comment': commentController.text.trim(),
+              }),
+              child: Text(AirwayText.tr('Submit & reveal code', 'जमा करें और कोड देखें')),
+            ),
+          ],
+        ),
+      ),
+    );
+    commentController.dispose();
+    if (result == null || !mounted) return;
+    try {
+      await BookingApi.submitCompletionFeedback(
+        bookingId: bookingId,
+        skipped: result['skipped'] == true,
+        serviceQuality: result['service_quality'] as int?,
+        workerBehaviour: result['worker_behaviour'] as int?,
+        satisfactionLevel: result['satisfaction_level']?.toString(),
+        comment: result['comment']?.toString() ?? '',
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Feedback saved. Your completion code is now available.',
+          'फीडबैक सेव हो गया। अब आपका completion code उपलब्ध है।',
+        ))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not save feedback: $e', 'फीडबैक सेव नहीं हो सका: $e'))),
+      );
     }
   }
 
