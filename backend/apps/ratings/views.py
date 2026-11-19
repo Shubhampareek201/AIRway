@@ -196,6 +196,8 @@ class BookingRatingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        summary, _ = RatingSummary.objects.get_or_create(user_id=expected_rated_id)
+        summary.update_stats()
         return Response(
             BookingRatingSerializer(rating, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
