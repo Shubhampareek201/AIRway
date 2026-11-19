@@ -366,6 +366,12 @@ class DispatcherService:
         expiry = timezone.now() + timedelta(minutes=max(int(expiry_minutes), 1))
         created = []
         summary = ", ".join(service_titles)
+        group_bookings = (
+            list(appointment_group.bookings.select_related(
+                "service", "variant", "order_item"
+            ).order_by("created_at"))
+            if appointment_group else []
+        )
         for worker in workers:
             offer = WorkerOffer.objects.filter(
                 booking=booking, worker=worker
@@ -394,10 +400,16 @@ class DispatcherService:
             else:
                 continue
             created.append(offer)
-            notification_title = "New Service Order" if order else "Job Offer"
+            notification_title = (
+                "New Service Order" if order
+                else "New Appointment Group" if appointment_group
+                else "Job Offer"
+            )
             notification_body = (
                 f"New order ({len(service_titles)} services): {summary}"
                 if order else
+                f"New appointment ({len(service_titles)} services): {summary}"
+                if appointment_group else
                 f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
             )
             from apps.payments.models import Payment
@@ -407,6 +419,29 @@ class DispatcherService:
                 advance_received = str(recurring_visit.prepaid_amount)
                 remaining_balance = "0.00"
                 address_text = booking.address.full_address
+            elif appointment_group:
+                from decimal import Decimal
+                payment_context = payment_order
+                allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
+                group_order_item_ids = {row.order_item_id for row in group_bookings if hasattr(row, "order_item")}
+                customer_total_value = sum(
+                    (row.order_item.line_total for row in group_bookings if hasattr(row, "order_item")),
+                    Decimal("0.00"),
+                )
+                advance_received_value = sum(
+                    (
+                        Decimal(str(entry.get("amount", "0")))
+                        for entry in allocation.get("advance", [])
+                        if entry.get("order_item_id") in group_order_item_ids
+                    ),
+                    Decimal("0.00"),
+                )
+                customer_total = str(customer_total_value)
+                advance_received = str(advance_received_value)
+                remaining_balance = str(max(
+                    customer_total_value - advance_received_value, Decimal("0.00")
+                ))
+                address_text = payment_context.address.full_address
             elif order or payment_order:
                 from decimal import Decimal
                 payment_context = order or payment_order
@@ -433,26 +468,46 @@ class DispatcherService:
                 ).values_list("amount", flat=True).first() or "0")
                 remaining_balance = str(max(Decimal(customer_total) - Decimal(advance_received), Decimal("0")))
                 address_text = booking.address.full_address
-            duration_minutes = (
-                booking.variant.duration_minutes
-                if booking.variant_id and booking.variant.duration_minutes
-                else booking.service.duration_minutes
-            ) or 60
-            duration_minutes *= (
-                1 if booking.service.pricing_type == "per_unit"
-                else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
-            )
-            service_quantity = (
-                booking.order_item.quantity
-                if hasattr(booking, "order_item")
-                else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
-            )
-            service_unit_label = booking.service.unit_label or ""
-            quantity_preview = (
-                f"{service_quantity} {service_unit_label}"
-                if service_unit_label
-                else (f"Qty {service_quantity}" if service_quantity > 1 else "")
-            )
+            if appointment_group:
+                duration_minutes = 0
+                for group_booking in group_bookings:
+                    row_duration = (
+                        group_booking.variant.duration_minutes
+                        if group_booking.variant_id and group_booking.variant.duration_minutes
+                        else group_booking.service.duration_minutes
+                    ) or 60
+                    row_quantity = (
+                        group_booking.order_item.quantity
+                        if hasattr(group_booking, "order_item")
+                        else max(int((group_booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                    )
+                    duration_minutes += row_duration * (
+                        1 if group_booking.service.pricing_type == "per_unit" else row_quantity
+                    )
+                service_quantity = len(group_bookings)
+                service_unit_label = "services"
+                quantity_preview = f"{service_quantity} services"
+            else:
+                duration_minutes = (
+                    booking.variant.duration_minutes
+                    if booking.variant_id and booking.variant.duration_minutes
+                    else booking.service.duration_minutes
+                ) or 60
+                duration_minutes *= (
+                    1 if booking.service.pricing_type == "per_unit"
+                    else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                )
+                service_quantity = (
+                    booking.order_item.quantity
+                    if hasattr(booking, "order_item")
+                    else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                )
+                service_unit_label = booking.service.unit_label or ""
+                quantity_preview = (
+                    f"{service_quantity} {service_unit_label}"
+                    if service_unit_label
+                    else (f"Qty {service_quantity}" if service_quantity > 1 else "")
+                )
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
@@ -462,14 +517,27 @@ class DispatcherService:
                     (order or payment_order).pk if (order or payment_order)
                     else recurring_visit.plan.order_id if recurring_visit else None
                 ),
-                "service_ids": list((order or payment_order).items.values_list("booking__service_id", flat=True)) if (order or payment_order) else [booking.service_id],
+                "service_ids": (
+                    [row.service_id for row in group_bookings]
+                    if appointment_group else
+                    list((order or payment_order).items.values_list("booking__service_id", flat=True))
+                    if (order or payment_order) else [booking.service_id]
+                ),
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
+                "appointment_group_title": appointment_group.category_title_snapshot if appointment_group else None,
+                "appointment_group_message": appointment_group.customer_message if appointment_group else "",
                 "recurring_plan_id": recurring_visit.plan_id if recurring_visit else None,
                 "recurring_visit_id": recurring_visit.pk if recurring_visit else None,
                 "recurring_visit_number": recurring_visit.visit_number if recurring_visit else None,
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "address": address_text,
-                "customer_instructions": booking.notes or "",
+                "customer_instructions": "\\n".join(
+                    value for value in [
+                        appointment_group.customer_message if appointment_group else "",
+                        booking.notes or "",
+                    ] if value
+                ),
                 "expected_duration_minutes": duration_minutes,
                 "customer_total": customer_total,
                 "advance_received": advance_received,
