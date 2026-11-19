@@ -4194,6 +4194,31 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {worker.pk},
         )
 
+        assignment = BookingAssignment.objects.get(
+            booking=group.bookings.order_by("id").first(),
+            worker=worker,
+        )
+        missing_code = worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/start/",
+            {},
+            format="json",
+        )
+        self.assertEqual(missing_code.status_code, 400, missing_code.data)
+        group.refresh_from_db()
+        self.assertEqual(group.arrival_otp_attempts, 1)
+        started = worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/start/",
+            {"arrival_otp": group.arrival_otp},
+            format="json",
+        )
+        self.assertEqual(started.status_code, 200, started.data)
+        group.refresh_from_db()
+        self.assertIsNotNone(group.arrival_otp_verified_at)
+        self.assertEqual(
+            set(group.bookings.values_list("status", flat=True)),
+            {Booking.Status.IN_PROGRESS},
+        )
+
         follow_up_service = self._create_service(
             child_category, title="Follow-up Cleaning"
         )
