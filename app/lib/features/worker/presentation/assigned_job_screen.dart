@@ -422,6 +422,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   }
 
   Widget _buildServiceInfo(WorkerAssignmentDetail job) {
+    final group = job.appointmentGroup;
+    final groupServices = (group?['services'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -437,6 +442,62 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                 ),
               ],
             ),
+            if (group != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AirwayColors.primary.withOpacity(.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AirwayColors.primary.withOpacity(.18)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AirwayText.tr(
+                        '${group['title'] ?? 'Appointment'} appointment',
+                        '${group['title'] ?? 'अपॉइंटमेंट'} अपॉइंटमेंट',
+                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    if (groupServices.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        AirwayText.tr('Services in this visit', 'इस विज़िट की सेवाएँ'),
+                        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                      for (final service in groupServices)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle_outline, size: 15, color: AirwayColors.primary),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text(
+                                service['service_title']?.toString() ?? 'Service',
+                                style: const TextStyle(fontSize: 12),
+                              )),
+                              Text(
+                                service['status']?.toString() ?? '',
+                                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                    if (group['message']?.toString().trim().isNotEmpty == true) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        AirwayText.tr('Customer message: ', 'ग्राहक का संदेश: ') + group['message'].toString(),
+                        style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             if (job.variantTitle?.isNotEmpty == true || job.quantity > 1) ...[
               const SizedBox(height: 8),
               Text(
