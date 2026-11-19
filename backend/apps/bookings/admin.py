@@ -59,7 +59,7 @@ class CustomerCartAdmin(ModelAdmin):
     list_display = ('customer', 'address', 'updated_at')
     search_fields = ('customer__phone', 'customer__name')
     list_filter = ('address__zone__city',)
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'group_messages')
     inlines = [CartItemInline]
 
 
