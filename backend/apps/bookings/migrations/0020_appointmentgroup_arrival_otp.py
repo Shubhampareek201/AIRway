@@ -10,8 +10,8 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="appointmentgroup",
-            name="arrival_otp_hash",
-            field=models.CharField(blank=True, max_length=128),
+            name="arrival_otp",
+            field=models.CharField(blank=True, max_length=6),
         ),
         migrations.AddField(
             model_name="appointmentgroup",
