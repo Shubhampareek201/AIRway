@@ -1820,7 +1820,6 @@ class CustomerOrderDetailView(APIView):
             row["completion_verified"] for row in active_rows
         )
         ready_for_balance = bool(advance_payment and all_services_verified and not balance_payment)
-        from apps.bookings.models import RecurringWashPlan
         recurring_plan = RecurringWashPlan.objects.filter(order=order).first()
 
         return Response({
