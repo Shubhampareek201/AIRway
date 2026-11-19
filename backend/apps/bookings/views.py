@@ -2691,6 +2691,10 @@ class CustomerCartItemView(APIView):
     def delete(self, request, item_id):
         item = self.get_item(request, item_id)
         cart = item.cart
+        root_category = item.service.category
+        while root_category.parent_id:
+            root_category = root_category.parent
+        removed_group_slug = root_category.slug
         answers = dict(item.category_answers or {})
         stored_paths = []
         issue_photo = answers.get("_airway_issue_photo")
@@ -2700,6 +2704,18 @@ class CustomerCartItemView(APIView):
         if isinstance(form_photos, dict):
             stored_paths.extend(path for path in form_photos.values() if path)
         item.delete()
+        remaining_group = False
+        for candidate in cart.items.select_related("service__category__parent"):
+            candidate_root = candidate.service.category
+            while candidate_root.parent_id:
+                candidate_root = candidate_root.parent
+            if candidate_root.slug == removed_group_slug:
+                remaining_group = True
+                break
+        if not remaining_group and removed_group_slug in (cart.group_messages or {}):
+            cart.group_messages = dict(cart.group_messages or {})
+            cart.group_messages.pop(removed_group_slug, None)
+            cart.save(update_fields=["group_messages", "updated_at"])
         if cart.items.count() < 2 and cart.schedule_mode != "separate":
             cart.schedule_mode = "separate"
             cart.save(update_fields=["schedule_mode", "updated_at"])
