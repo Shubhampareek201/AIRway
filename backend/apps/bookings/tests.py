@@ -4029,6 +4029,37 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(AppointmentGroup.objects.count(), 0)
         self.assertEqual(self.cart.items.count(), 2)
 
+    def test_saved_cart_group_message_is_attached_to_appointment_at_checkout(self):
+        from apps.bookings.models import AppointmentGroup
+
+        saved = self.client.patch(
+            "/api/v1/bookings/cart/",
+            {"group_messages": {self.category.slug: "Please ring the bell on arrival."}},
+            format="json",
+        )
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.cart.refresh_from_db()
+        self.assertEqual(
+            self.cart.group_messages[self.category.slug],
+            "Please ring the bell on arrival.",
+        )
+        scheduled_at = timezone.now() + timedelta(days=4)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [{
+                    "cart_item_id": self.cart_item.pk,
+                    "scheduled_at": scheduled_at.isoformat(),
+                }],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        group = AppointmentGroup.objects.get(order_id=checkout.data["order_id"])
+        self.assertEqual(group.customer_message, "Please ring the bell on arrival.")
+        self.cart.refresh_from_db()
+        self.assertEqual(self.cart.group_messages, {})
+
     def test_cart_schedule_update_propagates_to_every_service_in_the_same_group(self):
         child_category = Category.objects.create(
             parent=self.category,
