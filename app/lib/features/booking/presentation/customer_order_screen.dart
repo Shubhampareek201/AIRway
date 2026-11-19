@@ -845,29 +845,75 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
 
   Widget scheduleOverview(List<Map<String, dynamic>> rows) {
-    final groups = <String, List<String>>{};
-    for (final row in rows) {
-      final raw = row['scheduled_at']?.toString();
-      if (raw == null || raw.isEmpty) continue;
-      final service = row['service'] is Map
-          ? (row['service']['service_title']?.toString() ?? 'Service')
-          : 'Service';
-      groups.putIfAbsent(raw, () => <String>[]).add(service);
+    final entries = <Map<String, dynamic>>[];
+    final rawAppointmentGroups = (order?['appointment_groups'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+
+    if (rawAppointmentGroups.isNotEmpty) {
+      for (final group in rawAppointmentGroups) {
+        final bookingIds = (group['booking_ids'] as List? ?? [])
+            .map((value) => int.tryParse(value.toString()))
+            .whereType<int>()
+            .toSet();
+        final serviceNames = rows
+            .where((row) => bookingIds.contains(
+                  int.tryParse(row['booking_id']?.toString() ?? ''),
+                ))
+            .map((row) => (row['service'] is Map
+                ? row['service']['service_title']?.toString()
+                : null) ?? 'Service')
+            .toList();
+        entries.add({
+          'title': group['category_title']?.toString() ?? 'Appointment',
+          'scheduled_at': group['scheduled_at']?.toString() ?? '',
+          'services': serviceNames,
+          'message': group['customer_message']?.toString() ?? '',
+        });
+      }
+    } else {
+      final legacyGroups = <String, List<String>>{};
+      for (final row in rows) {
+        final raw = row['scheduled_at']?.toString();
+        if (raw == null || raw.isEmpty) continue;
+        final service = row['service'] is Map
+            ? (row['service']['service_title']?.toString() ?? 'Service')
+            : 'Service';
+        legacyGroups.putIfAbsent(raw, () => <String>[]).add(service);
+      }
+      for (final entry in legacyGroups.entries) {
+        entries.add({
+          'title': 'Appointment',
+          'scheduled_at': entry.key,
+          'services': entry.value,
+          'message': '',
+        });
+      }
     }
-    if (groups.isEmpty) return const SizedBox.shrink();
-    final entries = groups.entries.toList()
-      ..sort((a, b) => DateTime.tryParse(a.key)?.compareTo(DateTime.tryParse(b.key) ?? DateTime(9999)) ?? 0);
+
+    if (entries.isEmpty) return const SizedBox.shrink();
+    entries.sort((a, b) =>
+        DateTime.tryParse(a['scheduled_at']?.toString() ?? '')
+                ?.compareTo(DateTime.tryParse(b['scheduled_at']?.toString() ?? '') ?? DateTime(9999)) ??
+            0);
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(Icons.calendar_month_rounded, color: violet, size: 19),
-          SizedBox(width: 8),
-          Text(AirwayText.tr('Your service schedule', 'आपका सेवा शेड्यूल'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+          const Icon(Icons.calendar_month_rounded, color: violet, size: 19),
+          const SizedBox(width: 8),
+          Text(AirwayText.tr('Your appointments', 'आपके अपॉइंटमेंट'), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         ]),
         const SizedBox(height: 5),
-        Text(AirwayText.tr('Services sharing the same appointment are grouped together.', 'एक ही अपॉइंटमेंट वाली सेवाएँ एक साथ दिखाई गई हैं।'), style: TextStyle(color: sub, fontSize: 12)),
+        Text(
+          AirwayText.tr(
+            'Each service type has its own appointment and worker assignment.',
+            'हर सेवा-प्रकार का अपना अपॉइंटमेंट और प्रोफेशनल असाइनमेंट है।',
+          ),
+          style: const TextStyle(color: sub, fontSize: 12),
+        ),
         const SizedBox(height: 10),
         for (var i = 0; i < entries.length; i++) ...[
           if (i > 0) const Divider(height: 16),
@@ -880,9 +926,21 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ),
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(DateFormatForOrder.format(entries[i].key), style: const TextStyle(color: ink, fontWeight: FontWeight.w800)),
+              Text(entries[i]['title']?.toString() ?? 'Appointment', style: const TextStyle(color: ink, fontWeight: FontWeight.w900)),
               const SizedBox(height: 3),
-              Text(entries[i].value.join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+              Text(
+                DateFormatForOrder.format(entries[i]['scheduled_at']?.toString() ?? ''),
+                style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 12),
+              ),
+              const SizedBox(height: 3),
+              Text((entries[i]['services'] as List? ?? []).join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+              if ((entries[i]['message']?.toString() ?? '').isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(
+                  AirwayText.tr('Your message: ', 'आपका संदेश: ') + entries[i]['message'].toString(),
+                  style: const TextStyle(color: sub, fontSize: 11, fontStyle: FontStyle.italic),
+                ),
+              ],
             ])),
           ]),
         ],
@@ -897,23 +955,30 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final activeRows = rows
         .where((row) => row['booking_status']?.toString() != 'cancelled')
         .toList();
-    final assigned = activeRows.isNotEmpty && activeRows.every((row) {
+    final assignedCount = activeRows.where((row) {
       final status = row['booking_status']?.toString();
       return status == 'assigned' || status == 'in_progress' || status == 'completed';
-    });
+    }).length;
+    final assigned = activeRows.isNotEmpty && assignedCount == activeRows.length;
+    final partiallyAssigned = assignedCount > 0 && !assigned;
     final completed = activeRows.isNotEmpty &&
         activeRows.every((row) => row['booking_status']?.toString() == 'completed');
+    final assignmentDescription = assigned
+        ? 'Every appointment group has a professional.'
+        : partiallyAssigned
+            ? '$assignedCount of ${activeRows.length} services have a professional. AIRway is still matching the other appointment groups.'
+            : 'Waiting for worker acceptance.';
     final steps = staged
         ? <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
             (firstPaymentLabel, advancePaid ? 'Initial payment verified.' : 'Pay the initial amount to start worker matching.', advancePaid),
-            ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+            ('Professionals assigned', assignmentDescription, assigned),
             ('Service completion', completed ? 'All services are verified with customer OTP.' : 'Each service is verified after the customer shares a code.', completed),
             (remainingLabel, paid ? 'Final balance paid. Order complete.' : completed ? 'Final balance is now due.' : 'Unlocked after all active services are verified.', paid),
           ]
         : <(String, String, bool)>[
             ('Order placed', 'Your service request is received.', true),
-            ('Professionals assigned', assigned ? 'Every service has a professional.' : 'Waiting for worker acceptance.', assigned),
+            ('Professionals assigned', assignmentDescription, assigned),
             ('Full payment', paid ? 'Payment verified successfully.' : 'Complete payment to confirm your order.', paid),
             ('Service completion', completed ? 'Services completed.' : 'Updates appear as work progresses.', completed),
           ];
@@ -921,7 +986,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(AirwayText.tr('Order progress', 'ऑर्डर की प्रगति'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
+        Text(AirwayText.tr('Order progress', 'ऑर्डर की प्रगति'), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         const SizedBox(height: 12),
         for (var i = 0; i < steps.length; i++) ...[
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
