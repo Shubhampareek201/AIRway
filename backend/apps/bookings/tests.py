@@ -4805,3 +4805,127 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         self.assertEqual(started.status_code, 200, started.data)
         visit.refresh_from_db()
         self.assertEqual(visit.status, RecurringWashVisit.Status.IN_PROGRESS)
+
+
+class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
+    def setUp(self):
+        self.customer = self._create_user("+919876543298")
+        self.address = self._create_address(self.customer)
+        self.category = self._create_category("Reschedule", "reschedule")
+        self.service = self._create_service(self.category)
+        self.client = APIClient()
+        self.client.force_authenticate(self.customer)
+        self.original_time = timezone.now() + timedelta(days=3)
+        self.new_time = timezone.now() + timedelta(days=5)
+
+    def _booking(self, service=None, scheduled_at=None, status=Booking.Status.CONFIRMED):
+        return Booking.objects.create(
+            customer=self.customer,
+            service=service or self.service,
+            address=self.address,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=scheduled_at or self.original_time,
+            status=status,
+            pricing_snapshot={"quantity": 1, "total": "500.00"},
+        )
+
+    @patch("apps.bookings.views.check_slot_availability")
+    @patch("apps.bookings.views.check_service_available")
+    @patch("apps.bookings.dispatcher.DispatcherService.dispatch_offers")
+    def test_customer_can_reschedule_an_unassigned_standalone_booking(
+        self, dispatch_offers, check_service, check_slot
+    ):
+        booking = self._booking()
+        response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/reschedule/",
+            {"scheduled_at": self.new_time.isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        booking.refresh_from_db()
+        self.assertEqual(booking.scheduled_at, self.new_time)
+        check_slot.assert_called_once()
+        self.assertEqual(
+            BookingStatusHistory.objects.filter(
+                booking=booking, changed_by=self.customer
+            ).count(),
+            1,
+        )
+
+    @patch("apps.bookings.views.check_slot_availability")
+    @patch("apps.bookings.views.check_service_available")
+    def test_shared_appointment_reschedules_all_active_order_services(
+        self, check_service, check_slot
+    ):
+        from apps.bookings.models import BookingStatusHistory
+
+        second_service = self._create_service(
+            self._create_category("Second reschedule", "second-reschedule"),
+            "Second service",
+        )
+        first = self._booking()
+        second = self._booking(service=second_service)
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            total_amount=Decimal("1000.00"),
+            metadata={
+                "scheduling_v1": {
+                    "mode": "same_appointment",
+                    "shared_appointment_at": self.original_time.isoformat(),
+                }
+            },
+        )
+        OrderItem.objects.create(order=order, booking=first, line_total=Decimal("500.00"))
+        OrderItem.objects.create(order=order, booking=second, line_total=Decimal("500.00"))
+
+        response = self.client.post(
+            f"/api/v1/bookings/{first.pk}/reschedule/",
+            {"scheduled_at": self.new_time.isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(first.scheduled_at, self.new_time)
+        self.assertEqual(second.scheduled_at, self.new_time)
+        self.assertEqual(
+            order.metadata["scheduling_v1"]["shared_appointment_at"],
+            self.new_time.isoformat(),
+        )
+        self.assertEqual(check_slot.call_count, 2)
+        self.assertEqual(
+            BookingStatusHistory.objects.filter(
+                booking__in=[first, second], changed_by=self.customer
+            ).count(),
+            2,
+        )
+
+    def test_assigned_booking_cannot_be_rescheduled(self):
+        booking = self._booking(status=Booking.Status.ASSIGNED)
+        response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/reschedule/",
+            {"scheduled_at": self.new_time.isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        booking.refresh_from_db()
+        self.assertEqual(booking.scheduled_at, self.original_time)
+
+    @patch("apps.bookings.views.check_slot_availability", side_effect=SlotConflictError("Slot is already booked."))
+    @patch("apps.bookings.views.check_service_available")
+    def test_slot_conflict_keeps_original_booking_time(
+        self, check_service, check_slot
+    ):
+        booking = self._booking()
+        response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/reschedule/",
+            {"scheduled_at": self.new_time.isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        booking.refresh_from_db()
+        self.assertEqual(booking.scheduled_at, self.original_time)
+
