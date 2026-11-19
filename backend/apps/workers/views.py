@@ -942,6 +942,64 @@ def _get_assignment_and_booking(job_id, profile):
         return None, None
 
 
+class WorkerJobLocationUpdateView(APIView):
+    """Accept foreground GPS only from the worker currently assigned to an active job."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "Only approved workers can share job location."}, status=status.HTTP_403_FORBIDDEN)
+        if not assignment.accepted_at:
+            return Response({"detail": "Accept this job before sharing your location."}, status=status.HTTP_409_CONFLICT)
+        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS):
+            return Response({"detail": "Location sharing is available only for active assigned jobs."}, status=status.HTTP_409_CONFLICT)
+
+        try:
+            latitude = Decimal(str(request.data.get("latitude")))
+            longitude = Decimal(str(request.data.get("longitude")))
+            accuracy_raw = request.data.get("accuracy_m")
+            accuracy = Decimal(str(accuracy_raw)) if accuracy_raw not in (None, "") else None
+            if (
+                not latitude.is_finite()
+                or not longitude.is_finite()
+                or not (Decimal("-90") <= latitude <= Decimal("90"))
+                or not (Decimal("-180") <= longitude <= Decimal("180"))
+            ):
+                raise ValueError
+            if accuracy is not None and (
+                not accuracy.is_finite() or accuracy < 0 or accuracy > Decimal("1000")
+            ):
+                raise ValueError
+        except (TypeError, ValueError, ArithmeticError):
+            return Response(
+                {"detail": "Provide valid latitude and longitude, and accuracy between 0 and 1000 metres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        assignment.live_latitude = latitude
+        assignment.live_longitude = longitude
+        assignment.live_accuracy_m = accuracy
+        assignment.live_location_updated_at = now
+        assignment.save(update_fields=[
+            "live_latitude", "live_longitude", "live_accuracy_m",
+            "live_location_updated_at", "updated_at",
+        ])
+        return Response({
+            "accepted": True,
+            "location_updated_at": now.isoformat(),
+        })
+
+
 class WorkerJobAcceptView(APIView):
     permission_classes = [IsAuthenticated]
 
