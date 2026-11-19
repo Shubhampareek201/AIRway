@@ -397,11 +397,29 @@ class BookingViewSet(viewsets.ModelViewSet):
         """Reschedule an eligible booking, preserving shared-order appointment rules."""
         from django.utils.dateparse import parse_datetime
 
+        # Lock the parent order before its child bookings, matching dispatcher
+        # lock order and avoiding order/booking deadlocks.
         booking = get_object_or_404(
-            Booking.objects.select_for_update().select_related(
+            Booking.objects.filter(customer=request.user).select_related(
                 "service__category", "variant", "address__zone__city"
             ),
             pk=pk,
+        )
+        order_item_ref = OrderItem.objects.filter(
+            booking_id=booking.pk
+        ).values("order_id").first()
+        order = None
+        if order_item_ref:
+            order = get_object_or_404(
+                Order.objects.select_for_update(),
+                pk=order_item_ref["order_id"],
+                customer=request.user,
+            )
+        booking = get_object_or_404(
+            Booking.objects.select_for_update(of=("self",)).select_related(
+                "service__category", "variant", "address__zone__city"
+            ),
+            pk=booking.pk,
             customer=request.user,
         )
         recurring_plan = getattr(booking, "recurring_wash_plan", None)
@@ -447,17 +465,14 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        order_item = getattr(booking, "order_item", None)
-        order = None
         targets = [booking]
         shared_appointment = False
-        if order_item:
-            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+        if order is not None:
             scheduling = (order.metadata or {}).get("scheduling_v1", {})
             shared_appointment = scheduling.get("mode") == "same_appointment"
             if shared_appointment:
                 targets = list(
-                    Booking.objects.select_for_update().filter(
+                    Booking.objects.select_for_update(of=("self",)).filter(
                         order_item__order=order
                     ).exclude(status=Booking.Status.CANCELLED).select_related(
                         "service__category", "variant", "address__zone__city"
