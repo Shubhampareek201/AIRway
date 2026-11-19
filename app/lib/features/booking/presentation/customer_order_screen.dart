@@ -34,6 +34,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   bool loading = true;
   bool paying = false;
   bool _quoteResponding = false;
+  bool _rescheduling = false;
   String _currentPaymentStage = 'advance';
   String? error;
   Timer? refreshTimer;
@@ -316,6 +317,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
   Future<void> rescheduleService(Map<String, dynamic> row) async {
+    if (_rescheduling) return;
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     final service = row['service'] is Map
         ? Map<String, dynamic>.from(row['service'] as Map)
@@ -367,6 +369,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() => _rescheduling = true);
     try {
       await BookingApi.rescheduleBooking(
         bookingId: bookingId,
@@ -385,6 +388,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AirwayText.tr('Could not reschedule: $e', 'समय नहीं बदला जा सका: $e'))),
       );
+    } finally {
+      if (mounted) setState(() => _rescheduling = false);
     }
   }
 
@@ -1107,9 +1112,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         if (row['can_reschedule'] == true) ...[
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton.icon(
-            onPressed: () => rescheduleService(row),
+            onPressed: _rescheduling ? null : () => rescheduleService(row),
             icon: const Icon(Icons.edit_calendar_outlined, size: 17),
-            label: Text(AirwayText.tr('Reschedule service', 'सेवा का समय बदलें')),
+            label: Text(_rescheduling
+                ? AirwayText.tr('Updating time…', 'समय अपडेट हो रहा है…')
+                : AirwayText.tr('Reschedule service', 'सेवा का समय बदलें')),
           )),
         ],
         if (row['can_cancel'] == true) ...[
