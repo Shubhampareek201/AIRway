@@ -506,7 +506,19 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         targets = [booking]
         shared_appointment = False
-        if order is not None:
+        appointment_group = getattr(booking, "appointment_group", None)
+        if appointment_group is not None:
+            # A customer reschedules the complete service-type appointment,
+            # without moving other appointment groups in the same checkout.
+            targets = list(
+                Booking.objects.select_for_update(of=("self",)).filter(
+                    appointment_group=appointment_group
+                ).exclude(status=Booking.Status.CANCELLED).select_related(
+                    "service__category", "variant", "address__zone__city"
+                ).order_by("id")
+            )
+            shared_appointment = True
+        elif order is not None:
             scheduling = (order.metadata or {}).get("scheduling_v1", {})
             shared_appointment = scheduling.get("mode") == "same_appointment"
             if shared_appointment:
@@ -529,7 +541,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                     {"detail": "A professional is already assigned to this service. Contact AIRway support to reschedule."},
                     status=status.HTTP_409_CONFLICT,
                 )
-            if target.booking_mode != booking.booking_mode:
+            if (
+                appointment_group is None
+                and target.booking_mode != booking.booking_mode
+            ):
                 return Response(
                     {"detail": "Services with different booking modes cannot be moved as one shared appointment."},
                     status=status.HTTP_409_CONFLICT,
@@ -607,7 +622,15 @@ class BookingViewSet(viewsets.ModelViewSet):
                 ),
             )
 
-        if order and shared_appointment:
+        if appointment_group is not None:
+            appointment_group.scheduled_at = new_time
+            appointment_group.save(update_fields=["scheduled_at", "updated_at"])
+            WorkerOffer.objects.filter(
+                appointment_group=appointment_group,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+
+        if order and shared_appointment and appointment_group is None:
             metadata = dict(order.metadata or {})
             scheduling = dict(metadata.get("scheduling_v1", {}))
             scheduling["shared_appointment_at"] = new_time.isoformat()
@@ -653,6 +676,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "scheduled_at": new_time.isoformat(),
             "rescheduled_booking_ids": target_ids,
             "shared_appointment": shared_appointment,
+            "appointment_group_id": appointment_group.pk if appointment_group else None,
         })
 
     @action(detail=True, methods=["post"], url_path="quote/respond")
