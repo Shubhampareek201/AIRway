@@ -4369,6 +4369,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         first_booking = beauty_group.bookings.order_by("id").first()
         second_booking = beauty_group.bookings.exclude(pk=first_booking.pk).get()
         car_booking = car_group.bookings.get()
+        old_arrival_otp = beauty_group.arrival_otp
         new_time = beauty_time + timedelta(days=2)
 
         response = self.client.post(
@@ -4385,6 +4386,8 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(first_booking.scheduled_at, new_time)
         self.assertEqual(second_booking.scheduled_at, new_time)
         self.assertEqual(beauty_group.scheduled_at, new_time)
+        self.assertNotEqual(beauty_group.arrival_otp, old_arrival_otp)
+        self.assertIsNone(beauty_group.arrival_otp_verified_at)
         self.assertEqual(car_booking.scheduled_at, car_time)
         self.assertEqual(car_group.scheduled_at, car_time)
         self.assertEqual(set(response.data["rescheduled_booking_ids"]), {first_booking.pk, second_booking.pk})
