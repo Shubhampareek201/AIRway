@@ -47,6 +47,51 @@ class BookingRating(models.Model):
         return f'{self.get_rating_type_display()} - {self.rating}/5 for {self.rated.phone}'
 
 
+class BookingCompletionFeedback(models.Model):
+    class SatisfactionLevel(models.TextChoices):
+        VERY_SATISFIED = "very_satisfied", "Very satisfied"
+        SATISFIED = "satisfied", "Satisfied"
+        NEUTRAL = "neutral", "Neutral"
+        UNSATISFIED = "unsatisfied", "Unsatisfied"
+        VERY_UNSATISFIED = "very_unsatisfied", "Very unsatisfied"
+
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="completion_feedback",
+    )
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="booking_completion_feedback",
+    )
+    service_quality = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    worker_behaviour = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    satisfaction_level = models.CharField(
+        max_length=20,
+        choices=SatisfactionLevel.choices,
+        blank=True,
+    )
+    comment = models.TextField(blank=True, max_length=1000)
+    skipped = models.BooleanField(default=False)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"Completion feedback for booking #{self.booking_id}"
+
+
 class RatingSummary(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
