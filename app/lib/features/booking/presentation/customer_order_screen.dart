@@ -1155,6 +1155,40 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 12),
           _quoteCard(row),
         ],
+        if (row['completion_otp_requested'] == true &&
+            row['completion_feedback_submitted'] != true) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F1FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD8C9FF)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AirwayText.tr('Your professional marked this service ready for completion.', 'प्रोफ़ेशनल ने इस सेवा को पूरा बताया है।'),
+                  style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  AirwayText.tr('Review the service or skip feedback. Your completion code will appear after that.', 'सेवा का फीडबैक दें या छोड़ दें। उसके बाद completion code दिखेगा।'),
+                  style: const TextStyle(color: sub, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => submitCompletionFeedback(row),
+                    child: Text(AirwayText.tr('Review service', 'सेवा का फीडबैक दें')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 12),
@@ -1382,6 +1416,118 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       }
     } finally {
       if (mounted) setState(() => _quoteResponding = false);
+    }
+  }
+
+  Future<void> submitCompletionFeedback(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    var serviceQuality = 5;
+    var workerBehaviour = 5;
+    var satisfaction = 'very_satisfied';
+    final commentController = TextEditingController();
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(AirwayText.tr('Review completed service', 'पूरी हुई सेवा का फीडबैक')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(AirwayText.tr('Service quality', 'सेवा की गुणवत्ता')),
+                DropdownButtonFormField<int>(
+                  value: serviceQuality,
+                  items: List.generate(5, (index) => DropdownMenuItem(
+                    value: index + 1,
+                    child: Text('${index + 1} / 5'),
+                  )),
+                  onChanged: (value) => setDialogState(() => serviceQuality = value ?? 5),
+                ),
+                const SizedBox(height: 12),
+                Text(AirwayText.tr('Professional behaviour', 'प्रोफ़ेशनल का व्यवहार')),
+                DropdownButtonFormField<int>(
+                  value: workerBehaviour,
+                  items: List.generate(5, (index) => DropdownMenuItem(
+                    value: index + 1,
+                    child: Text('${index + 1} / 5'),
+                  )),
+                  onChanged: (value) => setDialogState(() => workerBehaviour = value ?? 5),
+                ),
+                const SizedBox(height: 12),
+                Text(AirwayText.tr('Your satisfaction', 'आपकी संतुष्टि')),
+                DropdownButtonFormField<String>(
+                  value: satisfaction,
+                  items: [
+                    DropdownMenuItem(value: 'very_satisfied', child: Text(AirwayText.tr('Very satisfied', 'बहुत संतुष्ट'))),
+                    DropdownMenuItem(value: 'satisfied', child: Text(AirwayText.tr('Satisfied', 'संतुष्ट'))),
+                    DropdownMenuItem(value: 'neutral', child: Text(AirwayText.tr('Neutral', 'सामान्य'))),
+                    DropdownMenuItem(value: 'unsatisfied', child: Text(AirwayText.tr('Unsatisfied', 'असंतुष्ट'))),
+                    DropdownMenuItem(value: 'very_unsatisfied', child: Text(AirwayText.tr('Very unsatisfied', 'बहुत असंतुष्ट'))),
+                  ],
+                  onChanged: (value) => setDialogState(() => satisfaction = value ?? 'very_satisfied'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: commentController,
+                  maxLength: 1000,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: AirwayText.tr('Comment (optional)', 'टिप्पणी (वैकल्पिक)'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, {'skipped': true}),
+              child: Text(AirwayText.tr('Skip feedback', 'फीडबैक छोड़ें')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'skipped': false,
+                'service_quality': serviceQuality,
+                'worker_behaviour': workerBehaviour,
+                'satisfaction_level': satisfaction,
+                'comment': commentController.text.trim(),
+              }),
+              child: Text(AirwayText.tr('Submit & reveal code', 'जमा करें और कोड देखें')),
+            ),
+          ],
+        ),
+      ),
+    );
+    commentController.dispose();
+    if (result == null || !mounted) return;
+    try {
+      await BookingApi.submitCompletionFeedback(
+        bookingId: bookingId,
+        skipped: result['skipped'] == true,
+        serviceQuality: result['service_quality'] as int?,
+        workerBehaviour: result['worker_behaviour'] as int?,
+        satisfactionLevel: result['satisfaction_level']?.toString(),
+        comment: result['comment']?.toString() ?? '',
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Feedback saved. Your completion code is now available.',
+          'फीडबैक सेव हो गया। अब आपका completion code उपलब्ध है।',
+        ))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not save feedback: $e', 'फीडबैक सेव नहीं हो सका: $e'))),
+      );
     }
   }
 
