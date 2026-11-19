@@ -1127,6 +1127,88 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        if booking.appointment_group_id:
+            from apps.bookings.models import AppointmentGroup, RecurringWashVisit
+            from django.db import transaction
+
+            with transaction.atomic():
+                group = AppointmentGroup.objects.select_for_update().get(
+                    pk=booking.appointment_group_id
+                )
+                group_bookings = list(
+                    group.bookings.select_for_update(of=("self",))
+                    .filter(status__in=(
+                        Booking.Status.ASSIGNED,
+                        Booking.Status.CONFIRMED,
+                        Booking.Status.IN_PROGRESS,
+                    ))
+                    .select_related("service", "order_item")
+                    .order_by("pk")
+                )
+                if not group_bookings:
+                    return Response(
+                        {"detail": "No active services remain in this appointment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                assignments = {
+                    row.booking_id: row
+                    for row in BookingAssignment.objects.select_for_update().filter(
+                        booking_id__in=[row.pk for row in group_bookings],
+                        worker=profile,
+                    )
+                }
+                if len(assignments) != len(group_bookings) or any(
+                    not assignments[row.pk].accepted_at for row in group_bookings
+                ):
+                    return Response(
+                        {"detail": "This worker has not accepted every active service in the appointment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                order = group.order
+                if "payment_allocation_v1" in (order.metadata or {}):
+                    from apps.payments.models import Payment
+                    if not Payment.objects.filter(
+                        order=order,
+                        stage=Payment.Stage.ADVANCE,
+                        status=Payment.Status.PAID,
+                    ).exists():
+                        return Response(
+                            {"detail": "The customer advance payment has not been verified."},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                now = timezone.now()
+                started_ids = []
+                for group_booking in group_bookings:
+                    group_assignment = assignments[group_booking.pk]
+                    if not group_assignment.started_at:
+                        group_assignment.started_at = now
+                        group_assignment.save(update_fields=["started_at"])
+                    if group_booking.status != Booking.Status.IN_PROGRESS:
+                        old_status = group_booking.status
+                        group_booking.status = Booking.Status.IN_PROGRESS
+                        group_booking.save(update_fields=["status"])
+                        BookingStatusHistory.objects.create(
+                            booking=group_booking,
+                            from_status=old_status,
+                            to_status=Booking.Status.IN_PROGRESS,
+                            changed_by=request.user,
+                            note="Worker started the appointment group.",
+                        )
+                    RecurringWashVisit.objects.filter(
+                        booking=group_booking,
+                        status=RecurringWashVisit.Status.BOOKED,
+                    ).update(
+                        status=RecurringWashVisit.Status.IN_PROGRESS,
+                        updated_at=now,
+                    )
+                    started_ids.append(group_booking.pk)
+                return Response({
+                    "detail": "Appointment group started.",
+                    "status": Booking.Status.IN_PROGRESS,
+                    "started_booking_ids": started_ids,
+                    "appointment_group_id": group.pk,
+                })
+
         if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response(
                 {"detail": "Job must be assigned and confirmed before starting."},
