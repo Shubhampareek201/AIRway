@@ -88,6 +88,11 @@ class Booking(TimeStampedModel):
     )
 
     completed_at = models.DateTimeField(null=True, blank=True)
+    # Only the latest foreground GPS sample is retained for active-job tracking.
+    live_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    live_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    live_accuracy_m = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    live_location_updated_at = models.DateTimeField(null=True, blank=True)
 
     history = HistoricalRecords()
 
