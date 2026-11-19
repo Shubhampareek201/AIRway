@@ -329,7 +329,14 @@ class WorkerOffer(TimeStampedModel):
         null=True,
         blank=True,
         related_name="worker_offers",
-        help_text="Set for a parent-order offer covering every booking line.",
+        help_text="Set for a legacy parent-order offer covering every booking line.",
+    )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="worker_offers",
     )
     batch_number = models.PositiveIntegerField(default=1)
     worker = models.ForeignKey(
