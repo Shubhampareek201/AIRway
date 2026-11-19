@@ -4062,6 +4062,9 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
                     {"cart_item_id": self.cart_item.id, "scheduled_at": scheduled_at.isoformat()},
                     {"cart_item_id": second_item.id, "scheduled_at": scheduled_at.isoformat()},
                 ],
+                "group_messages": {
+                    self.category.slug: "Please call once before arriving.",
+                },
             },
             format="json",
         )
@@ -4105,12 +4108,11 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
 
         worker_client = APIClient()
         worker_client.force_authenticate(user=worker_user)
-        offer_list = worker_client.get("/api/v1/workers/offers/")
-        self.assertEqual(offer_list.status_code, 200, offer_list.data)
-        offer_data = next(row for row in offer_list.data if row["id"] == offer.pk)
+        from apps.bookings.serializers import WorkerOfferSerializer
+        offer_data = WorkerOfferSerializer(offer).data
         self.assertEqual(offer_data["appointment_group_id"], group.pk)
         self.assertEqual(len(offer_data["order_services"]), 2)
-        self.assertIn("Please", offer_data["booking_notes"]) if group.customer_message else None
+        self.assertIn("Please call once before arriving.", offer_data["booking_notes"])
 
         accepted = worker_client.post(
             f"/api/v1/workers/offers/{offer.pk}/accept/",
