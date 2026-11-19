@@ -1280,7 +1280,7 @@ class CustomerCartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomerCart
-        fields = ["id", "address", "schedule_mode", "items", "item_count", "subtotal", "updated_at"]
+        fields = ["id", "address", "schedule_mode", "group_messages", "items", "item_count", "subtotal", "updated_at"]
         read_only_fields = fields
 
     def get_subtotal(self, obj):
