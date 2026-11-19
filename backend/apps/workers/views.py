@@ -1178,14 +1178,14 @@ class WorkerJobStartView(APIView):
                         )
                 now = timezone.now()
                 if not group.arrival_otp_verified_at:
-                    import secrets
+                    from django.contrib.auth.hashers import check_password
                     if group.arrival_otp_locked_until and group.arrival_otp_locked_until > now:
                         return Response(
                             {"detail": "Too many incorrect arrival codes. Try again after the temporary lock expires."},
                             status=status.HTTP_429_TOO_MANY_REQUESTS,
                         )
                     if (
-                        not group.arrival_otp
+                        not group.arrival_otp_hash
                         or not group.arrival_otp_expires_at
                         or group.arrival_otp_expires_at <= now
                     ):
@@ -1194,7 +1194,7 @@ class WorkerJobStartView(APIView):
                             status=status.HTTP_410_GONE,
                         )
                     provided_otp = str(request.data.get("arrival_otp", "")).strip()
-                    if not secrets.compare_digest(provided_otp, group.arrival_otp):
+                    if not check_password(provided_otp, group.arrival_otp_hash):
                         group.arrival_otp_attempts += 1
                         if group.arrival_otp_attempts >= 5:
                             from datetime import timedelta
