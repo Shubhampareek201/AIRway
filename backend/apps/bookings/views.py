@@ -1605,6 +1605,18 @@ class CustomerOrderDetailView(APIView):
         advance_rows = {row["order_item_id"]: row for row in allocation.get("advance", [])}
         balance_rows = {row["order_item_id"]: row for row in allocation.get("balance", [])}
         order_items = list(order.items.all())
+        scheduling = (order.metadata or {}).get("scheduling_v1", {})
+        shared_appointment = scheduling.get("mode") == "same_appointment"
+        recurring_order = RecurringWashPlan.objects.filter(order=order).exists()
+        shared_reschedule_eligible = (
+            not recurring_order
+            and all(
+                row.booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                and not hasattr(row.booking, "assignment")
+                for row in order_items
+                if row.booking.status != Booking.Status.CANCELLED
+            )
+        )
         rated_booking_ids = set(BookingRating.objects.filter(
             booking_id__in=[row.booking_id for row in order_items],
             rater=request.user,
@@ -1667,6 +1679,15 @@ class CustomerOrderDetailView(APIView):
                 "service": service_snapshot,
                 "booking_status": booking.status,
                 "can_cancel": booking.can_cancel,
+                "can_reschedule": (
+                    shared_reschedule_eligible
+                    if shared_appointment
+                    else (
+                        not recurring_order
+                        and booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                        and not assignment
+                    )
+                ),
                 "scheduled_at": booking.scheduled_at,
                 "drop_scheduled_at": booking.drop_scheduled_at,
                 "quote": quote_data,
