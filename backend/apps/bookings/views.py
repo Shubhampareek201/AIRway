@@ -2126,7 +2126,12 @@ class CustomerOrderDetailView(APIView):
             "balance_due": str(balance_due),
             "legacy_payment_due": str(order.total_amount) if legacy_ready else "0.00",
             "amount_due": str(advance_due + balance_due) if is_staged_payment else (str(order.total_amount) if legacy_ready else "0.00"),
-            "ready_for_advance": is_staged_payment and not advance_payment and order.status in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED),
+            "ready_for_advance": is_staged_payment and not advance_payment and order.status in (
+                Order.Status.AWAITING_ASSIGNMENT,
+                Order.Status.PARTIALLY_ASSIGNED,
+                Order.Status.AWAITING_PAYMENT,
+                Order.Status.PARTIALLY_CANCELLED,
+            ),
             "ready_for_balance": ready_for_balance,
             "ready_for_legacy_payment": legacy_ready,
             "ready_for_payment": ready_for_balance or legacy_ready,
