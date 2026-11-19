@@ -45,6 +45,13 @@ class Booking(TimeStampedModel):
         blank=True,
         related_name="bookings",
     )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bookings",
+    )
 
     booking_mode = models.CharField(
         max_length=15,
@@ -397,6 +404,43 @@ class Order(TimeStampedModel):
 
     def __str__(self):
         return f"Order #{self.pk} - {self.customer.phone} - ₹{self.total_amount}"
+
+
+class AppointmentGroup(TimeStampedModel):
+    """One coordinated appointment for services under the same root category in an order."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="appointment_groups",
+    )
+    root_category = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.PROTECT,
+        related_name="appointment_groups",
+    )
+    category_slug_snapshot = models.SlugField(max_length=100)
+    category_title_snapshot = models.CharField(max_length=150)
+    scheduled_at = models.DateTimeField()
+    customer_message = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["scheduled_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "root_category"],
+                name="unique_order_root_appointment_group",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["order", "scheduled_at"],
+                name="appt_group_order_time_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.category_title_snapshot} appointment for Order #{self.order_id}"
 
 
 class OrderItem(TimeStampedModel):
