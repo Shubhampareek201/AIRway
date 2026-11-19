@@ -1391,12 +1391,16 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
         ).select_related(
-            "booking__service", "booking__variant", "booking__address", "booking__order_item__order", "worker__user", "order"
+            "booking__service", "booking__variant", "booking__address", "booking__order_item__order",
+            "worker__user", "order", "appointment_group__order"
         ).prefetch_related(
             "booking__form_responses__form_field",
             "booking__booking_addons__addon",
             "order__items__booking__service",
             "order__items__booking__variant",
+            "appointment_group__bookings__service",
+            "appointment_group__bookings__variant",
+            "appointment_group__bookings__order_item",
         )
 
     def get_serializer_class(self):
@@ -1584,6 +1588,9 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     exclude_booking_id=booking.pk,
                     exclude_customer_id=booking.customer_id,
                     required_gender=required_gender,
+                    required_tasks=(
+                        booking.variant.included_tasks if booking.variant_id else []
+                    ),
                 ).filter(pk=worker.pk).exists()
                 if not eligible:
                     return Response(
