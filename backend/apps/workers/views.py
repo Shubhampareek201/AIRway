@@ -868,9 +868,34 @@ class WorkerJobDetailView(APIView):
         form_photo_paths = customer_answers.pop("_airway_form_photos", {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
+        appointment_group = booking.appointment_group
+        appointment_group_data = None
+        if appointment_group:
+            group_services = []
+            for group_booking in appointment_group.bookings.select_related(
+                "service", "variant", "order_item"
+            ).order_by("created_at"):
+                group_assignment = getattr(group_booking, "assignment", None)
+                group_services.append({
+                    "booking_id": group_booking.pk,
+                    "assignment_id": group_assignment.pk if group_assignment else None,
+                    "service_title": group_booking.service.title,
+                    "variant_title": group_booking.variant.title if group_booking.variant_id else None,
+                    "status": group_booking.status,
+                    "scheduled_at": group_booking.scheduled_at.isoformat() if group_booking.scheduled_at else None,
+                    "amount": str(group_booking.pricing_snapshot.get("total", 0) or 0),
+                })
+            appointment_group_data = {
+                "id": appointment_group.pk,
+                "title": appointment_group.category_title_snapshot,
+                "message": appointment_group.customer_message,
+                "scheduled_at": appointment_group.scheduled_at.isoformat(),
+                "services": group_services,
+            }
         return Response({
+            "appointment_group": appointment_group_data,
             "id": assign.id,
-"booking_id": booking.id,
+            "booking_id": booking.id,
             "status": booking.status,
             "booking_mode": booking.booking_mode,
             "pricing_type": booking.service.pricing_type,
