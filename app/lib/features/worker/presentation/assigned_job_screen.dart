@@ -340,6 +340,31 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             const SizedBox(height: 16),
             _buildEvidenceCard(job),
             const SizedBox(height: 16),
+            if (_canShareLocation(job))
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AirwayColors.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        AirwayText.tr(
+                          'While this active job is open, AIRway shares your current location with this booking’s customer. Sharing pauses when you leave this screen and stops when the job ends.',
+                          'यह सक्रिय जॉब खुली रहने पर AIRway आपकी मौजूदा लोकेशन इस बुकिंग के ग्राहक के साथ साझा करता है। स्क्रीन छोड़ने पर शेयरिंग रुकती है और जॉब खत्म होने पर बंद हो जाती है।',
+                        ),
+                        style: const TextStyle(fontSize: 12, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
             _buildActions(job),
           ],
         ),
