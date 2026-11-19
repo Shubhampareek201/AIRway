@@ -423,6 +423,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
 
   Widget _buildServiceInfo(WorkerAssignmentDetail job) {
     final group = job.appointmentGroup;
+    final groupTitle = group?['title']?.toString() ?? 'Appointment';
     final groupServices = (group?['services'] as List? ?? [])
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
@@ -457,8 +458,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                   children: [
                     Text(
                       AirwayText.tr(
-                        '${group['title'] ?? 'Appointment'} appointment',
-                        '${group['title'] ?? 'अपॉइंटमेंट'} अपॉइंटमेंट',
+                        '$groupTitle appointment',
+                        '$groupTitle अपॉइंटमेंट',
                       ),
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
