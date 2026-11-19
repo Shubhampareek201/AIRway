@@ -106,6 +106,7 @@ class DispatcherService:
             status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
         ).values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered]
+        candidates = cls._rank_by_service_scope(candidates, booking.service)
         # The launch default offers every eligible worker simultaneously. Keep
         # the explicit batch_size argument meaningful for controlled dispatches
         # and callers that intentionally request a smaller batch.
@@ -364,6 +365,51 @@ class DispatcherService:
             )
         logger.info("Dispatched %s offers for %s %s in batch %s", len(created), "order" if order else "booking", order.pk if order else booking.pk, batch_number)
         return created
+
+    @classmethod
+    def _rank_by_service_scope(cls, workers, requested_service):
+        """Prefer dedicated service professionals, then same-category specialists, then multi-category workers.
+
+        Every candidate has already passed exact-service enrollment, approval,
+        zone, schedule, leave, gender, task and conflict checks. This method
+        changes ranking only; it never broadens worker eligibility.
+        """
+        if not workers:
+            return workers
+
+        from apps.workers.models import WorkerService
+
+        worker_ids = [worker.pk for worker in workers]
+        service_rows = WorkerService.objects.filter(
+            worker_id__in=worker_ids,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service__category__parent")
+        scopes = {worker_id: {"services": set(), "roots": set()} for worker_id in worker_ids}
+
+        def root_category(category):
+            while category.parent_id:
+                category = category.parent
+            return category.pk
+
+        requested_root = root_category(requested_service.category)
+        for row in service_rows:
+            scopes[row.worker_id]["services"].add(row.service_id)
+            scopes[row.worker_id]["roots"].add(root_category(row.service.category))
+
+        def tier(worker):
+            scope = scopes.get(worker.pk, {"services": set(), "roots": set()})
+            service_count = len(scope["services"])
+            root_ids = scope["roots"]
+            if service_count <= 1:
+                return 0
+            if root_ids == {requested_root}:
+                return 1
+            return 2
+
+        # Python's sort is stable, so the existing Admin-configured rating /
+        # acceptance / cancellation ordering remains the tie-breaker.
+        return sorted(workers, key=tier)
 
     @staticmethod
     def _priority_ordering(priority_order):
