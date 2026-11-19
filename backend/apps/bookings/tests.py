@@ -1776,6 +1776,44 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         for offer in WorkerOffer.objects.filter(booking_id=booking_id):
             self.assertEqual(offer.status, WorkerOffer.Status.WITHDRAWN)
 
+    def test_customer_cancellation_withdraws_accepted_worker_offer(self):
+        from apps.bookings.models import WorkerOffer, Booking
+
+        future_time = self._get_booking_time()
+        create_resp = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": future_time.isoformat(),
+            "address_id": self.address.id,
+        }, format="json")
+        self.assertEqual(create_resp.status_code, 201, create_resp.data)
+
+        booking = Booking.objects.get(pk=create_resp.data["id"])
+        self._mark_advance_paid_and_dispatch(booking)
+        offer = WorkerOffer.objects.get(
+            booking=booking, worker=self.worker1_profile
+        )
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=self.worker1_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offer.pk}/accept/", format="json"
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+
+        cancelled = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/cancel/",
+            {"reason": "Change of plans"},
+            format="json",
+        )
+        self.assertEqual(cancelled.status_code, 200, cancelled.data)
+
+        offer.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(offer.status, WorkerOffer.Status.WITHDRAWN)
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertFalse(BookingAssignment.objects.filter(booking=booking).exists())
+
     def test_7_worker_starts_assigned_job(self):
         """Assigned worker can start the job."""
         from apps.bookings.models import WorkerOffer
