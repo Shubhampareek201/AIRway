@@ -4236,6 +4236,59 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         self.assertFalse(follow_up_candidates.filter(pk=worker.pk).exists())
 
+        from apps.notifications.models import Notification
+        from apps.ratings.models import BookingRating, RatingSummary
+        first_booking = group.bookings.order_by("id").first()
+        completion_request = worker_client.post(
+            f"/api/v1/bookings/{first_booking.pk}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(completion_request.status_code, 200, completion_request.data)
+        completion_notice = Notification.objects.filter(
+            user=self.customer,
+            data__booking_id=first_booking.pk,
+            data__purpose="service_completion_otp",
+        ).latest("created_at")
+        completion_code = completion_notice.data["completion_code"]
+        blocked = worker_client.post(
+            f"/api/v1/bookings/{first_booking.pk}/complete/",
+            {"otp": completion_code},
+            format="json",
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.data)
+
+        feedback = self.client.post(
+            "/api/v1/ratings/completion-feedback/",
+            {
+                "booking_id": first_booking.pk,
+                "skipped": False,
+                "service_quality": 5,
+                "worker_behaviour": 4,
+                "satisfaction_level": "satisfied",
+                "comment": "Professional and careful work.",
+            },
+            format="json",
+        )
+        self.assertEqual(feedback.status_code, 201, feedback.data)
+        completed = worker_client.post(
+            f"/api/v1/bookings/{first_booking.pk}/complete/",
+            {"otp": completion_code},
+            format="json",
+        )
+        self.assertEqual(completed.status_code, 200, completed.data)
+        first_booking.refresh_from_db()
+        second_booking = group.bookings.exclude(pk=first_booking.pk).get()
+        self.assertEqual(first_booking.status, Booking.Status.COMPLETED)
+        self.assertEqual(second_booking.status, Booking.Status.IN_PROGRESS)
+        self.assertEqual(
+            BookingRating.objects.get(booking=first_booking, rater=self.customer).rating,
+            5,
+        )
+        summary = RatingSummary.objects.get(user=worker_user)
+        self.assertEqual(summary.total_ratings, 1)
+        self.assertEqual(summary.average_rating, Decimal("5.00"))
+
     def test_parent_order_is_partially_assigned_when_only_one_group_has_a_worker(self):
         from datetime import time
         from apps.bookings.dispatcher import DispatcherService
