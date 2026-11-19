@@ -4862,8 +4862,7 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
         from apps.bookings.models import BookingStatusHistory
 
         second_service = self._create_service(
-            self._create_category("Second reschedule", "second-reschedule"),
-            "Second service",
+            self.category, "Second service"
         )
         first = self._booking()
         second = self._booking(service=second_service)
