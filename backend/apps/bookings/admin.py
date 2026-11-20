@@ -444,3 +444,25 @@ class RecurringWashPlanAdmin(ModelAdmin):
                 booking.save(update_fields=["scheduled_at", "updated_at"])
 
 
+
+
+@admin.register(BookingDispute)
+class BookingDisputeAdmin(ModelAdmin):
+    list_display = ("id", "booking", "raised_by", "raised_by_role", "category", "status", "created_at")
+    list_filter = ("status", "category", "raised_by_role", "created_at")
+    search_fields = ("booking__id", "raised_by__phone", "description")
+    readonly_fields = (
+        "booking", "raised_by", "raised_by_role", "category", "description",
+        "requested_outcome", "evidence_items", "status", "resolution_note",
+        "resolved_by", "resolved_at", "created_at", "updated_at",
+    )
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
