@@ -1,14 +1,21 @@
 from datetime import timedelta
+import mimetypes
+import os
+import uuid
 
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import IntegrityError, transaction
+from django.http import FileResponse
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
 
-from .models import Booking, BookingAssignment, BookingDispute
+from .models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence
 
 
 def _is_assigned_worker(booking, user):
@@ -25,6 +32,11 @@ def _serialize_dispute(dispute):
         "description": dispute.description,
         "requested_outcome": dispute.requested_outcome,
         "evidence_items": dispute.evidence_items,
+        "evidence_files": [
+            {"id": item.pk, "original_name": item.original_name,
+             "note": item.note, "created_at": item.created_at}
+            for item in dispute.evidence.all()
+        ],
         "status": dispute.status,
         "resolution_note": dispute.resolution_note,
         "resolved_at": dispute.resolved_at,
@@ -157,3 +169,99 @@ class BookingDisputeDetailView(APIView):
             dispute.save(update_fields=["status", "resolution_note", "resolved_by", "resolved_at", "updated_at"])
         dispute = BookingDispute.objects.select_related("booking__service").get(pk=dispute.pk)
         return Response(_serialize_dispute(dispute))
+
+
+class BookingDisputeEvidenceUploadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, dispute_id):
+        dispute = get_object_or_404(
+            BookingDispute.objects.select_related("booking__customer"),
+            pk=dispute_id,
+        )
+        is_participant = (
+            dispute.booking.customer_id == request.user.pk
+            or _is_assigned_worker(dispute.booking, request.user)
+        )
+        if not is_participant:
+            return Response({"detail": "Dispute not found."}, status=status.HTTP_404_NOT_FOUND)
+        if dispute.status not in (BookingDispute.Status.OPEN, BookingDispute.Status.IN_REVIEW):
+            return Response({"detail": "Evidence can only be added while the dispute is active."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if dispute.evidence.count() >= 10:
+            return Response({"detail": "A dispute can contain up to 10 evidence files."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded = request.FILES.get("file")
+        if not uploaded:
+            return Response({"file": "Choose an image file."}, status=status.HTTP_400_BAD_REQUEST)
+        if uploaded.size > 8 * 1024 * 1024:
+            return Response({"file": "Evidence images must be 8 MB or smaller."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from PIL import Image
+            image = Image.open(uploaded)
+            width, height = image.size
+            image_format = image.format
+            image.verify()
+            if image_format not in ("JPEG", "PNG", "WEBP"):
+                raise ValueError("Unsupported image format")
+        except Exception:
+            return Response({"file": "Upload a valid JPEG, PNG or WEBP image."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        finally:
+            uploaded.seek(0)
+
+        if width > 6000 or height > 6000:
+            return Response({"file": "Image dimensions must not exceed 6000 x 6000 pixels."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        extension = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}[image_format]
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        stored_path = storage.save(
+            f"booking_dispute_evidence/dispute_{dispute.pk}/{uuid.uuid4().hex}{extension}",
+            uploaded,
+        )
+        evidence = BookingDisputeEvidence.objects.create(
+            dispute=dispute,
+            uploaded_by=request.user,
+            file_path=stored_path,
+            original_name=os.path.basename(uploaded.name or "evidence")[:255],
+            note=str(request.data.get("note", "")).strip()[:500],
+        )
+        return Response({
+            "id": evidence.pk,
+            "original_name": evidence.original_name,
+            "note": evidence.note,
+            "created_at": evidence.created_at,
+        }, status=status.HTTP_201_CREATED)
+
+
+class BookingDisputeEvidencePhotoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, evidence_id):
+        evidence = get_object_or_404(
+            BookingDisputeEvidence.objects.select_related(
+                "dispute__booking__customer",
+                "dispute__booking__assignment__worker__user",
+            ),
+            pk=evidence_id,
+        )
+        is_participant = (
+            evidence.dispute.booking.customer_id == request.user.pk
+            or _is_assigned_worker(evidence.dispute.booking, request.user)
+        )
+        if not request.user.is_staff and not is_participant:
+            return Response({"detail": "Evidence not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        storage = FileSystemStorage(location=settings.PRIVATE_UPLOAD_ROOT)
+        if not storage.exists(evidence.file_path):
+            return Response({"detail": "Evidence not found."}, status=status.HTTP_404_NOT_FOUND)
+        content_type = mimetypes.guess_type(evidence.file_path)[0] or "application/octet-stream"
+        response = FileResponse(storage.open(evidence.file_path, "rb"), content_type=content_type)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
