@@ -420,6 +420,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     final descriptionController = TextEditingController();
     var category = 'service_quality';
     var outcome = 'investigation';
+    File? evidencePhoto;
     final payload = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -462,6 +463,25 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                   border: const OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final picked = await ImagePicker().pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                    );
+                    if (picked != null) {
+                      setDialogState(() => evidencePhoto = File(picked.path));
+                    }
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(evidencePhoto == null
+                      ? AirwayText.tr('Attach evidence photo (optional)', 'सबूत की फ़ोटो जोड़ें (वैकल्पिक)')
+                      : AirwayText.tr('Evidence photo selected', 'सबूत की फ़ोटो चुनी गई')),
+                ),
+              ),
             ]),
           ),
           actions: [
@@ -484,16 +504,31 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     descriptionController.dispose();
     if (payload == null || !mounted) return;
     try {
-      await BookingApi.createDispute(
+      final dispute = await BookingApi.createDispute(
         bookingId: job.bookingId,
         category: payload['category']!,
         description: payload['description']!,
         requestedOutcome: payload['requested_outcome']!,
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AirwayText.tr('Your concern was sent to AIRway support.', 'आपकी समस्या AIRway सपोर्ट को भेज दी गई है।'))),
+      var message = AirwayText.tr(
+        'Your concern was sent to AIRway support.',
+        'आपकी समस्या AIRway सपोर्ट को भेज दी गई है।',
       );
+      if (evidencePhoto != null) {
+        try {
+          await BookingApi.uploadDisputeEvidence(
+            disputeId: int.parse(dispute['id'].toString()),
+            photo: evidencePhoto!,
+          );
+        } catch (uploadError) {
+          message = AirwayText.tr(
+            'Report submitted, but evidence upload failed: $uploadError',
+            'रिपोर्ट भेज दी गई, लेकिन सबूत अपलोड नहीं हुआ: $uploadError',
+          );
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       await _loadAssignedJob();
     } catch (e) {
       if (!mounted) return;
