@@ -14,6 +14,7 @@ from .models import (
     WorkerZone,
     WorkerSchedule,
     WorkerLeave,
+    WorkerEarning,
 )
 
 
@@ -75,7 +76,7 @@ class WorkerProfileAdmin(ModelAdmin):
         ("Worker account", {"fields": ("user", "status", "gender")}),
         ("Application details", {"fields": (
             "experience_years", "qualification", "equipment_details",
-            "residential_address", "landmark", "bio", "upi_id",
+            "residential_address", "landmark", "bio", "upi_id", "commission_rate",
         )}),
         ("Review decision", {"fields": ("rejection_reason", "approved_by", "approved_at")}),
         ("Performance (read only)", {
@@ -375,3 +376,28 @@ class WorkerScheduleAdmin(ModelAdmin):
 class WorkerLeaveAdmin(ModelAdmin):
     list_display = ("worker", "start_at", "end_at")
     search_fields = ("worker__user__phone",)
+
+
+
+@admin.register(WorkerEarning)
+class WorkerEarningAdmin(ModelAdmin):
+    list_display = (
+        "id", "worker", "booking", "gross_amount", "commission_rate",
+        "commission_amount", "net_amount", "status", "paid_at",
+    )
+    list_filter = ("status", "created_at")
+    search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "payout_reference")
+    readonly_fields = (
+        "worker", "booking", "payment", "gross_amount", "commission_rate",
+        "commission_amount", "net_amount", "status", "hold_reason",
+        "payout_reference", "paid_at", "created_at", "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
