@@ -674,6 +674,23 @@ class BookingDisputeAdmin(ModelAdmin):
                     obj.resolved_by = request.user
                     obj.resolved_at = timezone.now()
         super().save_model(request, obj, form, change)
+        if change and obj.status != previous.status:
+            booking = obj.booking
+            recipients = {booking.customer_id: booking.customer}
+            assignment = getattr(booking, "assignment", None)
+            if assignment is not None:
+                recipients[assignment.worker.user_id] = assignment.worker.user
+            for recipient in recipients.values():
+                if recipient.pk == request.user.pk:
+                    continue
+                Notification.objects.create(
+                    user=recipient,
+                    type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                    title="AIRway support updated your case",
+                    body=f"Your support case for booking #{booking.pk} is now {obj.get_status_display().lower()}.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": booking.pk, "dispute_id": obj.pk, "status": obj.status},
+                )
 
     def has_add_permission(self, request):
         return False
