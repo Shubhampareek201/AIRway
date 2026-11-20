@@ -145,7 +145,11 @@ class WorkerProfileAdmin(ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         previous_status = None
+        previous_commission_rate = None
         if change:
+            previous_commission_rate = (
+                WorkerProfile.objects.filter(pk=obj.pk).values_list("commission_rate", flat=True).first()
+            )
             previous_status = (
                 WorkerProfile.objects
                 .filter(pk=obj.pk)
@@ -186,6 +190,11 @@ class WorkerProfileAdmin(ModelAdmin):
             )
 
         super().save_model(request, obj, form, change)
+
+        if change and previous_commission_rate != obj.commission_rate and obj.commission_rate is not None:
+            transaction.on_commit(
+                lambda worker_id=obj.pk: __import__("apps.workers.earnings", fromlist=["refresh_worker_earnings_for_profile"]).refresh_worker_earnings_for_profile(worker_id)
+            )
 
         if approval_requested:
             request._worker_approval_requested = True
