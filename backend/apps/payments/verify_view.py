@@ -553,6 +553,14 @@ def _process_verified_payment(
                 parent_order.save(update_fields=["status", "updated_at"])
                 message = f"Payment for AIRway order #{parent_order.id} was successful."
 
+            settled_items = (
+                [
+                    row for row in order_items
+                    if row.booking.appointment_group_id == payment.appointment_group_id
+                ]
+                if payment.appointment_group_id else order_items
+            )
+            settled_booking_ids = [row.booking_id for row in settled_items]
             Notification.objects.create(
                 user=payment.customer,
                 type=Notification.Type.PAYMENT_SUCCESS,
@@ -561,9 +569,10 @@ def _process_verified_payment(
                 channel=Notification.Channel.IN_APP,
                 data={
                     "order_id": parent_order.id,
+                    "appointment_group_id": payment.appointment_group_id,
                     "payment_id": payment.id,
                     "payment_stage": payment.stage,
-                    "booking_ids": [row.booking_id for row in order_items],
+                    "booking_ids": settled_booking_ids,
                 },
             )
             logger.info("Order payment stage %s verified for order %s", payment.stage, parent_order.id)
@@ -573,7 +582,8 @@ def _process_verified_payment(
                 "payment_id": payment.id,
                 "payment_stage": payment.stage,
                 "airway_order_id": parent_order.id,
-                "booking_ids": [row.booking_id for row in order_items],
+                "booking_ids": settled_booking_ids,
+                "appointment_group_id": payment.appointment_group_id,
                 "razorpay_payment_id": razorpay_payment_id,
                 "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
             }, status=status.HTTP_200_OK)
