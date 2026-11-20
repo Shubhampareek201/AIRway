@@ -23,6 +23,7 @@ from .models import (
     BookingWorkEvidence,
     RecurringWashPlan,
     RecurringWashVisit,
+    BookingDispute,
 )
 
 
