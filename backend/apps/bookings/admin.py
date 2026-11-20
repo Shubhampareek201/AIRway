@@ -14,6 +14,7 @@ from .models import (
     CartItem,
     Order,
     OrderItem,
+    AppointmentGroup,
     DispatchConfiguration,
     BookingCompletionOTP,
     WorkerOffer,
@@ -62,6 +63,12 @@ class CustomerCartAdmin(ModelAdmin):
     inlines = [CartItemInline]
 
 
+class AppointmentGroupInline(TabularInline):
+    model = AppointmentGroup
+    extra = 0
+    readonly_fields = ("group_number", "scheduled_at", "customer_message", "created_at")
+
+
 class OrderItemInline(TabularInline):
     model = OrderItem
     extra = 0
@@ -91,7 +98,7 @@ class OrderAdmin(ModelAdmin):
         "created_at", "updated_at", "subtotal", "tax_amount",
         "discount_amount", "total_amount", "metadata",
     )
-    inlines = [OrderItemInline]
+    inlines = [AppointmentGroupInline, OrderItemInline]
 
 
 @admin.action(description="Mark AIRway unable to fulfil and issue full service refund")
