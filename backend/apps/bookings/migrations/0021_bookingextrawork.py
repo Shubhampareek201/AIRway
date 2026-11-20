@@ -51,4 +51,8 @@ class Migration(migrations.Migration):
             model_name="bookingextrawork",
             constraint=models.CheckConstraint(condition=models.Q(("total_amount__gt", 0)), name="extra_work_total_positive"),
         ),
+        migrations.AddConstraint(
+            model_name="bookingextrawork",
+            constraint=models.UniqueConstraint(condition=models.Q(("status", "pending_customer")), fields=("booking",), name="one_pending_extra_work_per_booking"),
+        ),
     ]
