@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import razorpay
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -99,6 +100,16 @@ def issue_admin_partial_refund(
         raise ValueError("Refund amount must be positive and have at most two decimal places.")
     if not idempotency_key or len(idempotency_key) > 100:
         raise ValueError("A valid refund request key is required.")
+    if (
+        requested_by is None
+        or not requested_by.is_active
+        or not requested_by.is_staff
+        or not (
+            requested_by.is_superuser
+            or requested_by.has_perm("payments.issue_partial_paymentrefund")
+        )
+    ):
+        raise PermissionDenied("You do not have permission to issue partial refunds.")
     if not admin_note or not admin_note.strip():
         raise ValueError("An audit note is required for an admin-issued refund.")
     if reason not in (
