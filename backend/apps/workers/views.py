@@ -1145,6 +1145,11 @@ class WorkerJobStartView(APIView):
                 {"detail": "Job not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response(
+                {"detail": "Only approved workers can start jobs."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response(
