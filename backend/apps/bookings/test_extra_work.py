@@ -1,4 +1,5 @@
 from django.test import TestCase
+from datetime import timedelta
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -41,7 +42,7 @@ class ExtraWorkAPITest(TestCase):
             booking=self.booking, worker=self.worker, reason="Additional cleaning required",
             line_items=[{"description": "Deep clean", "quantity": 1, "unit_price": "250.00", "line_total": "250.00"}],
             subtotal="250.00", tax_amount="0.00", total_amount="250.00",
-            expires_at=timezone.now() + timezone.timedelta(hours=24),
+            expires_at=timezone.now() + timedelta(hours=24),
         )
 
     def test_worker_can_propose_extra_work_for_started_assigned_job(self):
