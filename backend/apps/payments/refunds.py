@@ -82,8 +82,10 @@ def _component_allocation(payment, line_total, stage_total):
     return wallet_part, gateway_part
 
 
-def _existing_refund_components(payment, booking):
+def _existing_refund_components(payment, booking, extra_work=None):
     refunds = PaymentRefund.objects.filter(payment=payment, booking=booking)
+    if extra_work is not None:
+        refunds = refunds.filter(extra_work=extra_work)
     return (
         sum(refunds.values_list("amount", flat=True), Decimal("0.00")),
         sum(refunds.values_list("wallet_amount", flat=True), Decimal("0.00")),
@@ -99,8 +101,9 @@ def issue_admin_partial_refund(
     admin_note,
     idempotency_key,
     reason=PaymentRefund.Reason.ADMIN_ADJUSTMENT,
+    extra_work=None,
 ):
-    """Create an audited, source-proportional partial refund under a unique request key."""
+    """Create an audited partial refund against one service or extra-work allocation."""
     try:
         requested_amount = Decimal(str(amount))
     except (InvalidOperation, TypeError, ValueError):
@@ -130,6 +133,13 @@ def issue_admin_partial_refund(
         PaymentRefund.Reason.DISPUTE_RESOLUTION,
     ):
         raise ValueError("Unsupported admin refund reason.")
+    if payment.extra_work_id:
+        if extra_work is None:
+            extra_work = payment.extra_work
+        elif extra_work.pk != payment.extra_work_id:
+            raise ValueError("The selected extra-work proposal does not match this payment.")
+    if extra_work is not None and extra_work.booking_id != booking.pk:
+        raise ValueError("The selected extra-work proposal does not belong to this booking.")
 
     with transaction.atomic():
         existing = PaymentRefund.objects.filter(idempotency_key=idempotency_key).first()
@@ -137,30 +147,46 @@ def issue_admin_partial_refund(
             if (
                 existing.payment_id != payment.pk
                 or existing.booking_id != booking.pk
+                or existing.extra_work_id != (extra_work.pk if extra_work else None)
                 or existing.amount != requested_amount
             ):
                 raise ValueError("This refund request key was already used for a different request.")
             refund = existing
         else:
-            locked_payment = Payment.objects.select_for_update().get(
-                pk=payment.pk
-            )
+            locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
             locked_booking = Booking.objects.select_for_update().get(pk=booking.pk)
             if locked_payment.status != Payment.Status.PAID:
                 raise ValueError("Only captured payments can be partially refunded.")
+            if locked_payment.extra_work_id:
+                locked_extra_work = locked_payment.extra_work
+                if extra_work is None:
+                    extra_work = locked_extra_work
+                elif extra_work.pk != locked_extra_work.pk:
+                    raise ValueError("The selected extra-work proposal does not match this payment.")
+            if extra_work is not None:
+                if extra_work.booking_id != locked_booking.pk:
+                    raise ValueError("The selected extra-work proposal does not belong to this booking.")
+                if PaymentRefund.objects.filter(
+                    payment=locked_payment,
+                    booking=locked_booking,
+                    extra_work__isnull=True,
+                ).exists():
+                    raise ValueError(
+                        "A booking-level refund already exists; this extra-work allocation cannot be isolated safely."
+                    )
             line_total, wallet_captured, gateway_captured, order_item = _line_stage_amount(
-                locked_payment, locked_booking
+                locked_payment, locked_booking, extra_work=extra_work
             )
             if line_total <= 0:
-                raise ValueError("This payment has no captured allocation for the selected service.")
+                raise ValueError("This payment has no captured allocation for the selected service or extra work.")
             _, refunded_wallet, refunded_gateway = _existing_refund_components(
-                locked_payment, locked_booking
+                locked_payment, locked_booking, extra_work=extra_work
             )
             remaining_wallet = wallet_captured - refunded_wallet
             remaining_gateway = gateway_captured - refunded_gateway
             remaining_total = remaining_wallet + remaining_gateway
             if remaining_wallet < 0 or remaining_gateway < 0:
-                raise ValueError("Existing refunds exceed the captured payment allocation. Reconciliation is required.")
+                raise ValueError("Existing refunds exceed the captured allocation. Reconciliation is required.")
             if requested_amount > remaining_total:
                 raise ValueError(
                     f"Refund exceeds the remaining refundable amount of ₹{remaining_total:.2f}."
@@ -179,6 +205,7 @@ def issue_admin_partial_refund(
             refund = PaymentRefund.objects.create(
                 payment=locked_payment,
                 booking=locked_booking,
+                extra_work=extra_work,
                 order_item=order_item,
                 amount=requested_amount,
                 wallet_amount=wallet_refund,
