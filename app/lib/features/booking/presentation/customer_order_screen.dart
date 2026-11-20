@@ -133,7 +133,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       );
       return;
     }
-    final walletAmount = parsedWalletAmount;
+    final walletAmount = selectedGroup != null
+        ? parsedWalletAmount.clamp(0.0, stageDue).toDouble()
+        : parsedWalletAmount;
     if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > stageDue) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AirwayText.tr('Enter a wallet amount within your available balance and the amount due now.', 'उपलब्ध वॉलेट बैलेंस और अभी देय राशि के भीतर रकम दर्ज करें।'))),
