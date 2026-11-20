@@ -227,6 +227,51 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
+  Future<String?> _requestArrivalOtp() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AirwayText.tr('Customer arrival code', 'ग्राहक का आगमन कोड')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AirwayText.tr(
+              'Ask the customer for the 6-digit code sent to their AIRway notifications. Work cannot start until the customer shares it.',
+              'ग्राहक से AIRway नोटिफ़िकेशन में भेजा गया 6 अंकों का कोड लें। ग्राहक के कोड के बिना काम शुरू नहीं होगा।',
+            )),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: InputDecoration(
+                labelText: AirwayText.tr('6-digit arrival code', '6 अंकों का आगमन कोड'),
+                border: const OutlineInputBorder(),
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AirwayText.tr('Not now', 'अभी नहीं')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: Text(AirwayText.tr('Verify and start', 'वेरिफ़ाई करके शुरू करें')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return code;
+  }
+
   Future<void> _startJob() async {
     if (!mounted || _jobDetail == null) return;
 
@@ -235,10 +280,21 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     });
 
     try {
-      await WorkerApi.startJob(_jobDetail!.assignmentId);
+      var result = await WorkerApi.startJob(_jobDetail!.assignmentId);
+      if (result['arrival_otp_required'] == true) {
+        final arrivalOtp = await _requestArrivalOtp();
+        if (arrivalOtp == null || arrivalOtp.isEmpty) return;
+        result = await WorkerApi.startJob(
+          _jobDetail!.assignmentId,
+          arrivalOtp: arrivalOtp,
+        );
+        if (result['arrival_otp_required'] == true) {
+          throw Exception(result['detail'] ?? 'Customer arrival code is required.');
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Job started', 'काम शुरू हो गया')) ),
+          SnackBar(content: Text(AirwayText.tr('Arrival verified. Appointment started.', 'आगमन वेरिफ़ाई हो गया। अपॉइंटमेंट शुरू हो गया।')) ),
         );
         await _loadAssignedJob();
       }
