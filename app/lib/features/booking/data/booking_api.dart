@@ -453,6 +453,15 @@ class BookingApi {
     );
   }
 
+  static Future<Map<String, dynamic>> cancelAppointmentGroup(int groupId) async {
+    final result = await request(
+      '/api/v1/bookings/appointment-groups/$groupId/cancel/',
+      method: 'POST',
+      data: const {},
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
   static Future<void> cancelRecurringPlan(int planId, {String? reason}) async {
     await request(
       '/api/v1/bookings/recurring-plans/$planId/cancel/',
