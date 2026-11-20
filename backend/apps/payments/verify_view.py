@@ -397,6 +397,33 @@ def _process_verified_payment(
         }
         payment.save()
 
+        if payment.extra_work_id:
+            extra_work = payment.extra_work
+            extra_work.payment_status = "paid"
+            extra_work.save(update_fields=["payment_status", "updated_at"])
+            Notification.objects.create(
+                user=payment.customer,
+                type=Notification.Type.PAYMENT_SUCCESS,
+                title="Extra work payment successful",
+                body=f"Your additional work payment of ₹{payment.amount + payment.wallet_amount} was received.",
+                channel=Notification.Channel.IN_APP,
+                data={
+                    "order_id": payment.order_id,
+                    "booking_id": extra_work.booking_id,
+                    "extra_work_id": extra_work.pk,
+                    "payment_id": payment.pk,
+                },
+            )
+            return Response({
+                "detail": "Extra-work payment successful.",
+                "status": payment.status,
+                "payment_id": payment.pk,
+                "payment_stage": payment.stage,
+                "extra_work_id": extra_work.pk,
+                "razorpay_payment_id": razorpay_payment_id,
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+            }, status=status.HTTP_200_OK)
+
         # Parent-order staged settlement. Advance capture unlocks dispatch;
         # balance capture closes the order. Neither stage marks the order paid
         # prematurely.
