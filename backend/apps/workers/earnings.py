@@ -73,18 +73,23 @@ def sync_worker_earning(booking_id, payment_id):
 
     commission = None
     net = None
-    state = WorkerEarning.Status.AVAILABLE
-    if hold_reason:
-        state = WorkerEarning.Status.ON_HOLD
-    elif existing and existing.commission_rate is not None:
+    if (
+        existing
+        and existing.commission_rate is not None
+        and existing.commission_amount is not None
+    ):
         commission = existing.commission_amount
         net = existing.net_amount
-        state = existing.status if existing.status == WorkerEarning.Status.PAID else WorkerEarning.Status.AVAILABLE
-    else:
+    elif rate is not None:
         commission = (gross * rate / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         net = gross - commission
+    state = (
+        WorkerEarning.Status.ON_HOLD
+        if hold_reason
+        else WorkerEarning.Status.AVAILABLE
+    )
 
     values = {
         "worker": worker,
