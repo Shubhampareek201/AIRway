@@ -18,6 +18,13 @@ CENT = Decimal("0.01")
 
 def _line_stage_amount(payment, booking):
     """Return the immutable per-service captured split for this payment."""
+    if payment.extra_work_id and payment.extra_work.booking_id == booking.id:
+        return (
+            payment.extra_work.total_amount,
+            payment.wallet_amount,
+            payment.amount,
+            None,
+        )
     rows = (payment.raw_response or {}).get("service_allocation_v1", [])
     row = next((entry for entry in rows if entry.get("booking_id") == booking.id), None)
     if row:
