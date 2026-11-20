@@ -416,14 +416,41 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   }
 
   Widget _buildExtraWorkCard(WorkerAssignmentDetail job) {
-    if (job.status != BookingStatus.inProgress) return const SizedBox.shrink();
+    final canPropose = job.status == BookingStatus.inProgress;
+    if (!canPropose && job.extraWorkRequests.isEmpty) return const SizedBox.shrink();
     return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE8E2F5)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Additional work', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 6),
-          const Text('If the customer needs work beyond the booked service, send a priced request. Do not start or charge for it until the customer approves.'),
+          Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1EDFF),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.add_task_rounded, color: Color(0xFF6C4AE3), size: 19),
+            ),
+            const SizedBox(width: 9),
+            const Expanded(child: Text(
+              'Additional work',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            )),
+          ]),
+          if (canPropose) ...[
+            const SizedBox(height: 7),
+            const Text(
+              'If the customer needs work beyond the booked service, send a priced request. Do not start or charge for it until the customer approves.',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 13),
+            ),
+          ],
           if (job.extraWorkRequests.isNotEmpty) ...[
             const SizedBox(height: 14),
             const Divider(),
@@ -455,16 +482,17 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AirwayColors.primarySoft.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(10),
+                    color: const Color(0xFFFBFAFF),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE8E2F5)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
-                          Text('₹${request['total_amount'] ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text))),
+                          Text('₹${request['total_amount'] ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6C4AE3))),
                         ],
                       ),
                       if ((request['reason']?.toString() ?? '').isNotEmpty)
@@ -476,6 +504,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(items, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                        ),
+                      if ((request['additional_duration_minutes'] as num? ?? 0) > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Additional time: ${request['additional_duration_minutes']} minutes',
+                            style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                          ),
                         ),
                       if (paymentLabel.isNotEmpty)
                         Padding(
@@ -493,12 +529,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
               );
             }),
           ],
-          const SizedBox(height: 10),
-          SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: _isActionInProgress ? null : _proposeExtraWork,
-            icon: const Icon(Icons.add_task_rounded),
-            label: const Text('Request customer approval'),
-          )),
+          if (canPropose) ...[
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: FilledButton.icon(
+              onPressed: _isActionInProgress ? null : _proposeExtraWork,
+              icon: const Icon(Icons.add_task_rounded),
+              label: const Text('Request customer approval'),
+            )),
+          ],
         ]),
       ),
     );
