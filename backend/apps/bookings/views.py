@@ -2064,6 +2064,139 @@ class CustomerOrderDetailView(APIView):
         })
 
 
+class CustomerAppointmentGroupCancelView(APIView):
+    """Cancel every active service in one appointment group without touching other groups."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, group_id):
+        group_ref = get_object_or_404(
+            AppointmentGroup.objects.filter(order__customer=request.user),
+            pk=group_id,
+        )
+        order = get_object_or_404(
+            Order.objects.select_for_update(),
+            pk=group_ref.order_id,
+            customer=request.user,
+        )
+        group = get_object_or_404(
+            AppointmentGroup.objects.select_for_update(),
+            pk=group_id,
+            order=order,
+        )
+        bookings = list(
+            Booking.objects.select_for_update(of=("self",))
+            .filter(appointment_group=group)
+            .exclude(status=Booking.Status.CANCELLED)
+            .select_related("customer")
+            .order_by("pk")
+        )
+        if not bookings:
+            return Response(
+                {"detail": "This appointment has no active services to cancel."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if any(
+            booking.status in (
+                Booking.Status.IN_PROGRESS,
+                Booking.Status.COMPLETED,
+                Booking.Status.DISPUTED,
+            )
+            for booking in bookings
+        ):
+            return Response(
+                {"detail": "An appointment that has started or finished cannot be cancelled online. Contact AIRway support."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if any(
+            booking.status not in (
+                Booking.Status.PENDING,
+                Booking.Status.CONFIRMED,
+                Booking.Status.ASSIGNED,
+            )
+            for booking in bookings
+        ):
+            return Response(
+                {"detail": "This appointment is no longer eligible for cancellation."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        now = timezone.now()
+        for booking in bookings:
+            old_status = booking.status
+            assignment = getattr(booking, "assignment", None)
+            if assignment:
+                Notification.objects.create(
+                    user=assignment.worker.user,
+                    type=Notification.Type.WORKER_OFFER_WITHDRAWN,
+                    title="Appointment cancelled",
+                    body=f"Appointment #{group.group_number} for order #{order.pk} was cancelled by the customer.",
+                    channel=Notification.Channel.IN_APP,
+                    data={
+                        "order_id": order.pk,
+                        "appointment_group_id": group.pk,
+                        "booking_id": booking.pk,
+                    },
+                )
+                assignment.delete()
+
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = now
+            booking.cancelled_by = request.user
+            booking.cancellation_reason = "Appointment group cancelled by customer."
+            booking.save(update_fields=[
+                "status", "cancelled_at", "cancelled_by",
+                "cancellation_reason", "updated_at",
+            ])
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                from_status=old_status,
+                to_status=Booking.Status.CANCELLED,
+                changed_by=request.user,
+                note=f"Appointment group #{group.group_number} cancelled by customer.",
+            )
+            WorkerOffer.objects.filter(
+                booking=booking,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+            transaction.on_commit(
+                lambda booking_id=booking.pk: _schedule_booking_refund(booking_id)
+            )
+
+        WorkerOffer.objects.filter(
+            appointment_group=group,
+            status=WorkerOffer.Status.PENDING,
+        ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+
+        active_remaining = order.items.exclude(
+            booking__status=Booking.Status.CANCELLED
+        ).exists()
+        order.status = (
+            Order.Status.PARTIALLY_CANCELLED
+            if active_remaining else Order.Status.CANCELLED
+        )
+        order.save(update_fields=["status", "updated_at"])
+
+        Notification.objects.create(
+            user=request.user,
+            type=Notification.Type.BOOKING_CANCELLED,
+            title="Appointment cancelled",
+            body=f"Appointment #{group.group_number} and its {len(bookings)} service(s) have been cancelled. Eligible refunds will be processed separately.",
+            channel=Notification.Channel.IN_APP,
+            data={
+                "order_id": order.pk,
+                "appointment_group_id": group.pk,
+                "booking_ids": [booking.pk for booking in bookings],
+            },
+        )
+        return Response({
+            "detail": "Appointment cancelled. Other appointments in this order were not changed.",
+            "appointment_group_id": group.pk,
+            "cancelled_booking_ids": [booking.pk for booking in bookings],
+            "order_status": order.status,
+        })
+
+
 class CustomerOrderListView(APIView):
     """List the authenticated customer's multi-service orders."""
     permission_classes = [permissions.IsAuthenticated]
