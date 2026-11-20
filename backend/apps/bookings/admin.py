@@ -141,7 +141,23 @@ def mark_unfulfillable_and_refund(modeladmin, request, queryset):
             )
             assignment = getattr(locked, "assignment", None)
             if assignment:
+                Notification.objects.create(
+                    user=assignment.worker.user,
+                    type=Notification.Type.WORKER_OFFER_WITHDRAWN,
+                    title="Service cancelled by AIRway",
+                    body=f"AIRway cancelled booking #{locked.pk} because the service could not be fulfilled. This job is no longer assigned to you.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": locked.pk, "reason": "platform_unfulfilled"},
+                )
                 assignment.delete()
+
+            WorkerOffer.objects.filter(
+                booking=locked,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).update(
+                status=WorkerOffer.Status.WITHDRAWN,
+                responded_at=timezone.now(),
+            )
 
             order_item = getattr(locked, "order_item", None)
             if order_item:
