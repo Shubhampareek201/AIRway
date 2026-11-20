@@ -46,6 +46,15 @@ class Booking(TimeStampedModel):
         related_name="bookings",
     )
 
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bookings",
+        help_text="Appointment grouping for multi-service orders; null for legacy standalone bookings.",
+    )
+
     booking_mode = models.CharField(
         max_length=15,
         choices=BookingMode.choices,
@@ -397,6 +406,36 @@ class Order(TimeStampedModel):
 
     def __str__(self):
         return f"Order #{self.pk} - {self.customer.phone} - ₹{self.total_amount}"
+
+
+class AppointmentGroup(TimeStampedModel):
+    """A customer-facing appointment containing one or more compatible services."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="appointment_groups",
+    )
+    group_number = models.PositiveSmallIntegerField()
+    scheduled_at = models.DateTimeField()
+    customer_message = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="One optional message shared with the worker handling this appointment.",
+    )
+
+    class Meta:
+        ordering = ["group_number", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "group_number"],
+                name="unique_order_appointment_group_number",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Order #{self.order_id} - Appointment {self.group_number}"
+
 
 
 class OrderItem(TimeStampedModel):
