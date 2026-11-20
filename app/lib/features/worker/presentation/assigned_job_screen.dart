@@ -10,6 +10,7 @@ import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
+import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/ratings/data/rating_api.dart';
 
 class AssignedJobScreen extends StatefulWidget {
@@ -415,6 +416,134 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
+  Future<void> _raiseJobDispute(WorkerAssignmentDetail job) async {
+    final descriptionController = TextEditingController();
+    var category = 'service_quality';
+    var outcome = 'investigation';
+    final payload = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(AirwayText.tr('Report a job concern', 'जॉब से जुड़ी समस्या रिपोर्ट करें')),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<String>(
+                value: category,
+                decoration: InputDecoration(labelText: AirwayText.tr('Concern type', 'समस्या का प्रकार')),
+                items: const [
+                  DropdownMenuItem(value: 'service_quality', child: Text('Service quality')),
+                  DropdownMenuItem(value: 'damage', child: Text('Property damage')),
+                  DropdownMenuItem(value: 'payment', child: Text('Payment')),
+                  DropdownMenuItem(value: 'customer_conduct', child: Text('Customer conduct')),
+                  DropdownMenuItem(value: 'safety', child: Text('Safety concern')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => category = value ?? category),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: outcome,
+                decoration: InputDecoration(labelText: AirwayText.tr('Support needed', 'किस सहायता की ज़रूरत है?')),
+                items: const [
+                  DropdownMenuItem(value: 'investigation', child: Text('Investigation')),
+                  DropdownMenuItem(value: 'rework', child: Text('Service recovery')),
+                  DropdownMenuItem(value: 'refund_review', child: Text('Payment review')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => outcome = value ?? outcome),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                maxLines: 4,
+                maxLength: 5000,
+                decoration: InputDecoration(
+                  labelText: AirwayText.tr('Describe the concern', 'समस्या का विवरण दें'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
+            FilledButton(
+              onPressed: () {
+                if (descriptionController.text.trim().isEmpty) return;
+                Navigator.pop(dialogContext, {
+                  'category': category,
+                  'requested_outcome': outcome,
+                  'description': descriptionController.text.trim(),
+                });
+              },
+              child: Text(AirwayText.tr('Submit', 'जमा करें')),
+            ),
+          ],
+        ),
+      ),
+    );
+    descriptionController.dispose();
+    if (payload == null || !mounted) return;
+    try {
+      await BookingApi.createDispute(
+        bookingId: job.bookingId,
+        category: payload['category']!,
+        description: payload['description']!,
+        requestedOutcome: payload['requested_outcome']!,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Your concern was sent to AIRway support.', 'आपकी समस्या AIRway सपोर्ट को भेज दी गई है।'))),
+      );
+      await _loadAssignedJob();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not submit concern: $e', 'समस्या भेजी नहीं जा सकी: $e'))),
+      );
+    }
+  }
+
+  Widget _buildDisputeCard(WorkerAssignmentDetail job) {
+    final canReport = job.status == BookingStatus.inProgress ||
+        job.status == BookingStatus.completed;
+    if (!canReport) return const SizedBox.shrink();
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE8E2F5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.support_agent_rounded, color: Color(0xFF6C4AE3)),
+            const SizedBox(width: 9),
+            Expanded(child: Text(
+              AirwayText.tr('AIRway support', 'AIRway सहायता'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            )),
+          ]),
+          const SizedBox(height: 7),
+          Text(AirwayText.tr(
+            'If there is a safety, conduct, payment or service concern, report it to AIRway support for review.',
+            'सुरक्षा, व्यवहार, भुगतान या सेवा से जुड़ी समस्या होने पर AIRway सपोर्ट को रिपोर्ट करें।',
+          ), style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : () => _raiseJobDispute(job),
+              icon: const Icon(Icons.flag_outlined),
+              label: Text(AirwayText.tr('Report a concern', 'समस्या रिपोर्ट करें')),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _buildExtraWorkCard(WorkerAssignmentDetail job) {
     final canPropose = job.status == BookingStatus.inProgress;
     if (!canPropose && job.extraWorkRequests.isEmpty) return const SizedBox.shrink();
@@ -705,6 +834,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             _buildExtraWorkCard(job),
             const SizedBox(height: 16),
             _buildEvidenceCard(job),
+            const SizedBox(height: 16),
+            _buildDisputeCard(job),
             const SizedBox(height: 16),
             if (_canShareLocation(job))
               Container(
