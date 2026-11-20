@@ -40,6 +40,7 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
             "landmark",
             "bio",
             "upi_id",
+            "commission_rate",
             "photo_url",
             "services",
             "zones",
