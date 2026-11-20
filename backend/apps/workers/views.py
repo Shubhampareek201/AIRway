@@ -20,7 +20,7 @@ from django.utils import timezone
 from apps.accounts.models import Address, User
 from apps.catalog.models import Service
 from apps.core.models import Zone
-from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem
+from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
 from apps.notifications.models import Notification
 from apps.wallet.models import WalletTransaction
 
@@ -1391,12 +1391,14 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
         ).select_related(
-            "booking__service", "booking__variant", "booking__address", "booking__order_item__order", "worker__user", "order"
+            "booking__service", "booking__variant", "booking__address", "booking__order_item__order", "worker__user", "order", "appointment_group"
         ).prefetch_related(
             "booking__form_responses__form_field",
             "booking__booking_addons__addon",
             "order__items__booking__service",
             "order__items__booking__variant",
+            "appointment_group__bookings__service",
+            "appointment_group__bookings__variant",
         )
 
     def get_serializer_class(self):
@@ -1430,9 +1432,14 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             # order prevents deadlocks when two workers accept different offers
             # for the same order at nearly the same time.
             order_offer = bool(offer.order_id)
+            group_offer = bool(offer.appointment_group_id)
             order = None
+            group = None
             if order_offer:
                 order = Order.objects.select_for_update().get(pk=offer.order_id)
+            elif group_offer:
+                group = AppointmentGroup.objects.get(pk=offer.appointment_group_id)
+                order = Order.objects.select_for_update().get(pk=group.order_id)
             else:
                 parent_order_id = OrderItem.objects.filter(
                     booking_id=offer.booking_id
@@ -1460,7 +1467,28 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
                 return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
 
-            if order_offer:
+            if group_offer:
+                group = AppointmentGroup.objects.select_for_update().get(pk=group.pk)
+                bookings = list(
+                    Booking.objects.select_for_update(of=("self",))
+                    .filter(appointment_group=group)
+                    .exclude(status=Booking.Status.CANCELLED)
+                    .select_related("service__category", "variant", "address__zone__city")
+                    .order_by("pk")
+                )
+                if not bookings:
+                    return Response({"detail": "This appointment no longer has active services."}, status=status.HTTP_409_CONFLICT)
+                if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
+                    return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
+                from apps.payments.models import Payment
+                if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
+                    order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID,
+                ).exists():
+                    return Response(
+                        {"detail": "The customer's 30% advance must be verified before accepting this appointment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+            elif order_offer:
                 if offer.status != WorkerOffer.Status.PENDING:
                     return Response({"detail": "This order has already been accepted by another worker."}, status=status.HTTP_409_CONFLICT)
                 bookings = list(
@@ -1579,11 +1607,18 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 BookingStatusHistory.objects.create(
                     booking=booking, from_status=old_status,
                     to_status=Booking.Status.ASSIGNED, changed_by=worker.user,
-                    note="Worker accepted complete order offer" if order_offer else "Worker accepted service line from parent order" if order else "Worker accepted job offer",
+                    note=(
+                        f"Worker accepted appointment group #{group.group_number}"
+                        if group_offer else
+                        "Worker accepted complete order offer" if order_offer else
+                        "Worker accepted service line from parent order" if order else
+                        "Worker accepted job offer"
+                    ),
                 )
                 assignment_payload = {
                     "booking_id": booking.pk,
                     "order_id": order.pk if order else None,
+                    "appointment_group_id": group.pk if group_offer else None,
                     "worker_id": worker.pk,
                 }
                 Notification.objects.create(
@@ -1610,7 +1645,31 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             offer.accepted_at = now
             offer.responded_at = now
             offer.save(update_fields=["status", "accepted_at", "responded_at", "updated_at"])
-            if order_offer:
+            if group_offer:
+                WorkerOffer.objects.filter(
+                    appointment_group=group, status=WorkerOffer.Status.PENDING
+                ).exclude(pk=offer.pk).update(
+                    status=WorkerOffer.Status.WITHDRAWN, responded_at=now
+                )
+                WorkerOffer.objects.filter(
+                    booking__in=bookings, appointment_group__isnull=True,
+                    order__isnull=True, status=WorkerOffer.Status.PENDING,
+                ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+                active_ids = list(
+                    order.items.exclude(booking__status=Booking.Status.CANCELLED)
+                    .values_list("booking_id", flat=True)
+                )
+                if active_ids and all(
+                    BookingAssignment.objects.filter(booking_id=booking_id).exists()
+                    for booking_id in active_ids
+                ):
+                    order.status = (
+                        Order.Status.PARTIALLY_CANCELLED
+                        if order.items.filter(booking__status=Booking.Status.CANCELLED).exists()
+                        else Order.Status.AWAITING_PAYMENT
+                    )
+                    order.save(update_fields=["status", "updated_at"])
+            elif order_offer:
                 WorkerOffer.objects.filter(
                     order=order, status=WorkerOffer.Status.PENDING
                 ).exclude(pk=offer.pk).update(
@@ -1648,7 +1707,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
 
         response_data = {
             "status": "accepted",
-            "detail": "Complete order accepted successfully." if order_offer else "Offer accepted successfully.",
+            "detail": (f"Appointment group #{group.group_number} accepted successfully." if group_offer else "Complete order accepted successfully." if order_offer else "Offer accepted successfully."),
             "booking_status": bookings[0].status,
             "assignment_id": assignments[0].pk,
             "assigned_booking_ids": [booking.pk for booking in bookings],
