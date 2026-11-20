@@ -763,7 +763,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     booking_status = serializers.CharField(source="booking.status", read_only=True)
     worker_name = serializers.CharField(source="worker.user.name", read_only=True)
     worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
-    service_title = serializers.CharField(source="booking.service.title", read_only=True)
+    service_title = serializers.SerializerMethodField()
     service_unit_label = serializers.CharField(source="booking.service.unit_label", read_only=True)
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
@@ -933,12 +933,32 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         order_item = getattr(obj.booking, "order_item", None)
         return order_item.quantity if order_item else int((obj.booking.pricing_snapshot or {}).get("quantity", 1))
 
+    def get_service_title(self, obj):
+        if obj.appointment_group_id:
+            first_active = obj.appointment_group.bookings.exclude(
+                status=Booking.Status.CANCELLED
+            ).select_related("service").order_by("pk").first()
+            if first_active:
+                return first_active.service.title
+        return obj.booking.service.title
+
     def get_can_accept(self, obj):
         from django.utils import timezone
+        if obj.appointment_group_id:
+            active_statuses = list(
+                obj.appointment_group.bookings.exclude(
+                    status=Booking.Status.CANCELLED
+                ).values_list("status", flat=True)
+            )
+            booking_eligible = bool(active_statuses) and all(
+                value in ("pending", "confirmed") for value in active_statuses
+            )
+        else:
+            booking_eligible = obj.booking.status in ("pending", "confirmed")
         return (
             obj.status == obj.Status.PENDING
             and obj.expires_at > timezone.now()
-            and obj.booking.status in ("pending", "confirmed")
+            and booking_eligible
             and obj.worker.status == "approved"
             and obj.worker.is_online
         )
