@@ -1302,6 +1302,12 @@ class BookingViewSet(viewsets.ModelViewSet):
         for settled_payment in settled:
             sync_worker_earning(locked_booking.pk, settled_payment.pk)
 
+        # Recovery visits are free to the customer but still create a normal,
+        # finance-audited worker earning funded by AIRway.
+        if getattr(locked_booking, "rework_source", None) is not None:
+            from apps.workers.earnings import sync_rework_worker_earning
+            sync_rework_worker_earning(locked_booking.pk)
+
         return Response({
             "detail": "Service completion verified successfully.",
             "status": Booking.Status.COMPLETED,
