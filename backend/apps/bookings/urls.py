@@ -2,6 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    CustomerExtraWorkListView,
+    CustomerExtraWorkDecisionView,
     BookingViewSet,
     CustomerCartView,
     CustomerCartItemView,
@@ -26,6 +28,8 @@ urlpatterns = [
     path("orders/", CustomerOrderListView.as_view(), name="customer-order-list"),
     path("orders/<int:order_id>/", CustomerOrderDetailView.as_view(), name="customer-order-detail"),
     path("appointment-groups/<int:group_id>/cancel/", CustomerAppointmentGroupCancelView.as_view(), name="customer-appointment-group-cancel"),
+    path("bookings/<int:booking_id>/extra-work/", CustomerExtraWorkListView.as_view(), name="customer-extra-work-list"),
+    path("extra-work/<int:extra_work_id>/decision/", CustomerExtraWorkDecisionView.as_view(), name="customer-extra-work-decision"),
     path("recurring-plans/<int:plan_id>/cancel/", CustomerRecurringWashPlanCancelView.as_view(), name="recurring-plan-cancel"),
     path("recurring-visits/<int:visit_id>/reschedule/", CustomerRecurringWashVisitRescheduleView.as_view(), name="recurring-visit-reschedule"),
     path("cart/items/<int:item_id>/", CustomerCartItemView.as_view(), name="customer-cart-item"),
