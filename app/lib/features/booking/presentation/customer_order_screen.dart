@@ -254,12 +254,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             if ((proposal['additional_duration_minutes'] as num? ?? 0) > 0)
               Padding(padding: const EdgeInsets.only(top: 5), child: Text('Additional time: ' + proposal['additional_duration_minutes'].toString() + ' minutes', style: const TextStyle(color: sub, fontSize: 12))),
             const SizedBox(height: 8),
-            Text(
-              proposal['status'] == 'pending_customer' ? 'Awaiting your decision'
-                : proposal['status'] == 'approved'
-                  ? 'Approved • ' + (proposal['payment_choice'] == 'separate' ? 'Separate payment' : 'Added to appointment balance') + ' • ' + (proposal['payment_status'] == 'paid' ? 'Paid' : 'Payment pending')
-                  : 'Request ' + proposal['status'].toString(),
-              style: const TextStyle(color: violet, fontSize: 12, fontWeight: FontWeight.w800),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1EDFF),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Text(
+                proposal['status'] == 'pending_customer' ? 'Awaiting your decision'
+                  : proposal['status'] == 'approved'
+                    ? 'Approved • ' + (proposal['payment_choice'] == 'separate' ? 'Separate payment' : 'Added to appointment balance') + ' • ' + (proposal['payment_status'] == 'paid' ? 'Paid' : 'Payment pending')
+                    : 'Request ' + proposal['status'].toString(),
+                style: const TextStyle(color: violet, fontSize: 12, fontWeight: FontWeight.w800),
+              ),
             ),
             _extraWorkRefundSection(row, proposal),
             if (proposal['status'] == 'pending_customer') ...[
