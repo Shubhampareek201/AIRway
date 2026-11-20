@@ -237,10 +237,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       for (final proposal in proposals)
         Container(
           margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(color: const Color(0xFFFFFCF4), borderRadius: BorderRadius.circular(13), border: Border.all(color: const Color(0xFFE9D9AD))),
+          decoration: BoxDecoration(color: const Color(0xFFFBFAFF), borderRadius: BorderRadius.circular(15), border: Border.all(color: const Color(0xFFE8E2F5))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Icon(Icons.add_task_rounded, color: Color(0xFF8A641B), size: 18), const SizedBox(width: 7),
+              const Icon(Icons.add_task_rounded, color: violet, size: 18), const SizedBox(width: 7),
               const Expanded(child: Text('Additional work request', style: TextStyle(fontWeight: FontWeight.w900, color: ink))),
               Text('₹' + amount(proposal['total_amount']).toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
             ]),
