@@ -2193,7 +2193,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
+        worker_started = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(worker_started.status_code, 200, worker_started.data)
 
         # Customer tries to start (should fail)
         start_resp = self.client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
