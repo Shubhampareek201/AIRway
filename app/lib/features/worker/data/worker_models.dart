@@ -199,7 +199,7 @@ class WorkerOffer {
       serviceUnitLabel: map['service_unit_label']?.toString(),
       scheduledAt: map['scheduled_at'] != null ? DateTime.parse(map['scheduled_at'] as String) : null,
       serviceAddress: map['service_address'] as String?,
-      bookingNotes: map['booking_notes'] as String?,
+      bookingNotes: (map['appointment_group_message'] as String?) ?? (map['booking_notes'] as String?),
       expectedDurationMinutes: int.tryParse(map['expected_duration_minutes']?.toString() ?? '') ?? 60,
       orderServices: (map['order_services'] as List? ?? [])
           .whereType<Map>()
