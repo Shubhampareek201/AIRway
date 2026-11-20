@@ -51,7 +51,12 @@ def sync_worker_earning(booking_id, payment_id):
     if existing and existing.status == WorkerEarning.Status.PAID:
         return existing
 
-    rate = worker.commission_rate
+    # Once a commission rate is snapshotted, retries and later rate changes must not rewrite history.
+    rate = (
+        existing.commission_rate
+        if existing and existing.commission_rate is not None
+        else worker.commission_rate
+    )
     refunds_exist = PaymentRefund.objects.filter(
         booking=booking,
         status__in=(
@@ -71,6 +76,10 @@ def sync_worker_earning(booking_id, payment_id):
     state = WorkerEarning.Status.AVAILABLE
     if hold_reason:
         state = WorkerEarning.Status.ON_HOLD
+    elif existing and existing.commission_rate is not None:
+        commission = existing.commission_amount
+        net = existing.net_amount
+        state = existing.status if existing.status == WorkerEarning.Status.PAID else WorkerEarning.Status.AVAILABLE
     else:
         commission = (gross * rate / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
