@@ -257,6 +257,7 @@ class BookingDisputeAPITests(TestCase):
             format="json",
         )
         self.assertEqual(accepted.status_code, 200, accepted.data)
+        proposal.refresh_from_db()
         followup = proposal.followup_booking
         followup.status = Booking.Status.COMPLETED
         followup.completed_at = timezone.now()
