@@ -236,8 +236,14 @@ class BookingDisputeReworkDecisionView(APIView):
             proposal.responded_at = now
             proposal.save(update_fields=["status", "responded_at", "updated_at"])
             return Response({"detail": "The proposed appointment time has passed. AIRway support must issue a new proposal."}, status=status.HTTP_409_CONFLICT)
-        if original.booking_mode != Booking.BookingMode.SCHEDULED:
-            return Response({"detail": "This service type cannot be automatically rebooked as a recovery visit."}, status=status.HTTP_409_CONFLICT)
+        if (
+            original.booking_mode != Booking.BookingMode.SCHEDULED
+            or original.service.pricing_type == "quote"
+        ):
+            return Response(
+                {"detail": "Automatic no-charge recovery currently supports fixed or per-unit scheduled services only."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         from apps.bookings.dispatcher import DispatcherService
         from apps.workers.eligibility import required_worker_gender_for_booking
