@@ -1160,6 +1160,7 @@ class WorkerJobAcceptView(APIView):
 class WorkerJobRejectView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, job_id):
         try:
             profile = request.user.worker_profile
@@ -1168,6 +1169,8 @@ class WorkerJobRejectView(APIView):
         assign, booking = _get_assignment_and_booking(job_id, profile)
         if not booking:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        assign = BookingAssignment.objects.select_for_update().get(pk=assign.pk)
+        booking = Booking.objects.select_for_update(of=("self",)).get(pk=booking.pk)
         if booking.status in (Booking.Status.COMPLETED, Booking.Status.CANCELLED):
             return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.ASSIGNED:
