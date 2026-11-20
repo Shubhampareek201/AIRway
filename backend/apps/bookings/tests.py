@@ -1434,13 +1434,14 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=self._get_booking_time(),
+            scheduled_at=timezone.now() + timedelta(minutes=20),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
             accepted_at=timezone.now(),
+            location_sharing_enabled=True,
         )
 
         update = self.worker_client.post(
@@ -1555,13 +1556,14 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=self._get_booking_time(),
+            scheduled_at=timezone.now() + timedelta(minutes=20),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
             accepted_at=timezone.now(),
+            location_sharing_enabled=True,
         )
         response = self.worker_client.post(
             f"/api/v1/workers/jobs/{assignment.id}/location/",
