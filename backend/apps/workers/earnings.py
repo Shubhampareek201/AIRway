@@ -32,7 +32,7 @@ def sync_worker_earning(booking_id, payment_id):
                 return None
         elif payment.stage != Payment.Stage.LEGACY:
             return None
-        gross = Decimal(str(item.line_total or "0.00"))
+        gross = Decimal(str(item.line_subtotal or "0.00"))
         paid_extra_work = BookingExtraWork.objects.filter(
             booking=booking,
             status=BookingExtraWork.Status.APPROVED,
