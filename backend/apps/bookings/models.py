@@ -293,6 +293,10 @@ class BookingAssignment(TimeStampedModel):
     live_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     live_accuracy_m = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     live_location_updated_at = models.DateTimeField(null=True, blank=True)
+    location_sharing_enabled = models.BooleanField(
+        default=False,
+        help_text="Worker-controlled permission to share foreground GPS with the customer during the 30-minute pre-appointment window and active job.",
+    )
 
     class Meta:
         ordering = ["-assigned_at"]
