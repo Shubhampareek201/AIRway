@@ -110,8 +110,15 @@ class DispatcherService:
         candidates = [worker for worker in candidates if worker.pk not in already_offered]
         # Eligibility remains exact-service based; this only ranks the workers
         # who are already qualified for the requested service.
-        candidates = cls._rank_by_service_scope(candidates, booking.service)
-        # The launch default offers every eligible worker simultaneously. Keep
+        scope_tiers = cls._service_scope_tiers(candidates, booking.service)
+        if scope_tiers:
+            best_tier = min(scope_tiers.values())
+            candidates = [
+                worker for worker in candidates
+                if scope_tiers[worker.pk] == best_tier
+            ]
+        # Only the best available skill tier receives this batch. Declines or
+        # expiries are excluded on retry, allowing the next tier to be offered. Keep
         # the explicit batch_size argument meaningful for controlled dispatches
         # and callers that intentionally request a smaller batch.
         if batch_size is not None:
@@ -286,7 +293,13 @@ class DispatcherService:
         # appointment, then workers focused on its root category, then
         # multi-category workers. Every candidate has already passed the
         # exact qualification check for every service in the group.
-        candidates = cls._rank_by_appointment_group(candidates, bookings)
+        group_tiers = cls._appointment_group_tiers(candidates, bookings)
+        if group_tiers:
+            best_tier = min(group_tiers.values())
+            candidates = [
+                worker for worker in candidates
+                if group_tiers[worker.pk] == best_tier
+            ]
         if not candidates:
             cls._notify_dispatch_exhausted(bookings[0], order=parent_order)
             return []
@@ -658,15 +671,10 @@ class DispatcherService:
         return category.pk
 
     @classmethod
-    def _rank_by_service_scope(cls, workers, requested_service):
-        """Rank exact-service specialists before same-root and multi-category workers.
-
-        This is ranking only. Candidates must already have explicit WorkerService
-        qualification for the requested service and have passed all availability,
-        approval, zone, schedule, leave, gender and task checks.
-        """
+    def _service_scope_tiers(cls, workers, requested_service):
+        """Return skill-priority tiers for already eligible exact-service workers."""
         if not workers:
-            return workers
+            return {}
 
         from apps.workers.models import WorkerService
 
@@ -684,28 +692,22 @@ class DispatcherService:
             )
 
         requested_root = cls._root_category_id(requested_service.category)
-
-        def tier(worker):
+        tiers = {}
+        for worker in workers:
             scope = scopes.get(worker.pk, {"services": set(), "roots": set()})
             if len(scope["services"]) <= 1:
-                return 0
-            if scope["roots"] == {requested_root}:
-                return 1
-            return 2
-
-        # Python sorting is stable: the Admin-configured quality ordering is
-        # preserved inside each skill-scope tier.
-        return sorted(workers, key=tier)
+                tiers[worker.pk] = 0
+            elif scope["roots"] == {requested_root}:
+                tiers[worker.pk] = 1
+            else:
+                tiers[worker.pk] = 2
+        return tiers
 
     @classmethod
-    def _rank_by_appointment_group(cls, workers, bookings):
-        """Prefer exact appointment specialists, then same-root, then multi-category.
-
-        Every worker has already passed exact WorkerService qualification for
-        every active service in the appointment group.
-        """
+    def _appointment_group_tiers(cls, workers, bookings):
+        """Return exact-service-set, same-root, and multi-category worker tiers."""
         if not workers:
-            return workers
+            return {}
 
         from apps.workers.models import WorkerService
 
@@ -727,15 +729,16 @@ class DispatcherService:
                 cls._root_category_id(row.service.category)
             )
 
-        def tier(worker):
+        tiers = {}
+        for worker in workers:
             scope = scopes.get(worker.pk, {"services": set(), "roots": set()})
             if scope["services"] == target_service_ids:
-                return 0
-            if scope["roots"].issubset(target_root_ids):
-                return 1
-            return 2
-
-        return sorted(workers, key=tier)
+                tiers[worker.pk] = 0
+            elif scope["roots"].issubset(target_root_ids):
+                tiers[worker.pk] = 1
+            else:
+                tiers[worker.pk] = 2
+        return tiers
 
     @staticmethod
     def _priority_ordering(priority_order):
