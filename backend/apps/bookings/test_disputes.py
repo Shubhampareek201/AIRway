@@ -307,7 +307,7 @@ class BookingDisputeAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 409)
         proposal.refresh_from_db()
-        self.assertEqual(proposal.status, BookingReworkProposal.Status.PENDING_CUSTOMER)
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.EXPIRED)
         self.assertIsNone(proposal.followup_booking_id)
 
     def test_dispute_evidence_is_private_and_available_to_booking_participants(self):
