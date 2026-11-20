@@ -289,6 +289,16 @@ class DispatcherService:
             .order_by(*cls._priority_ordering(config.priority_order))
             .select_related("user")
         )
+        already_responded = set(
+            WorkerOffer.objects.filter(
+                appointment_group=group,
+                status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED),
+            ).values_list("worker_id", flat=True)
+        )
+        candidates = [
+            worker for worker in candidates
+            if worker.pk not in already_responded
+        ]
         # Prefer workers whose registered skill set exactly matches this
         # appointment, then workers focused on its root category, then
         # multi-category workers. Every candidate has already passed the
