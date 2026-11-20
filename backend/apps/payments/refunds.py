@@ -102,8 +102,9 @@ def issue_admin_partial_refund(
     idempotency_key,
     reason=PaymentRefund.Reason.ADMIN_ADJUSTMENT,
     extra_work=None,
+    dispute=None,
 ):
-    """Create an audited partial refund against one service or extra-work allocation."""
+    """Create an audited partial refund against one service, extra work or resolved dispute."""
     try:
         requested_amount = Decimal(str(amount))
     except (InvalidOperation, TypeError, ValueError):
