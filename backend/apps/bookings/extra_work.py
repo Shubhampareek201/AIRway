@@ -27,7 +27,12 @@ def _extra_work_payload(item):
         "tax_amount": str(item.tax_amount),
         "total_amount": str(item.total_amount),
         "additional_duration_minutes": item.additional_duration_minutes,
-        "status": item.status,
+        "status": (
+            BookingExtraWork.Status.EXPIRED
+            if item.status == BookingExtraWork.Status.PENDING_CUSTOMER
+            and item.expires_at and item.expires_at <= timezone.now()
+            else item.status
+        ),
         "payment_choice": item.payment_choice,
         "payment_status": item.payment_status,
         "customer_response_note": item.customer_response_note,
@@ -195,6 +200,15 @@ class CustomerExtraWorkDecisionView(APIView):
 
         if proposal.status != BookingExtraWork.Status.PENDING_CUSTOMER:
             return Response({"detail": "This proposal has already been decided or is no longer active."}, status=status.HTTP_409_CONFLICT)
+
+        if proposal.expires_at and proposal.expires_at <= timezone.now():
+            proposal.status = BookingExtraWork.Status.EXPIRED
+            proposal.responded_at = timezone.now()
+            proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            return Response(
+                {"detail": "This extra-work proposal has expired. Ask the professional to submit a new request."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         booking = Booking.objects.select_for_update().get(pk=proposal.booking_id)
         if booking.status != Booking.Status.IN_PROGRESS:
