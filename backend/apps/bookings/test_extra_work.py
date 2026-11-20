@@ -109,6 +109,24 @@ class ExtraWorkAPITest(TestCase):
         self.assertEqual(proposal.status, BookingExtraWork.Status.APPROVED)
         self.assertEqual(proposal.payment_choice, BookingExtraWork.PaymentChoice.SEPARATE)
 
+
+    def test_customer_decision_marks_expired_proposal_as_expired(self):
+        proposal = self._proposal()
+        proposal.expires_at = timezone.now() - timedelta(minutes=1)
+        proposal.save(update_fields=["expires_at", "updated_at"])
+
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.post(
+            f"/api/v1/bookings/extra-work/{proposal.pk}/decision/",
+            {"decision": "approve", "payment_choice": BookingExtraWork.PaymentChoice.SEPARATE},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, BookingExtraWork.Status.EXPIRED)
+        self.assertIsNotNone(proposal.responded_at)
+
     @patch("apps.payments.views.client.order.create")
     def test_separate_extra_work_payment_creates_idempotent_razorpay_order(self, create_gateway_order):
         create_gateway_order.return_value = {"id": "order_extra_work_test"}
