@@ -1052,89 +1052,31 @@ class BookingViewSet(viewsets.ModelViewSet):
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
-        """Mark booking as in progress (worker started the job)."""
-        from apps.notifications.models import Notification
-
+        """Keep the legacy booking route on the same arrival-OTP-enforced lifecycle."""
         booking = Booking.objects.filter(pk=pk).first()
         if not booking:
             return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
-
         assignment = getattr(booking, "assignment", None)
-
         if not assignment:
             return Response(
                 {"detail": "This booking has no assignment. Worker must accept offer first."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
         try:
-            user_worker_profile = request.user.worker_profile
+            worker_profile = request.user.worker_profile
         except ObjectDoesNotExist:
             return Response(
                 {"detail": "User is not a worker."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
-
-        if assignment.worker != user_worker_profile:
+        if assignment.worker_id != worker_profile.pk:
             return Response(
                 {"detail": "Only the assigned worker can start this job."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
-            return Response(
-                {"detail": f"Cannot start job in {booking.get_status_display()} state."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        order_item = getattr(booking, "order_item", None)
-        if order_item and "payment_allocation_v1" in (order_item.order.metadata or {}):
-            from apps.payments.models import Payment
-            if not Payment.objects.filter(
-                order=order_item.order,
-                stage=Payment.Stage.ADVANCE,
-                status=Payment.Status.PAID,
-            ).exists():
-                return Response(
-                    {"detail": "The customer advance payment has not been verified."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-        old_status = booking.status
-        booking.status = Booking.Status.IN_PROGRESS
-        booking.save()
-        from apps.bookings.models import RecurringWashVisit
-        RecurringWashVisit.objects.filter(
-            booking=booking,
-            status=RecurringWashVisit.Status.BOOKED,
-        ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=timezone.now())
-
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old_status,
-            to_status=Booking.Status.IN_PROGRESS,
-            changed_by=request.user,
-            note="Worker started the job",
-        )
-
-        if assignment:
-            assignment.started_at = timezone.now()
-            assignment.save()
-
-        Notification.objects.create(
-            user=booking.customer,
-            type=Notification.Type.BOOKING_STARTED,
-            title="Service Started",
-            body="The service has started. You'll receive updates.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": booking.id},
-        )
-
-        return Response({
-            "detail": "Job marked as started.",
-            "status": booking.status,
-            "started_at": assignment.started_at,
-        })
+        from apps.workers.views import WorkerJobStartView
+        return WorkerJobStartView().post(request, job_id=assignment.pk)
 
     @action(detail=True, methods=["post"], url_path="complete")
     def complete_job(self, request, pk=None):
