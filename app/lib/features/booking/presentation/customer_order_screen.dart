@@ -773,11 +773,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : balanceReady ? 'All services verified' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Payment required',
+              Text(paid ? 'Payment complete' : balanceReady ? 'An appointment is complete' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Payment required',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
               Text(paid ? 'Your order is fully paid.' : balanceReady
-                  ? 'Every active service is verified. Pay the remaining balance to close your order.'
+                  ? 'One or more appointments are complete. Pay each completed appointment balance; other appointments continue independently.'
                   : advancePaid
                       ? 'Your $initialPaymentLabel is received. Worker matching and service progress will appear here.'
                       : advanceReady
