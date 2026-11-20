@@ -138,6 +138,8 @@ class PaymentRefund(TimeStampedModel):
         CUSTOMER_CANCELLATION = "customer_cancellation", "Customer cancellation"
         PLATFORM_UNFULFILLED = "platform_unfulfilled", "AIRway unable to fulfil"
         RECURRING_PLAN_CANCELLATION = "recurring_plan_cancellation", "Unused recurring plan visits"
+        ADMIN_ADJUSTMENT = "admin_adjustment", "Admin partial refund"
+        DISPUTE_RESOLUTION = "dispute_resolution", "Dispute resolution"
 
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="refunds"
