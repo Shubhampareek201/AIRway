@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Address, User
 from apps.catalog.models import Category, Service
 from apps.bookings.models import Booking, BookingAssignment
-from apps.payments.models import Payment
+from apps.payments.models import Payment, PaymentRefund
 from apps.workers.earnings import sync_worker_earning
 from apps.workers.models import WorkerEarning, WorkerProfile
 from apps.wallet.models import Wallet, WalletTransaction
@@ -90,6 +90,23 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(earning.status, WorkerEarning.Status.ON_HOLD)
         self.assertIsNone(earning.net_amount)
         self.assertIn("Commission rate", earning.hold_reason)
+
+    def test_refund_in_progress_holds_worker_earning(self):
+        PaymentRefund.objects.create(
+            payment=self.payment,
+            booking=self.booking,
+            amount=Decimal("10.00"),
+            wallet_amount=Decimal("10.00"),
+            gateway_amount=Decimal("0.00"),
+            reason=PaymentRefund.Reason.ADMIN_ADJUSTMENT,
+            status=PaymentRefund.Status.PENDING,
+        )
+
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+
+        self.assertEqual(earning.status, WorkerEarning.Status.ON_HOLD)
+        self.assertIsNone(earning.net_amount)
+        self.assertIn("refund", earning.hold_reason.lower())
 
     def test_unpaid_or_incomplete_booking_does_not_create_earning(self):
         self.payment.status = Payment.Status.PENDING
