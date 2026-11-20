@@ -7,11 +7,11 @@ from .models import Payment, PaymentRefund
 @admin.register(Payment)
 class PaymentAdmin(ModelAdmin):
     list_display = (
-        "id", "order", "appointment_group", "customer",
+        "id", "order", "appointment_group", "extra_work", "customer",
         "stage", "amount", "status", "created_at",
     )
     list_filter = ("stage", "status", "created_at")
-    search_fields = ("id", "order__id", "appointment_group__id", "customer__phone")
+    search_fields = ("id", "order__id", "appointment_group__id", "extra_work__id", "customer__phone")
     readonly_fields = tuple(field.name for field in Payment._meta.fields)
 
     def has_view_permission(self, request, obj=None):
