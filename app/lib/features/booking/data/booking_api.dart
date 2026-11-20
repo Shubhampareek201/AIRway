@@ -628,6 +628,18 @@ class BookingApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> respondToRework({
+    required int disputeId,
+    required bool accept,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/disputes/$disputeId/rework-decision/',
+      method: 'POST',
+      data: {'decision': accept ? 'accept' : 'decline'},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<List<Map<String, dynamic>>> getDisputes() async {
     final result = await request('/api/v1/bookings/disputes/');
     return (result as List)
