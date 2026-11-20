@@ -21,6 +21,7 @@ from apps.accounts.models import Address, User
 from apps.catalog.models import Service
 from apps.core.models import Zone
 from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
+from apps.bookings.extra_work import WorkerExtraWorkProposalView
 from apps.notifications.models import Notification
 from apps.wallet.models import WalletTransaction
 
