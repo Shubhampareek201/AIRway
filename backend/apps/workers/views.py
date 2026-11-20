@@ -1200,7 +1200,7 @@ class WorkerJobStartView(APIView):
             Order.objects.select_for_update().get(pk=group_ref.order_id)
             group = AppointmentGroup.objects.select_for_update().get(pk=group_ref.pk)
             group_bookings = list(
-                Booking.objects.select_for_update(of=("self"))
+                Booking.objects.select_for_update(of=("self",))
                 .filter(appointment_group=group)
                 .exclude(status=Booking.Status.CANCELLED)
                 .order_by("pk")
@@ -1227,7 +1227,7 @@ class WorkerJobStartView(APIView):
                 booking,
             )
         else:
-            booking = Booking.objects.select_for_update(of=("self")).get(pk=booking.pk)
+            booking = Booking.objects.select_for_update(of=("self",)).get(pk=booking.pk)
             assign = BookingAssignment.objects.select_for_update().get(pk=assign.pk)
             group_bookings = [booking]
             group_assignments = [assign]
