@@ -1399,37 +1399,27 @@ class WorkerEarningsView(APIView):
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
 
-        txs = WalletTransaction.objects.filter(
-            wallet__user=request.user,
-            type=WalletTransaction.Type.CREDIT,
-            status=WalletTransaction.Status.COMPLETED,
+        from .models import WorkerEarning
+        earnings = WorkerEarning.objects.filter(worker=profile).select_related(
+            "booking__service", "payment"
         ).order_by("-created_at")[:100]
-        jobs = Booking.objects.filter(
-            assignment__worker=profile, status=Booking.Status.COMPLETED,
-        ).select_related("service").order_by("-completed_at")
-
         results = []
-        for tx in txs:
+        for earning in earnings:
             results.append({
-                "id": tx.id,
-                "amount": float(tx.amount),
-                "status": tx.status,
-                "booking_id": int(tx.reference_id) if tx.reference_id else None,
-                "service_title": tx.description or "",
-                "created_at": tx.created_at.isoformat() if tx.created_at else "",
+                "id": earning.pk,
+                "booking_id": earning.booking_id,
+                "service_title": earning.booking.service.title,
+                "gross_amount": str(earning.gross_amount),
+                "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
+                "commission_amount": str(earning.commission_amount) if earning.commission_amount is not None else None,
+                "net_amount": str(earning.net_amount) if earning.net_amount is not None else None,
+                "amount": str(earning.net_amount) if earning.net_amount is not None else "0.00",
+                "status": earning.status,
+                "hold_reason": earning.hold_reason,
+                "payout_reference": earning.payout_reference,
+                "paid_at": earning.paid_at.isoformat() if earning.paid_at else None,
+                "created_at": earning.created_at.isoformat() if earning.created_at else "",
             })
-        for job in jobs:
-            if any(r.get("booking_id") == job.id for r in results):
-                continue
-            results.append({
-                "id": job.id,
-                "amount": float(job.pricing_snapshot.get("total", 0) or 0),
-                "status": "completed",
-                "booking_id": job.id,
-                "service_title": job.service.title,
-                "created_at": job.completed_at.isoformat() if job.completed_at else job.created_at.isoformat(),
-            })
-        results.sort(key=lambda r: r["created_at"], reverse=True)
         return Response(results)
 
 
