@@ -180,7 +180,7 @@ class RefundRetrySafetyTests(TestCase):
             description="Refund requested.",
             requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
         )
-        with self.assertRaisesMessage(ValueError, "resolved dispute"):
+        with self.assertRaisesMessage(ValueError, "Admin-resolved refund-review dispute"):
             issue_admin_partial_refund(
                 payment=payment,
                 booking=self.booking,
