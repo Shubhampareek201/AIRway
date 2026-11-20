@@ -2,7 +2,6 @@ import logging
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
-from django.db.models import Sum
 
 from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork, OrderItem
 from apps.payments.models import Payment, PaymentRefund
@@ -34,13 +33,15 @@ def sync_worker_earning(booking_id, payment_id):
         elif payment.stage != Payment.Stage.LEGACY:
             return None
         gross = Decimal(str(item.line_total or "0.00"))
-        if payment.stage == Payment.Stage.BALANCE:
-            extra_work = BookingExtraWork.objects.filter(
-                booking=booking,
-                status=BookingExtraWork.Status.APPROVED,
-                payment_status="paid",
-            )
-            gross += sum(extra_work.values_list("total_amount", flat=True), Decimal("0.00"))
+        paid_extra_work = BookingExtraWork.objects.filter(
+            booking=booking,
+            status=BookingExtraWork.Status.APPROVED,
+            payment_status="paid",
+        )
+        gross += sum(
+            paid_extra_work.values_list("total_amount", flat=True),
+            Decimal("0.00"),
+        )
     elif payment.booking_id == booking.pk and payment.stage == Payment.Stage.LEGACY:
         gross = Decimal(str((booking.pricing_snapshot or {}).get("total", "0.00")))
     else:
@@ -92,3 +93,14 @@ def sync_worker_earning(booking_id, payment_id):
         existing.save(update_fields=[*values.keys(), "updated_at"])
         return existing
     return WorkerEarning.objects.create(booking=booking, **values)
+
+
+def refresh_worker_earnings_for_profile(worker_id):
+    """Recalculate held records after Finance configures a worker's commission."""
+    rows = WorkerEarning.objects.filter(
+        worker_id=worker_id,
+        status=WorkerEarning.Status.ON_HOLD,
+        payment__isnull=False,
+    ).values_list("booking_id", "payment_id")
+    for booking_id, payment_id in rows.iterator():
+        sync_worker_earning(booking_id, payment_id)
