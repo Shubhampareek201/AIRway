@@ -71,6 +71,31 @@ class ExtraWorkAPITest(TestCase):
         self.assertEqual(response.data["total_amount"], "250.00")
         self.assertEqual(response.data["status"], BookingExtraWork.Status.PENDING_CUSTOMER)
 
+
+    def test_worker_can_submit_new_proposal_after_previous_one_expires(self):
+        previous = self._proposal()
+        previous.expires_at = timezone.now() - timedelta(minutes=1)
+        previous.save(update_fields=["expires_at", "updated_at"])
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{self.booking.pk}/extra-work/",
+            {
+                "reason": "A new additional repair is required",
+                "line_items": [{"description": "New replacement part", "quantity": 1, "unit_price": "175.00"}],
+                "additional_duration_minutes": 15,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        previous.refresh_from_db()
+        self.assertEqual(previous.status, BookingExtraWork.Status.EXPIRED)
+        self.assertEqual(BookingExtraWork.objects.filter(
+            booking=self.booking,
+            status=BookingExtraWork.Status.PENDING_CUSTOMER,
+        ).count(), 1)
+
     def test_customer_can_approve_with_separate_payment_choice(self):
         proposal = self._proposal()
         self.client.force_authenticate(user=self.customer)
