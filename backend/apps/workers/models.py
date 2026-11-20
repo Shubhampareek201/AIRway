@@ -319,6 +319,7 @@ class WorkerEarning(TimeStampedModel):
 
     worker = models.ForeignKey(WorkerProfile, on_delete=models.PROTECT, related_name="earnings")
     booking = models.ForeignKey("bookings.Booking", on_delete=models.PROTECT, related_name="worker_earnings")
+    extra_work = models.ForeignKey("bookings.BookingExtraWork", on_delete=models.PROTECT, null=True, blank=True, related_name="worker_earnings")
     payment = models.ForeignKey("payments.Payment", on_delete=models.PROTECT, null=True, blank=True, related_name="worker_earnings")
     gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
@@ -353,7 +354,8 @@ class WorkerEarning(TimeStampedModel):
             ("configure_worker_commission", "Can configure worker commission rates"),
         ]
         constraints = [
-            models.UniqueConstraint(fields=("booking",), name="unique_worker_earning_per_booking"),
+            models.UniqueConstraint(fields=("booking",), condition=models.Q(extra_work__isnull=True), name="unique_worker_service_earning_per_booking"),
+            models.UniqueConstraint(fields=("extra_work",), condition=models.Q(extra_work__isnull=False), name="unique_worker_earning_per_extra_work"),
             models.CheckConstraint(condition=models.Q(gross_amount__gte=0), name="worker_earning_gross_nonnegative"),
             models.CheckConstraint(condition=models.Q(net_amount__isnull=True) | models.Q(net_amount__gte=0), name="worker_earning_net_nonnegative"),
             models.CheckConstraint(
