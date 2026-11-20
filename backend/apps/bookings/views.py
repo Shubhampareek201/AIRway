@@ -49,6 +49,14 @@ def _schedule_booking_refund(booking_id):
         )
 
 
+def _dispatch_order_after_group_cancellation(order_id):
+    from apps.bookings.dispatcher import DispatcherService
+
+    order = Order.objects.filter(pk=order_id).first()
+    if order:
+        DispatcherService.dispatch_order(order)
+
+
 def _schedule_recurring_plan_refund(plan_id):
     import logging
     from apps.payments.refunds import request_recurring_plan_refund
@@ -2176,6 +2184,10 @@ class CustomerAppointmentGroupCancelView(APIView):
             if active_remaining else Order.Status.CANCELLED
         )
         order.save(update_fields=["status", "updated_at"])
+        if active_remaining:
+            transaction.on_commit(
+                lambda order_id=order.pk: _dispatch_order_after_group_cancellation(order_id)
+            )
 
         Notification.objects.create(
             user=request.user,
