@@ -211,7 +211,7 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
     created_ids = []
     for payment in payments.distinct():
         with transaction.atomic():
-            locked = Payment.objects.select_for_update().select_related("extra_work").get(pk=payment.pk)
+            locked = Payment.objects.select_for_update().get(pk=payment.pk)
             line_total, wallet_captured, gateway_captured, item = _line_stage_amount(locked, booking)
             if line_total <= 0:
                 continue
