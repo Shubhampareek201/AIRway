@@ -141,7 +141,7 @@ class PaymentRefundAdminForm(forms.ModelForm):
 class PaymentRefundAdmin(ModelAdmin):
     form = PaymentRefundAdminForm
     list_display = (
-        "id", "booking", "payment", "amount", "wallet_amount",
+        "id", "booking", "extra_work", "payment", "amount", "wallet_amount",
         "gateway_amount", "reason", "status", "requested_by",
         "gateway_refund_id", "failure_summary", "created_at",
     )
@@ -159,7 +159,7 @@ class PaymentRefundAdmin(ModelAdmin):
 
     def get_fields(self, request, obj=None):
         if obj is None:
-            return ("payment", "booking", "amount", "reason", "admin_note", "idempotency_key")
+            return ("payment", "booking", "extra_work", "amount", "reason", "admin_note", "idempotency_key")
         return self.readonly_fields
 
     def get_readonly_fields(self, request, obj=None):
@@ -202,6 +202,7 @@ class PaymentRefundAdmin(ModelAdmin):
                 admin_note=obj.admin_note,
                 idempotency_key=obj.idempotency_key,
                 reason=obj.reason,
+                extra_work=obj.extra_work,
             )
         except ValueError as exc:
             raise ValidationError(str(exc))
