@@ -170,10 +170,16 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  static Future<Map<String, dynamic>> startJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> startJob(
+    int assignmentId, {
+    String? arrivalOtp,
+  }) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/start/',
       method: 'POST',
+      data: {
+        if (arrivalOtp != null && arrivalOtp.isNotEmpty) 'arrival_otp': arrivalOtp,
+      },
     );
     return Map<String, dynamic>.from(result as Map);
   }
