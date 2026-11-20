@@ -968,18 +968,29 @@ class WorkerJobLocationSharingView(APIView):
         if not isinstance(enabled, bool):
             return Response({"enabled": ["Provide true or false."]}, status=status.HTTP_400_BAD_REQUEST)
 
-        assignment.location_sharing_enabled = enabled
+        sharing_assignments = [assignment]
+        if booking.appointment_group_id:
+            sharing_assignments = list(
+                BookingAssignment.objects.filter(
+                    booking__appointment_group_id=booking.appointment_group_id,
+                    worker=profile,
+                )
+            )
         update_fields = ["location_sharing_enabled", "updated_at"]
         if not enabled:
-            assignment.live_latitude = None
-            assignment.live_longitude = None
-            assignment.live_accuracy_m = None
-            assignment.live_location_updated_at = None
             update_fields += [
                 "live_latitude", "live_longitude",
                 "live_accuracy_m", "live_location_updated_at",
             ]
-        assignment.save(update_fields=update_fields)
+        for row in sharing_assignments:
+            row.location_sharing_enabled = enabled
+            if not enabled:
+                row.live_latitude = None
+                row.live_longitude = None
+                row.live_accuracy_m = None
+                row.live_location_updated_at = None
+            row.save(update_fields=update_fields)
+        assignment.refresh_from_db()
         return Response({
             "location_sharing_enabled": assignment.location_sharing_enabled,
             "customer_visibility_starts_at": (
