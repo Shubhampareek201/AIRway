@@ -17,20 +17,33 @@ logger = logging.getLogger(__name__)
 CENT = Decimal("0.01")
 
 
-def _line_stage_amount(payment, booking):
-    """Return the immutable per-service captured split for this payment."""
-    if payment.extra_work_id and payment.extra_work.booking_id == booking.id:
+def _line_stage_amount(payment, booking, extra_work=None):
+    """Return the captured split for a service line or one extra-work proposal."""
+    if payment.extra_work_id:
+        if extra_work and payment.extra_work_id != extra_work.pk:
+            return Decimal("0.00"), Decimal("0.00"), Decimal("0.00"), None
+        if payment.extra_work.booking_id != booking.id:
+            return Decimal("0.00"), Decimal("0.00"), Decimal("0.00"), None
         return (
             payment.extra_work.total_amount,
             payment.wallet_amount,
             payment.amount,
             None,
         )
+
     rows = (payment.raw_response or {}).get("service_allocation_v1", [])
-    matching_rows = [
-        entry for entry in rows
-        if entry.get("booking_id") == booking.id
-    ]
+    if extra_work is not None:
+        matching_rows = [
+            entry for entry in rows
+            if entry.get("allocation_type") == "extra_work"
+            and entry.get("extra_work_id") == extra_work.pk
+            and entry.get("booking_id") == booking.id
+        ]
+    else:
+        matching_rows = [
+            entry for entry in rows
+            if entry.get("booking_id") == booking.id
+        ]
     if matching_rows:
         item_id = next(
             (entry.get("order_item_id") for entry in matching_rows if entry.get("order_item_id")),
@@ -43,7 +56,7 @@ def _line_stage_amount(payment, booking):
             sum((Decimal(str(entry.get("gateway_amount", "0"))) for entry in matching_rows), Decimal("0.00")),
             item,
         )
-    if not payment.order_id and payment.booking_id == booking.id:
+    if not payment.order_id and payment.booking_id == booking.id and extra_work is None:
         return (
             payment.amount + payment.wallet_amount,
             payment.wallet_amount,
