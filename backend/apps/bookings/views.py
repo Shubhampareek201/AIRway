@@ -1684,6 +1684,7 @@ class CustomerOrderDetailView(APIView):
             Order.objects.prefetch_related(
                 "items__booking__assignment__worker__user",
                 "items__booking__payment_refunds",
+                "items__booking__extra_work_requests",
                 "payments",
             ),
             pk=order_id,
@@ -1796,6 +1797,24 @@ class CustomerOrderDetailView(APIView):
                 "scheduled_at": booking.scheduled_at,
                 "drop_scheduled_at": booking.drop_scheduled_at,
                 "quote": quote_data,
+                "extra_work": [
+                    {
+                        "id": proposal.pk,
+                        "reason": proposal.reason,
+                        "line_items": proposal.line_items,
+                        "subtotal": str(proposal.subtotal),
+                        "tax_amount": str(proposal.tax_amount),
+                        "total_amount": str(proposal.total_amount),
+                        "additional_duration_minutes": proposal.additional_duration_minutes,
+                        "status": proposal.status,
+                        "payment_choice": proposal.payment_choice,
+                        "payment_status": proposal.payment_status,
+                        "customer_response_note": proposal.customer_response_note,
+                        "expires_at": proposal.expires_at.isoformat() if proposal.expires_at else None,
+                        "created_at": proposal.created_at.isoformat(),
+                    }
+                    for proposal in booking.extra_work_requests.all()
+                ],
                 "work_evidence": [
                     {
                         "id": evidence.id,
