@@ -479,6 +479,25 @@ def _process_verified_payment(
                             else Order.Status.PAID
                         )
                         parent_order.save(update_fields=["status", "updated_at"])
+                        from apps.bookings.models import RecurringWashPlan
+                        RecurringWashPlan.objects.filter(
+                            order=parent_order,
+                            status=RecurringWashPlan.Status.AWAITING_PAYMENT,
+                        ).update(
+                            status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                            updated_at=timezone.now(),
+                        )
+                        recurring_plan = RecurringWashPlan.objects.filter(
+                            order=parent_order,
+                            status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                        ).first()
+                        if recurring_plan:
+                            from apps.bookings.recurring import (
+                                generate_recurring_wash_visit_ledger,
+                                create_pending_recurring_visit_bookings,
+                            )
+                            generate_recurring_wash_visit_ledger(recurring_plan)
+                            create_pending_recurring_visit_bookings(recurring_plan)
                     else:
                         if any(row.booking.status == Booking.Status.CANCELLED for row in order_items):
                             parent_order.status = Order.Status.PARTIALLY_CANCELLED
