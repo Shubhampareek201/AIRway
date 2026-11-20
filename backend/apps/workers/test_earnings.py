@@ -67,6 +67,20 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(first.net_amount, Decimal("80.00"))
         self.assertEqual(first.status, WorkerEarning.Status.AVAILABLE)
 
+    def test_worker_api_returns_calculated_ledger_not_customer_gross(self):
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        client = APIClient()
+        client.force_authenticate(user=self.worker_user)
+
+        response = client.get("/api/v1/workers/earnings/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["gross_amount"], "100.00")
+        self.assertEqual(response.data[0]["commission_amount"], "20.00")
+        self.assertEqual(response.data[0]["net_amount"], "80.00")
+        self.assertEqual(response.data[0]["status"], WorkerEarning.Status.AVAILABLE)
+
     def test_missing_commission_rate_holds_earning_without_guessing_net(self):
         self.worker.commission_rate = None
         self.worker.save(update_fields=["commission_rate", "updated_at"])
