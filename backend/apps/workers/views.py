@@ -1196,10 +1196,14 @@ class WorkerJobStartView(APIView):
         from apps.notifications.models import Notification
 
         if booking.appointment_group_id:
+            group_ref = AppointmentGroup.objects.get(pk=booking.appointment_group_id)
+            Order.objects.select_for_update().get(pk=group_ref.order_id)
+            group = AppointmentGroup.objects.select_for_update().get(pk=group_ref.pk)
             group_bookings = list(
-                booking.appointment_group.bookings.exclude(
-                    status=Booking.Status.CANCELLED
-                ).order_by("pk")
+                Booking.objects.select_for_update(of=("self"))
+                .filter(appointment_group=group)
+                .exclude(status=Booking.Status.CANCELLED)
+                .order_by("pk")
             )
             group_assignments = list(
                 BookingAssignment.objects.select_for_update()
@@ -1214,7 +1218,17 @@ class WorkerJobStartView(APIView):
                     {"detail": "Every active service in this appointment must be assigned to and accepted by you."},
                     status=status.HTTP_409_CONFLICT,
                 )
+            assign = next(
+                (row for row in group_assignments if row.booking_id == booking.pk),
+                group_assignments[0] if group_assignments else assign,
+            )
+            booking = next(
+                (row for row in group_bookings if row.pk == booking.pk),
+                booking,
+            )
         else:
+            booking = Booking.objects.select_for_update(of=("self")).get(pk=booking.pk)
+            assign = BookingAssignment.objects.select_for_update().get(pk=assign.pk)
             group_bookings = [booking]
             group_assignments = [assign]
 
