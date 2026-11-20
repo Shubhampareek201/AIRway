@@ -61,12 +61,4 @@ class Migration(migrations.Migration):
                 name="unique_appointment_group_payment_stage",
             ),
         ),
-        migrations.AddConstraint(
-            model_name="payment",
-            constraint=models.UniqueConstraint(
-                condition=models.Q(("extra_work__isnull", False)),
-                fields=("extra_work",),
-                name="unique_extra_work_payment",
-            ),
-        ),
     ]
