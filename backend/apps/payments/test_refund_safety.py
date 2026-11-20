@@ -11,7 +11,7 @@ from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
 from apps.payments.models import Payment, PaymentRefund
-from apps.payments.refunds import process_payment_refund, request_booking_refunds
+from apps.payments.refunds import _line_stage_amount, process_payment_refund, request_booking_refunds
 from apps.workers.models import WorkerProfile
 
 
@@ -129,6 +129,54 @@ class RefundRetrySafetyTests(TestCase):
         self.assertEqual(refund.wallet_amount, Decimal("20.00"))
         self.assertEqual(refund.gateway_amount, Decimal("80.00"))
         process_refund.assert_called_once_with(refund.pk)
+
+
+    def test_balance_refund_allocation_includes_extra_work_added_to_balance(self):
+        from types import SimpleNamespace
+        from apps.bookings.models import OrderItem
+
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            total_amount=Decimal("1000.00"),
+        )
+        item = OrderItem.objects.create(
+            order=order,
+            booking=self.booking,
+            line_total=Decimal("1000.00"),
+        )
+        payment = SimpleNamespace(
+            extra_work_id=None,
+            booking_id=None,
+            order_id=order.pk,
+            raw_response={
+                "service_allocation_v1": [
+                    {
+                        "allocation_type": "service",
+                        "booking_id": self.booking.pk,
+                        "order_item_id": item.pk,
+                        "total": "700.00",
+                        "wallet_amount": "100.00",
+                        "gateway_amount": "600.00",
+                    },
+                    {
+                        "allocation_type": "extra_work",
+                        "booking_id": self.booking.pk,
+                        "order_item_id": None,
+                        "total": "250.00",
+                        "wallet_amount": "50.00",
+                        "gateway_amount": "200.00",
+                    },
+                ],
+            },
+        )
+
+        total, wallet, gateway, allocated_item = _line_stage_amount(payment, self.booking)
+
+        self.assertEqual(total, Decimal("950.00"))
+        self.assertEqual(wallet, Decimal("150.00"))
+        self.assertEqual(gateway, Decimal("800.00"))
+        self.assertEqual(allocated_item, item)
 
     @patch("apps.payments.refunds.razorpay.Client", side_effect=RuntimeError("gateway timeout"))
     def test_uncertain_gateway_result_is_not_automatically_retried(self, gateway_client):
