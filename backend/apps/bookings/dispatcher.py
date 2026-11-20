@@ -462,7 +462,7 @@ class DispatcherService:
                 ))
                 allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
                 group_item_ids = {
-                    item.order_item_id for item in group_bookings
+                    item.order_item.id for item in group_bookings
                     if hasattr(item, "order_item")
                 }
                 advance_received = str(sum(
