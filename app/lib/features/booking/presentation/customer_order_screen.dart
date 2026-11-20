@@ -535,6 +535,96 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
+  Future<void> raiseDispute(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    final descriptionController = TextEditingController();
+    var category = 'service_quality';
+    var outcome = 'refund_review';
+    final payload = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Report a service issue'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              DropdownButtonFormField<String>(
+                value: category,
+                decoration: const InputDecoration(labelText: 'Issue type'),
+                items: const [
+                  DropdownMenuItem(value: 'service_quality', child: Text('Service quality')),
+                  DropdownMenuItem(value: 'damage', child: Text('Property damage')),
+                  DropdownMenuItem(value: 'payment', child: Text('Payment or refund')),
+                  DropdownMenuItem(value: 'worker_conduct', child: Text('Professional conduct')),
+                  DropdownMenuItem(value: 'safety', child: Text('Safety concern')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => category = value ?? category),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: outcome,
+                decoration: const InputDecoration(labelText: 'What would help?'),
+                items: const [
+                  DropdownMenuItem(value: 'refund_review', child: Text('Review my refund')),
+                  DropdownMenuItem(value: 'rework', child: Text('Request service recovery')),
+                  DropdownMenuItem(value: 'investigation', child: Text('Investigate this issue')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => outcome = value ?? outcome),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                maxLines: 4,
+                maxLength: 5000,
+                decoration: const InputDecoration(
+                  labelText: 'Describe what happened',
+                  hintText: 'Include the relevant details so AIRway support can review it.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (descriptionController.text.trim().isEmpty) return;
+                Navigator.pop(dialogContext, {
+                  'category': category,
+                  'requested_outcome': outcome,
+                  'description': descriptionController.text.trim(),
+                });
+              },
+              child: const Text('Submit report'),
+            ),
+          ],
+        ),
+      ),
+    );
+    descriptionController.dispose();
+    if (payload == null || !mounted) return;
+    try {
+      await BookingApi.createDispute(
+        bookingId: bookingId,
+        category: payload['category']!,
+        description: payload['description']!,
+        requestedOutcome: payload['requested_outcome']!,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your report has been sent to AIRway support.')),
+      );
+      await loadOrder(showLoader: false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit report: $e')),
+      );
+    }
+  }
+
   Future<void> cancelService(Map<String, dynamic> row) async {
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null || row['can_cancel'] != true) return;
@@ -1603,6 +1693,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               foregroundColor: const Color(0xFFB3261E),
               side: const BorderSide(color: Color(0xFFE7B9B6)),
             ),
+          )),
+        ],
+        if (status == 'in_progress' || status == 'completed') ...[
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => raiseDispute(row),
+            icon: const Icon(Icons.support_agent_rounded, size: 18),
+            label: const Text('Report a problem'),
           )),
         ],
         if (status == 'completed' && worker != null) ...[
