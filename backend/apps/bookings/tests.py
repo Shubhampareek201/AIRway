@@ -4304,7 +4304,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
 
         workers = []
         for suffix, rating in (("286", 3.0), ("287", 5.0), ("288", 4.5)):
-            user = self._create_user(f"+919876543{suffix}")
+            user = self._create_user(f"+919876549{suffix}")
             worker = WorkerProfile.objects.create(
                 user=user, status=WorkerProfile.Status.APPROVED,
                 is_online=True, rating_avg=rating,
