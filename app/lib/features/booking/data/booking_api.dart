@@ -530,6 +530,85 @@ class BookingApi {
     return Map<String, dynamic>.from(result);
   }
 
+  static Future<Map<String, dynamic>> uploadDisputeEvidence({
+    required int disputeId,
+    required File photo,
+    String note = '',
+  }) async {
+    final session = await SecureSessionStorage.readSession();
+    if (session == null) throw Exception('Please sign in again.');
+
+    Future<({int status, dynamic body})> call(String token) async {
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 10);
+      try {
+        final boundary = 'AIRway${DateTime.now().microsecondsSinceEpoch}';
+        final request = await client.postUrl(
+          Uri.parse('${AuthApi.baseUrl}/api/v1/bookings/disputes/$disputeId/evidence/'),
+        );
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        request.headers.set(
+          HttpHeaders.contentTypeHeader,
+          'multipart/form-data; boundary=$boundary',
+        );
+        final filename = photo.uri.pathSegments.isEmpty
+            ? 'dispute-evidence.jpg'
+            : photo.uri.pathSegments.last.replaceAll('"', '');
+        final extension = filename.toLowerCase().split('.').last;
+        final mime = extension == 'png'
+            ? 'image/png'
+            : extension == 'webp'
+                ? 'image/webp'
+                : 'image/jpeg';
+        final headerBytes = utf8.encode(
+          '--$boundary\r\n'
+          'Content-Disposition: form-data; name="file"; filename="$filename"\r\n'
+          'Content-Type: $mime\r\n\r\n',
+        );
+        final photoBytes = await photo.readAsBytes();
+        final noteBytes = utf8.encode(
+          '\r\n--$boundary\r\n'
+          'Content-Disposition: form-data; name="note"\r\n\r\n'
+          '$note',
+        );
+        final footerBytes = utf8.encode('\r\n--$boundary--\r\n');
+        request.contentLength = headerBytes.length + photoBytes.length +
+            noteBytes.length + footerBytes.length;
+        request.add(headerBytes);
+        request.add(photoBytes);
+        request.add(noteBytes);
+        request.add(footerBytes);
+        final response = await request.close().timeout(const Duration(seconds: 30));
+        final bodyText = await utf8.decoder.bind(response).join();
+        return (
+          status: response.statusCode,
+          body: bodyText.isEmpty ? null : jsonDecode(bodyText),
+        );
+      } finally {
+        client.close(force: true);
+      }
+    }
+
+    var result = await call(session.accessToken);
+    if (result.status == 401) {
+      final refreshed = await AuthApi.refreshSession(refreshToken: session.refreshToken);
+      if (refreshed == null) {
+        await SecureSessionStorage.clearSession();
+        throw Exception('Session expired. Please sign in again.');
+      }
+      final access = refreshed['access'] as String;
+      await SecureSessionStorage.saveSession(
+        accessToken: access,
+        refreshToken: refreshed['refresh'] as String? ?? session.refreshToken,
+      );
+      result = await call(access);
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw Exception('Evidence upload failed (${result.status}): ${result.body}');
+    }
+    return Map<String, dynamic>.from(result.body as Map);
+  }
+
   static Future<Map<String, dynamic>> createDispute({
     required int bookingId,
     required String category,
