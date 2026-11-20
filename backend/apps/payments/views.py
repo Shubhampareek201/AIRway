@@ -211,7 +211,7 @@ def create_or_get_order_payment(
         else:
             extra_work_query = extra_work_query.filter(appointment_group__isnull=True)
         stage_total += sum(extra_work_query.values_list("total_amount", flat=True), Decimal("0.00"))
-    else:
+    elif stage == Payment.Stage.LEGACY:
         stage_total = order.total_amount
     if stage == Payment.Stage.LEGACY:
         # Idempotent retries must still succeed after the first payment has
