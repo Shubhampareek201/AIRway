@@ -70,6 +70,17 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       _sharingAssignmentId = null;
       return;
     }
+    final visibilityStartsAt = job.scheduledAt.subtract(const Duration(minutes: 30));
+    final now = DateTime.now();
+    if (now.isBefore(visibilityStartsAt)) {
+      _locationTimer?.cancel();
+      _sharingAssignmentId = null;
+      _locationTimer = Timer(
+        visibilityStartsAt.difference(now),
+        () => _configureLocationSharing(job),
+      );
+      return;
+    }
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
     if (_sharingAssignmentId != job.assignmentId) {
       _locationTimer?.cancel();
