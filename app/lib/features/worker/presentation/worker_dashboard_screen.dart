@@ -645,6 +645,29 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       ]),
       const SizedBox(height: 10),
       _earningSummaryCard('Paid out', paid, Icons.check_circle_outline_rounded, AirwayColors.success),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFBFAFF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE8E2F5)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.account_balance_outlined, color: Color(0xFF6C4AE3)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Payout account', style: TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              _profile?.upiId?.trim().isNotEmpty == true
+                  ? _profile!.upiId!
+                  : 'Add your UPI ID in Profile settings',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
+            ),
+          ])),
+          TextButton(onPressed: _editProfile, child: const Text('Edit')),
+        ]),
+      ),
       const SizedBox(height: 22),
       Text(
         AirwayText.tr('Earning history', 'कमाई का इतिहास'),
@@ -1033,7 +1056,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         const Divider(height: 18),
         _earningAmountLine('Service amount', gross),
         if (item['commission_amount'] != null)
-          _earningAmountLine('AIRway commission', -commission),
+          _earningAmountLine(
+            'AIRway commission (${item['commission_rate'] ?? '—'}%)',
+            -commission,
+          ),
         const SizedBox(height: 5),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           const Text('Your earning', style: TextStyle(fontWeight: FontWeight.w800)),
