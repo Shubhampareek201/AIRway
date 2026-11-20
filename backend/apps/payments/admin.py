@@ -2,11 +2,16 @@ import uuid
 
 from django import forms
 from django.contrib import admin, messages
+from django.http import HttpResponseRedirect
 from django.core.exceptions import PermissionDenied, ValidationError
 from unfold.admin import ModelAdmin
 
 from .models import Payment, PaymentRefund
-from .refunds import issue_admin_partial_refund
+from .refunds import (
+    _existing_refund_components,
+    _line_stage_amount,
+    issue_admin_partial_refund,
+)
 
 
 @admin.register(Payment)
@@ -65,6 +70,38 @@ class PaymentRefundAdminForm(forms.ModelForm):
             "Required audit explanation. This is retained with the refund record."
         )
 
+    def clean(self):
+        cleaned = super().clean()
+        payment = cleaned.get("payment")
+        booking = cleaned.get("booking")
+        amount = cleaned.get("amount")
+        key = cleaned.get("idempotency_key")
+        if not (payment and booking and amount and key):
+            return cleaned
+        existing = PaymentRefund.objects.filter(idempotency_key=str(key)).first()
+        if existing:
+            if (
+                existing.payment_id != payment.pk
+                or existing.booking_id != booking.pk
+                or existing.amount != amount
+            ):
+                self.add_error("idempotency_key", "This request key has already been used.")
+            return cleaned
+        if payment.status != Payment.Status.PAID:
+            self.add_error("payment", "Only captured payments can be refunded.")
+            return cleaned
+        line_total, wallet_captured, gateway_captured, _ = _line_stage_amount(payment, booking)
+        if line_total <= 0:
+            self.add_error("booking", "This payment has no captured allocation for this service.")
+            return cleaned
+        _, refunded_wallet, refunded_gateway = _existing_refund_components(payment, booking)
+        remaining = wallet_captured + gateway_captured - refunded_wallet - refunded_gateway
+        if remaining < 0:
+            self.add_error("amount", "Existing refunds exceed the captured allocation; reconciliation is required.")
+        elif amount > remaining:
+            self.add_error("amount", f"Maximum remaining refundable amount is ₹{remaining:.2f}.")
+        return cleaned
+
     def save(self, commit=True):
         instance = super().save(commit=False)
         instance.idempotency_key = str(self.cleaned_data["idempotency_key"])
@@ -118,6 +155,13 @@ class PaymentRefundAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        try:
+            return super().changeform_view(request, object_id, form_url, extra_context)
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+            return HttpResponseRedirect(request.path)
 
     def save_model(self, request, obj, form, change):
         if change:
