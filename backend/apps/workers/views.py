@@ -1412,6 +1412,8 @@ class WorkerEarningsView(APIView):
                 "gross_amount": str(earning.gross_amount),
                 "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
                 "commission_amount": str(earning.commission_amount) if earning.commission_amount is not None else None,
+                "adjustment_amount": str(earning.adjustment_amount),
+                "adjustment_note": earning.adjustment_note,
                 "net_amount": str(earning.net_amount) if earning.net_amount is not None else None,
                 "amount": str(earning.net_amount) if earning.net_amount is not None else "0.00",
                 "status": earning.status,
