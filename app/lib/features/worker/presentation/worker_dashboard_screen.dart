@@ -592,45 +592,107 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   }
 
   Widget _buildEarningsTab() {
-    final total = _earnings.fold<double>(
-      0,
-      (sum, item) => sum + (double.tryParse('${item['amount']}') ?? 0),
-    );
+    double totalFor(String status) => _earnings
+        .where((item) => item['status'] == status)
+        .fold<double>(
+          0,
+          (sum, item) => sum + (double.tryParse('${item['net_amount']?.toString() ?? ''}') ?? 0),
+        );
+    final available = totalFor('available');
+    final pending = totalFor('pending');
+    final onHold = totalFor('on_hold');
+    final paid = totalFor('paid');
+    String money(double value) => NumberFormat.currency(
+      locale: 'en_IN', symbol: '₹', decimalDigits: 0,
+    ).format(value);
+
     return _page([
-      Card(
-        color: AirwayColors.primary,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(AirwayText.tr('Recorded earnings', 'दर्ज की गई कमाई'), style: TextStyle(color: Colors.white70)),
-              const SizedBox(height: 8),
-              Text(
-                NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(total),
-                style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(AirwayText.tr('${_earnings.length} earning records', '${_earnings.length} कमाई रिकॉर्ड'), style: const TextStyle(color: Colors.white70)),
-            ],
+      Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C4AE3), Color(0xFF4D32B5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AirwayText.tr('Available for payout', 'भुगतान के लिए उपलब्ध'),
+              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              money(available),
+              style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              AirwayText.tr('Only settled and approved earnings are included', 'केवल सेटल और स्वीकृत कमाई शामिल है'),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
         ),
       ),
-      const SizedBox(height: 20),
-      Text(AirwayText.tr('Recent activity', 'हाल की गतिविधि'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      Row(children: [
+        Expanded(child: _earningSummaryCard('Pending', pending, Icons.hourglass_top_rounded, const Color(0xFFB7791F))),
+        const SizedBox(width: 10),
+        Expanded(child: _earningSummaryCard('On hold', onHold, Icons.pause_circle_outline_rounded, const Color(0xFFB45309))),
+      ]),
+      const SizedBox(height: 10),
+      _earningSummaryCard('Paid out', paid, Icons.check_circle_outline_rounded, AirwayColors.success),
+      const SizedBox(height: 22),
+      Text(
+        AirwayText.tr('Earning history', 'कमाई का इतिहास'),
+        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+      ),
       const SizedBox(height: 8),
       if (_earningsError != null)
         _SectionErrorCard(message: _earningsError!, onRetry: _refresh)
       else if (_earnings.isEmpty)
-        const _EmptyCard(icon: Icons.account_balance_wallet_outlined, title: 'No earnings yet', subtitle: 'Completed and credited jobs will show here.')
+        const _EmptyCard(
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'No settled earnings yet',
+          subtitle: 'Your verified earnings will appear here after the customer payment is settled.',
+        )
       else
         ..._earnings.map(_buildEarningRow),
       const SizedBox(height: 8),
       Text(
-        'Earnings shown are records returned by AIRway. Final payout and settlement may be handled separately.',
+        'Commission and payout status are controlled by AIRway finance. Amounts on hold are not available for withdrawal.',
         style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
       ),
     ]);
+  }
+
+  Widget _earningSummaryCard(String title, double amount, IconData icon, Color accent) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E2F5)),
+      ),
+      child: Row(children: [
+        Icon(icon, color: accent, size: 22),
+        const SizedBox(width: 9),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 3),
+            Text(
+              NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(amount),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AirwayColors.text),
+            ),
+          ],
+        )),
+      ]),
+    );
   }
 
   Widget _buildProfileTab(WorkerProfile profile) {
@@ -928,18 +990,82 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   }
 
   Widget _buildEarningRow(Map<String, dynamic> item) {
-    final amount = double.tryParse('${item['amount']}') ?? 0;
+    final gross = double.tryParse('${item['gross_amount']}') ?? 0;
+    final commission = double.tryParse('${item['commission_amount']}') ?? 0;
+    final net = double.tryParse('${item['net_amount']}') ?? 0;
+    final status = item['status']?.toString() ?? 'pending';
+    final statusLabel = switch (status) {
+      'available' => 'Available',
+      'paid' => 'Paid',
+      'on_hold' => 'On hold',
+      _ => 'Pending settlement',
+    };
+    final statusColor = switch (status) {
+      'available' || 'paid' => AirwayColors.success,
+      'on_hold' => const Color(0xFFB45309),
+      _ => const Color(0xFF8A641B),
+    };
     final title = item['service_title']?.toString().trim();
-    return Card(
-      child: ListTile(
-        leading: const CircleAvatar(child: Icon(Icons.currency_rupee_rounded)),
-        title: Text(title?.isNotEmpty == true ? title! : 'Service payment'),
-        subtitle: Text(AirwayText.tr('Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}', 'बुकिंग #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}')),
-        trailing: Text(
-          '+${NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0).format(amount)}',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-        ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E2F5)),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(
+            title?.isNotEmpty == true ? title! : 'Service earning',
+            style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text),
+          )),
+          Text(
+            statusLabel,
+            style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w800),
+          ),
+        ]),
+        const SizedBox(height: 5),
+        Text(
+          'Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}',
+          style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+        ),
+        const Divider(height: 18),
+        _earningAmountLine('Service amount', gross),
+        if (item['commission_amount'] != null)
+          _earningAmountLine('AIRway commission', -commission),
+        const SizedBox(height: 5),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Your earning', style: TextStyle(fontWeight: FontWeight.w800)),
+          Text(
+            item['net_amount'] == null ? 'Awaiting rate' : '₹${net.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6C4AE3), fontSize: 16),
+          ),
+        ]),
+        if ((item['hold_reason']?.toString() ?? '').isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(item['hold_reason'].toString(), style: const TextStyle(color: Color(0xFFB45309), fontSize: 12)),
+        ],
+        if ((item['payout_reference']?.toString() ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('Payout reference: ${item['payout_reference']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _earningAmountLine(String label, double amount) {
+    final prefix = amount < 0 ? '-₹' : '₹';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+        Text(
+          '$prefix${amount.abs().toStringAsFixed(2)}',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ]),
     );
   }
 
