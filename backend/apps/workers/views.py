@@ -1051,14 +1051,23 @@ class WorkerJobLocationUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        assignment.live_latitude = latitude
-        assignment.live_longitude = longitude
-        assignment.live_accuracy_m = accuracy
-        assignment.live_location_updated_at = now
-        assignment.save(update_fields=[
-            "live_latitude", "live_longitude", "live_accuracy_m",
-            "live_location_updated_at", "updated_at",
-        ])
+        location_assignments = [assignment]
+        if booking.appointment_group_id:
+            location_assignments = list(
+                BookingAssignment.objects.filter(
+                    booking__appointment_group_id=booking.appointment_group_id,
+                    worker=profile,
+                )
+            )
+        for row in location_assignments:
+            row.live_latitude = latitude
+            row.live_longitude = longitude
+            row.live_accuracy_m = accuracy
+            row.live_location_updated_at = now
+            row.save(update_fields=[
+                "live_latitude", "live_longitude", "live_accuracy_m",
+                "live_location_updated_at", "updated_at",
+            ])
         return Response({
             "accepted": True,
             "location_updated_at": now.isoformat(),
