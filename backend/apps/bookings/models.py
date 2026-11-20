@@ -865,3 +865,24 @@ class BookingDispute(TimeStampedModel):
 
     def __str__(self):
         return f"Dispute #{self.pk} for booking #{self.booking_id} ({self.status})"
+
+
+class BookingDisputeEvidence(TimeStampedModel):
+    """Private evidence file attached to a booking dispute."""
+
+    dispute = models.ForeignKey(
+        BookingDispute, on_delete=models.PROTECT, related_name="evidence"
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="uploaded_dispute_evidence",
+    )
+    file_path = models.CharField(max_length=500)
+    original_name = models.CharField(max_length=255, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"Evidence #{self.pk} for dispute #{self.dispute_id}"
