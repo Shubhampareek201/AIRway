@@ -1806,7 +1806,12 @@ class CustomerOrderDetailView(APIView):
                         "tax_amount": str(proposal.tax_amount),
                         "total_amount": str(proposal.total_amount),
                         "additional_duration_minutes": proposal.additional_duration_minutes,
-                        "status": proposal.status,
+                        "status": (
+                            BookingExtraWork.Status.EXPIRED
+                            if proposal.status == BookingExtraWork.Status.PENDING_CUSTOMER
+                            and proposal.expires_at and proposal.expires_at <= timezone.now()
+                            else proposal.status
+                        ),
                         "payment_choice": proposal.payment_choice,
                         "payment_status": proposal.payment_status,
                         "customer_response_note": proposal.customer_response_note,
