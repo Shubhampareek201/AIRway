@@ -1190,6 +1190,27 @@ class WorkerJobRejectView(APIView):
             booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
             changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
         )
+        rework_proposal = getattr(booking, "rework_source", None)
+        if rework_proposal is not None and rework_proposal.status == "accepted":
+            rework_proposal.status = "expired"
+            rework_proposal.responded_at = timezone.now()
+            rework_proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=booking.customer,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery appointment needs rescheduling",
+                body="The assigned professional could not take the recovery appointment. AIRway support will arrange another time.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": rework_proposal.dispute_id},
+            )
+            Notification.objects.create(
+                user=rework_proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery assignment declined",
+                body=f"The assigned professional declined recovery booking #{booking.pk}. Please issue a new proposal.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": rework_proposal.dispute_id},
+            )
         return Response({"detail": "Job rejected.", "status": booking.status})
 
 
