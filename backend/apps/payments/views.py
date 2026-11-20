@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 
-from apps.bookings.models import Booking, Order
+from apps.bookings.models import AppointmentGroup, Booking, Order
 from .models import Payment
 
 logger = logging.getLogger(__name__)
@@ -452,6 +452,24 @@ class CreateOrderView(APIView):
             try:
                 raw_wallet_amount = request.data.get("wallet_amount", "0.00")
                 requested_stage = request.data.get("stage")
+                appointment_group = None
+                appointment_group_id = request.data.get("appointment_group_id")
+                if appointment_group_id:
+                    try:
+                        appointment_group = AppointmentGroup.objects.get(
+                            pk=appointment_group_id, order=parent_order
+                        )
+                    except (AppointmentGroup.DoesNotExist, ValueError, TypeError):
+                        return Response(
+                            {"detail": "Appointment group not found in this order."},
+                            status=status.HTTP_404_NOT_FOUND,
+                        )
+                    if requested_stage not in (None, Payment.Stage.BALANCE):
+                        return Response(
+                            {"detail": "Appointment-group payments are balance payments only."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    requested_stage = Payment.Stage.BALANCE
                 if not requested_stage:
                     # New checkout orders always start with the 30% advance.
                     # Preserve the legacy full-settlement path only for orders
@@ -502,6 +520,7 @@ class CreateOrderView(APIView):
                     wallet_amount=raw_wallet_amount,
                     trigger_source="checkout",
                     stage=requested_stage,
+                    appointment_group=appointment_group,
                 )
             except ValueError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -523,6 +542,7 @@ class CreateOrderView(APIView):
                 "payment_status": payment.status,
                 "airway_order_id": parent_order.id,
                 "payment_id": payment.id,
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
             }
             if razorpay_order_id:
                 response_data["key_id"] = settings.RAZORPAY_KEY_ID
