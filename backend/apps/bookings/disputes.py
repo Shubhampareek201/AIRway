@@ -15,7 +15,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
-from .models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence
+from .models import (
+    Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence,
+    BookingReworkProposal, BookingStatusHistory,
+)
 
 
 def _is_assigned_worker(booking, user):
@@ -23,6 +26,17 @@ def _is_assigned_worker(booking, user):
 
 
 def _serialize_dispute(dispute):
+    proposal = getattr(dispute, "rework_proposal", None)
+    rework = None
+    if proposal is not None:
+        rework = {
+            "id": proposal.pk,
+            "status": proposal.status,
+            "scheduled_at": proposal.scheduled_at,
+            "worker_name": proposal.worker.user.name or "AIRway Professional",
+            "followup_booking_id": proposal.followup_booking_id,
+            "followup_status": proposal.followup_booking.status if proposal.followup_booking_id else None,
+        }
     return {
         "id": dispute.pk,
         "booking_id": dispute.booking_id,
@@ -40,6 +54,7 @@ def _serialize_dispute(dispute):
         "status": dispute.status,
         "resolution_note": dispute.resolution_note,
         "resolved_at": dispute.resolved_at,
+        "rework_proposal": rework,
         "created_at": dispute.created_at,
         "updated_at": dispute.updated_at,
     }
@@ -169,6 +184,128 @@ class BookingDisputeDetailView(APIView):
             dispute.save(update_fields=["status", "resolution_note", "resolved_by", "resolved_at", "updated_at"])
         dispute = BookingDispute.objects.select_related("booking__service").get(pk=dispute.pk)
         return Response(_serialize_dispute(dispute))
+
+
+
+class BookingDisputeReworkDecisionView(APIView):
+    """Customer accepts or declines an Admin-approved, no-charge recovery visit."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, dispute_id):
+        dispute = get_object_or_404(
+            BookingDispute.objects.select_for_update().select_related(
+                "booking__customer", "booking__service__category",
+                "booking__variant", "booking__address__zone__city",
+            ),
+            pk=dispute_id,
+            booking__customer=request.user,
+        )
+        proposal = get_object_or_404(
+            BookingReworkProposal.objects.select_for_update().select_related(
+                "worker__user", "dispute"
+            ),
+            dispute=dispute,
+        )
+        if proposal.status != BookingReworkProposal.Status.PENDING_CUSTOMER:
+            return Response({"detail": "This recovery appointment has already been answered."}, status=status.HTTP_409_CONFLICT)
+        decision = str(request.data.get("decision", "")).strip().lower()
+        if decision not in ("accept", "decline"):
+            return Response({"decision": "Choose accept or decline."}, status=status.HTTP_400_BAD_REQUEST)
+        now = timezone.now()
+        if decision == "decline":
+            proposal.status = BookingReworkProposal.Status.DECLINED
+            proposal.responded_at = now
+            proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Rework appointment declined",
+                body=f"The customer declined the proposed recovery appointment for dispute #{dispute.pk}.",
+                channel=Notification.Channel.IN_APP,
+                data={"dispute_id": dispute.pk, "rework_proposal_id": proposal.pk},
+            )
+            return Response(_serialize_dispute(dispute))
+
+        original = dispute.booking
+        if proposal.scheduled_at <= now:
+            proposal.status = BookingReworkProposal.Status.EXPIRED
+            proposal.responded_at = now
+            proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            return Response({"detail": "The proposed appointment time has passed. AIRway support must issue a new proposal."}, status=status.HTTP_409_CONFLICT)
+        if original.booking_mode != Booking.BookingMode.SCHEDULED:
+            return Response({"detail": "This service type cannot be automatically rebooked as a recovery visit."}, status=status.HTTP_409_CONFLICT)
+
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.workers.eligibility import required_worker_gender_for_booking
+        duration = (
+            original.variant.duration_minutes
+            if original.variant_id and original.variant.duration_minutes
+            else original.service.duration_minutes
+        ) or 60
+        try:
+            required_gender = required_worker_gender_for_booking(original.service, original.customer_answers)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        eligible = DispatcherService._get_eligible_workers(
+            service=original.service,
+            zone=original.address.zone,
+            scheduled_at=proposal.scheduled_at,
+            duration_minutes=duration,
+            exclude_booking_id=original.pk,
+            exclude_customer_id=original.customer_id,
+            required_gender=required_gender,
+            required_tasks=(original.variant.included_tasks if original.variant_id else []),
+        )
+        if not eligible.filter(pk=proposal.worker_id).exists():
+            return Response({"detail": "The proposed professional is no longer available for this time. AIRway support must reschedule."}, status=status.HTTP_409_CONFLICT)
+
+        followup = Booking.objects.create(
+            customer=original.customer,
+            address=original.address,
+            service=original.service,
+            variant=original.variant,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=proposal.scheduled_at,
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={
+                "subtotal": "0.00", "tax": "0.00", "discount": "0.00",
+                "total": "0.00", "quantity": 1, "service_recovery": True,
+                "original_booking_id": original.pk, "dispute_id": dispute.pk,
+            },
+            notes=f"No-charge AIRway service recovery for booking #{original.pk}.",
+            customer_answers=original.customer_answers,
+        )
+        BookingAssignment.objects.create(
+            booking=followup, worker=proposal.worker, accepted_at=now,
+        )
+        BookingStatusHistory.objects.create(
+            booking=followup, from_status="", to_status=Booking.Status.ASSIGNED,
+            changed_by=request.user,
+            note=f"Admin-approved no-charge recovery for dispute #{dispute.pk}.",
+        )
+        proposal.status = BookingReworkProposal.Status.ACCEPTED
+        proposal.responded_at = now
+        proposal.followup_booking = followup
+        proposal.save(update_fields=["status", "responded_at", "followup_booking", "updated_at"])
+        Notification.objects.create(
+            user=proposal.worker.user,
+            type=Notification.Type.BOOKING_ASSIGNED,
+            title="Service recovery appointment assigned",
+            body=f"You have been assigned a no-charge recovery visit for booking #{original.pk}.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": followup.pk, "rework_proposal_id": proposal.pk},
+        )
+        Notification.objects.create(
+            user=original.customer,
+            type=Notification.Type.BOOKING_ASSIGNED,
+            title="Your recovery appointment is confirmed",
+            body=f"Your no-charge service recovery visit is scheduled for {timezone.localtime(proposal.scheduled_at):%d %b %Y, %I:%M %p}.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": followup.pk, "dispute_id": dispute.pk},
+        )
+        dispute = BookingDispute.objects.select_related("booking__service").get(pk=dispute.pk)
+        return Response(_serialize_dispute(dispute), status=status.HTTP_200_OK)
 
 
 class BookingDisputeEvidenceUploadView(APIView):
