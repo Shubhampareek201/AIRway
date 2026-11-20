@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
@@ -541,6 +543,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final descriptionController = TextEditingController();
     var category = 'service_quality';
     var outcome = 'refund_review';
+    File? evidencePhoto;
     final payload = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -584,6 +587,25 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final picked = await ImagePicker().pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                    );
+                    if (picked != null) {
+                      setDialogState(() => evidencePhoto = File(picked.path));
+                    }
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(evidencePhoto == null
+                      ? 'Attach an evidence photo (optional)'
+                      : 'Evidence photo selected'),
+                ),
+              ),
             ]),
           ),
           actions: [
@@ -606,16 +628,25 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     descriptionController.dispose();
     if (payload == null || !mounted) return;
     try {
-      await BookingApi.createDispute(
+      final dispute = await BookingApi.createDispute(
         bookingId: bookingId,
         category: payload['category']!,
         description: payload['description']!,
         requestedOutcome: payload['requested_outcome']!,
       );
+      var message = 'Your report has been sent to AIRway support.';
+      if (evidencePhoto != null) {
+        try {
+          await BookingApi.uploadDisputeEvidence(
+            disputeId: int.parse(dispute['id'].toString()),
+            photo: evidencePhoto!,
+          );
+        } catch (uploadError) {
+          message = 'Report submitted, but the evidence photo could not be uploaded: $uploadError';
+        }
+      }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Your report has been sent to AIRway support.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       await loadOrder(showLoader: false);
     } catch (e) {
       if (!mounted) return;
