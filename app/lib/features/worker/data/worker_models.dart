@@ -357,12 +357,14 @@ class WorkerAssignmentInfo {
   final DateTime? acceptedAt;
   final DateTime? startedAt;
   final DateTime? completedAt;
+  final bool locationSharingEnabled;
 
   WorkerAssignmentInfo({
     this.assignedAt,
     this.acceptedAt,
     this.startedAt,
     this.completedAt,
+    this.locationSharingEnabled = false,
   });
 
   factory WorkerAssignmentInfo.fromMap(Map<String, dynamic> map) {
@@ -371,6 +373,7 @@ class WorkerAssignmentInfo {
       acceptedAt: map['accepted_at'] != null ? DateTime.parse(map['accepted_at']) : null,
       startedAt: map['started_at'] != null ? DateTime.parse(map['started_at']) : null,
       completedAt: map['completed_at'] != null ? DateTime.parse(map['completed_at']) : null,
+      locationSharingEnabled: map['location_sharing_enabled'] == true,
     );
   }
 
