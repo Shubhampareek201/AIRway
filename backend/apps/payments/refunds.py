@@ -316,10 +316,16 @@ def process_payment_refund(refund_id):
         refund.status = PaymentRefund.Status.PROCESSING
         refund.save(update_fields=["status", "updated_at"])
         from apps.workers.models import WorkerEarning
-        WorkerEarning.objects.filter(
+        earning_rows = WorkerEarning.objects.filter(
             booking_id=refund.booking_id,
             status__in=(WorkerEarning.Status.PENDING, WorkerEarning.Status.AVAILABLE),
-        ).update(
+        )
+        earning_rows = (
+            earning_rows.filter(extra_work=refund.extra_work)
+            if refund.extra_work_id
+            else earning_rows.filter(extra_work__isnull=True)
+        )
+        earning_rows.update(
             status=WorkerEarning.Status.ON_HOLD,
             hold_reason="A refund is being processed; finance reconciliation is required.",
             updated_at=timezone.now(),
