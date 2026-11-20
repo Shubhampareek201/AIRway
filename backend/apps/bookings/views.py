@@ -2009,15 +2009,19 @@ class CustomerOrderDetailView(APIView):
         appointment_groups = []
         for group in order.appointment_groups.prefetch_related("bookings").all():
             group_statuses = [booking.status for booking in group.bookings.all()]
-            if group_statuses and all(value == Booking.Status.CANCELLED for value in group_statuses):
+            active_group_statuses = [
+                value for value in group_statuses
+                if value != Booking.Status.CANCELLED
+            ]
+            if not active_group_statuses:
                 group_status = "cancelled"
-            elif group_statuses and all(value == Booking.Status.COMPLETED for value in group_statuses):
+            elif all(value == Booking.Status.COMPLETED for value in active_group_statuses):
                 group_status = "completed"
-            elif Booking.Status.IN_PROGRESS in group_statuses:
+            elif Booking.Status.IN_PROGRESS in active_group_statuses:
                 group_status = "in_progress"
-            elif Booking.Status.ASSIGNED in group_statuses:
+            elif Booking.Status.ASSIGNED in active_group_statuses:
                 group_status = "assigned"
-            elif Booking.Status.CONFIRMED in group_statuses:
+            elif Booking.Status.CONFIRMED in active_group_statuses:
                 group_status = "confirmed"
             else:
                 group_status = "pending"
