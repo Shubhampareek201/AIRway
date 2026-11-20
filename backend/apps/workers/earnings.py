@@ -159,7 +159,7 @@ def sync_worker_earning(booking_id, payment_id):
             booking,
             worker,
             target_payment,
-            Decimal(str(target_extra_work.total_amount)),
+            Decimal(str(target_extra_work.subtotal)),
             extra_work=target_extra_work,
         )
 
@@ -205,7 +205,7 @@ def sync_worker_earning(booking_id, payment_id):
             booking,
             worker,
             earning_payment,
-            Decimal(str(proposal.total_amount)),
+            Decimal(str(proposal.subtotal)),
             extra_work=proposal,
         )
 
