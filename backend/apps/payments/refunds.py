@@ -129,7 +129,7 @@ def issue_admin_partial_refund(
                 raise ValueError("This refund request key was already used for a different request.")
             refund = existing
         else:
-            locked_payment = Payment.objects.select_for_update().select_related("extra_work").get(
+            locked_payment = Payment.objects.select_for_update().get(
                 pk=payment.pk
             )
             locked_booking = Booking.objects.select_for_update().get(pk=booking.pk)
