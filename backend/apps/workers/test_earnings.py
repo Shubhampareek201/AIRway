@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
 from apps.catalog.models import Category, Service
-from apps.bookings.models import Booking, BookingAssignment
+from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork, Order, OrderItem
 from apps.payments.models import Payment, PaymentRefund
 from apps.workers.earnings import sync_worker_earning
 from apps.workers.models import WorkerEarning, WorkerProfile
@@ -159,6 +159,65 @@ class WorkerEarningLedgerTests(TestCase):
         earning = sync_worker_earning(self.booking.pk, self.payment.pk)
         self.assertEqual(earning.status, WorkerEarning.Status.AVAILABLE)
         self.assertEqual(earning.net_amount, Decimal("80.00"))
+
+    def test_separately_paid_extra_work_gets_its_own_worker_earning(self):
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            total_amount=Decimal("118.00"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            booking=self.booking,
+            quantity=1,
+            line_subtotal=Decimal("100.00"),
+            tax_amount=Decimal("18.00"),
+            line_total=Decimal("118.00"),
+        )
+        base_payment = Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("118.00"),
+            status=Payment.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        service_earning = sync_worker_earning(self.booking.pk, base_payment.pk)
+        self.assertEqual(service_earning.gross_amount, Decimal("100.00"))
+
+        proposal = BookingExtraWork.objects.create(
+            booking=self.booking,
+            worker=self.worker,
+            reason="Additional room cleaning",
+            line_items=[{"description": "Extra room", "quantity": 1, "unit_price": "25.00", "line_total": "25.00"}],
+            subtotal=Decimal("25.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("25.00"),
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.SEPARATE,
+            payment_status="pending",
+        )
+        extra_payment = Payment.objects.create(
+            order=order,
+            extra_work=proposal,
+            customer=self.customer,
+            stage=Payment.Stage.EXTRA_WORK,
+            amount=Decimal("25.00"),
+            status=Payment.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        proposal.payment_status = "paid"
+        proposal.save(update_fields=["payment_status", "updated_at"])
+
+        extra_earning = sync_worker_earning(self.booking.pk, extra_payment.pk)
+
+        self.assertEqual(extra_earning.extra_work_id, proposal.pk)
+        self.assertEqual(extra_earning.gross_amount, Decimal("25.00"))
+        self.assertEqual(extra_earning.net_amount, Decimal("20.00"))
+        self.assertEqual(
+            WorkerEarning.objects.filter(booking=self.booking).count(),
+            2,
+        )
 
     def test_unpaid_or_incomplete_booking_does_not_create_earning(self):
         self.payment.status = Payment.Status.PENDING
