@@ -2,7 +2,9 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.contrib.admin.sites import AdminSite
+from django.contrib.auth.models import Permission
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
@@ -10,6 +12,7 @@ from apps.bookings.models import Booking, BookingExtraWork, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
+from apps.payments.admin import PaymentRefundAdmin
 from apps.payments.models import Payment, PaymentRefund
 from apps.payments.refunds import (
     _line_stage_amount,
@@ -77,6 +80,19 @@ class RefundRetrySafetyTests(TestCase):
             status=PaymentRefund.Status.PENDING,
         )
 
+
+    def test_partial_refund_admin_requires_dedicated_finance_permission(self):
+        model_admin = PaymentRefundAdmin(PaymentRefund, AdminSite())
+        request = RequestFactory().get("/admin/payments/paymentrefund/add/")
+        request.user = self.staff_user
+
+        self.assertFalse(model_admin.has_add_permission(request))
+        permission = Permission.objects.get(
+            content_type__app_label="payments",
+            codename="issue_partial_paymentrefund",
+        )
+        self.staff_user.user_permissions.add(permission)
+        self.assertTrue(model_admin.has_add_permission(request))
 
     @patch("apps.payments.refunds.process_payment_refund")
     def test_admin_partial_refund_is_source_allocated_and_idempotent(self, process_refund):
