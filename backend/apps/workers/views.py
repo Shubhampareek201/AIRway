@@ -1644,23 +1644,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
                 for existing_assignment in existing_assignments:
                     existing = existing_assignment.booking
-                    existing_duration = (
-                        existing.variant.duration_minutes
-                        if existing.variant_id and existing.variant.duration_minutes
-                        else existing.service.duration_minutes
-                    ) or 60
-                    existing_quantity = max(int((existing.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
-                    existing_duration *= (
-                        1 if existing.service.pricing_type == "per_unit"
-                        else existing_quantity
-                    )
-                    occupied = _booking_intervals(
-                        existing.scheduled_at,
-                        existing_duration,
-                        existing.service.buffer_minutes,
-                        existing.drop_scheduled_at
-                        if existing.booking_mode == Booking.BookingMode.PICKUP_DROP else None,
-                    )
+                    occupied = DispatcherService._assigned_booking_intervals(existing)
                     if any(
                         _intervals_overlap((group_start, group_end), interval)
                         for interval in occupied
