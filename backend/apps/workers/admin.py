@@ -192,8 +192,9 @@ class WorkerProfileAdmin(ModelAdmin):
         super().save_model(request, obj, form, change)
 
         if change and previous_commission_rate != obj.commission_rate and obj.commission_rate is not None:
+            from .earnings import refresh_worker_earnings_for_profile
             transaction.on_commit(
-                lambda worker_id=obj.pk: __import__("apps.workers.earnings", fromlist=["refresh_worker_earnings_for_profile"]).refresh_worker_earnings_for_profile(worker_id)
+                lambda worker_id=obj.pk: refresh_worker_earnings_for_profile(worker_id)
             )
 
         if approval_requested:
