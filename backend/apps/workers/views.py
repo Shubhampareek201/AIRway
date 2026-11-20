@@ -1408,7 +1408,8 @@ class WorkerEarningsView(APIView):
             results.append({
                 "id": earning.pk,
                 "booking_id": earning.booking_id,
-                "service_title": earning.booking.service.title,
+                "service_title": (f"Additional work · {earning.extra_work.reason}" if earning.extra_work_id else earning.booking.service.title),
+                "extra_work_id": earning.extra_work_id,
                 "gross_amount": str(earning.gross_amount),
                 "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
                 "commission_amount": str(earning.commission_amount) if earning.commission_amount is not None else None,
