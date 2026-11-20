@@ -1134,6 +1134,7 @@ class WorkerJobRejectView(APIView):
 class WorkerJobStartView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, job_id):
         try:
             profile = request.user.worker_profile
