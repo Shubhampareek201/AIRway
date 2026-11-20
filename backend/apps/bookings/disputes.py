@@ -264,7 +264,10 @@ class BookingDisputeReworkDecisionView(APIView):
             required_tasks=(original.variant.included_tasks if original.variant_id else []),
         )
         if not eligible.filter(pk=locked_worker.pk).exists():
-            return Response({"detail": "The proposed professional is no longer available for this time. AIRway support must reschedule."}, status=status.HTTP_409_CONFLICT)
+            proposal.status = BookingReworkProposal.Status.EXPIRED
+            proposal.responded_at = now
+            proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            return Response({"detail": "The proposed professional is no longer available for this time. AIRway support must issue a new proposal."}, status=status.HTTP_409_CONFLICT)
 
         followup = Booking.objects.create(
             customer=original.customer,
