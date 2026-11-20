@@ -401,14 +401,14 @@ class WorkerLeaveAdmin(ModelAdmin):
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
         "id", "worker", "booking", "gross_amount", "commission_rate",
-        "commission_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
+        "commission_amount", "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
     search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "payout_reference")
     readonly_fields = (
         "worker", "booking", "payment", "gross_amount", "commission_rate",
         "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
-        "created_at", "updated_at",
+        "adjusted_by", "adjusted_at", "created_at", "updated_at",
     )
 
     def has_add_permission(self, request):
@@ -433,10 +433,11 @@ class WorkerEarningAdmin(ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         fields = list(super().get_readonly_fields(request, obj))
         if obj is None:
-            return tuple(fields)
-        if obj.status == WorkerEarning.Status.AVAILABLE:
-            return tuple(fields)
-        fields.extend(["status", "payout_reference"])
+            fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
+        elif obj.status == WorkerEarning.Status.AVAILABLE:
+            fields.extend(["adjustment_amount", "adjustment_note"])
+        elif obj.status != WorkerEarning.Status.ON_HOLD:
+            fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
         return tuple(dict.fromkeys(fields))
 
     def save_model(self, request, obj, form, change):
@@ -445,12 +446,29 @@ class WorkerEarningAdmin(ModelAdmin):
         previous = WorkerEarning.objects.get(pk=obj.pk)
         if previous.status == WorkerEarning.Status.PAID:
             raise ValidationError("A recorded payout is immutable.")
-        if previous.status != WorkerEarning.Status.AVAILABLE or obj.status != WorkerEarning.Status.PAID:
-            raise ValidationError("Only available earnings can be marked as paid.")
-        reference = str(obj.payout_reference or "").strip()
-        if not reference:
-            raise ValidationError("A bank/UPI payout reference is required.")
-        obj.payout_reference = reference[:100]
-        obj.paid_at = timezone.now()
-        obj.paid_by = request.user
+
+        if previous.status == WorkerEarning.Status.AVAILABLE and obj.status == WorkerEarning.Status.PAID:
+            if obj.adjustment_amount != previous.adjustment_amount or obj.adjustment_note != previous.adjustment_note:
+                raise ValidationError("Adjustments cannot be changed after earnings become available.")
+            reference = str(obj.payout_reference or "").strip()
+            if not reference:
+                raise ValidationError("A bank/UPI payout reference is required.")
+            obj.payout_reference = reference[:100]
+            obj.paid_at = timezone.now()
+            obj.paid_by = request.user
+        elif previous.status == WorkerEarning.Status.ON_HOLD and obj.status == WorkerEarning.Status.AVAILABLE:
+            if previous.commission_amount is None:
+                raise ValidationError("Configure the worker commission rate before releasing this earning.")
+            if not str(obj.adjustment_note or "").strip():
+                raise ValidationError("A reconciliation note is required to release an earning hold.")
+            adjusted_net = previous.gross_amount - previous.commission_amount + obj.adjustment_amount
+            if adjusted_net < 0:
+                raise ValidationError("The adjustment cannot make the worker earning negative.")
+            obj.net_amount = adjusted_net
+            obj.adjustment_note = obj.adjustment_note.strip()
+            obj.adjusted_by = request.user
+            obj.adjusted_at = timezone.now()
+            obj.hold_reason = previous.hold_reason
+        else:
+            raise ValidationError("Only available earnings can be paid, or held earnings can be reconciled and released.")
         super().save_model(request, obj, form, change)
