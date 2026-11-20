@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .extra_work import CustomerExtraWorkListView, CustomerExtraWorkDecisionView
+from .extra_work import CustomerExtraWorkListView, CustomerExtraWorkDecisionView\nfrom .disputes import BookingDisputeListCreateView, BookingDisputeDetailView
 
 from .views import (
     BookingViewSet,
@@ -22,7 +22,7 @@ from .views import (
 router = DefaultRouter()
 router.register(r"", BookingViewSet, basename="booking")
 
-urlpatterns = [
+urlpatterns = [\n    path("disputes/", BookingDisputeListCreateView.as_view(), name="booking-dispute-list-create"),\n    path("disputes/<int:dispute_id>/", BookingDisputeDetailView.as_view(), name="booking-dispute-detail"),
     path("cart/", CustomerCartView.as_view(), name="customer-cart"),
     path("cart/checkout/", CustomerCheckoutView.as_view(), name="customer-cart-checkout"),
     path("orders/", CustomerOrderListView.as_view(), name="customer-order-list"),
