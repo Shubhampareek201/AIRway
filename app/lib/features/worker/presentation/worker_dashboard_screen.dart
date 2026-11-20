@@ -592,15 +592,15 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   }
 
   Widget _buildEarningsTab() {
-    double totalFor(String status) => _earnings
+    double totalFor(String status, [String amountKey = 'net_amount']) => _earnings
         .where((item) => item['status'] == status)
         .fold<double>(
           0,
-          (sum, item) => sum + (double.tryParse('${item['net_amount']?.toString() ?? ''}') ?? 0),
+          (sum, item) => sum + (double.tryParse('${item[amountKey]?.toString() ?? ''}') ?? 0),
         );
     final available = totalFor('available');
     final pending = totalFor('pending');
-    final onHold = totalFor('on_hold');
+    final onHold = totalFor('on_hold', 'gross_amount');
     final paid = totalFor('paid');
     String money(double value) => NumberFormat.currency(
       locale: 'en_IN', symbol: '₹', decimalDigits: 0,
