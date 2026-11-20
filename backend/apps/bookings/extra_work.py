@@ -90,6 +90,20 @@ class WorkerExtraWorkProposalView(APIView):
         if booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": "Extra work can only be proposed after the job has started."}, status=status.HTTP_409_CONFLICT)
 
+        # Expired pending rows must stop blocking a worker from submitting a
+        # fresh request. The conditional unique constraint remains the final
+        # concurrency guard for genuinely active proposals.
+        now = timezone.now()
+        BookingExtraWork.objects.filter(
+            booking=booking,
+            status=BookingExtraWork.Status.PENDING_CUSTOMER,
+            expires_at__lte=now,
+        ).update(
+            status=BookingExtraWork.Status.EXPIRED,
+            responded_at=now,
+            updated_at=now,
+        )
+
         reason = str(request.data.get("reason", "")).strip()
         raw_items = request.data.get("line_items")
         if not reason or len(reason) > 500 or not isinstance(raw_items, list) or not raw_items:
