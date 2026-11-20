@@ -1968,6 +1968,26 @@ class CustomerOrderDetailView(APIView):
                 group_status = "confirmed"
             else:
                 group_status = "pending"
+            from apps.payments.models import Payment
+            group_item_ids = set(
+                order.items.filter(booking__appointment_group=group)
+                .exclude(booking__status=Booking.Status.CANCELLED)
+                .values_list("id", flat=True)
+            )
+            group_balance_due = sum(
+                (
+                    Decimal(str(entry.get("amount", "0")))
+                    for entry in allocation.get("balance", [])
+                    if entry.get("order_item_id") in group_item_ids
+                ),
+                Decimal("0.00"),
+            )
+            group_balance_payment = Payment.objects.filter(
+                order=order,
+                appointment_group=group,
+                stage=Payment.Stage.BALANCE,
+                status=Payment.Status.PAID,
+            ).first()
             appointment_groups.append({
                 "id": group.id,
                 "group_number": group.group_number,
@@ -1975,6 +1995,16 @@ class CustomerOrderDetailView(APIView):
                 "customer_message": group.customer_message,
                 "status": group_status,
                 "booking_ids": [booking.id for booking in group.bookings.all()],
+                "balance_due": str(
+                    Decimal("0.00") if group_balance_payment else group_balance_due
+                ),
+                "balance_paid": bool(group_balance_payment),
+                "ready_for_balance": bool(
+                    advance_payment
+                    and group_status == "completed"
+                    and group_balance_due > 0
+                    and not group_balance_payment
+                ),
             })
 
         return Response({
