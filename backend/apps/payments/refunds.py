@@ -220,10 +220,13 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
             gateway_part = gateway_captured - refunded_gateway
             if wallet_part < 0 or gateway_part < 0:
                 raise ValueError("Existing refunds exceed the captured service allocation. Manual reconciliation is required.")
+            key = f"booking-cancel:{locked.pk}:{booking.pk}"
             amount = wallet_part + gateway_part
             if amount <= 0:
+                existing = PaymentRefund.objects.filter(idempotency_key=key).first()
+                if existing and existing.status == PaymentRefund.Status.PENDING:
+                    created_ids.append(existing.pk)
                 continue
-            key = f"booking-cancel:{locked.pk}:{booking.pk}"
             refund, was_created = PaymentRefund.objects.get_or_create(
                 idempotency_key=key,
                 defaults={
@@ -237,9 +240,9 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
                     "status": PaymentRefund.Status.PENDING,
                 },
             )
-            if was_created:
+            if was_created or refund.status == PaymentRefund.Status.PENDING:
                 created_ids.append(refund.pk)
-            elif (
+            if not was_created and (
                 refund.amount != amount
                 or refund.wallet_amount != wallet_part
                 or refund.gateway_amount != gateway_part
