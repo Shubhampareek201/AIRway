@@ -417,6 +417,8 @@ def _process_verified_payment(
             extra_work = payment.extra_work
             extra_work.payment_status = "paid"
             extra_work.save(update_fields=["payment_status", "updated_at"])
+            from apps.workers.earnings import sync_worker_earning
+            sync_worker_earning(extra_work.booking_id, payment.pk)
             Notification.objects.create(
                 user=payment.customer,
                 type=Notification.Type.PAYMENT_SUCCESS,
