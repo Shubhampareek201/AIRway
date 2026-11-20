@@ -568,7 +568,11 @@ class WorkerJobListView(APIView):
         results = []
         for assign in query:
             booking = assign.booking
-            payment_label = _worker_payment_label(booking)
+            payment_label = (
+                "No-charge service recovery"
+                if getattr(booking, "rework_source", None) is not None
+                else _worker_payment_label(booking)
+            )
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
