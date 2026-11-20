@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from apps.bookings.models import Booking, OrderItem
+from apps.bookings.models import Booking, BookingDispute, OrderItem
 from apps.notifications.models import Notification
 from apps.wallet.models import Wallet, WalletTransaction
 from .models import Payment, PaymentRefund
@@ -133,6 +133,19 @@ def issue_admin_partial_refund(
         PaymentRefund.Reason.DISPUTE_RESOLUTION,
     ):
         raise ValueError("Unsupported admin refund reason.")
+    if reason == PaymentRefund.Reason.DISPUTE_RESOLUTION:
+        if dispute is None:
+            raise ValueError("Select the resolved dispute this refund is settling.")
+        if dispute.booking_id != booking.pk:
+            raise ValueError("The selected dispute does not belong to this booking.")
+        if (
+            dispute.status != BookingDispute.Status.RESOLVED
+            or dispute.requested_outcome != BookingDispute.RequestedOutcome.REFUND_REVIEW
+            or not dispute.resolution_note.strip()
+        ):
+            raise ValueError("Only a resolved refund-review dispute with an Admin resolution note can be refunded.")
+    elif dispute is not None:
+        raise ValueError("A dispute link is only valid for a dispute-resolution refund.")
     if payment.extra_work_id:
         if extra_work is None:
             extra_work = payment.extra_work
@@ -152,6 +165,7 @@ def issue_admin_partial_refund(
                 existing.payment_id != payment.pk
                 or existing.booking_id != booking.pk
                 or existing.extra_work_id != (extra_work.pk if extra_work else None)
+                or existing.dispute_id != (dispute.pk if dispute else None)
                 or existing.amount != requested_amount
             ):
                 raise ValueError("This refund request key was already used for a different request.")
@@ -210,6 +224,7 @@ def issue_admin_partial_refund(
                 payment=locked_payment,
                 booking=locked_booking,
                 extra_work=extra_work,
+                dispute=dispute,
                 order_item=order_item,
                 amount=requested_amount,
                 wallet_amount=wallet_refund,
