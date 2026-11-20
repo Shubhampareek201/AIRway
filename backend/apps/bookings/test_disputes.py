@@ -1,4 +1,5 @@
 from datetime import timedelta, time
+from decimal import Decimal
 from io import BytesIO
 from tempfile import TemporaryDirectory
 
@@ -11,7 +12,7 @@ from apps.accounts.models import Address, User
 from apps.bookings.models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence, BookingReworkProposal
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
-from apps.workers.models import WorkerProfile, WorkerSchedule, WorkerService, WorkerZone
+from apps.workers.models import WorkerProfile, WorkerSchedule, WorkerService, WorkerZone, WorkerEarning
 from PIL import Image
 
 
@@ -195,7 +196,10 @@ class BookingDisputeAPITests(TestCase):
 
 
     def _resolved_rework_proposal(self):
+        self.booking.pricing_snapshot = {"subtotal": "500.00", "tax": "90.00", "total": "590.00"}
+        self.booking.save(update_fields=["pricing_snapshot", "updated_at"])
         self.worker.is_online = True
+        self.worker.commission_rate = Decimal("20.00")
         self.worker.save(update_fields=["is_online", "updated_at"])
         WorkerService.objects.create(worker=self.worker, service=self.booking.service)
         WorkerZone.objects.create(worker=self.worker, zone=self.zone)
@@ -243,6 +247,31 @@ class BookingDisputeAPITests(TestCase):
         self.assertEqual(followup.assignment.worker_id, self.worker.pk)
         self.assertIsNotNone(followup.assignment.accepted_at)
         self.assertTrue(followup.notes.startswith("No-charge AIRway service recovery"))
+
+
+    def test_completed_rework_creates_airway_funded_worker_earning(self):
+        proposal = self._resolved_rework_proposal()
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        followup = proposal.followup_booking
+        followup.status = Booking.Status.COMPLETED
+        followup.completed_at = timezone.now()
+        followup.save(update_fields=["status", "completed_at", "updated_at"])
+
+        from apps.workers.earnings import sync_rework_worker_earning
+        earning = sync_rework_worker_earning(followup.pk)
+
+        self.assertIsNotNone(earning)
+        self.assertEqual(earning.worker_id, self.worker.pk)
+        self.assertEqual(earning.gross_amount, Decimal("500.00"))
+        self.assertEqual(earning.commission_rate, Decimal("20.00"))
+        self.assertEqual(earning.net_amount, Decimal("400.00"))
+        self.assertIsNone(earning.payment_id)
+        self.assertEqual(earning.status, WorkerEarning.Status.AVAILABLE)
 
     def test_customer_can_decline_rework_without_creating_booking(self):
         proposal = self._resolved_rework_proposal()
