@@ -641,7 +641,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       Row(children: [
         Expanded(child: _earningSummaryCard('Pending', pending, Icons.hourglass_top_rounded, const Color(0xFFB7791F))),
         const SizedBox(width: 10),
-        Expanded(child: _earningSummaryCard('On hold', onHold, Icons.pause_circle_outline_rounded, const Color(0xFFB45309))),
+        Expanded(child: _earningSummaryCard('Gross on hold', onHold, Icons.pause_circle_outline_rounded, const Color(0xFFB45309))),
       ]),
       const SizedBox(height: 10),
       _earningSummaryCard('Paid out', paid, Icons.check_circle_outline_rounded, AirwayColors.success),
