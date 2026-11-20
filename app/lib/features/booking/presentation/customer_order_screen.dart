@@ -735,7 +735,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final advanceReady = order?['ready_for_advance'] == true;
     final balanceReady = order?['ready_for_balance'] == true;
     final legacyReady = order?['ready_for_legacy_payment'] == true;
+    final hasAppointmentGroups =
+        (order?['appointment_groups'] as List? ?? []).isNotEmpty;
     final ready = advanceReady || balanceReady || legacyReady;
+    final footerPaymentReady =
+        advanceReady || (balanceReady && !hasAppointmentGroups) || legacyReady;
     final advancePaid = order?['advance_paid'] == true;
     final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
@@ -888,7 +892,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
         decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: line))),
         child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (ready && !paid)
+          if (footerPaymentReady && !paid)
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: paying ? null : startPayment,
               child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(
