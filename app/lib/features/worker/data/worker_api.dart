@@ -140,6 +140,18 @@ class WorkerApi {
     );
   }
 
+  static Future<Map<String, dynamic>> setJobLocationSharing(
+    int assignmentId, {
+    required bool enabled,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/location-sharing/',
+      method: 'POST',
+      data: {'enabled': enabled},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<Map<String, dynamic>> updateJobLocation(
     int assignmentId, {
     required double latitude,
