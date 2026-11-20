@@ -455,8 +455,9 @@ def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amou
             _notify_refund(refund)
         else:
             if refund.status == PaymentRefund.Status.FAILED:
+                from apps.workers.earnings import sync_worker_earning
                 transaction.on_commit(
-                    lambda booking_id=refund.booking_id, payment_id=refund.payment_id: __import__("apps.workers.earnings", fromlist=["sync_worker_earning"]).sync_worker_earning(booking_id, payment_id)
+                    lambda booking_id=refund.booking_id, payment_id=refund.payment_id: sync_worker_earning(booking_id, payment_id)
                 )
             _notify_refund_attention(
                 refund,
