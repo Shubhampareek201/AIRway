@@ -897,8 +897,8 @@ class BookingReworkProposal(TimeStampedModel):
         DECLINED = "declined", "Declined"
         EXPIRED = "expired", "Expired"
 
-    dispute = models.OneToOneField(
-        BookingDispute, on_delete=models.PROTECT, related_name="rework_proposal"
+    dispute = models.ForeignKey(
+        BookingDispute, on_delete=models.PROTECT, related_name="rework_proposals"
     )
     worker = models.ForeignKey(
         "workers.WorkerProfile", on_delete=models.PROTECT, related_name="rework_proposals"
@@ -921,6 +921,13 @@ class BookingReworkProposal(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["status", "scheduled_at"], name="rework_status_slot_idx")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dispute"],
+                condition=models.Q(status="pending_customer"),
+                name="one_pending_rework_proposal_per_dispute",
+            ),
+        ]
 
     def __str__(self):
         return f"Rework proposal for dispute #{self.dispute_id} ({self.status})"
