@@ -1186,7 +1186,9 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           style: const TextStyle(fontSize: 12),
         ),
         trailing: Text(
-          '₹${job.amount.toStringAsFixed(0)}',
+          job.paymentLabel == 'No-charge service recovery'
+              ? AirwayText.tr('No charge', 'कोई शुल्क नहीं')
+              : '₹${job.amount.toStringAsFixed(0)}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
