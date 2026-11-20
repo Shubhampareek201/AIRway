@@ -93,19 +93,38 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
-  Future<void> startPayment() async {
-    final advanceReady = order?['ready_for_advance'] == true;
-    final balanceReady = order?['ready_for_balance'] == true;
-    final legacyReady = order?['ready_for_legacy_payment'] == true;
+  Future<void> startPayment({int? appointmentGroupId}) async {
+    Map<String, dynamic>? selectedGroup;
+    if (appointmentGroupId != null) {
+      for (final rawGroup in (order?['appointment_groups'] as List? ?? [])) {
+        if (rawGroup is Map &&
+            rawGroup['id']?.toString() == appointmentGroupId.toString()) {
+          selectedGroup = Map<String, dynamic>.from(rawGroup);
+          break;
+        }
+      }
+    }
+    final hasAppointmentGroups =
+        (order?['appointment_groups'] as List? ?? []).isNotEmpty;
+    final advanceReady = appointmentGroupId == null &&
+        order?['ready_for_advance'] == true;
+    final balanceReady = selectedGroup != null
+        ? selectedGroup['ready_for_balance'] == true
+        : !hasAppointmentGroups && order?['ready_for_balance'] == true;
+    final legacyReady = appointmentGroupId == null &&
+        order?['ready_for_legacy_payment'] == true;
     if ((!advanceReady && !balanceReady && !legacyReady) || paying) return;
-    final stage = advanceReady ? 'advance' : balanceReady ? 'balance' : 'legacy';
+    final stage = selectedGroup != null
+        ? 'balance'
+        : advanceReady ? 'advance' : balanceReady ? 'balance' : 'legacy';
     _currentPaymentStage = stage;
-    final stageDueKey = advanceReady
-        ? 'advance_due'
-        : balanceReady
-            ? 'balance_due'
-            : 'legacy_payment_due';
-    final stageDue = amount(order == null ? null : order![stageDueKey]);
+    final stageDue = selectedGroup != null
+        ? amount(selectedGroup['balance_due'])
+        : amount(order == null
+            ? null
+            : order![advanceReady
+                ? 'advance_due'
+                : balanceReady ? 'balance_due' : 'legacy_payment_due']);
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -134,6 +153,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         widget.orderId,
         walletAmount: walletAmount.toStringAsFixed(2),
         stage: stage,
+        appointmentGroupId: appointmentGroupId,
       );
       await loadWalletBalance();
       if (payment['fully_paid_by_wallet'] == true || payment['already_paid'] == true) {
@@ -168,7 +188,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         'amount': payment['amount'],
         'currency': payment['currency'] ?? 'INR',
         'name': 'AIRway',
-        'description': 'Service order #' + widget.orderId.toString(),
+        'description': selectedGroup != null
+            ? 'Appointment #' + selectedGroup['group_number'].toString() + ' balance'
+            : 'Service order #' + widget.orderId.toString(),
         'order_id': gatewayOrderId,
         'theme': {'color': '#075B43'},
       });
