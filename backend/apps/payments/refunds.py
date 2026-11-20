@@ -26,13 +26,20 @@ def _line_stage_amount(payment, booking):
             None,
         )
     rows = (payment.raw_response or {}).get("service_allocation_v1", [])
-    row = next((entry for entry in rows if entry.get("booking_id") == booking.id), None)
-    if row:
-        item = OrderItem.objects.filter(pk=row.get("order_item_id")).first()
+    matching_rows = [
+        entry for entry in rows
+        if entry.get("booking_id") == booking.id
+    ]
+    if matching_rows:
+        item_id = next(
+            (entry.get("order_item_id") for entry in matching_rows if entry.get("order_item_id")),
+            None,
+        )
+        item = OrderItem.objects.filter(pk=item_id).first() if item_id else None
         return (
-            Decimal(str(row.get("total", "0"))),
-            Decimal(str(row.get("wallet_amount", "0"))),
-            Decimal(str(row.get("gateway_amount", "0"))),
+            sum((Decimal(str(entry.get("total", "0"))) for entry in matching_rows), Decimal("0.00")),
+            sum((Decimal(str(entry.get("wallet_amount", "0"))) for entry in matching_rows), Decimal("0.00")),
+            sum((Decimal(str(entry.get("gateway_amount", "0"))) for entry in matching_rows), Decimal("0.00")),
             item,
         )
     if not payment.order_id and payment.booking_id == booking.id:
