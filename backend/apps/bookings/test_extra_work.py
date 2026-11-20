@@ -108,6 +108,16 @@ class ExtraWorkAPITest(TestCase):
         self.assertEqual(payment.order_id, self.order.pk)
         create_gateway_order.assert_called_once()
 
+        from apps.payments.verify_view import _process_verified_payment
+        _process_verified_payment(
+            payment, "pay_extra_work_test", "order_extra_work_test",
+            self.customer, "test",
+        )
+        payment.refresh_from_db()
+        proposal.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(proposal.payment_status, "paid")
+
     @patch("apps.payments.views.client.order.create")
     def test_add_to_balance_extra_work_is_included_in_final_balance(self, create_gateway_order):
         from apps.payments.views import create_or_get_order_payment
@@ -146,6 +156,16 @@ class ExtraWorkAPITest(TestCase):
         extra_allocation = next(row for row in allocations if row["extra_work_id"] == proposal.pk)
         self.assertEqual(extra_allocation["total"], "250.00")
         self.assertEqual(extra_allocation["gateway_amount"], "250.00")
+
+        from apps.payments.verify_view import _process_verified_payment
+        _process_verified_payment(
+            payment, "pay_balance_extra_test", order_id,
+            self.customer, "test",
+        )
+        payment.refresh_from_db()
+        proposal.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(proposal.payment_status, "paid")
 
     def test_customer_can_reject_proposal(self):
         proposal = self._proposal()
