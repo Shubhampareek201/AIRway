@@ -216,7 +216,7 @@ def sync_worker_earning(booking_id, payment_id):
 @transaction.atomic
 def sync_rework_worker_earning(booking_id):
     """Record AIRway-funded worker compensation for a completed no-charge recovery visit."""
-    booking = Booking.objects.select_for_update().select_related(
+    booking = Booking.objects.select_for_update(of=("self",)).select_related(
         "rework_source__dispute__booking"
     ).filter(pk=booking_id, status=Booking.Status.COMPLETED).first()
     if booking is None:
