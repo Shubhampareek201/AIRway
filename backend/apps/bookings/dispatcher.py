@@ -413,9 +413,13 @@ class DispatcherService:
         created = []
         summary = ", ".join(service_titles)
         for worker in workers:
-            offer = WorkerOffer.objects.filter(
-                booking=booking, worker=worker
-            ).first()
+            offer = (
+                WorkerOffer.objects.filter(
+                    appointment_group=appointment_group, worker=worker
+                ).first()
+                if appointment_group else
+                WorkerOffer.objects.filter(booking=booking, worker=worker).first()
+            )
             if offer is not None and offer.status == WorkerOffer.Status.WITHDRAWN:
                 # Reuse the unique booking/worker offer row when a previous
                 # assignment was withdrawn before work started (for example,
