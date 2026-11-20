@@ -503,11 +503,14 @@ def request_recurring_plan_refund(plan):
 
     refund_target = max(unused_total - already_refunded, Decimal("0.00")).quantize(CENT)
     if refund_target <= 0:
-        return PaymentRefund.objects.filter(
+        existing_refunds = PaymentRefund.objects.filter(
             payment__order_id=locked_plan.order_id,
             booking=locked_plan.source_booking,
             reason=PaymentRefund.Reason.RECURRING_PLAN_CANCELLATION,
         ).order_by("created_at")
+        for refund in existing_refunds.filter(status=PaymentRefund.Status.PENDING):
+            process_payment_refund(refund.pk)
+        return existing_refunds
 
     captured_remaining = sum((row[1] for row in allocations), Decimal("0.00"))
     if captured_remaining < refund_target:
@@ -541,6 +544,23 @@ def request_recurring_plan_refund(plan):
 
         with transaction.atomic():
             locked_payment = Payment.objects.select_for_update().get(pk=payment.pk)
+            _, current_wallet_refunded, current_gateway_refunded = _existing_refund_components(
+                locked_payment, locked_plan.source_booking
+            )
+            _, current_wallet_captured, current_gateway_captured, locked_item = _line_stage_amount(
+                locked_payment, locked_plan.source_booking
+            )
+            current_wallet_available = current_wallet_captured - current_wallet_refunded
+            current_gateway_available = current_gateway_captured - current_gateway_refunded
+            if (
+                wallet_refund > current_wallet_available
+                or gateway_refund > current_gateway_available
+            ):
+                raise ValueError(
+                    "Another refund changed the captured allocation while this recurring refund was being prepared. "
+                    "Retry after reconciliation."
+                )
+            item = locked_item
             existing = PaymentRefund.objects.filter(
                 payment=locked_payment,
                 booking=locked_plan.source_booking,
