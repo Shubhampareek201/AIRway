@@ -929,6 +929,7 @@ class WorkerJobDetailView(APIView):
                 "accepted_at": assign.accepted_at.isoformat() if assign.accepted_at else None,
                 "started_at": assign.started_at.isoformat() if assign.started_at else None,
                 "completed_at": assign.completed_at.isoformat() if assign.completed_at else None,
+                "location_sharing_enabled": bool(assign.location_sharing_enabled),
             },
         })
 
