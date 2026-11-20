@@ -323,9 +323,20 @@ class WorkerEarning(TimeStampedModel):
     hold_reason = models.CharField(max_length=255, blank=True)
     payout_reference = models.CharField(max_length=100, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="worker_earning_payouts",
+    )
 
     class Meta:
         ordering = ["-created_at"]
+        permissions = [
+            ("manage_worker_payouts", "Can record worker payouts"),
+            ("configure_worker_commission", "Can configure worker commission rates"),
+        ]
         constraints = [
             models.UniqueConstraint(fields=("booking",), name="unique_worker_earning_per_booking"),
             models.CheckConstraint(condition=models.Q(gross_amount__gte=0), name="worker_earning_gross_nonnegative"),
