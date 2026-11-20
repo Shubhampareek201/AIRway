@@ -755,19 +755,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: OutlinedButton(
-              onPressed: responding ? null : () => _respondToRework(proposalId, item['id'] as int? ?? 0, false),
+              onPressed: responding ? null : () => _respondToRework(proposalId, int.tryParse(item['id']?.toString() ?? '') ?? 0, false),
               child: const Text('Decline'),
             )),
             const SizedBox(width: 8),
             Expanded(child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: violet),
-              onPressed: responding ? null : () => _respondToRework(proposalId, item['id'] as int? ?? 0, true),
+              onPressed: responding ? null : () => _respondToRework(proposalId, int.tryParse(item['id']?.toString() ?? '') ?? 0, true),
               child: responding
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Text('Accept visit'),
             )),
           ]),
-        ] else
+        ] else ...[
           Padding(
             padding: const EdgeInsets.only(top: 5),
             child: Text(
@@ -779,6 +779,31 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               style: const TextStyle(color: sub, fontSize: 11, fontWeight: FontWeight.w700),
             ),
           ),
+          if (statusValue == 'accepted' && data['followup_booking_id'] != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final bookingId = int.tryParse(data['followup_booking_id'].toString());
+                  if (bookingId == null) return;
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => BookingTrackingScreen(
+                        bookingId: bookingId,
+                        serviceTitle: (order?['items'] is List && order!['items'].isNotEmpty)
+                            ? (order!['items'][0]['service']?['service_title']?.toString() ?? 'AIRway Service')
+                            : 'AIRway Service',
+                        initialStatus: data['followup_status']?.toString() ?? 'assigned',
+                      ),
+                    ),
+                  );
+                  if (mounted) await loadOrder(showLoader: false);
+                },
+                icon: const Icon(Icons.location_on_outlined, size: 16),
+                label: const Text('Track recovery visit'),
+              ),
+            ),
+        ],
       ]),
     );
   }
