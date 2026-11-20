@@ -1,6 +1,7 @@
 from django.test import TestCase
 from unittest.mock import patch
 from datetime import timedelta
+from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -106,6 +107,45 @@ class ExtraWorkAPITest(TestCase):
         self.assertEqual(payment.amount, proposal.total_amount)
         self.assertEqual(payment.order_id, self.order.pk)
         create_gateway_order.assert_called_once()
+
+    @patch("apps.payments.views.client.order.create")
+    def test_add_to_balance_extra_work_is_included_in_final_balance(self, create_gateway_order):
+        from apps.payments.views import create_or_get_order_payment
+
+        create_gateway_order.return_value = {"id": "order_balance_with_extra"}
+        self.booking.status = Booking.Status.COMPLETED
+        self.booking.save(update_fields=["status"])
+        self.order.metadata = {
+            "payment_allocation_v1": {
+                "percentage": "30",
+                "advance_total": "300.00",
+                "balance_total": "700.00",
+                "advance": [{"order_item_id": self.booking.order_item.pk, "booking_id": self.booking.pk, "amount": "300.00"}],
+                "balance": [{"order_item_id": self.booking.order_item.pk, "booking_id": self.booking.pk, "amount": "700.00"}],
+            }
+        }
+        self.order.save(update_fields=["metadata", "updated_at"])
+        Payment.objects.create(
+            order=self.order, customer=self.customer,
+            stage=Payment.Stage.ADVANCE, amount="300.00",
+            status=Payment.Status.PAID,
+        )
+        proposal = self._proposal()
+        proposal.status = BookingExtraWork.Status.APPROVED
+        proposal.payment_choice = BookingExtraWork.PaymentChoice.ADD_TO_BALANCE
+        proposal.payment_status = "pending"
+        proposal.approved_at = timezone.now()
+        proposal.save()
+
+        payment, order_id, _ = create_or_get_order_payment(
+            self.order, self.customer, stage=Payment.Stage.BALANCE,
+        )
+        self.assertEqual(order_id, "order_balance_with_extra")
+        self.assertEqual(payment.amount, proposal.total_amount + Decimal("700.00"))
+        allocations = payment.raw_response["service_allocation_v1"]
+        extra_allocation = next(row for row in allocations if row["extra_work_id"] == proposal.pk)
+        self.assertEqual(extra_allocation["total"], "250.00")
+        self.assertEqual(extra_allocation["gateway_amount"], "250.00")
 
     def test_customer_can_reject_proposal(self):
         proposal = self._proposal()
