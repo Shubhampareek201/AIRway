@@ -182,9 +182,11 @@ class RefundRetrySafetyTests(TestCase):
         self.assertEqual(cancellation_refund.gateway_amount, Decimal("750.00"))
 
     def test_repeated_cancellation_refund_call_retries_same_pending_record(self):
-        refund_id = self.refund.pk
+        self.refund.delete()
+        refund_id = None
         with patch("apps.payments.refunds.process_payment_refund") as process_refund:
             first = request_booking_refunds(self.booking)
+            refund_id = first.get().pk
             process_refund.assert_called_once_with(refund_id)
         with patch("apps.payments.refunds.process_payment_refund") as process_refund:
             second = request_booking_refunds(self.booking)
