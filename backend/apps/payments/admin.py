@@ -56,7 +56,10 @@ class PaymentRefundAdminForm(forms.ModelForm):
         self.fields["payment"].queryset = Payment.objects.filter(
             status=Payment.Status.PAID
         ).select_related("customer")
-        self.fields["extra_work"].queryset = BookingExtraWork.objects.all().select_related("booking")
+        self.fields["extra_work"].queryset = BookingExtraWork.objects.filter(
+            status=BookingExtraWork.Status.APPROVED,
+            payment_status="paid",
+        ).select_related("booking")
         self.fields["extra_work"].required = False
         self.fields["extra_work"].help_text = (
             "Choose a specific extra-work proposal to refund only that approved add-on."
@@ -99,6 +102,7 @@ class PaymentRefundAdminForm(forms.ModelForm):
             if (
                 existing.payment_id != payment.pk
                 or existing.booking_id != booking.pk
+                or existing.extra_work_id != (extra_work.pk if extra_work else None)
                 or existing.amount != amount
             ):
                 self.add_error("idempotency_key", "This request key has already been used.")
@@ -147,7 +151,7 @@ class PaymentRefundAdmin(ModelAdmin):
     )
     list_filter = ("status", "reason", "created_at")
     search_fields = (
-        "id", "booking__id", "payment__id", "gateway_refund_id",
+        "id", "booking__id", "extra_work__id", "payment__id", "gateway_refund_id",
         "booking__customer__phone", "failure_reason",
     )
     readonly_fields = (
