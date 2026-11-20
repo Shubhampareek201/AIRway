@@ -15,7 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, AppointmentGroup, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -1428,6 +1428,43 @@ class CustomerCheckoutView(APIView):
             address=cart.address,
             status=Order.Status.AWAITING_ASSIGNMENT,
         )
+
+        # Appointment groups are explicit domain records. A shared checkout
+        # creates one group; separate scheduling creates one group per service.
+        appointment_group_by_item = {}
+        if schedule_mode == "same_appointment":
+            group_message = request.data.get("group_message", "")
+            if not isinstance(group_message, str) or len(group_message) > 500:
+                return Response(
+                    {"group_message": "Keep the appointment message under 500 characters."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            shared_group = AppointmentGroup.objects.create(
+                order=order,
+                group_number=1,
+                scheduled_at=shared_appointment_at,
+                customer_message=group_message.strip(),
+            )
+            appointment_group_by_item = {
+                item.id: shared_group for item, _ in prepared
+            }
+        else:
+            for group_number, (item, serializer) in enumerate(prepared, start=1):
+                group_message = requested_by_id[item.id].get(
+                    "group_message", request.data.get("group_message", "")
+                )
+                if not isinstance(group_message, str) or len(group_message) > 500:
+                    return Response(
+                        {"items": f"Keep the message for cart item {item.id} under 500 characters."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                appointment_group_by_item[item.id] = AppointmentGroup.objects.create(
+                    order=order,
+                    group_number=group_number,
+                    scheduled_at=serializer.validated_data["scheduled_at"],
+                    customer_message=group_message.strip(),
+                )
+
         subtotal = Decimal("0")
         tax_total = Decimal("0")
         grand_total = Decimal("0")
@@ -1435,6 +1472,8 @@ class CustomerCheckoutView(APIView):
 
         for item, serializer in prepared:
             booking = serializer.save()
+            booking.appointment_group = appointment_group_by_item[item.id]
+            booking.save(update_fields=["appointment_group", "updated_at"])
             quantity = item.quantity
             base_snapshot = dict(booking.pricing_snapshot or {})
             unit_subtotal = Decimal(str(base_snapshot.get("subtotal", "0")))
@@ -1646,11 +1685,22 @@ class CustomerCheckoutView(APIView):
                 {
                     "order_item_id": row.id,
                     "booking_id": row.booking_id,
+                    "appointment_group_id": row.booking.appointment_group_id,
                     "service": row.service_snapshot,
                     "quantity": row.quantity,
                     "line_total": str(row.line_total),
                 }
                 for row in order.items.all()
+            ],
+            "appointment_groups": [
+                {
+                    "id": group.id,
+                    "group_number": group.group_number,
+                    "scheduled_at": group.scheduled_at,
+                    "customer_message": group.customer_message,
+                    "booking_ids": list(group.bookings.order_by("id").values_list("id", flat=True)),
+                }
+                for group in order.appointment_groups.all()
             ],
             "dispatch": {"offers_sent": 0, "deferred_until_advance_payment": True},
             "next_step": "Pay the 30% advance to start worker matching. The remaining 70% is due after all services are completed and verified.",
