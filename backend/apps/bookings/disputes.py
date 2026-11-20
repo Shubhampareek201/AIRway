@@ -269,6 +269,14 @@ class BookingDisputeReworkDecisionView(APIView):
             proposal.status = BookingReworkProposal.Status.EXPIRED
             proposal.responded_at = now
             proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery proposal expired",
+                body=f"The proposed recovery time for dispute #{dispute.pk} passed before the customer could accept it. Please review and issue a new proposal if appropriate.",
+                channel=Notification.Channel.IN_APP,
+                data={"dispute_id": dispute.pk, "rework_proposal_id": proposal.pk, "reason": "slot_passed"},
+            )
             return Response({"detail": "The proposed appointment time has passed. AIRway support must issue a new proposal."}, status=status.HTTP_409_CONFLICT)
         if (
             original.booking_mode != Booking.BookingMode.SCHEDULED
@@ -307,6 +315,14 @@ class BookingDisputeReworkDecisionView(APIView):
             proposal.status = BookingReworkProposal.Status.EXPIRED
             proposal.responded_at = now
             proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery professional unavailable",
+                body=f"The proposed professional is no longer eligible or available for dispute #{dispute.pk}. Please review and issue a new recovery proposal.",
+                channel=Notification.Channel.IN_APP,
+                data={"dispute_id": dispute.pk, "rework_proposal_id": proposal.pk, "reason": "worker_unavailable"},
+            )
             return Response({"detail": "The proposed professional is no longer available for this time. AIRway support must issue a new proposal."}, status=status.HTTP_409_CONFLICT)
 
         recovery_answers = {
