@@ -400,7 +400,7 @@ class WorkerLeaveAdmin(ModelAdmin):
 @admin.register(WorkerEarning)
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
-        "id", "worker", "booking", "extra_work", "gross_amount", "commission_rate",
+        "id", "worker", "booking", "earning_source", "extra_work", "gross_amount", "commission_rate",
         "commission_amount", "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
@@ -410,6 +410,10 @@ class WorkerEarningAdmin(ModelAdmin):
         "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
         "adjusted_by", "adjusted_at", "created_at", "updated_at",
     )
+
+    @admin.display(description="Earning source")
+    def earning_source(self, obj):
+        return "AIRway-funded recovery" if getattr(obj.booking, "rework_source", None) is not None else "Customer payment"
 
     def has_add_permission(self, request):
         return False
