@@ -276,6 +276,7 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
                 defaults={
                     "payment": locked,
                     "booking": booking,
+                    "extra_work": locked.extra_work if locked.extra_work_id else None,
                     "order_item": item,
                     "amount": amount,
                     "wallet_amount": wallet_part,
