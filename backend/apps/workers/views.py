@@ -813,6 +813,28 @@ class WorkerJobDetailView(APIView):
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
         payment_label = _worker_payment_label(booking)
+        extra_work_data = [
+            {
+                "id": proposal.pk,
+                "reason": proposal.reason,
+                "line_items": proposal.line_items,
+                "total_amount": str(proposal.total_amount),
+                "additional_duration_minutes": proposal.additional_duration_minutes,
+                "status": (
+                    "expired"
+                    if proposal.status == "pending_customer"
+                    and proposal.expires_at and proposal.expires_at <= timezone.now()
+                    else proposal.status
+                ),
+                "payment_choice": proposal.payment_choice,
+                "payment_status": proposal.payment_status,
+                "customer_response_note": proposal.customer_response_note,
+                "created_at": proposal.created_at.isoformat(),
+                "expires_at": proposal.expires_at.isoformat() if proposal.expires_at else None,
+                "responded_at": proposal.responded_at.isoformat() if proposal.responded_at else None,
+            }
+            for proposal in booking.extra_work_requests.order_by("-created_at")
+        ]
         latest_quote = booking.quotes.select_related("worker__user").order_by("-version").first()
         quote_data = None
         if latest_quote:
@@ -859,6 +881,7 @@ class WorkerJobDetailView(APIView):
             "booking_mode": booking.booking_mode,
             "pricing_type": booking.service.pricing_type,
             "quote": quote_data,
+            "extra_work_requests": extra_work_data,
             "can_submit_quote": (
                 booking.status == Booking.Status.IN_PROGRESS
                 and (booking.booking_mode == Booking.BookingMode.INSPECTION or booking.service.pricing_type == Service.PricingType.QUOTE)
