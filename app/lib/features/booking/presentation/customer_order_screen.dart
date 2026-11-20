@@ -370,7 +370,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final signature = response.signature;
     if (orderId == null || paymentId == null || signature == null) {
       if (mounted) {
-        setState(() => paying = false);
+        setState(() {
+          paying = false;
+          _currentExtraWorkId = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(AirwayText.tr('Payment could not be verified. Please check your order before retrying.', 'भुगतान वेरिफ़ाई नहीं हो सका। दोबारा कोशिश करने से पहले अपना ऑर्डर जाँचें।'))),
         );
@@ -444,7 +447,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       );
     } catch (e) {
       if (mounted) {
-        setState(() => paying = false);
+        setState(() {
+          paying = false;
+          _currentExtraWorkId = null;
+        });
         await loadOrder(showLoader: false);
         await loadWalletBalance();
         if (!mounted) return;
@@ -470,7 +476,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   void onExternalWallet(ExternalWalletResponse response) {
     if (!mounted) return;
-    setState(() => paying = false);
+    setState(() {
+      paying = false;
+      _currentExtraWorkId = null;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AirwayText.tr('External wallet selected: ${response.walletName ?? 'Wallet'}', 'बाहरी वॉलेट चुना गया: ${response.walletName ?? 'वॉलेट'}'))),
     );
