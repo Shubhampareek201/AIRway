@@ -52,10 +52,14 @@ def _process_verified_payment(
             stage_rows = allocation.get(
                 "advance" if payment.stage == Payment.Stage.ADVANCE else "balance", []
             )
-            active_ids = set(
-                staged_order.items.exclude(booking__status=Booking.Status.CANCELLED)
-                .values_list("id", flat=True)
+            active_items_query = staged_order.items.exclude(
+                booking__status=Booking.Status.CANCELLED
             )
+            if payment.appointment_group_id:
+                active_items_query = active_items_query.filter(
+                    booking__appointment_group_id=payment.appointment_group_id
+                )
+            active_ids = set(active_items_query.values_list("id", flat=True))
             expected_stage_total = sum(
                 (
                     Decimal(str(row.get("amount", "0")))
@@ -137,6 +141,10 @@ def _process_verified_payment(
             active_balance_items = balance_order.items.exclude(
                 booking__status=Booking.Status.CANCELLED
             )
+            if payment.appointment_group_id:
+                active_balance_items = active_balance_items.filter(
+                    booking__appointment_group_id=payment.appointment_group_id
+                )
             if (
                 not active_balance_items.exists()
                 or active_balance_items.exclude(
@@ -423,32 +431,82 @@ def _process_verified_payment(
                 ):
                     logger.error("Balance payment %s captured before all active services completed", payment.pk)
                     return Response({"detail": "Captured payment requires reconciliation: all active services must be complete.", "payment_id": payment.pk}, status=status.HTTP_409_CONFLICT)
-                parent_order.status = (
-                    Order.Status.PARTIALLY_CANCELLED
-                    if any(row.booking.status == Booking.Status.CANCELLED for row in order_items)
-                    else Order.Status.PAID
-                )
-                parent_order.save(update_fields=["status", "updated_at"])
-                from apps.bookings.models import RecurringWashPlan
-                RecurringWashPlan.objects.filter(
-                    order=parent_order,
-                    status=RecurringWashPlan.Status.AWAITING_PAYMENT,
-                ).update(
-                    status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
-                    updated_at=timezone.now(),
-                )
-                recurring_plan = RecurringWashPlan.objects.filter(
-                    order=parent_order,
-                    status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
-                ).first()
-                if recurring_plan:
-                    from apps.bookings.recurring import (
-                        generate_recurring_wash_visit_ledger,
-                        create_pending_recurring_visit_bookings,
+
+                if payment.appointment_group_id:
+                    allocation = (parent_order.metadata or {}).get("payment_allocation_v1", {})
+                    balance_rows = allocation.get("balance", [])
+                    active_group_ids = {
+                        row.booking.appointment_group_id
+                        for row in active_order_items
+                        if row.booking.appointment_group_id
+                    }
+                    paid_group_ids = set(
+                        Payment.objects.filter(
+                            order=parent_order,
+                            stage=Payment.Stage.BALANCE,
+                            status=Payment.Status.PAID,
+                            appointment_group_id__in=active_group_ids,
+                        ).values_list("appointment_group_id", flat=True)
                     )
-                    generate_recurring_wash_visit_ledger(recurring_plan)
-                    create_pending_recurring_visit_bookings(recurring_plan)
-                message = f"Final balance for AIRway order #{parent_order.id} was received. Thank you."
+                    for group_id in active_group_ids:
+                        group_item_ids = {
+                            row.id for row in order_items
+                            if row.booking.appointment_group_id == group_id
+                            and row.booking.status != Booking.Status.CANCELLED
+                        }
+                        group_due = sum(
+                            (
+                                Decimal(str(item.get("amount", "0")))
+                                for item in balance_rows
+                                if item.get("order_item_id") in group_item_ids
+                            ),
+                            Decimal("0.00"),
+                        )
+                        if group_due > 0 and group_id not in paid_group_ids:
+                            paid_group_ids.add(payment.appointment_group_id)
+                    all_group_balances_paid = all(
+                        group_id in paid_group_ids
+                        for group_id in active_group_ids
+                    )
+                    if all_group_balances_paid:
+                        parent_order.status = (
+                            Order.Status.PARTIALLY_CANCELLED
+                            if any(row.booking.status == Booking.Status.CANCELLED for row in order_items)
+                            else Order.Status.PAID
+                        )
+                        parent_order.save(update_fields=["status", "updated_at"])
+                    else:
+                        if any(row.booking.status == Booking.Status.CANCELLED for row in order_items):
+                            parent_order.status = Order.Status.PARTIALLY_CANCELLED
+                            parent_order.save(update_fields=["status", "updated_at"])
+                    message = f"Balance for AIRway appointment group #{payment.appointment_group.group_number} was received."
+                else:
+                    parent_order.status = (
+                        Order.Status.PARTIALLY_CANCELLED
+                        if any(row.booking.status == Booking.Status.CANCELLED for row in order_items)
+                        else Order.Status.PAID
+                    )
+                    parent_order.save(update_fields=["status", "updated_at"])
+                    from apps.bookings.models import RecurringWashPlan
+                    RecurringWashPlan.objects.filter(
+                        order=parent_order,
+                        status=RecurringWashPlan.Status.AWAITING_PAYMENT,
+                    ).update(
+                        status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                        updated_at=timezone.now(),
+                    )
+                    recurring_plan = RecurringWashPlan.objects.filter(
+                        order=parent_order,
+                        status=RecurringWashPlan.Status.PAID_PENDING_SETUP,
+                    ).first()
+                    if recurring_plan:
+                        from apps.bookings.recurring import (
+                            generate_recurring_wash_visit_ledger,
+                            create_pending_recurring_visit_bookings,
+                        )
+                        generate_recurring_wash_visit_ledger(recurring_plan)
+                        create_pending_recurring_visit_bookings(recurring_plan)
+                    message = f"Final balance for AIRway order #{parent_order.id} was received. Thank you."
             else:
                 # Preserve the old full-payment transition for orders created
                 # before staged checkout was introduced.
