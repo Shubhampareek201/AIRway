@@ -197,6 +197,101 @@ class RefundRetrySafetyTests(TestCase):
         self.assertEqual(PaymentRefund.objects.filter(booking=self.booking).count(), 1)
 
     @patch("apps.payments.refunds.process_payment_refund")
+    def test_admin_can_partially_refund_one_extra_work_line_from_balance_payment(self, process_refund):
+        self.refund.delete()
+        worker_user = User.objects.create_user(
+            phone="+919876543294",
+            password="test-password",
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            total_amount=Decimal("1000.00"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            booking=self.booking,
+            line_total=Decimal("800.00"),
+        )
+        extra_work = BookingExtraWork.objects.create(
+            booking=self.booking,
+            worker=worker,
+            reason="Approved additional repair",
+            line_items=[{
+                "description": "Replacement part",
+                "quantity": 1,
+                "unit_price": "200.00",
+                "line_total": "200.00",
+            }],
+            subtotal=Decimal("200.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("200.00"),
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+            payment_status="paid",
+        )
+        payment = Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("900.00"),
+            wallet_amount=Decimal("100.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_group_balance_refund",
+            raw_response={
+                "service_allocation_v1": [
+                    {
+                        "allocation_type": "service",
+                        "booking_id": self.booking.pk,
+                        "order_item_id": order.items.get().pk,
+                        "total": "800.00",
+                        "wallet_amount": "80.00",
+                        "gateway_amount": "720.00",
+                    },
+                    {
+                        "allocation_type": "extra_work",
+                        "booking_id": self.booking.pk,
+                        "order_item_id": None,
+                        "extra_work_id": extra_work.pk,
+                        "total": "200.00",
+                        "wallet_amount": "20.00",
+                        "gateway_amount": "180.00",
+                    },
+                ],
+            },
+        )
+
+        refund = issue_admin_partial_refund(
+            payment=payment,
+            booking=self.booking,
+            extra_work=extra_work,
+            amount="100.00",
+            requested_by=self.staff_user,
+            admin_note="Refund approved for the replacement part.",
+            idempotency_key="admin-extra-work-refund-001",
+        )
+
+        self.assertEqual(refund.extra_work_id, extra_work.pk)
+        self.assertEqual(refund.amount, Decimal("100.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("10.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("90.00"))
+        with self.assertRaisesMessage(ValueError, "remaining refundable amount"):
+            issue_admin_partial_refund(
+                payment=payment,
+                booking=self.booking,
+                extra_work=extra_work,
+                amount="150.00",
+                requested_by=self.staff_user,
+                admin_note="Would exceed this proposal's captured amount.",
+                idempotency_key="admin-extra-work-refund-002",
+            )
+
+    @patch("apps.payments.refunds.process_payment_refund")
     def test_separately_paid_extra_work_is_included_in_booking_refund(self, process_refund):
         worker_user = User.objects.create_user(
             phone="+919876543296",
