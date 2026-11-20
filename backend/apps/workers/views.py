@@ -1212,8 +1212,6 @@ class WorkerJobStartView(APIView):
             if not submitted_code:
                 can_resend = (
                     not otp_state.arrival_otp_hash
-                    or not otp_state.arrival_otp_expires_at
-                    or otp_state.arrival_otp_expires_at <= now
                     or not otp_state.arrival_otp_last_sent_at
                     or otp_state.arrival_otp_last_sent_at <= now - timedelta(seconds=30)
                 )
