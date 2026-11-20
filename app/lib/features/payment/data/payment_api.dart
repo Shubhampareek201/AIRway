@@ -92,6 +92,17 @@ class PaymentApi {
     );
   }
 
+  static Future<Map<String, dynamic>> createExtraWorkPayment(
+    int extraWorkId, {
+    String walletAmount = '0.00',
+  }) {
+    return _request(
+      '/api/v1/payments/extra-work/$extraWorkId/create-order/',
+      method: 'POST',
+      data: {'wallet_amount': walletAmount},
+    );
+  }
+
   static Future<Map<String, dynamic>> verifyPayment({
     required String razorpayOrderId,
     required String razorpayPaymentId,
