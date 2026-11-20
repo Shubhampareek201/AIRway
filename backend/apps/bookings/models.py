@@ -896,6 +896,7 @@ class BookingReworkProposal(TimeStampedModel):
         ACCEPTED = "accepted", "Accepted"
         DECLINED = "declined", "Declined"
         EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled by customer"
 
     dispute = models.ForeignKey(
         BookingDispute, on_delete=models.PROTECT, related_name="rework_proposals"
