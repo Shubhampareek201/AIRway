@@ -1002,6 +1002,31 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                         style: const TextStyle(color: sub, fontSize: 12),
                       ),
                     ),
+                  if (group['ready_for_balance'] == true && groupId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.tonalIcon(
+                          onPressed: paying
+                              ? null
+                              : () => startPayment(appointmentGroupId: groupId),
+                          icon: const Icon(Icons.payment_rounded, size: 16),
+                          label: Text(AirwayText.tr(
+                            'Pay balance ₹${amount(group['balance_due']).toStringAsFixed(2)}',
+                            'शेष ₹${amount(group['balance_due']).toStringAsFixed(2)} दें',
+                          )),
+                        ),
+                      ),
+                    ),
+                  if (group['balance_paid'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Text(
+                        AirwayText.tr('Appointment balance paid', 'अपॉइंटमेंट का शेष भुगतान हो गया'),
+                        style: const TextStyle(color: Color(0xFF2E7D52), fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                    ),
                   if (canCancel)
                     Padding(
                       padding: const EdgeInsets.only(left: 37, top: 5),
