@@ -90,6 +90,7 @@ class RefundRetrySafetyTests(TestCase):
         model_admin = PaymentRefundAdmin(PaymentRefund, AdminSite())
         request = RequestFactory().get("/admin/payments/paymentrefund/add/")
         request.user = self.customer
+        request.user.is_staff = True
 
         self.assertFalse(model_admin.has_add_permission(request))
         permission = Permission.objects.get(
