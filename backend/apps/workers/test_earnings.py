@@ -157,7 +157,7 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertFalse(WorkerEarning.objects.filter(booking=self.booking).exists())
 
     def test_worker_earnings_api_does_not_count_unrelated_wallet_credits(self):
-        wallet = Wallet.objects.create(user=self.worker_user)
+        wallet, _ = Wallet.objects.get_or_create(user=self.worker_user)
         WalletTransaction.objects.create(
             wallet=wallet,
             type=WalletTransaction.Type.CREDIT,
