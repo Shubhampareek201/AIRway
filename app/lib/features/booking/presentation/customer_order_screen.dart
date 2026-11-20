@@ -35,6 +35,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   bool paying = false;
   bool _quoteResponding = false;
   bool _rescheduling = false;
+  int? _currentExtraWorkId;
+  int? _extraWorkBusyId;
   String _currentPaymentStage = 'advance';
   String? error;
   Timer? refreshTimer;
@@ -91,6 +93,163 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     } catch (_) {
       if (mounted) setState(() => walletLoading = false);
     }
+  }
+
+
+  Future<void> respondToExtraWork(Map<String, dynamic> proposal, String decision, {String? paymentChoice}) async {
+    final id = int.tryParse(proposal['id']?.toString() ?? '');
+    if (id == null || _extraWorkBusyId != null) return;
+    setState(() => _extraWorkBusyId = id);
+    try {
+      final result = await BookingApi.request(
+        '/api/v1/bookings/extra-work/' + id.toString() + '/decision/',
+        method: 'POST',
+        data: {'decision': decision, if (paymentChoice != null) 'payment_choice': paymentChoice},
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      if (decision == 'approve' && paymentChoice == 'separate') {
+        await startExtraWorkPayment(result);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(decision == 'reject' ? 'Extra-work request rejected.' : 'Approved amount will be included in this appointment’s final balance.'),
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not update extra-work request: ' + e.toString())));
+      await loadOrder(showLoader: false);
+    } finally {
+      if (mounted) setState(() => _extraWorkBusyId = null);
+    }
+  }
+
+  Future<void> startExtraWorkPayment(Map<String, dynamic> proposal) async {
+    final id = int.tryParse(proposal['id']?.toString() ?? '');
+    final total = amount(proposal['total_amount']);
+    if (id == null || total <= 0 || paying) return;
+    final walletController = TextEditingController(text: '0.00');
+    final walletAmount = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Pay for approved extra work'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Total: ₹' + total.toStringAsFixed(2)),
+          const SizedBox(height: 12),
+          Text('Available AIRway wallet: ₹' + walletBalance.toStringAsFixed(2)),
+          const SizedBox(height: 8),
+          TextField(controller: walletController, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Use wallet amount (₹)', border: OutlineInputBorder())),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Pay later')),
+          FilledButton(onPressed: () {
+            final value = double.tryParse(walletController.text.trim());
+            if (value == null || !value.isFinite || value < 0 || value > walletBalance || value > total ||
+                (value * 100).roundToDouble() != value * 100) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Enter a valid wallet amount within your available balance and proposal total.')));
+              return;
+            }
+            Navigator.pop(dialogContext, value);
+          }, child: const Text('Continue')),
+        ],
+      ),
+    );
+    walletController.dispose();
+    if (walletAmount == null || !mounted) return;
+    setState(() { paying = true; _currentExtraWorkId = id; });
+    try {
+      final payment = await PaymentApi.createExtraWorkPayment(id, walletAmount: walletAmount.toStringAsFixed(2));
+      await loadWalletBalance();
+      if (payment['already_paid'] == true || payment['payment_status']?.toString() == 'paid') {
+        if (!mounted) return;
+        setState(() { paying = false; _currentExtraWorkId = null; });
+        await loadOrder(showLoader: false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extra-work payment is complete.')));
+        return;
+      }
+      final gatewayOrderId = payment['order_id']?.toString() ?? '';
+      final key = payment['key_id']?.toString() ?? '';
+      if (gatewayOrderId.isEmpty || key.isEmpty) throw Exception('Payment gateway order could not be initialized.');
+      razorpay.open({
+        'key': key, 'amount': payment['amount'], 'currency': payment['currency'] ?? 'INR',
+        'name': 'AIRway', 'description': 'Approved extra work #' + id.toString(),
+        'order_id': gatewayOrderId, 'theme': {'color': '#075B43'},
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() { paying = false; _currentExtraWorkId = null; });
+        await loadOrder(showLoader: false);
+        await loadWalletBalance();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start extra-work payment: ' + e.toString())));
+      }
+    }
+  }
+
+  Widget extraWorkSection(Map<String, dynamic> row) {
+    final proposals = (row['extra_work'] as List? ?? []).whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item)).toList();
+    if (proposals.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 12),
+      for (final proposal in proposals)
+        Container(
+          margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(color: const Color(0xFFFFFCF4), borderRadius: BorderRadius.circular(13), border: Border.all(color: const Color(0xFFE9D9AD))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.add_task_rounded, color: Color(0xFF8A641B), size: 18), const SizedBox(width: 7),
+              const Expanded(child: Text('Additional work request', style: TextStyle(fontWeight: FontWeight.w900, color: ink))),
+              Text('₹' + amount(proposal['total_amount']).toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+            ]),
+            const SizedBox(height: 7),
+            Text(proposal['reason']?.toString() ?? '', style: const TextStyle(color: sub, fontSize: 13)),
+            for (final item in (proposal['line_items'] as List? ?? []).whereType<Map>())
+              Padding(padding: const EdgeInsets.only(top: 5), child: Row(children: [
+                Expanded(child: Text(item['description'].toString() + ' × ' + item['quantity'].toString(), style: const TextStyle(color: ink, fontSize: 12))),
+                Text('₹' + amount(item['line_total']).toStringAsFixed(2), style: const TextStyle(color: ink, fontSize: 12, fontWeight: FontWeight.w700)),
+              ])),
+            if ((proposal['additional_duration_minutes'] as num? ?? 0) > 0)
+              Padding(padding: const EdgeInsets.only(top: 5), child: Text('Additional time: ' + proposal['additional_duration_minutes'].toString() + ' minutes', style: const TextStyle(color: sub, fontSize: 12))),
+            const SizedBox(height: 8),
+            Text(
+              proposal['status'] == 'pending_customer' ? 'Awaiting your decision'
+                : proposal['status'] == 'approved'
+                  ? 'Approved • ' + (proposal['payment_choice'] == 'separate' ? 'Separate payment' : 'Added to appointment balance') + ' • ' + (proposal['payment_status'] == 'paid' ? 'Paid' : 'Payment pending')
+                  : 'Request ' + proposal['status'].toString(),
+              style: const TextStyle(color: violet, fontSize: 12, fontWeight: FontWeight.w800),
+            ),
+            if (proposal['status'] == 'pending_customer') ...[
+              const SizedBox(height: 10),
+              if (_extraWorkBusyId == proposal['id'])
+                const Center(child: CircularProgressIndicator())
+              else
+                Wrap(spacing: 8, children: [
+                  OutlinedButton(onPressed: () => respondToExtraWork(proposal, 'reject'), child: const Text('Reject')),
+                  FilledButton(onPressed: () => showDialog<String>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Approve extra work'),
+                      content: Text('Choose how to pay ₹' + amount(proposal['total_amount']).toStringAsFixed(2) + '.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(dialogContext, 'separate'), child: const Text('Pay separately')),
+                        FilledButton(onPressed: () => Navigator.pop(dialogContext, 'add_to_balance'), child: const Text('Add to final balance')),
+                      ],
+                    ),
+                  ).then((choice) { if (choice != null) respondToExtraWork(proposal, 'approve', paymentChoice: choice); }),
+                    child: const Text('Approve')),
+                ]),
+            ] else if (proposal['status'] == 'approved' && proposal['payment_choice'] == 'separate' && proposal['payment_status'] != 'paid') ...[
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                onPressed: paying ? null : () => startExtraWorkPayment(proposal),
+                icon: const Icon(Icons.payment_rounded, size: 17), label: const Text('Pay approved extra work'),
+              )),
+            ],
+          ]),
+        ),
+    ]);
   }
 
   Future<void> startPayment({int? appointmentGroupId}) async {
@@ -1276,6 +1435,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 12),
           _quoteCard(row),
         ],
+        extraWorkSection(row),
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 12),
