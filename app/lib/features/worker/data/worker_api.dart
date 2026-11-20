@@ -286,6 +286,28 @@ class WorkerApi {
     return Map<String, dynamic>.from(result.body as Map);
   }
 
+  static Future<Map<String, dynamic>> proposeExtraWork(
+    int bookingId, {
+    required String reason,
+    required String description,
+    required int quantity,
+    required String unitPrice,
+    required int additionalDurationMinutes,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$bookingId/extra-work/',
+      method: 'POST',
+      data: {
+        'reason': reason,
+        'line_items': [
+          {'description': description, 'quantity': quantity, 'unit_price': unitPrice},
+        ],
+        'additional_duration_minutes': additionalDurationMinutes,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<Map<String, dynamic>> submitInspectionQuote(
     int assignmentId, {
     required List<Map<String, dynamic>> lineItems,
