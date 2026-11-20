@@ -32,6 +32,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   bool _locationRequestInProgress = false;
   bool _locationPermissionBlocked = false;
   bool _locationSharingEnabled = false;
+  bool _locationConsentRequestInProgress = false;
 
   @override
   void initState() {
@@ -81,19 +82,38 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
-  void _setLocationSharing(bool enabled) {
-    setState(() {
-      _locationSharingEnabled = enabled;
-      if (enabled) _locationPermissionBlocked = false;
-    });
-    if (!enabled) {
-      _locationTimer?.cancel();
-      _locationTimer = null;
-      _sharingAssignmentId = null;
-      return;
-    }
+  Future<void> _setLocationSharing(bool enabled) async {
     final job = _jobDetail;
-    if (job != null) _configureLocationSharing(job);
+    if (job == null || _locationConsentRequestInProgress) return;
+    setState(() => _locationConsentRequestInProgress = true);
+    try {
+      await WorkerApi.setJobLocationSharing(
+        job.assignmentId,
+        enabled: enabled,
+      );
+      if (!mounted) return;
+      setState(() {
+        _locationSharingEnabled = enabled;
+        _locationConsentRequestInProgress = false;
+        if (enabled) _locationPermissionBlocked = false;
+      });
+      if (!enabled) {
+        _locationTimer?.cancel();
+        _locationTimer = null;
+        _sharingAssignmentId = null;
+      } else {
+        _configureLocationSharing(job);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _locationConsentRequestInProgress = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Could not update location-sharing permission: $e',
+          'लोकेशन शेयरिंग अनुमति अपडेट नहीं हो सकी: $e',
+        ))),
+      );
+    }
   }
 
   Future<void> _publishCurrentLocation(int assignmentId) async {
@@ -192,6 +212,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         _jobDetail = parsedDetail;
         setState(() {
           _hasRatedCustomer = hasRatedCustomer;
+          _locationSharingEnabled = parsedDetail.assignment.locationSharingEnabled;
           _loading = false;
         });
         _configureLocationSharing(parsedDetail);
@@ -394,14 +415,25 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                       ],
                     ),
                     const SizedBox(height: 8),
+                    Text(
+                      AirwayText.tr(
+                        'Customer visibility starts 30 minutes before the appointment. You can turn sharing off at any time.',
+                        'ग्राहक को लोकेशन अपॉइंटमेंट से 30 मिनट पहले दिखेगी। आप कभी भी शेयरिंग बंद कर सकते हैं।',
+                      ),
+                      style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+                    ),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: () => _setLocationSharing(!_locationSharingEnabled),
+                        onPressed: _locationConsentRequestInProgress
+                            ? null
+                            : () => _setLocationSharing(!_locationSharingEnabled),
                         icon: Icon(
-                          _locationSharingEnabled
-                              ? Icons.location_off_outlined
-                              : Icons.my_location_rounded,
+                          _locationConsentRequestInProgress
+                              ? Icons.hourglass_top_rounded
+                              : _locationSharingEnabled
+                                  ? Icons.location_off_outlined
+                                  : Icons.my_location_rounded,
                         ),
                         label: Text(
                           _locationSharingEnabled
