@@ -2,7 +2,7 @@ import uuid
 
 from django import forms
 from django.contrib import admin, messages
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from unfold.admin import ModelAdmin
 
 from .models import Payment, PaymentRefund
@@ -133,7 +133,7 @@ class PaymentRefundAdmin(ModelAdmin):
                 reason=obj.reason,
             )
         except ValueError as exc:
-            raise forms.ValidationError(str(exc))
+            raise ValidationError(str(exc))
         obj.pk = refund.pk
         obj.status = refund.status
         obj.wallet_amount = refund.wallet_amount
