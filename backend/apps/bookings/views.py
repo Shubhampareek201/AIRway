@@ -1806,6 +1806,11 @@ class CustomerOrderDetailView(APIView):
             items.append({
                 "order_item_id": row.id,
                 "booking_id": booking.id,
+                "appointment_group_id": booking.appointment_group_id,
+                "appointment_group_message": (
+                    booking.appointment_group.customer_message
+                    if booking.appointment_group_id else ""
+                ),
                 "service": service_snapshot,
                 "booking_status": booking.status,
                 "booking_mode": booking.booking_mode,
@@ -1936,6 +1941,30 @@ class CustomerOrderDetailView(APIView):
         ready_for_balance = bool(advance_payment and all_services_verified and not balance_payment)
         recurring_plan = RecurringWashPlan.objects.filter(order=order).first()
 
+        appointment_groups = []
+        for group in order.appointment_groups.prefetch_related("bookings").all():
+            group_statuses = [booking.status for booking in group.bookings.all()]
+            if group_statuses and all(value == Booking.Status.CANCELLED for value in group_statuses):
+                group_status = "cancelled"
+            elif group_statuses and all(value == Booking.Status.COMPLETED for value in group_statuses):
+                group_status = "completed"
+            elif Booking.Status.IN_PROGRESS in group_statuses:
+                group_status = "in_progress"
+            elif Booking.Status.ASSIGNED in group_statuses:
+                group_status = "assigned"
+            elif Booking.Status.CONFIRMED in group_statuses:
+                group_status = "confirmed"
+            else:
+                group_status = "pending"
+            appointment_groups.append({
+                "id": group.id,
+                "group_number": group.group_number,
+                "scheduled_at": group.scheduled_at,
+                "customer_message": group.customer_message,
+                "status": group_status,
+                "booking_ids": [booking.id for booking in group.bookings.all()],
+            })
+
         return Response({
             "id": order.id,
             "address_id": order.address_id,
@@ -1944,6 +1973,7 @@ class CustomerOrderDetailView(APIView):
                 "scheduling_v1",
                 {"mode": "separate", "shared_appointment_at": None},
             ),
+            "appointment_groups": appointment_groups,
             "currency": order.currency,
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
