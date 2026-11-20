@@ -355,6 +355,7 @@ class WorkerEarning(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(fields=("booking",), name="unique_worker_earning_per_booking"),
             models.CheckConstraint(condition=models.Q(gross_amount__gte=0), name="worker_earning_gross_nonnegative"),
+            models.CheckConstraint(condition=models.Q(net_amount__isnull=True) | models.Q(net_amount__gte=0), name="worker_earning_net_nonnegative"),
             models.CheckConstraint(
                 condition=models.Q(commission_rate__isnull=True) | (
                     models.Q(commission_rate__gte=0) & models.Q(commission_rate__lte=100)
