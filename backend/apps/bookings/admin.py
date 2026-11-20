@@ -490,3 +490,13 @@ class BookingDisputeAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+class BookingDisputeEvidenceInline(TabularInline):
+    model = BookingDisputeEvidence
+    extra = 0
+    can_delete = False
+    readonly_fields = ("uploaded_by", "original_name", "file_path", "note", "created_at", "updated_at")
+    fields = readonly_fields
+
+
