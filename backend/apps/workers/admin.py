@@ -1,4 +1,6 @@
 from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
 from django.template.response import TemplateResponse
@@ -90,6 +92,12 @@ class WorkerProfileAdmin(ModelAdmin):
         WorkerScheduleInline,
     ]
     actions = ["approve_workers", "suspend_workers", "reject_workers"]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser and not request.user.has_perm("workers.configure_worker_commission"):
+            fields.append("commission_rate")
+        return tuple(fields)
 
     def get_queryset(self, request):
         # Avoid prefetch_related here: Unfold's changelist processing uses
@@ -383,21 +391,49 @@ class WorkerLeaveAdmin(ModelAdmin):
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
         "id", "worker", "booking", "gross_amount", "commission_rate",
-        "commission_amount", "net_amount", "status", "paid_at",
+        "commission_amount", "net_amount", "status", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
     search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "payout_reference")
     readonly_fields = (
         "worker", "booking", "payment", "gross_amount", "commission_rate",
-        "commission_amount", "net_amount", "status", "hold_reason",
-        "payout_reference", "paid_at", "created_at", "updated_at",
+        "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
+        "created_at", "updated_at",
     )
 
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return False
+        return bool(
+            request.user.is_superuser
+            or request.user.has_perm("workers.manage_worker_payouts")
+        )
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is None:
+            return tuple(fields)
+        if obj.status == WorkerEarning.Status.AVAILABLE:
+            return tuple(fields)
+        fields.extend(["status", "payout_reference"])
+        return tuple(dict.fromkeys(fields))
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            raise ValidationError("Worker earning records are created by verified settlement only.")
+        previous = WorkerEarning.objects.get(pk=obj.pk)
+        if previous.status == WorkerEarning.Status.PAID:
+            raise ValidationError("A recorded payout is immutable.")
+        if previous.status != WorkerEarning.Status.AVAILABLE or obj.status != WorkerEarning.Status.PAID:
+            raise ValidationError("Only available earnings can be marked as paid.")
+        reference = str(obj.payout_reference or "").strip()
+        if not reference:
+            raise ValidationError("A bank/UPI payout reference is required.")
+        obj.payout_reference = reference[:100]
+        obj.paid_at = timezone.now()
+        obj.paid_by = request.user
+        super().save_model(request, obj, form, change)
