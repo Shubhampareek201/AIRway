@@ -467,7 +467,7 @@ class DispatcherService:
                 from decimal import Decimal
                 payment_context = order or payment_order
                 group_bookings = list(
-                    appointment_group.bookings.select_related("order_item").all()
+                    appointment_group.bookings.exclude(status="cancelled").select_related("order_item").all()
                 )
                 customer_total = str(sum(
                     (item.order_item.line_total for item in group_bookings if hasattr(item, "order_item")),
@@ -529,7 +529,7 @@ class DispatcherService:
                         * (1 if item.service.pricing_type == "per_unit" else max(int((item.pricing_snapshot or {}).get("quantity", 1) or 1), 1))
                     )
                     + max(int(item.service.buffer_minutes or 0), 0)
-                    for item in appointment_group.bookings.select_related("service", "variant").all()
+                    for item in appointment_group.bookings.exclude(status="cancelled").select_related("service", "variant").all()
                 )
             service_quantity = (
                 booking.order_item.quantity
@@ -554,7 +554,7 @@ class DispatcherService:
                     else recurring_visit.plan.order_id if recurring_visit else None
                 ),
                 "service_ids": (
-                    list(appointment_group.bookings.values_list("service_id", flat=True))
+                    list(appointment_group.bookings.exclude(status="cancelled").values_list("service_id", flat=True))
                     if appointment_group else (
                         list((order or payment_order).items.values_list("booking__service_id", flat=True))
                         if (order or payment_order) else [booking.service_id]
