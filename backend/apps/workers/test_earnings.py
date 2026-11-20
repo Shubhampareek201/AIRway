@@ -29,6 +29,7 @@ class WorkerEarningLedgerTests(TestCase):
             user=self.customer,
             label="home",
             house_details="House 1",
+            landmark="Near test park",
             full_address="Test address",
         )
         self.booking = Booking.objects.create(
