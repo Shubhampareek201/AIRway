@@ -104,7 +104,7 @@ class ExtraWorkAPITest(TestCase):
         self.assertEqual(response.data["order_id"], "order_extra_work_test")
         payment = Payment.objects.get(extra_work=proposal)
         self.assertEqual(payment.stage, Payment.Stage.EXTRA_WORK)
-        self.assertEqual(payment.amount, proposal.total_amount)
+        self.assertEqual(payment.amount, Decimal(str(proposal.total_amount)))
         self.assertEqual(payment.order_id, self.order.pk)
         create_gateway_order.assert_called_once()
 
@@ -151,7 +151,7 @@ class ExtraWorkAPITest(TestCase):
             self.order, self.customer, stage=Payment.Stage.BALANCE,
         )
         self.assertEqual(order_id, "order_balance_with_extra")
-        self.assertEqual(payment.amount, proposal.total_amount + Decimal("700.00"))
+        self.assertEqual(payment.amount, Decimal(str(proposal.total_amount)) + Decimal("700.00"))
         allocations = payment.raw_response["service_allocation_v1"]
         extra_allocation = next(row for row in allocations if row["extra_work_id"] == proposal.pk)
         self.assertEqual(extra_allocation["total"], "250.00")
