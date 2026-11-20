@@ -1,4 +1,5 @@
 from django.test import TestCase
+from unittest.mock import patch
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -7,7 +8,8 @@ from apps.accounts.models import User, Address
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.workers.models import WorkerProfile
-from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork
+from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork, Order, OrderItem
+from apps.payments.models import Payment
 
 
 class ExtraWorkAPITest(TestCase):
@@ -35,6 +37,14 @@ class ExtraWorkAPITest(TestCase):
         )
         BookingAssignment.objects.create(
             booking=self.booking, worker=self.worker, accepted_at=timezone.now(),
+        )
+        self.order = Order.objects.create(
+            customer=self.customer, address=address,
+            subtotal="1000.00", total_amount="1000.00",
+        )
+        OrderItem.objects.create(
+            order=self.order, booking=self.booking, quantity=1,
+            line_subtotal="1000.00", line_total="1000.00",
         )
 
     def _proposal(self):
@@ -72,6 +82,30 @@ class ExtraWorkAPITest(TestCase):
         proposal.refresh_from_db()
         self.assertEqual(proposal.status, BookingExtraWork.Status.APPROVED)
         self.assertEqual(proposal.payment_choice, BookingExtraWork.PaymentChoice.SEPARATE)
+
+    @patch("apps.payments.views.client.order.create")
+    def test_separate_extra_work_payment_creates_idempotent_razorpay_order(self, create_gateway_order):
+        create_gateway_order.return_value = {"id": "order_extra_work_test"}
+        proposal = self._proposal()
+        proposal.status = BookingExtraWork.Status.APPROVED
+        proposal.payment_choice = BookingExtraWork.PaymentChoice.SEPARATE
+        proposal.payment_status = "pending"
+        proposal.approved_at = timezone.now()
+        proposal.save()
+
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.post(
+            f"/api/v1/payments/extra-work/{proposal.pk}/create-order/",
+            {"wallet_amount": "0.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["order_id"], "order_extra_work_test")
+        payment = Payment.objects.get(extra_work=proposal)
+        self.assertEqual(payment.stage, Payment.Stage.EXTRA_WORK)
+        self.assertEqual(payment.amount, proposal.total_amount)
+        self.assertEqual(payment.order_id, self.order.pk)
+        create_gateway_order.assert_called_once()
 
     def test_customer_can_reject_proposal(self):
         proposal = self._proposal()
