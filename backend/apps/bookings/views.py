@@ -15,7 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import mimetypes
 import uuid
 
-from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, AppointmentGroup, BookingAddOn, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
+from .models import Booking, BookingStatusHistory, BookingAssignment, CustomerCart, CartItem, Order, OrderItem, AppointmentGroup, BookingAddOn, BookingExtraWork, WorkerOffer, BookingQuote, BookingWorkEvidence, RecurringWashPlan, RecurringWashVisit
 from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
@@ -1951,6 +1951,15 @@ class CustomerOrderDetailView(APIView):
                 ),
                 Decimal("0.00"),
             )
+            group_due += sum(
+                BookingExtraWork.objects.filter(
+                    appointment_group=group,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                ).values_list("total_amount", flat=True),
+                Decimal("0.00"),
+            )
             if group_due > 0 and group.pk not in paid_group_ids:
                 group_balance_due += group_due
                 all_group_balances_paid = False
@@ -2011,6 +2020,15 @@ class CustomerOrderDetailView(APIView):
                     for entry in allocation.get("balance", [])
                     if entry.get("order_item_id") in group_item_ids
                 ),
+                Decimal("0.00"),
+            )
+            group_balance_due += sum(
+                BookingExtraWork.objects.filter(
+                    appointment_group=group,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                ).values_list("total_amount", flat=True),
                 Decimal("0.00"),
             )
             group_balance_payment = Payment.objects.filter(
