@@ -1,6 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.bookings.models import (
     Booking,
@@ -32,7 +33,11 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
         booking=booking,
         status__in=REFUND_HOLD_STATUSES,
     )
-    refunds = refunds.filter(extra_work=extra_work) if extra_work else refunds.filter(extra_work__isnull=True)
+    refunds = (
+        refunds.filter(Q(extra_work=extra_work) | Q(extra_work__isnull=True))
+        if extra_work
+        else refunds.filter(extra_work__isnull=True)
+    )
     refunds_exist = refunds.exists()
 
     rate = (
