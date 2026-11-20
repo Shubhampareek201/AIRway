@@ -19,7 +19,7 @@ from apps.notifications.models import Notification
 
 from .models import (
     Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence,
-    BookingReworkProposal, BookingStatusHistory,
+    BookingReworkProposal, BookingStatusHistory, BookingAddOn, BookingFormResponse,
 )
 
 
@@ -269,6 +269,11 @@ class BookingDisputeReworkDecisionView(APIView):
             proposal.save(update_fields=["status", "responded_at", "updated_at"])
             return Response({"detail": "The proposed professional is no longer available for this time. AIRway support must issue a new proposal."}, status=status.HTTP_409_CONFLICT)
 
+        recovery_answers = {
+            key: value
+            for key, value in (original.customer_answers or {}).items()
+            if key not in {"_airway_issue_photo", "_airway_form_photos"}
+        }
         followup = Booking.objects.create(
             customer=original.customer,
             address=original.address,
@@ -282,9 +287,27 @@ class BookingDisputeReworkDecisionView(APIView):
                 "total": "0.00", "quantity": 1, "service_recovery": True,
                 "original_booking_id": original.pk, "dispute_id": dispute.pk,
             },
-            notes=f"No-charge AIRway service recovery for booking #{original.pk}.",
-            customer_answers=original.customer_answers,
+            notes=(
+                f"No-charge AIRway service recovery for booking #{original.pk}. "
+                f"Reason: {dispute.description[:1000]}"
+            ),
+            customer_answers=recovery_answers,
         )
+        for addon in original.booking_addons.all():
+            BookingAddOn.objects.create(
+                booking=followup,
+                addon=addon.addon,
+                quantity=addon.quantity,
+                unit_price=addon.unit_price,
+                total_price=addon.total_price,
+            )
+        for response in original.form_responses.select_related("form_field").all():
+            if response.form_field.field_type != "photo":
+                BookingFormResponse.objects.create(
+                    booking=followup,
+                    form_field=response.form_field,
+                    value=response.value,
+                )
         BookingAssignment.objects.create(
             booking=followup, worker=proposal.worker, accepted_at=now,
         )
