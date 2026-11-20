@@ -1912,9 +1912,28 @@ class CustomerOrderDetailView(APIView):
             })
 
         is_staged_payment = bool(allocation)
-        advance_payment = order.payments.filter(stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).first()
-        balance_payment = order.payments.filter(stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).first()
-        legacy_payment = order.payments.filter(stage=Payment.Stage.LEGACY, status=Payment.Status.PAID).first()
+        advance_payment = order.payments.filter(
+            stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True,
+            status=Payment.Status.PAID,
+        ).first()
+        order_level_balance_payment = order.payments.filter(
+            stage=Payment.Stage.BALANCE,
+            appointment_group__isnull=True,
+            status=Payment.Status.PAID,
+        ).first()
+        paid_group_ids = set(
+            order.payments.filter(
+                stage=Payment.Stage.BALANCE,
+                appointment_group__isnull=False,
+                status=Payment.Status.PAID,
+            ).values_list("appointment_group_id", flat=True)
+        )
+        legacy_payment = order.payments.filter(
+            stage=Payment.Stage.LEGACY,
+            appointment_group__isnull=True,
+            status=Payment.Status.PAID,
+        ).first()
         legacy_ready = (
             not is_staged_payment
             and order.status == Order.Status.AWAITING_PAYMENT
@@ -1942,7 +1961,30 @@ class CustomerOrderDetailView(APIView):
             ),
             Decimal("0.00"),
         )
-        balance_due = active_balance_due if not balance_payment else Decimal("0")
+        group_balance_due = Decimal("0.00")
+        all_group_balances_paid = True
+        for group in order.appointment_groups.all():
+            group_item_ids = set(
+                order.items.filter(booking__appointment_group=group)
+                .exclude(booking__status=Booking.Status.CANCELLED)
+                .values_list("id", flat=True)
+            )
+            group_due = sum(
+                (
+                    Decimal(str(entry.get("amount", "0")))
+                    for entry in allocation.get("balance", [])
+                    if entry.get("order_item_id") in group_item_ids
+                ),
+                Decimal("0.00"),
+            )
+            if group_due > 0 and group.pk not in paid_group_ids:
+                group_balance_due += group_due
+                all_group_balances_paid = False
+        balance_payment = bool(order_level_balance_payment) or all_group_balances_paid
+        balance_due = (
+            Decimal("0.00")
+            if order_level_balance_payment else group_balance_due
+        )
         active_rows = [
             row for row in items
             if row["booking_status"] != Booking.Status.CANCELLED
@@ -1950,7 +1992,18 @@ class CustomerOrderDetailView(APIView):
         all_services_verified = bool(active_rows) and all(
             row["completion_verified"] for row in active_rows
         )
-        ready_for_balance = bool(advance_payment and all_services_verified and not balance_payment)
+        ready_for_balance = bool(
+            advance_payment
+            and not order_level_balance_payment
+            and any(
+                group.bookings.exclude(status=Booking.Status.CANCELLED).exists()
+                and not group.bookings.exclude(
+                    status__in=(Booking.Status.CANCELLED, Booking.Status.COMPLETED)
+                ).exists()
+                and group.pk not in paid_group_ids
+                for group in order.appointment_groups.all()
+            )
+        )
         recurring_plan = RecurringWashPlan.objects.filter(order=order).first()
 
         appointment_groups = []
