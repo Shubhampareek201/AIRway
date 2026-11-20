@@ -1054,7 +1054,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
         ),
         const Divider(height: 18),
-        _earningAmountLine('Service amount', gross),
+        _earningAmountLine(
+          item['extra_work_id'] != null ? 'Approved extra-work amount' : 'Service amount',
+          gross,
+        ),
         if (item['commission_amount'] != null)
           _earningAmountLine(
             'AIRway commission (${item['commission_rate'] ?? '—'}%)',
