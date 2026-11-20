@@ -811,12 +811,36 @@ class WorkerJobDetailView(APIView):
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
         try:
             assign = BookingAssignment.objects.select_related(
-                "booking__service", "booking__customer", "booking__address",
+                "booking__service", "booking__customer", "booking__address", "booking__rework_source__dispute",
             ).get(pk=job_id, worker=profile)
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
-        payment_label = _worker_payment_label(booking)
+        payment_label = (
+            "No-charge service recovery"
+            if getattr(booking, "rework_source", None) is not None
+            else _worker_payment_label(booking)
+        )
+        rework_proposal = getattr(booking, "rework_source", None)
+        rework_case_data = None
+        if rework_proposal is not None:
+            dispute = rework_proposal.dispute
+            rework_case_data = {
+                "category": dispute.category,
+                "description": dispute.description,
+                "resolution_note": dispute.resolution_note,
+                "evidence_files": [
+                    {
+                        "id": evidence.pk,
+                        "original_name": evidence.original_name,
+                        "note": evidence.note,
+                        "photo_url": request.build_absolute_uri(
+                            f"/api/v1/bookings/dispute-evidence/{evidence.pk}/photo/"
+                        ),
+                    }
+                    for evidence in dispute.evidence.all()
+                ],
+            }
         extra_work_data = [
             {
                 "id": proposal.pk,
@@ -902,6 +926,7 @@ class WorkerJobDetailView(APIView):
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
             "payment_label": payment_label,
+            "rework_case": rework_case_data,
             "recurring_visit": recurring_visit_data,
             "variant_title": booking.variant.title if booking.variant_id else None,
             "service_unit_label": booking.service.unit_label,
