@@ -36,11 +36,28 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
   final Set<int> _slotConfirmed = {};
   final Set<int> _expandedItems = {};
   List<Map<String, dynamic>> addresses = [];
+  final TextEditingController _sharedGroupMessageController = TextEditingController();
+  final Map<int, TextEditingController> _separateGroupMessageControllers = {};
+
+  TextEditingController _messageControllerFor(int itemId) {
+    return _separateGroupMessageControllers.putIfAbsent(
+      itemId, () => TextEditingController(),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     loadCart();
+  }
+
+  @override
+  void dispose() {
+    _sharedGroupMessageController.dispose();
+    for (final controller in _separateGroupMessageControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   List<Map<String, dynamic>> get items => (cart?['items'] as List? ?? [])
@@ -270,8 +287,8 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           Text(
             sameAppointment
               ? airway_localization.AirwayText.tr(
-                  'Choose a time for one service, then use “Apply this time to all services”. AIRway checks every service separately before creating the order. Different professionals may be assigned.',
-                  'एक सेवा का समय चुनें, फिर “यह समय सभी सेवाओं पर लागू करें” चुनें। ऑर्डर बनने से पहले AIRway हर सेवा की उपलब्धता अलग से जाँचेगा। अलग-अलग प्रोफेशनल मिल सकते हैं।',
+                  'Choose one time for all services. AIRway will assign one qualified professional to handle every service in this appointment.',
+                  'सभी सेवाओं के लिए एक समय चुनें। AIRway इस अपॉइंटमेंट की सभी सेवाओं के लिए एक योग्य प्रोफेशनल नियुक्त करेगा।',
                 )
               : airway_localization.AirwayText.tr(
                   'Choose a date and time separately for each service.',
@@ -279,6 +296,28 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 ),
             style: const TextStyle(color: sub, fontSize: 11, height: 1.4),
           ),
+          if (sameAppointment) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _sharedGroupMessageController,
+              maxLength: 500,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: airway_localization.AirwayText.tr(
+                  'Message for your professional (optional)',
+                  'प्रोफेशनल के लिए संदेश (वैकल्पिक)',
+                ),
+                hintText: airway_localization.AirwayText.tr(
+                  'Share one helpful instruction for this appointment',
+                  'इस अपॉइंटमेंट के लिए कोई ज़रूरी निर्देश लिखें',
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                counterText: '',
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -549,6 +588,10 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           // the device's local wall-clock time as server time.
           'scheduled_at': scheduledAt.toUtc().toIso8601String(),
         };
+        if (_scheduleMode == 'separate') {
+          final message = _separateGroupMessageControllers[id]?.text.trim() ?? '';
+          if (message.isNotEmpty) row['group_message'] = message;
+        }
         if (item['booking_mode'] == 'pickup_drop') {
           final drop = dropTimes[id] ?? const TimeOfDay(hour: 14, minute: 0);
           final dropScheduledAt = DateTime(
@@ -582,6 +625,9 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
       final result = await BookingApi.checkoutCart(
         items: schedules,
         scheduleMode: _scheduleMode,
+        groupMessage: _scheduleMode == 'same_appointment'
+            ? _sharedGroupMessageController.text.trim()
+            : '',
       );
       CustomerCartState.itemCount.value = 0;
       if (!mounted) return;
@@ -996,6 +1042,24 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                 Padding(padding: const EdgeInsets.only(top: 5), child: Text(airway_localization.AirwayText.tr('Inspection / visit charge: ₹${number(snapshot['visit_fee']).toStringAsFixed(0)} (included once)', 'निरीक्षण / विज़िट शुल्क: ₹${number(snapshot['visit_fee']).toStringAsFixed(0)} (एक बार शामिल)'), style: const TextStyle(fontSize: 11, color: sub, fontWeight: FontWeight.w700))),
               if (item['notes']?.toString().trim().isNotEmpty == true)
                 Padding(padding: const EdgeInsets.only(top: 7), child: Text(airway_localization.AirwayText.tr('Issue description: ${item['notes']}', 'समस्या का विवरण: ${item['notes']}'), style: const TextStyle(fontSize: 11, color: sub))),
+              if (_scheduleMode == 'separate') ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _messageControllerFor(id),
+                  maxLength: 500,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: airway_localization.AirwayText.tr(
+                      'Message for this appointment (optional)',
+                      'इस अपॉइंटमेंट के लिए संदेश (वैकल्पिक)',
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    counterText: '',
+                  ),
+                ),
+              ],
 
               if (addons.isNotEmpty) ...[
                 const SizedBox(height: 10),
