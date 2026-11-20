@@ -4,6 +4,7 @@ from io import BytesIO
 from tempfile import TemporaryDirectory
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.files.storage import FileSystemStorage
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -280,6 +281,38 @@ class BookingDisputeAPITests(TestCase):
         self.assertEqual(earning.net_amount, Decimal("400.00"))
         self.assertIsNone(earning.payment_id)
         self.assertEqual(earning.status, WorkerEarning.Status.AVAILABLE)
+
+
+    def test_assigned_recovery_worker_can_view_only_linked_dispute_evidence(self):
+        proposal = self._resolved_rework_proposal()
+        buffer = BytesIO()
+        Image.new("RGB", (24, 24), color=(100, 80, 160)).save(buffer, format="JPEG")
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
+            storage = FileSystemStorage(location=private_root)
+            path = storage.save(
+                "booking_dispute_evidence/recovery-test.jpg",
+                SimpleUploadedFile("recovery-test.jpg", buffer.getvalue(), content_type="image/jpeg"),
+            )
+            evidence = BookingDisputeEvidence.objects.create(
+                dispute=proposal.dispute,
+                uploaded_by=self.customer,
+                file_path=path,
+                original_name="recovery-test.jpg",
+            )
+            accepted = self.customer_client.post(
+                f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+                {"decision": "accept"},
+                format="json",
+            )
+            self.assertEqual(accepted.status_code, 200, accepted.data)
+            recovery_worker = self.worker_client.get(
+                f"/api/v1/bookings/dispute-evidence/{evidence.pk}/photo/"
+            )
+            self.assertEqual(recovery_worker.status_code, 200)
+            unrelated = self.other_client.get(
+                f"/api/v1/bookings/dispute-evidence/{evidence.pk}/photo/"
+            )
+            self.assertEqual(unrelated.status_code, 404)
 
     def test_customer_can_decline_rework_without_creating_booking(self):
         proposal = self._resolved_rework_proposal()
