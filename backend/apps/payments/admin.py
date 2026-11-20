@@ -1,7 +1,12 @@
-from django.contrib import admin
+import uuid
+
+from django import forms
+from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from unfold.admin import ModelAdmin
 
 from .models import Payment, PaymentRefund
+from .refunds import issue_admin_partial_refund
 
 
 @admin.register(Payment)
@@ -27,11 +32,54 @@ class PaymentAdmin(ModelAdmin):
         return False
 
 
+class PaymentRefundAdminForm(forms.ModelForm):
+    idempotency_key = forms.UUIDField(
+        initial=uuid.uuid4,
+        widget=forms.HiddenInput,
+    )
+
+    class Meta:
+        model = PaymentRefund
+        fields = ("payment", "booking", "amount", "reason", "admin_note")
+        widgets = {
+            "admin_note": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["payment"].queryset = Payment.objects.filter(
+            status=Payment.Status.PAID
+        ).select_related("customer")
+        self.fields["reason"].choices = [
+            (PaymentRefund.Reason.ADMIN_ADJUSTMENT, "Admin partial refund"),
+            (PaymentRefund.Reason.DISPUTE_RESOLUTION, "Dispute resolution"),
+        ]
+        self.fields["amount"] = forms.DecimalField(
+            max_digits=10,
+            decimal_places=2,
+            min_value=0.01,
+            help_text="Must not exceed the remaining captured amount for this service.",
+        )
+        self.fields["admin_note"].required = True
+        self.fields["admin_note"].help_text = (
+            "Required audit explanation. This is retained with the refund record."
+        )
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.idempotency_key = str(self.cleaned_data["idempotency_key"])
+        if commit:
+            instance.save()
+        return instance
+
+
 @admin.register(PaymentRefund)
 class PaymentRefundAdmin(ModelAdmin):
+    form = PaymentRefundAdminForm
     list_display = (
         "id", "booking", "payment", "amount", "wallet_amount",
-        "gateway_amount", "reason", "status", "gateway_refund_id", "failure_summary", "created_at",
+        "gateway_amount", "reason", "status", "requested_by",
+        "gateway_refund_id", "failure_summary", "created_at",
     )
     list_filter = ("status", "reason", "created_at")
     search_fields = (
@@ -41,8 +89,17 @@ class PaymentRefundAdmin(ModelAdmin):
     readonly_fields = (
         "payment", "booking", "order_item", "amount", "wallet_amount",
         "gateway_amount", "reason", "status", "gateway_refund_id",
-        "failure_reason", "processed_at", "created_at", "updated_at",
+        "failure_reason", "processed_at", "requested_by", "admin_note",
+        "idempotency_key", "created_at", "updated_at",
     )
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return ("payment", "booking", "amount", "reason", "admin_note", "idempotency_key")
+        return self.readonly_fields
+
+    def get_readonly_fields(self, request, obj=None):
+        return () if obj is None else self.readonly_fields
 
     @admin.display(description="Gateway / reconciliation note")
     def failure_summary(self, obj):
@@ -52,10 +109,41 @@ class PaymentRefundAdmin(ModelAdmin):
         return request.user.is_staff
 
     def has_add_permission(self, request):
-        return False
+        return request.user.is_superuser or request.user.has_perm(
+            "payments.issue_partial_paymentrefund"
+        )
 
     def has_change_permission(self, request, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            raise PermissionDenied("Refund records are immutable.")
+        try:
+            refund = issue_admin_partial_refund(
+                payment=obj.payment,
+                booking=obj.booking,
+                amount=obj.amount,
+                requested_by=request.user,
+                admin_note=obj.admin_note,
+                idempotency_key=obj.idempotency_key,
+                reason=obj.reason,
+            )
+        except ValueError as exc:
+            raise forms.ValidationError(str(exc))
+        obj.pk = refund.pk
+        obj.status = refund.status
+        obj.wallet_amount = refund.wallet_amount
+        obj.gateway_amount = refund.gateway_amount
+        obj.gateway_refund_id = refund.gateway_refund_id
+        obj.failure_reason = refund.failure_reason
+        obj.processed_at = refund.processed_at
+        obj.requested_by = refund.requested_by
+        messages.add_message(
+            request,
+            messages.SUCCESS if refund.status == PaymentRefund.Status.PROCESSED else messages.WARNING,
+            f"Refund #{refund.pk} recorded: ₹{refund.amount} ({refund.get_status_display()}).",
+        )
