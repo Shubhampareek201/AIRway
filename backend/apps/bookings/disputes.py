@@ -15,6 +15,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from apps.notifications.models import Notification
+
 from .models import (
     Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence,
     BookingReworkProposal, BookingStatusHistory,
