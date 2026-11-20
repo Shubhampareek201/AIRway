@@ -135,6 +135,22 @@ class BookingDisputeListCreateView(APIView):
         except IntegrityError:
             return Response({"detail": "An active dispute already exists for this booking."},
                             status=status.HTTP_409_CONFLICT)
+        recipient = (
+            booking.customer
+            if role == "worker"
+            else getattr(getattr(booking, "assignment", None), "worker", None)
+        )
+        if role == "customer" and recipient is not None:
+            recipient = recipient.user
+        if recipient is not None:
+            Notification.objects.create(
+                user=recipient,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="A booking support case was raised",
+                body=f"A support case was raised for booking #{booking.pk}. AIRway will review the details.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": dispute.pk},
+            )
         return Response(_serialize_dispute(dispute), status=status.HTTP_201_CREATED)
 
 
@@ -184,7 +200,23 @@ class BookingDisputeDetailView(APIView):
                 dispute.resolved_by = request.user
                 dispute.resolved_at = timezone.now()
             dispute.save(update_fields=["status", "resolution_note", "resolved_by", "resolved_at", "updated_at"])
-        dispute = BookingDispute.objects.select_related("booking__service").get(pk=dispute.pk)
+        dispute = BookingDispute.objects.select_related(
+            "booking__service", "booking__customer", "booking__assignment__worker__user"
+        ).get(pk=dispute.pk)
+        recipients = {dispute.booking.customer_id: dispute.booking.customer}
+        assignment = getattr(dispute.booking, "assignment", None)
+        if assignment is not None:
+            recipients[assignment.worker.user_id] = assignment.worker.user
+        status_label = dispute.get_status_display()
+        for recipient in recipients.values():
+            Notification.objects.create(
+                user=recipient,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="AIRway support updated your case",
+                body=f"Your support case for booking #{dispute.booking_id} is now {status_label.lower()}.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": dispute.booking_id, "dispute_id": dispute.pk, "status": dispute.status},
+            )
         return Response(_serialize_dispute(dispute))
 
 
