@@ -1,7 +1,30 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
 
-from .models import PaymentRefund
+from .models import Payment, PaymentRefund
+
+
+@admin.register(Payment)
+class PaymentAdmin(ModelAdmin):
+    list_display = (
+        "id", "order", "appointment_group", "customer",
+        "stage", "amount", "status", "created_at",
+    )
+    list_filter = ("stage", "status", "created_at")
+    search_fields = ("id", "order__id", "appointment_group__id", "customer__phone")
+    readonly_fields = tuple(field.name for field in Payment._meta.fields)
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_staff
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PaymentRefund)
