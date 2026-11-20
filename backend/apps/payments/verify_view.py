@@ -68,6 +68,22 @@ def _process_verified_payment(
                 ),
                 Decimal("0.00"),
             )
+            if payment.stage == Payment.Stage.BALANCE:
+                from apps.bookings.models import BookingExtraWork
+                extra_work_due = BookingExtraWork.objects.filter(
+                    booking__order_item__order=staged_order,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                )
+                if payment.appointment_group_id:
+                    extra_work_due = extra_work_due.filter(appointment_group_id=payment.appointment_group_id)
+                else:
+                    extra_work_due = extra_work_due.filter(appointment_group__isnull=True)
+                expected_stage_total += sum(
+                    extra_work_due.values_list("total_amount", flat=True),
+                    Decimal("0.00"),
+                )
             captured_stage_total = payment.amount + payment.wallet_amount
             if captured_stage_total != expected_stage_total:
                 logger.warning(
@@ -445,6 +461,18 @@ def _process_verified_payment(
                     DispatcherService.dispatch_order(parent_order)
                 message = f"Your 30% advance for AIRway order #{parent_order.id} was received. We are arranging your services."
             elif payment.stage == Payment.Stage.BALANCE:
+                from apps.bookings.models import BookingExtraWork
+                extra_work_due = BookingExtraWork.objects.filter(
+                    booking__order_item__order=parent_order,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                )
+                if payment.appointment_group_id:
+                    extra_work_due = extra_work_due.filter(appointment_group_id=payment.appointment_group_id)
+                else:
+                    extra_work_due = extra_work_due.filter(appointment_group__isnull=True)
+                extra_work_due.update(payment_status="paid", updated_at=timezone.now())
                 all_active_order_items = [
                     row for row in order_items
                     if row.booking.status != Booking.Status.CANCELLED
