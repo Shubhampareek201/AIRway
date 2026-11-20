@@ -285,6 +285,16 @@ class BookingDisputeAPITests(TestCase):
         proposal.refresh_from_db()
         self.assertEqual(proposal.status, BookingReworkProposal.Status.DECLINED)
         self.assertIsNone(proposal.followup_booking_id)
+        replacement = BookingReworkProposal.objects.create(
+            dispute=proposal.dispute,
+            worker=self.worker,
+            scheduled_at=proposal.scheduled_at + timedelta(days=1),
+            created_by=self.staff_user,
+        )
+        listed = self.customer_client.get("/api/v1/bookings/disputes/")
+        self.assertEqual(listed.status_code, 200)
+        latest = next(row for row in listed.data if row["id"] == proposal.dispute_id)
+        self.assertEqual(latest["rework_proposal"]["id"], replacement.pk)
 
     def test_unrelated_user_cannot_accept_rework_proposal(self):
         proposal = self._resolved_rework_proposal()
