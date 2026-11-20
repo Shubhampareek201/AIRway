@@ -128,7 +128,6 @@ def issue_admin_partial_refund(
             ):
                 raise ValueError("This refund request key was already used for a different request.")
             refund = existing
-            created = False
         else:
             locked_payment = Payment.objects.select_for_update().select_related("extra_work").get(
                 pk=payment.pk
@@ -141,7 +140,7 @@ def issue_admin_partial_refund(
             )
             if line_total <= 0:
                 raise ValueError("This payment has no captured allocation for the selected service.")
-            refunded_total, refunded_wallet, refunded_gateway = _existing_refund_components(
+            _, refunded_wallet, refunded_gateway = _existing_refund_components(
                 locked_payment, locked_booking
             )
             remaining_wallet = wallet_captured - refunded_wallet
@@ -177,8 +176,6 @@ def issue_admin_partial_refund(
                 admin_note=admin_note.strip(),
                 idempotency_key=idempotency_key,
             )
-            created = True
-
     if refund.status == PaymentRefund.Status.PENDING:
         return process_payment_refund(refund.pk)
     return refund
