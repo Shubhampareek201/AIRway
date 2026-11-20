@@ -453,15 +453,38 @@ class BookingDisputeAdmin(ModelAdmin):
     search_fields = ("booking__id", "raised_by__phone", "description")
     readonly_fields = (
         "booking", "raised_by", "raised_by_role", "category", "description",
-        "requested_outcome", "evidence_items", "status", "resolution_note",
-        "resolved_by", "resolved_at", "created_at", "updated_at",
+        "requested_outcome", "evidence_items", "resolved_by", "resolved_at",
+        "created_at", "updated_at",
     )
-    fields = readonly_fields
+    fields = readonly_fields + ("status", "resolution_note")
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            previous = BookingDispute.objects.get(pk=obj.pk)
+            allowed = {
+                BookingDispute.Status.OPEN: {
+                    BookingDispute.Status.IN_REVIEW,
+                    BookingDispute.Status.RESOLVED,
+                    BookingDispute.Status.REJECTED,
+                },
+                BookingDispute.Status.IN_REVIEW: {
+                    BookingDispute.Status.RESOLVED,
+                    BookingDispute.Status.REJECTED,
+                },
+                BookingDispute.Status.RESOLVED: {BookingDispute.Status.CLOSED},
+                BookingDispute.Status.REJECTED: {BookingDispute.Status.CLOSED},
+            }
+            if obj.status != previous.status and obj.status not in allowed.get(previous.status, set()):
+                raise ValidationError("Invalid dispute status transition.")
+            if obj.status in (BookingDispute.Status.RESOLVED, BookingDispute.Status.REJECTED):
+                if not obj.resolution_note.strip():
+                    raise ValidationError("A resolution note is required.")
+                if previous.status != obj.status:
+                    obj.resolved_by = request.user
+                    obj.resolved_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
     def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):
