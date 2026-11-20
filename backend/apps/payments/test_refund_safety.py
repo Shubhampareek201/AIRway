@@ -102,7 +102,8 @@ class RefundRetrySafetyTests(TestCase):
             codename="issue_partial_paymentrefund",
         )
         ordinary_staff.user_permissions.add(permission)
-        ordinary_staff.refresh_from_db()
+        ordinary_staff = User.objects.get(pk=ordinary_staff.pk)
+        request.user = ordinary_staff
         self.assertTrue(model_admin.has_add_permission(request))
 
     @patch("apps.payments.refunds.process_payment_refund")
