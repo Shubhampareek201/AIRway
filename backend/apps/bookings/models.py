@@ -194,6 +194,12 @@ class BookingExtraWork(TimeStampedModel):
     payment_choice = models.CharField(
         max_length=24, choices=PaymentChoice.choices, blank=True,
     )
+    payment_status = models.CharField(
+        max_length=16,
+        choices=[("not_due", "Not due"), ("pending", "Pending payment"), ("paid", "Paid")],
+        default="not_due",
+        db_index=True,
+    )
     customer_response_note = models.CharField(max_length=1000, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     responded_at = models.DateTimeField(null=True, blank=True)
