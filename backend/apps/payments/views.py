@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 
-from apps.bookings.models import AppointmentGroup, Booking, Order
+from apps.bookings.models import AppointmentGroup, Booking, BookingExtraWork, Order
 from .models import Payment
 
 logger = logging.getLogger(__name__)
@@ -441,6 +441,144 @@ def create_or_get_order_payment(
             logger.info("Created %s payment for order %s (payment %s, %s)", stage, locked_order.id, payment.id, trigger_source)
         return payment, payment.razorpay_order_id, not gateway_order_created
     raise ValueError("Razorpay order could not be initialized. Please retry.")
+
+
+def create_or_get_extra_work_payment(extra_work, customer, wallet_amount="0.00"):
+    """Create one idempotent gateway/wallet payment for an approved extra-work proposal."""
+    try:
+        requested = Decimal(str(wallet_amount)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Provide a valid wallet amount.")
+    if not requested.is_finite() or requested < 0 or requested != Decimal(str(wallet_amount)):
+        raise ValueError("Wallet amount must be non-negative with at most two decimal places.")
+    if extra_work.booking.customer_id != customer.id:
+        raise ValueError("Extra-work proposal not found or access denied.")
+    if extra_work.status != BookingExtraWork.Status.APPROVED:
+        raise ValueError("Only customer-approved extra work can be paid.")
+    if extra_work.payment_choice != BookingExtraWork.PaymentChoice.SEPARATE:
+        raise ValueError("This proposal was added to the appointment balance and cannot be paid separately.")
+    if extra_work.payment_status == "paid":
+        payment = Payment.objects.get(extra_work=extra_work)
+        return payment, payment.razorpay_order_id, True
+
+    order_item = getattr(extra_work.booking, "order_item", None)
+    if order_item is None:
+        raise ValueError("This booking is not linked to a payable order. Contact AIRway support.")
+    order = order_item.order
+    if order.currency != "INR":
+        raise ValueError("AIRway wallet and extra-work payments currently support INR only.")
+    total = extra_work.total_amount
+    if requested > total:
+        raise ValueError("Wallet amount cannot exceed the extra-work total.")
+
+    with transaction.atomic():
+        locked = BookingExtraWork.objects.select_for_update().select_related(
+            "booking__order_item__order"
+        ).get(pk=extra_work.pk, booking__customer=customer)
+        payment = Payment.objects.select_for_update().filter(extra_work=locked).first()
+        if payment and payment.status == Payment.Status.PAID:
+            return payment, payment.razorpay_order_id, True
+        if payment and payment.status == Payment.Status.PENDING:
+            if payment.wallet_amount != requested:
+                raise ValueError("A payment attempt already exists with a different wallet amount.")
+            if payment.amount > 0 and payment.razorpay_order_id:
+                return payment, payment.razorpay_order_id, True
+        if payment is None:
+            payment = Payment.objects.create(
+                order=order,
+                extra_work=locked,
+                customer=customer,
+                stage=Payment.Stage.EXTRA_WORK,
+                amount=total - requested,
+                wallet_amount=requested,
+                method=Payment.Method.WALLET if requested == total else Payment.Method.RAZORPAY,
+                status=Payment.Status.PENDING,
+            )
+        else:
+            payment.amount = total - requested
+            payment.wallet_amount = requested
+            payment.status = Payment.Status.PENDING
+            payment.failed_at = None
+            payment.razorpay_order_id = ""
+            payment.razorpay_payment_id = ""
+            payment.razorpay_signature = ""
+            payment.raw_response = {}
+            payment.save(update_fields=[
+                "amount", "wallet_amount", "status", "failed_at",
+                "razorpay_order_id", "razorpay_payment_id",
+                "razorpay_signature", "raw_response", "updated_at",
+            ])
+
+        locked.payment_status = "pending"
+        locked.save(update_fields=["payment_status", "updated_at"])
+        if requested > 0:
+            from apps.wallet.services import reserve_wallet_amount
+            reserve_wallet_amount(payment, requested)
+
+        if payment.amount > 0:
+            gateway_order = client.order.create(data={
+                "amount": int(payment.amount * 100),
+                "currency": order.currency,
+                "receipt": f"airway_extra_{locked.pk}_{payment.pk}",
+                "notes": {
+                    "airway_order_id": str(order.pk),
+                    "extra_work_id": str(locked.pk),
+                    "payment_id": str(payment.pk),
+                    "payment_stage": Payment.Stage.EXTRA_WORK,
+                    "customer_id": str(customer.pk),
+                    "wallet_amount": str(requested),
+                },
+            })
+            payment.razorpay_order_id = gateway_order["id"]
+            payment.save(update_fields=["razorpay_order_id", "updated_at"])
+
+    if payment.amount == 0:
+        from .verify_view import _process_verified_payment
+        result = _process_verified_payment(payment, "", "", customer, "wallet")
+        if getattr(result, "status_code", 500) >= 400:
+            raise ValueError("Wallet payment could not be completed. Please retry.")
+        payment.refresh_from_db()
+        return payment, "", False
+    return payment, payment.razorpay_order_id, False
+
+
+class CreateExtraWorkPaymentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, extra_work_id):
+        try:
+            extra_work = BookingExtraWork.objects.select_related(
+                "booking__order_item__order"
+            ).get(pk=extra_work_id, booking__customer=request.user)
+        except BookingExtraWork.DoesNotExist:
+            return Response({"detail": "Extra-work proposal not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            payment, razorpay_order_id, existed = create_or_get_extra_work_payment(
+                extra_work, request.user, request.data.get("wallet_amount", "0.00")
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Extra-work payment initialization failed for proposal %s", extra_work_id)
+            return Response({"detail": "Could not initialize extra-work payment. Please retry."}, status=status.HTTP_502_BAD_GATEWAY)
+
+        data = {
+            "order_id": razorpay_order_id,
+            "amount": int(payment.amount * 100),
+            "stage_amount": str(payment.amount + payment.wallet_amount),
+            "wallet_amount": str(payment.wallet_amount),
+            "currency": "INR",
+            "payment_exists": existed,
+            "already_paid": payment.status == Payment.Status.PAID,
+            "payment_status": payment.status,
+            "payment_stage": payment.stage,
+            "payment_id": payment.pk,
+            "extra_work_id": extra_work.pk,
+            "airway_order_id": payment.order_id,
+        }
+        if razorpay_order_id:
+            data["key_id"] = settings.RAZORPAY_KEY_ID
+        return Response(data)
 
 
 class CreateOrderView(APIView):
