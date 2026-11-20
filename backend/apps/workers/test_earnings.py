@@ -93,6 +93,17 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(retried.commission_amount, Decimal("20.00"))
         self.assertEqual(retried.net_amount, Decimal("80.00"))
 
+    def test_manual_adjustment_is_preserved_on_idempotent_sync(self):
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        earning.adjustment_amount = Decimal("-5.00")
+        earning.adjustment_note = "Finance refund reconciliation"
+        earning.save(update_fields=["adjustment_amount", "adjustment_note", "updated_at"])
+
+        retried = sync_worker_earning(self.booking.pk, self.payment.pk)
+
+        self.assertEqual(retried.net_amount, Decimal("75.00"))
+        self.assertEqual(retried.adjustment_amount, Decimal("-5.00"))
+
     def test_missing_commission_rate_holds_earning_without_guessing_net(self):
         self.worker.commission_rate = None
         self.worker.save(update_fields=["commission_rate", "updated_at"])
