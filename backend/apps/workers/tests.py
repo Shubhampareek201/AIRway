@@ -606,6 +606,56 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertNotIn("customer_phone", detail_response.data)
         self.assertNotIn(self.customer_user.phone, str(detail_response.data))
 
+
+    def test_worker_job_detail_includes_extra_work_decision_and_payment_history(self):
+        from apps.bookings.models import BookingExtraWork
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.IN_PROGRESS,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            started_at=timezone.now(),
+        )
+        proposal = BookingExtraWork.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            reason="Customer requested an additional repair",
+            line_items=[{
+                "description": "Replacement part",
+                "quantity": 1,
+                "unit_price": "150.00",
+                "line_total": "150.00",
+            }],
+            subtotal=Decimal("150.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("150.00"),
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.SEPARATE,
+            payment_status="pending",
+            customer_response_note="Please proceed",
+            responded_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["extra_work_requests"]), 1)
+        row = response.data["extra_work_requests"][0]
+        self.assertEqual(row["id"], proposal.pk)
+        self.assertEqual(row["status"], "approved")
+        self.assertEqual(row["payment_status"], "pending")
+        self.assertEqual(row["payment_choice"], "separate")
+        self.assertEqual(row["customer_response_note"], "Please proceed")
+
     def _start_with_arrival_otp(self, url):
         import re
         from apps.notifications.models import Notification
