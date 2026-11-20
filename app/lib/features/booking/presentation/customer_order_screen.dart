@@ -411,6 +411,52 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (mounted) await loadOrder(showLoader: false);
   }
 
+  Future<void> cancelAppointmentGroup(int groupId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AirwayText.tr('Cancel this appointment?', 'यह अपॉइंटमेंट रद्द करें?')),
+        content: Text(AirwayText.tr(
+          'All services in this appointment will be cancelled. Other appointments in this order will remain unchanged. Eligible refunds will be processed separately.',
+          'इस अपॉइंटमेंट की सभी सेवाएँ रद्द हो जाएँगी। इस ऑर्डर के दूसरे अपॉइंटमेंट पर असर नहीं पड़ेगा। लागू रिफंड अलग से प्रोसेस होंगे।',
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(AirwayText.tr('Keep appointment', 'अपॉइंटमेंट जारी रखें')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(AirwayText.tr('Cancel appointment', 'अपॉइंटमेंट रद्द करें')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await BookingApi.cancelAppointmentGroup(groupId);
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Appointment cancelled. Other appointments were not changed.',
+          'अपॉइंटमेंट रद्द हो गया। दूसरे अपॉइंटमेंट नहीं बदले गए।',
+        ))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Could not cancel this appointment: $e',
+          'अपॉइंटमेंट रद्द नहीं हो सका: $e',
+        ))),
+      );
+    }
+  }
+
   String statusLabel(String value) {
     switch (value) {
       case 'pending': return 'Finding professional';
@@ -719,7 +765,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 14),
           orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
           const SizedBox(height: 14),
-          scheduleOverview(rows),
+          appointmentGroupsOverview(rows),
           if (order?['recurring_wash_plan'] is Map) ...[
             const SizedBox(height: 14),
             recurringWashSection(Map<String, dynamic>.from(order!['recurring_wash_plan'] as Map)),
@@ -843,6 +889,118 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     ]);
   }
 
+
+  Widget appointmentGroupsOverview(List<Map<String, dynamic>> rows) {
+    final groups = (order?['appointment_groups'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList()
+      ..sort((a, b) => (a['group_number'] as int? ?? 0).compareTo(b['group_number'] as int? ?? 0));
+    if (groups.isEmpty) return scheduleOverview(rows);
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.calendar_month_rounded, color: violet, size: 19),
+            const SizedBox(width: 8),
+            Text(AirwayText.tr('Your appointments', 'आपके अपॉइंटमेंट'),
+                style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+          ]),
+          const SizedBox(height: 8),
+          for (var index = 0; index < groups.length; index++) ...[
+            if (index > 0) const Divider(height: 18),
+            Builder(builder: (context) {
+              final group = groups[index];
+              final groupId = int.tryParse(group['id']?.toString() ?? '');
+              final groupNumber = group['group_number']?.toString() ?? '${index + 1}';
+              final groupRows = rows.where((row) =>
+                  row['appointment_group_id']?.toString() == group['id']?.toString()
+              ).toList();
+              final serviceNames = groupRows.map((row) {
+                final service = row['service'] is Map
+                    ? (row['service']['service_title']?.toString() ?? 'Service')
+                    : 'Service';
+                return service;
+              }).toList();
+              final groupStatus = group['status']?.toString() ?? 'pending';
+              final canCancel = groupId != null &&
+                  ['pending', 'confirmed', 'assigned'].contains(groupStatus);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(9)),
+                      child: Text(groupNumber, style: const TextStyle(color: violet, fontWeight: FontWeight.w900)),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AirwayText.tr('Appointment $groupNumber', 'अपॉइंटमेंट $groupNumber'),
+                          style: const TextStyle(fontWeight: FontWeight.w800, color: ink),
+                        ),
+                        Text(
+                          DateFormatForOrder.format(group['scheduled_at']?.toString() ?? ''),
+                          style: const TextStyle(color: sub, fontSize: 12),
+                        ),
+                      ],
+                    )),
+                    Text(statusLabel(groupStatus), style: const TextStyle(color: violet, fontSize: 11, fontWeight: FontWeight.w700)),
+                  ]),
+                  if (serviceNames.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Text(serviceNames.join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+                    ),
+                  if (group['customer_message']?.toString().trim().isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Text(
+                        AirwayText.tr(
+                          'Message to professional: ${group['customer_message']}',
+                          'प्रोफेशनल के लिए संदेश: ${group['customer_message']}',
+                        ),
+                        style: const TextStyle(color: sub, fontSize: 12),
+                      ),
+                    ),
+                  if (canCancel)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => cancelAppointmentGroup(groupId),
+                          icon: const Icon(Icons.cancel_outlined, size: 15),
+                          label: Text(AirwayText.tr('Cancel this appointment', 'यह अपॉइंटमेंट रद्द करें')),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFB3261E),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget scheduleOverview(List<Map<String, dynamic>> rows) {
     final groups = <String, List<String>>{};
