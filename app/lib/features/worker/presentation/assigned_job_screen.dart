@@ -610,6 +610,110 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     );
   }
 
+
+  Widget _buildReworkCaseCard(WorkerAssignmentDetail job) {
+    final recovery = job.reworkCase;
+    if (recovery == null) return const SizedBox.shrink();
+    final evidence = (recovery['evidence_files'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    return Card(
+      color: const Color(0xFFFFFBF2),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFF0DFC1)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.replay_circle_filled_rounded, color: Color(0xFF9A6418)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              AirwayText.tr('Service recovery instructions', 'सेवा सुधार के निर्देश'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+            )),
+            Text(
+              (recovery['category']?.toString() ?? 'other').replaceAll('_', ' '),
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+            ),
+          ]),
+          const SizedBox(height: 9),
+          Text(
+            recovery['description']?.toString() ?? '',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          if ((recovery['resolution_note']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'AIRway decision: ${recovery['resolution_note']}',
+              style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+            ),
+          ],
+          if (evidence.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              AirwayText.tr('Customer evidence', 'ग्राहक के सबूत'),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 104,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: evidence.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final photo = evidence[index];
+                  final url = photo['photo_url']?.toString() ?? '';
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: FutureBuilder<Map<String, String>>(
+                      future: WorkerApi.getAuthHeaders(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Container(
+                            width: 104,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.broken_image_outlined),
+                          );
+                        }
+                        if (!snapshot.hasData) {
+                          return Container(
+                            width: 104,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        return Image.network(
+                          url,
+                          headers: snapshot.data,
+                          width: 104,
+                          height: 104,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 104,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.broken_image_outlined),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
   Widget _buildDisputeCard(WorkerAssignmentDetail job) {
     final canReport = job.status == BookingStatus.inProgress ||
         job.status == BookingStatus.completed;
@@ -943,6 +1047,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             _buildEvidenceCard(job),
             const SizedBox(height: 16),
             _buildDisputeCard(job),
+            const SizedBox(height: 16),
+            _buildReworkCaseCard(job),
             const SizedBox(height: 16),
             _buildDisputeHistoryCard(),
             const SizedBox(height: 16),
