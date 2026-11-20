@@ -529,4 +529,32 @@ class BookingApi {
 
     return Map<String, dynamic>.from(result);
   }
+
+  static Future<Map<String, dynamic>> createDispute({
+    required int bookingId,
+    required String category,
+    required String description,
+    required String requestedOutcome,
+  }) async {
+    final result = await request(
+      '/api/v1/bookings/disputes/',
+      method: 'POST',
+      data: {
+        'booking_id': bookingId,
+        'category': category,
+        'description': description,
+        'requested_outcome': requestedOutcome,
+      },
+    );
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<List<Map<String, dynamic>>> getDisputes() async {
+    final result = await request('/api/v1/bookings/disputes/');
+    return (result as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
 }
