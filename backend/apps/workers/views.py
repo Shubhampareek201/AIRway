@@ -1454,14 +1454,27 @@ class WorkerEarningsView(APIView):
 
         from .models import WorkerEarning
         earnings = WorkerEarning.objects.filter(worker=profile).select_related(
-            "booking__service", "payment", "extra_work"
+            "booking__service", "booking__rework_source", "payment", "extra_work"
         ).order_by("-created_at")[:100]
         results = []
         for earning in earnings:
             results.append({
                 "id": earning.pk,
                 "booking_id": earning.booking_id,
-                "service_title": (f"Additional work · {earning.extra_work.reason}" if earning.extra_work_id else earning.booking.service.title),
+                "service_title": (
+                    f"Additional work · {earning.extra_work.reason}"
+                    if earning.extra_work_id
+                    else (
+                        f"Service recovery · {earning.booking.service.title}"
+                        if getattr(earning.booking, "rework_source", None) is not None
+                        else earning.booking.service.title
+                    )
+                ),
+                "earning_source": (
+                    "airway_funded_recovery"
+                    if getattr(earning.booking, "rework_source", None) is not None
+                    else "customer_payment"
+                ),
                 "extra_work_id": earning.extra_work_id,
                 "gross_amount": str(earning.gross_amount),
                 "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
