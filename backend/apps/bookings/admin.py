@@ -512,8 +512,14 @@ class BookingReworkProposalAdminForm(forms.ModelForm):
         ):
             self.add_error("dispute", "Only an Admin-resolved rework case can receive a recovery appointment.")
             return cleaned
-        if booking.booking_mode != Booking.BookingMode.SCHEDULED:
-            self.add_error("dispute", "Automatic rework scheduling currently supports scheduled services only.")
+        if (
+            booking.booking_mode != Booking.BookingMode.SCHEDULED
+            or booking.service.pricing_type == "quote"
+        ):
+            self.add_error(
+                "dispute",
+                "Automatic no-charge recovery currently supports fixed or per-unit scheduled services only.",
+            )
             return cleaned
         if scheduled_at <= timezone.now():
             self.add_error("scheduled_at", "Choose a future recovery appointment time.")
