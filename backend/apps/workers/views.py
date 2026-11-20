@@ -559,7 +559,7 @@ class WorkerJobListView(APIView):
         query = (
             BookingAssignment.objects
             .filter(worker=profile)
-            .select_related("booking__service", "booking__customer", "booking__address")
+            .select_related("booking__service", "booking__customer", "booking__address", "booking__rework_source")
         )
         if status_param:
             query = query.filter(booking__status=status_param)
