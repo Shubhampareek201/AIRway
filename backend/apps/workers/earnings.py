@@ -43,7 +43,7 @@ def sync_worker_earning(booking_id, payment_id):
             Decimal("0.00"),
         )
     elif payment.booking_id == booking.pk and payment.stage == Payment.Stage.LEGACY:
-        gross = Decimal(str((booking.pricing_snapshot or {}).get("total", "0.00")))
+        gross = Decimal(str((booking.pricing_snapshot or {}).get("subtotal", (booking.pricing_snapshot or {}).get("total", "0.00"))))
     else:
         return None
 
