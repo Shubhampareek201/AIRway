@@ -207,6 +207,7 @@ def create_or_get_order_payment(
         paid = Payment.objects.filter(
             order=order,
             stage=Payment.Stage.LEGACY,
+            appointment_group__isnull=True,
             status=Payment.Status.PAID,
         ).first()
         if paid:
@@ -216,18 +217,38 @@ def create_or_get_order_payment(
         ):
             raise ValueError("Legacy full payment is available only for an assigned order awaiting payment.")
     elif stage == Payment.Stage.ADVANCE:
-        if Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
-            paid = Payment.objects.get(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID)
+        if Payment.objects.filter(
+            order=order, stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True, status=Payment.Status.PAID,
+        ).exists():
+            paid = Payment.objects.get(
+                order=order, stage=Payment.Stage.ADVANCE,
+                appointment_group__isnull=True, status=Payment.Status.PAID,
+            )
             return paid, paid.razorpay_order_id, True
         if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED):
             raise ValueError("This order is not eligible for an advance payment.")
     else:
-        if not Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
+        if not Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True,
+            status=Payment.Status.PAID,
+        ).exists():
             raise ValueError("The advance payment must be completed first.")
         if any(item.booking.status != Booking.Status.COMPLETED for item in active_items):
-            raise ValueError("Final balance is available only after every active service is completed and verified.")
-        if Payment.objects.filter(order=order, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).exists():
-            paid = Payment.objects.get(order=order, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID)
+            raise ValueError(
+                "This appointment's balance is available only after every active service in the appointment is completed and verified."
+                if appointment_group else
+                "Final balance is available only after every active service is completed and verified."
+            )
+        paid = Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.BALANCE,
+            appointment_group=appointment_group,
+            status=Payment.Status.PAID,
+        ).first()
+        if paid:
             return paid, paid.razorpay_order_id, True
 
     if stage_total <= 0:
@@ -241,7 +262,9 @@ def create_or_get_order_payment(
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=order.pk, customer=customer)
         payment = Payment.objects.select_for_update().filter(
-            order=locked_order, stage=stage
+            order=locked_order,
+            stage=stage,
+            appointment_group=appointment_group,
         ).first()
         # Check the settled record before validating the pre-payment order
         # state: successful retries naturally arrive after the order changed.
@@ -254,8 +277,12 @@ def create_or_get_order_payment(
                 "advance" if stage == Payment.Stage.ADVANCE else "balance", []
             )
             locked_items = list(locked_order.items.select_related("booking"))
-            locked_active_items = [
+            locked_payment_items = [
                 item for item in locked_items
+                if appointment_group is None or item.booking.appointment_group_id == appointment_group.pk
+            ]
+            locked_active_items = [
+                item for item in locked_payment_items
                 if item.booking.status != Booking.Status.CANCELLED
             ]
             locked_stage_total = sum(
@@ -275,7 +302,11 @@ def create_or_get_order_payment(
                 not locked_active_items
                 or any(item.booking.status != Booking.Status.COMPLETED for item in locked_active_items)
             ):
-                raise ValueError("Final balance is available only after every active service is completed and verified.")
+                raise ValueError(
+                    "This appointment's balance is available only after every active service in the appointment is completed and verified."
+                    if appointment_group else
+                    "Final balance is available only after every active service is completed and verified."
+                )
         elif stage == Payment.Stage.LEGACY:
             locked_items = list(locked_order.items.select_related("booking"))
             if locked_order.status != Order.Status.AWAITING_PAYMENT or any(
@@ -302,6 +333,7 @@ def create_or_get_order_payment(
         if payment is None:
             payment = Payment.objects.create(
                 order=locked_order,
+                appointment_group=appointment_group,
                 customer=customer,
                 stage=stage,
                 amount=stage_total - requested,
@@ -380,6 +412,7 @@ def create_or_get_order_payment(
                 "receipt": f"airway_{stage}_{locked_order.id}_{payment.id}",
                 "notes": {
                     "airway_order_id": str(locked_order.id),
+                    "appointment_group_id": str(appointment_group.pk) if appointment_group else "",
                     "payment_stage": stage,
                     "customer_id": str(customer.id),
                     "wallet_amount": str(payment.wallet_amount),
