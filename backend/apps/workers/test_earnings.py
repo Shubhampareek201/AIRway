@@ -120,6 +120,35 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertIsNone(earning.net_amount)
         self.assertIn("refund", earning.hold_reason.lower())
 
+    def test_commission_is_snapshotted_while_refund_hold_is_active(self):
+        self.worker.commission_rate = None
+        self.worker.save(update_fields=["commission_rate", "updated_at"])
+        refund = PaymentRefund.objects.create(
+            payment=self.payment,
+            booking=self.booking,
+            amount=Decimal("10.00"),
+            wallet_amount=Decimal("10.00"),
+            gateway_amount=Decimal("0.00"),
+            reason=PaymentRefund.Reason.ADMIN_ADJUSTMENT,
+            status=PaymentRefund.Status.PENDING,
+        )
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        self.assertEqual(earning.status, WorkerEarning.Status.ON_HOLD)
+        self.assertIsNone(earning.commission_amount)
+
+        self.worker.commission_rate = Decimal("20.00")
+        self.worker.save(update_fields=["commission_rate", "updated_at"])
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        self.assertEqual(earning.status, WorkerEarning.Status.ON_HOLD)
+        self.assertEqual(earning.commission_amount, Decimal("20.00"))
+        self.assertEqual(earning.net_amount, Decimal("80.00"))
+
+        refund.status = PaymentRefund.Status.FAILED
+        refund.save(update_fields=["status", "updated_at"])
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        self.assertEqual(earning.status, WorkerEarning.Status.AVAILABLE)
+        self.assertEqual(earning.net_amount, Decimal("80.00"))
+
     def test_unpaid_or_incomplete_booking_does_not_create_earning(self):
         self.payment.status = Payment.Status.PENDING
         self.payment.save(update_fields=["status", "updated_at"])
