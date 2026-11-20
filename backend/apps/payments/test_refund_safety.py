@@ -199,6 +199,7 @@ class RefundRetrySafetyTests(TestCase):
     @patch("apps.payments.refunds.process_payment_refund")
     def test_admin_can_partially_refund_one_extra_work_line_from_balance_payment(self, process_refund):
         self.refund.delete()
+        process_refund.side_effect = lambda refund_id: PaymentRefund.objects.get(pk=refund_id)
         worker_user = User.objects.create_user(
             phone="+919876543294",
             password="test-password",
