@@ -6,6 +6,7 @@ from django.http import HttpResponseRedirect
 from django.core.exceptions import PermissionDenied, ValidationError
 from unfold.admin import ModelAdmin
 
+from apps.bookings.models import BookingExtraWork
 from .models import Payment, PaymentRefund
 from .refunds import (
     _existing_refund_components,
@@ -45,7 +46,7 @@ class PaymentRefundAdminForm(forms.ModelForm):
 
     class Meta:
         model = PaymentRefund
-        fields = ("payment", "booking", "amount", "reason", "admin_note")
+        fields = ("payment", "booking", "extra_work", "amount", "reason", "admin_note")
         widgets = {
             "admin_note": forms.Textarea(attrs={"rows": 3}),
         }
@@ -55,6 +56,11 @@ class PaymentRefundAdminForm(forms.ModelForm):
         self.fields["payment"].queryset = Payment.objects.filter(
             status=Payment.Status.PAID
         ).select_related("customer")
+        self.fields["extra_work"].queryset = BookingExtraWork.objects.all().select_related("booking")
+        self.fields["extra_work"].required = False
+        self.fields["extra_work"].help_text = (
+            "Choose a specific extra-work proposal to refund only that approved add-on."
+        )
         self.fields["reason"].choices = [
             (PaymentRefund.Reason.ADMIN_ADJUSTMENT, "Admin partial refund"),
             (PaymentRefund.Reason.DISPUTE_RESOLUTION, "Dispute resolution"),
