@@ -955,6 +955,28 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           Text('₹' + amount(row['line_total']).toStringAsFixed(0),
               style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         ]),
+        if (row['appointment_group_number'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              AirwayText.tr(
+                'Appointment ${row['appointment_group_number']}',
+                'अपॉइंटमेंट ${row['appointment_group_number']}',
+              ),
+              style: const TextStyle(color: violet, fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ),
+        if (row['appointment_group_message']?.toString().trim().isNotEmpty == true)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              AirwayText.tr(
+                'Message for professional: ${row['appointment_group_message']}',
+                'प्रोफेशनल के लिए संदेश: ${row['appointment_group_message']}',
+              ),
+              style: const TextStyle(color: sub, fontSize: 12),
+            ),
+          ),
         if (snapshot['variant_title'] != null) Text(snapshot['variant_title'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
         if (snapshot['unit_label']?.toString().isNotEmpty ?? false)
           Text('${row['quantity']} ${snapshot['unit_label']}', style: const TextStyle(color: sub, fontSize: 12)),
