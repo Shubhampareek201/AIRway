@@ -419,9 +419,15 @@ class BookingDisputeEvidencePhotoView(APIView):
             ),
             pk=evidence_id,
         )
+        is_recovery_worker = BookingReworkProposal.objects.filter(
+            dispute_id=evidence.dispute_id,
+            status=BookingReworkProposal.Status.ACCEPTED,
+            followup_booking__assignment__worker__user=request.user,
+        ).exists()
         is_participant = (
             evidence.dispute.booking.customer_id == request.user.pk
             or _is_assigned_worker(evidence.dispute.booking, request.user)
+            or is_recovery_worker
         )
         if not request.user.is_staff and not is_participant:
             return Response({"detail": "Evidence not found."}, status=status.HTTP_404_NOT_FOUND)
