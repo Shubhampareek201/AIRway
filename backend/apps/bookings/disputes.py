@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -38,7 +39,11 @@ class BookingDisputeListCreateView(APIView):
     def get(self, request):
         disputes = BookingDispute.objects.select_related("booking__service").all()
         if not request.user.is_staff:
-            disputes = disputes.filter(raised_by=request.user)
+            disputes = disputes.filter(
+                Q(raised_by=request.user)
+                | Q(booking__customer=request.user)
+                | Q(booking__assignment__worker__user=request.user)
+            ).distinct()
         return Response([_serialize_dispute(item) for item in disputes[:100]])
 
     def post(self, request):
@@ -111,7 +116,12 @@ class BookingDisputeDetailView(APIView):
             BookingDispute.objects.select_related("booking__service", "raised_by"),
             pk=dispute_id,
         )
-        if not request.user.is_staff and dispute.raised_by_id != request.user.pk:
+        is_participant = (
+            dispute.raised_by_id == request.user.pk
+            or dispute.booking.customer_id == request.user.pk
+            or _is_assigned_worker(dispute.booking, request.user)
+        )
+        if not request.user.is_staff and not is_participant:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You cannot view this dispute.")
         return dispute
