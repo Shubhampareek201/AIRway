@@ -81,6 +81,17 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(response.data[0]["net_amount"], "80.00")
         self.assertEqual(response.data[0]["status"], WorkerEarning.Status.AVAILABLE)
 
+    def test_commission_snapshot_is_not_rewritten_after_rate_change(self):
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        self.worker.commission_rate = Decimal("30.00")
+        self.worker.save(update_fields=["commission_rate", "updated_at"])
+
+        retried = sync_worker_earning(self.booking.pk, self.payment.pk)
+
+        self.assertEqual(retried.commission_rate, Decimal("20.00"))
+        self.assertEqual(retried.commission_amount, Decimal("20.00"))
+        self.assertEqual(retried.net_amount, Decimal("80.00"))
+
     def test_missing_commission_rate_holds_earning_without_guessing_net(self):
         self.worker.commission_rate = None
         self.worker.save(update_fields=["commission_rate", "updated_at"])
