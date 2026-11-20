@@ -348,6 +348,20 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking.cancelled_by = request.user
         booking.save()
 
+        rework_proposal = getattr(booking, "rework_source", None)
+        if rework_proposal is not None and rework_proposal.status == "accepted":
+            rework_proposal.status = "cancelled"
+            rework_proposal.responded_at = timezone.now()
+            rework_proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=rework_proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery appointment cancelled by customer",
+                body=f"The customer cancelled recovery booking #{booking.pk}. The dispute case can be reviewed if further recovery is needed.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": rework_proposal.dispute_id},
+            )
+
         assignment = getattr(booking, "assignment", None)
         if assignment:
             Notification.objects.create(
