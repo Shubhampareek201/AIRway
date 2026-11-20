@@ -42,7 +42,9 @@ class DispatcherService:
         order_id = OrderItem.objects.filter(
             booking_id=booking.pk
         ).values_list("order_id", flat=True).first()
-        if order_id and parent_order is None:
+        if order_id and (parent_order is None or booking.appointment_group_id):
+            # Grouped bookings must never fall back to independent line offers.
+            # Route every trigger through the parent-order dispatcher.
             from apps.bookings.models import Order
             return cls.dispatch_order(Order.objects.get(pk=order_id))
         booking = Booking.objects.select_for_update(of=("self",)).select_related(
