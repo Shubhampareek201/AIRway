@@ -186,3 +186,57 @@ class BookingDisputeAPITests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+
+    def test_dispute_evidence_is_private_and_available_to_booking_participants(self):
+        created = self.customer_client.post(
+            "/api/v1/bookings/disputes/", self._payload(), format="json"
+        )
+        dispute_id = created.data["id"]
+        buffer = BytesIO()
+        Image.new("RGB", (32, 32), color=(40, 120, 80)).save(buffer, format="JPEG")
+        image_bytes = buffer.getvalue()
+
+        with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
+            uploaded = self.customer_client.post(
+                f"/api/v1/bookings/disputes/{dispute_id}/evidence/",
+                {
+                    "file": SimpleUploadedFile(
+                        "evidence.jpg", image_bytes, content_type="image/jpeg"
+                    ),
+                    "note": "Counter condition after service",
+                },
+                format="multipart",
+            )
+            self.assertEqual(uploaded.status_code, 201, uploaded.data)
+            evidence_id = uploaded.data["id"]
+            evidence = BookingDisputeEvidence.objects.get(pk=evidence_id)
+            self.assertNotIn(private_root, evidence.file_path)
+            self.assertTrue(evidence.file_path.startswith("booking_dispute_evidence/"))
+
+            customer_photo = self.customer_client.get(
+                f"/api/v1/bookings/dispute-evidence/{evidence_id}/photo/"
+            )
+            self.assertEqual(customer_photo.status_code, 200)
+            self.assertEqual(customer_photo["Cache-Control"], "private, no-store")
+
+            worker_photo = self.worker_client.get(
+                f"/api/v1/bookings/dispute-evidence/{evidence_id}/photo/"
+            )
+            self.assertEqual(worker_photo.status_code, 200)
+
+            denied = self.other_client.get(
+                f"/api/v1/bookings/dispute-evidence/{evidence_id}/photo/"
+            )
+            self.assertEqual(denied.status_code, 404)
+
+    def test_dispute_evidence_rejects_invalid_file_type(self):
+        created = self.customer_client.post(
+            "/api/v1/bookings/disputes/", self._payload(), format="json"
+        )
+        response = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{created.data['id']}/evidence/",
+            {"file": SimpleUploadedFile("notes.txt", b"not an image", content_type="text/plain")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
