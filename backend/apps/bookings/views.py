@@ -1877,6 +1877,7 @@ class CustomerOrderDetailView(APIView):
                 "refunds": [
                     {
                         "id": refund.pk,
+                        "extra_work_id": refund.extra_work_id,
                         "amount": str(refund.amount),
                         "wallet_amount": str(refund.wallet_amount),
                         "gateway_amount": str(refund.gateway_amount),
