@@ -465,6 +465,18 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                 'cancelled' => 'Cancelled',
                 _ => 'Awaiting customer',
               };
+              final labelColor = switch (status) {
+                'approved' => AirwayColors.success,
+                'rejected' || 'cancelled' => AirwayColors.error,
+                'expired' => AirwayColors.warning,
+                _ => const Color(0xFF6C4AE3),
+              };
+              final labelBackground = switch (status) {
+                'approved' => AirwayColors.successSoft,
+                'rejected' || 'cancelled' => AirwayColors.errorSoft,
+                'expired' => AirwayColors.warningSoft,
+                _ => const Color(0xFFF1EDFF),
+              };
               final paymentStatus = request['payment_status']?.toString() ?? 'not_due';
               final paymentLabel = paymentStatus == 'paid'
                   ? 'Paid'
@@ -491,7 +503,26 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                     children: [
                       Row(
                         children: [
-                          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text))),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: labelBackground,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: labelColor,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                           Text('₹${request['total_amount'] ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6C4AE3))),
                         ],
                       ),
