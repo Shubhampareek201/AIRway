@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, time
 from io import BytesIO
 from tempfile import TemporaryDirectory
 
@@ -8,10 +8,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence
+from apps.bookings.models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence, BookingReworkProposal
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
-from apps.workers.models import WorkerProfile
+from apps.workers.models import WorkerProfile, WorkerSchedule, WorkerService, WorkerZone
 from PIL import Image
 
 
@@ -31,6 +31,7 @@ class BookingDisputeAPITests(TestCase):
         )
         city = City.objects.create(name="Dispute Test City", state="Rajasthan")
         zone = Zone.objects.create(name="Dispute Test Zone", city=city, is_active=True)
+        self.zone = zone
         address = Address.objects.create(
             user=self.customer,
             label="Home",
@@ -191,6 +192,93 @@ class BookingDisputeAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+
+
+    def _resolved_rework_proposal(self):
+        self.worker.is_online = True
+        self.worker.save(update_fields=["is_online", "updated_at"])
+        WorkerService.objects.create(worker=self.worker, service=self.booking.service)
+        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
+        scheduled_at = timezone.now() + timedelta(days=2)
+        local_time = timezone.localtime(scheduled_at)
+        WorkerSchedule.objects.create(
+            worker=self.worker,
+            weekday=local_time.weekday(),
+            start_time=time(0, 0),
+            end_time=time(23, 59),
+        )
+        dispute = BookingDispute.objects.create(
+            booking=self.booking,
+            raised_by=self.customer,
+            raised_by_role="customer",
+            category=BookingDispute.Category.SERVICE_QUALITY,
+            description="The original service needs a correction visit.",
+            requested_outcome=BookingDispute.RequestedOutcome.REWORK,
+            status=BookingDispute.Status.RESOLVED,
+            resolution_note="AIRway approved a no-charge recovery visit.",
+            resolved_by=self.staff_user,
+            resolved_at=timezone.now(),
+        )
+        return BookingReworkProposal.objects.create(
+            dispute=dispute,
+            worker=self.worker,
+            scheduled_at=scheduled_at,
+            created_by=self.staff_user,
+        )
+
+    def test_customer_acceptance_creates_zero_charge_assigned_rework_booking(self):
+        proposal = self._resolved_rework_proposal()
+        response = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.ACCEPTED)
+        self.assertIsNotNone(proposal.followup_booking_id)
+        followup = proposal.followup_booking
+        self.assertEqual(followup.status, Booking.Status.ASSIGNED)
+        self.assertEqual(followup.pricing_snapshot["total"], "0.00")
+        self.assertEqual(followup.assignment.worker_id, self.worker.pk)
+        self.assertIsNotNone(followup.assignment.accepted_at)
+        self.assertTrue(followup.notes.startswith("No-charge AIRway service recovery"))
+
+    def test_customer_can_decline_rework_without_creating_booking(self):
+        proposal = self._resolved_rework_proposal()
+        response = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "decline"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.DECLINED)
+        self.assertIsNone(proposal.followup_booking_id)
+
+    def test_unrelated_user_cannot_accept_rework_proposal(self):
+        proposal = self._resolved_rework_proposal()
+        response = self.other_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Booking.objects.filter(rework_source__dispute=proposal.dispute).exists())
+
+    def test_rework_acceptance_rechecks_worker_availability(self):
+        proposal = self._resolved_rework_proposal()
+        self.worker.is_online = False
+        self.worker.save(update_fields=["is_online", "updated_at"])
+        response = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.PENDING_CUSTOMER)
+        self.assertIsNone(proposal.followup_booking_id)
 
     def test_dispute_evidence_is_private_and_available_to_booking_participants(self):
         created = self.customer_client.post(
