@@ -86,7 +86,7 @@ class WorkerExtraWorkProposalView(APIView):
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Accepted job not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        booking = Booking.objects.select_for_update().select_related("appointment_group").get(pk=job_id)
+        booking = Booking.objects.select_for_update(of=("self",)).select_related("appointment_group").get(pk=job_id)
         if booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": "Extra work can only be proposed after the job has started."}, status=status.HTTP_409_CONFLICT)
 
