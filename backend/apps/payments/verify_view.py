@@ -455,6 +455,7 @@ def _process_verified_payment(
                             appointment_group_id__in=active_group_ids,
                         ).values_list("appointment_group_id", flat=True)
                     )
+                    all_group_balances_paid = True
                     for group_id in active_group_ids:
                         group_item_ids = {
                             row.id for row in order_items
@@ -471,27 +472,6 @@ def _process_verified_payment(
                         )
                         if group_due > 0 and group_id not in paid_group_ids:
                             all_group_balances_paid = False
-                    all_group_balances_paid = all(
-                        group_due_is_zero or group_id in paid_group_ids
-                        for group_id, group_due_is_zero in [
-                            (
-                                group_id,
-                                sum(
-                                    (
-                                        Decimal(str(item.get("amount", "0")))
-                                        for item in balance_rows
-                                        if item.get("order_item_id") in {
-                                            row.id for row in order_items
-                                            if row.booking.appointment_group_id == group_id
-                                            and row.booking.status != Booking.Status.CANCELLED
-                                        }
-                                    ),
-                                    Decimal("0.00"),
-                                ) <= 0,
-                            )
-                            for group_id in active_group_ids
-                        ]
-                    )
                     if all_group_balances_paid:
                         parent_order.status = (
                             Order.Status.PARTIALLY_CANCELLED
