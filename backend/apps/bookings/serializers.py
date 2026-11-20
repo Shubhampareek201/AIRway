@@ -838,7 +838,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         if obj.appointment_group_id:
             from decimal import Decimal
             order_item_ids = {
-                item.order_item_id
+                item.order_item.id
                 for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED)
                 if hasattr(item, "order_item")
             }
