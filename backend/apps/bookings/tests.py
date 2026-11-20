@@ -4144,6 +4144,53 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
 
+    def test_cancelling_one_appointment_group_does_not_cancel_other_groups(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        first_time = timezone.now() + timedelta(days=2)
+        second_time = timezone.now() + timedelta(days=3)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "separate",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        groups = list(order.appointment_groups.order_by("group_number"))
+        self.assertEqual(len(groups), 2)
+
+        cancelled = self.client.post(
+            f"/api/v1/bookings/appointment-groups/{groups[0].pk}/cancel/",
+            {},
+            format="json",
+        )
+        self.assertEqual(cancelled.status_code, 200, cancelled.data)
+        self.assertEqual(
+            groups[0].bookings.get().status,
+            Booking.Status.CANCELLED,
+        )
+        self.assertEqual(
+            groups[1].bookings.get().status,
+            Booking.Status.PENDING,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PARTIALLY_CANCELLED)
+
     def test_shared_appointment_rejects_different_service_times_atomically(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
