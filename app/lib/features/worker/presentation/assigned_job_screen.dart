@@ -24,6 +24,7 @@ class AssignedJobScreen extends StatefulWidget {
 
 class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindingObserver {
   WorkerAssignmentDetail? _jobDetail;
+  List<Map<String, dynamic>> _jobDisputes = [];
   bool _loading = true;
   String? _error;
   bool _isActionInProgress = false;
@@ -228,6 +229,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           _loading = false;
         });
         _configureLocationSharing(parsedDetail);
+        _loadJobDisputes(parsedDetail.bookingId);
       }
     } catch (e) {
       if (mounted) {
@@ -536,6 +538,76 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         SnackBar(content: Text(AirwayText.tr('Could not submit concern: $e', 'समस्या भेजी नहीं जा सकी: $e'))),
       );
     }
+  }
+
+  Future<void> _loadJobDisputes(int bookingId) async {
+    try {
+      final all = await BookingApi.getDisputes();
+      if (!mounted) return;
+      setState(() {
+        _jobDisputes = all.where((item) =>
+            int.tryParse(item['booking_id']?.toString() ?? '') == bookingId).toList();
+      });
+    } catch (_) {
+      // Keep the assigned-job flow available if support history is unavailable.
+    }
+  }
+
+  Widget _buildDisputeHistoryCard() {
+    if (_jobDisputes.isEmpty) return const SizedBox.shrink();
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE8E2F5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.history_rounded, color: Color(0xFF6C4AE3)),
+            const SizedBox(width: 9),
+            Expanded(child: Text(
+              AirwayText.tr('Support case history', 'सपोर्ट केस का इतिहास'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            )),
+          ]),
+          const SizedBox(height: 8),
+          for (final item in _jobDisputes) ...[
+            Row(children: [
+              Expanded(child: Text(
+                (item['category']?.toString() ?? 'other').replaceAll('_', ' '),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              )),
+              Text(
+                (item['status']?.toString() ?? 'open').replaceAll('_', ' ').toUpperCase(),
+                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF6C4AE3), fontSize: 10),
+              ),
+            ]),
+            if ((item['resolution_note']?.toString() ?? '').isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(item['resolution_note'].toString(),
+                  style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+            ],
+            finalEvidenceCount(item),
+            if (_jobDisputes.last != item) const Divider(height: 16),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget finalEvidenceCount(Map<String, dynamic> item) {
+    final files = item['evidence_files'] as List? ?? const [];
+    if (files.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        AirwayText.tr('${files.length} evidence photo(s) attached', '${files.length} सबूत की फ़ोटो संलग्न'),
+        style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+      ),
+    );
   }
 
   Widget _buildDisputeCard(WorkerAssignmentDetail job) {
@@ -871,6 +943,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             _buildEvidenceCard(job),
             const SizedBox(height: 16),
             _buildDisputeCard(job),
+            const SizedBox(height: 16),
+            _buildDisputeHistoryCard(),
             const SizedBox(height: 16),
             if (_canShareLocation(job))
               Container(
