@@ -262,20 +262,7 @@ class DispatcherService:
             )
             for assignment in assignments:
                 existing = assignment.booking
-                duration = (
-                    existing.variant.duration_minutes
-                    if existing.variant_id and existing.variant.duration_minutes
-                    else existing.service.duration_minutes
-                ) or 60
-                quantity = max(int((existing.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
-                duration *= 1 if existing.service.pricing_type == "per_unit" else quantity
-                occupied = _booking_intervals(
-                    existing.scheduled_at,
-                    duration,
-                    existing.service.buffer_minutes,
-                    existing.drop_scheduled_at
-                    if existing.booking_mode == Booking.BookingMode.PICKUP_DROP else None,
-                )
+                occupied = cls._assigned_booking_intervals(existing)
                 if any(
                     _intervals_overlap((start_at, end_at), current)
                     for current in occupied
@@ -607,6 +594,48 @@ class DispatcherService:
         return created
 
     @staticmethod
+    def _assigned_booking_intervals(booking):
+        """Return occupied time for a booking, expanding multi-service groups once."""
+        from apps.bookings.models import Booking
+        from apps.bookings.services import _booking_intervals
+
+        if booking.appointment_group_id:
+            group = booking.appointment_group
+            group_bookings = list(
+                group.bookings.exclude(status=Booking.Status.CANCELLED)
+                .select_related("service", "variant")
+            )
+            total_minutes = 0
+            for item in group_bookings:
+                duration = (
+                    item.variant.duration_minutes
+                    if item.variant_id and item.variant.duration_minutes
+                    else item.service.duration_minutes
+                ) or 60
+                quantity = max(int((item.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                duration *= 1 if item.service.pricing_type == "per_unit" else quantity
+                total_minutes += duration + max(int(item.service.buffer_minutes or 0), 0)
+            return [(
+                group.scheduled_at,
+                group.scheduled_at + timedelta(minutes=max(total_minutes, 1)),
+            )]
+
+        duration = (
+            booking.variant.duration_minutes
+            if booking.variant_id and booking.variant.duration_minutes
+            else booking.service.duration_minutes
+        ) or 60
+        quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+        duration *= 1 if booking.service.pricing_type == "per_unit" else quantity
+        return _booking_intervals(
+            booking.scheduled_at,
+            duration,
+            booking.service.buffer_minutes,
+            booking.drop_scheduled_at
+            if booking.booking_mode == Booking.BookingMode.PICKUP_DROP else None,
+        )
+
+    @staticmethod
     def _priority_ordering(priority_order):
         """Translate the Admin-selected priority strategy into stable DB ordering."""
         from apps.bookings.models import DispatchConfiguration
@@ -701,19 +730,7 @@ class DispatcherService:
                 existing = assignment.booking
                 if not existing.scheduled_at:
                     continue
-                existing_duration = (
-                    existing.variant.duration_minutes
-                    if existing.variant_id and existing.variant.duration_minutes
-                    else existing.service.duration_minutes
-                ) or 60
-                occupied = _booking_intervals(
-                    existing.scheduled_at,
-                    existing_duration,
-                    existing.service.buffer_minutes,
-                    existing.drop_scheduled_at
-                    if existing.booking_mode == Booking.BookingMode.PICKUP_DROP
-                    else None,
-                )
+                occupied = cls._assigned_booking_intervals(existing)
                 if any(
                     _intervals_overlap(requested, current)
                     for requested in requested_intervals
