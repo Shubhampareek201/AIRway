@@ -333,6 +333,14 @@ class WorkerOffer(TimeStampedModel):
         related_name="worker_offers",
         help_text="Set for a parent-order offer covering every booking line.",
     )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="worker_offers",
+        help_text="Set for a single-worker offer covering every service in one appointment group.",
+    )
     batch_number = models.PositiveIntegerField(default=1)
     worker = models.ForeignKey(
         "workers.WorkerProfile",
@@ -358,6 +366,11 @@ class WorkerOffer(TimeStampedModel):
             models.UniqueConstraint(
                 fields=["booking", "worker"],
                 name="unique_offer_per_booking_worker",
+            ),
+            models.UniqueConstraint(
+                fields=["appointment_group", "worker"],
+                condition=Q(appointment_group__isnull=False),
+                name="unique_group_offer_worker",
             ),
         ]
 
