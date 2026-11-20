@@ -229,6 +229,12 @@ def create_or_get_order_payment(
         if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED):
             raise ValueError("This order is not eligible for an advance payment.")
     else:
+        if appointment_group is None and order.appointment_groups.exists() and not Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.BALANCE,
+            appointment_group__isnull=True,
+        ).exists():
+            raise ValueError("This order collects the final balance separately for each completed appointment. Select the appointment you want to pay for.")
         if not Payment.objects.filter(
             order=order,
             stage=Payment.Stage.ADVANCE,
