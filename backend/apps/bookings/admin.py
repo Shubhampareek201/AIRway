@@ -55,6 +55,8 @@ class BookingStatusHistoryInline(TabularInline):
 class BookingAssignmentInline(TabularInline):
     model = BookingAssignment
     extra = 0
+    can_delete = False
+    readonly_fields = tuple(field.name for field in BookingAssignment._meta.fields)
 
 
 class CartItemInline(TabularInline):
@@ -291,6 +293,13 @@ class BookingQuoteAdmin(ModelAdmin):
 class BookingAssignmentAdmin(ModelAdmin):
     list_display = ("booking", "worker", "assigned_at", "accepted_at", "started_at", "completed_at")
     search_fields = ("booking__id", "worker__user__phone")
+    readonly_fields = tuple(field.name for field in BookingAssignment._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 @admin.register(DispatchConfiguration)
 class DispatchConfigurationAdmin(ModelAdmin):
