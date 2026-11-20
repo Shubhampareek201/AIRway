@@ -1147,6 +1147,7 @@ class WorkerJobStartView(APIView):
             if not Payment.objects.filter(
                 order=order_item.order,
                 stage=Payment.Stage.ADVANCE,
+                appointment_group__isnull=True,
                 status=Payment.Status.PAID,
             ).exists():
                 return Response(
@@ -1160,28 +1161,150 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from django.contrib.auth.hashers import check_password, make_password
+        import secrets
+        from apps.notifications.models import Notification
+
+        if booking.appointment_group_id:
+            group_bookings = list(
+                booking.appointment_group.bookings.exclude(
+                    status=Booking.Status.CANCELLED
+                ).order_by("pk")
+            )
+            group_assignments = list(
+                BookingAssignment.objects.select_for_update()
+                .filter(booking__in=group_bookings)
+                .select_related("booking", "worker__user")
+            )
+            if len(group_assignments) != len(group_bookings) or any(
+                row.worker_id != profile.pk or not row.accepted_at
+                for row in group_assignments
+            ):
+                return Response(
+                    {"detail": "Every active service in this appointment must be assigned to and accepted by you."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+        else:
+            group_bookings = [booking]
+            group_assignments = [assign]
+
         now = timezone.now()
-        assign.started_at = now
-        assign.save(update_fields=["started_at"])
+        otp_state = group_assignments[0]
+        submitted_code = str(request.data.get("arrival_otp", "")).strip()
 
-        old = booking.status
-        booking.status = Booking.Status.IN_PROGRESS
-        booking.save(update_fields=["status"])
-        from apps.bookings.models import RecurringWashVisit
-        RecurringWashVisit.objects.filter(
-            booking=booking,
-            status=RecurringWashVisit.Status.BOOKED,
-        ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=timezone.now())
+        if not all(row.arrival_verified_at for row in group_assignments):
+            if not submitted_code:
+                can_resend = (
+                    not otp_state.arrival_otp_hash
+                    or not otp_state.arrival_otp_expires_at
+                    or otp_state.arrival_otp_expires_at <= now
+                    or not otp_state.arrival_otp_last_sent_at
+                    or otp_state.arrival_otp_last_sent_at <= now - timedelta(seconds=30)
+                )
+                if can_resend:
+                    code = f"{secrets.randbelow(1000000):06d}"
+                    code_hash = make_password(code)
+                    expires_at = now + timedelta(minutes=10)
+                    for row in group_assignments:
+                        row.arrival_requested_at = row.arrival_requested_at or now
+                        row.arrival_verified_at = None
+                        row.arrival_otp_hash = code_hash
+                        row.arrival_otp_expires_at = expires_at
+                        row.arrival_otp_attempts = 0
+                        row.arrival_otp_last_sent_at = now
+                        row.save(update_fields=[
+                            "arrival_requested_at", "arrival_verified_at",
+                            "arrival_otp_hash", "arrival_otp_expires_at",
+                            "arrival_otp_attempts", "arrival_otp_last_sent_at",
+                            "updated_at",
+                        ])
+                    Notification.objects.create(
+                        user=booking.customer,
+                        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                        title="Your professional has arrived",
+                        body=(
+                            f"Share this 6-digit arrival code with your AIRway professional: {code}. "
+                            "It expires in 10 minutes. AIRway will not start the service until you provide this code."
+                        ),
+                        channel=Notification.Channel.IN_APP,
+                        data={
+                            "booking_id": booking.pk,
+                            "booking_ids": [row.pk for row in group_bookings],
+                            "appointment_group_id": booking.appointment_group_id,
+                            "arrival_otp_expires_at": expires_at.isoformat(),
+                        },
+                    )
+                return Response({
+                    "arrival_otp_required": True,
+                    "detail": "Ask the customer for the arrival code shown in their AIRway notifications, then enter it to start work.",
+                    "expires_at": (
+                        otp_state.arrival_otp_expires_at.isoformat()
+                        if otp_state.arrival_otp_expires_at else None
+                    ),
+                })
 
-        BookingStatusHistory.objects.create(
-            booking=booking,
-            from_status=old,
-            to_status=Booking.Status.IN_PROGRESS,
-            changed_by=request.user,
-            note="Worker started the job.",
-        )
+            if any(
+                not row.arrival_otp_hash
+                or not row.arrival_otp_expires_at
+                or row.arrival_otp_expires_at <= now
+                for row in group_assignments
+            ):
+                return Response(
+                    {"detail": "The arrival code has expired. Request a new code and ask the customer again."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if any(row.arrival_otp_attempts >= 5 for row in group_assignments):
+                return Response(
+                    {"detail": "Too many incorrect arrival-code attempts. Request a new code."},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            if not check_password(submitted_code, otp_state.arrival_otp_hash):
+                for row in group_assignments:
+                    row.arrival_otp_attempts += 1
+                    if row.arrival_otp_attempts >= 5:
+                        row.arrival_otp_expires_at = now
+                    row.save(update_fields=[
+                        "arrival_otp_attempts", "arrival_otp_expires_at", "updated_at"
+                    ])
+                return Response(
+                    {"detail": "Incorrect arrival code. Check with the customer and try again."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        return Response({"detail": "Job started.", "status": booking.status})
+            for row in group_assignments:
+                row.arrival_verified_at = now
+                row.save(update_fields=["arrival_verified_at", "updated_at"])
+
+        for row in group_assignments:
+            row.started_at = row.started_at or now
+            row.save(update_fields=["started_at", "updated_at"])
+
+        for active_booking in group_bookings:
+            if active_booking.status == Booking.Status.IN_PROGRESS:
+                continue
+            old = active_booking.status
+            active_booking.status = Booking.Status.IN_PROGRESS
+            active_booking.save(update_fields=["status", "updated_at"])
+            BookingStatusHistory.objects.create(
+                booking=active_booking,
+                from_status=old,
+                to_status=Booking.Status.IN_PROGRESS,
+                changed_by=request.user,
+                note="Worker started the appointment after customer arrival OTP verification.",
+            )
+            from apps.bookings.models import RecurringWashVisit
+            RecurringWashVisit.objects.filter(
+                booking=active_booking,
+                status=RecurringWashVisit.Status.BOOKED,
+            ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=now)
+
+        return Response({
+            "detail": "Arrival verified. Appointment started.",
+            "status": Booking.Status.IN_PROGRESS,
+            "appointment_group_id": booking.appointment_group_id,
+            "booking_ids": [row.pk for row in group_bookings],
+        })
+
 
 class WorkerJobCompleteView(APIView):
     permission_classes = [IsAuthenticated]
