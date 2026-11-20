@@ -400,13 +400,13 @@ class WorkerLeaveAdmin(ModelAdmin):
 @admin.register(WorkerEarning)
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
-        "id", "worker", "booking", "gross_amount", "commission_rate",
+        "id", "worker", "booking", "extra_work", "gross_amount", "commission_rate",
         "commission_amount", "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
-    search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "payout_reference")
+    search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "extra_work__id", "payout_reference")
     readonly_fields = (
-        "worker", "booking", "payment", "gross_amount", "commission_rate",
+        "worker", "booking", "extra_work", "payment", "gross_amount", "commission_rate",
         "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
         "adjusted_by", "adjusted_at", "created_at", "updated_at",
     )
