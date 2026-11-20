@@ -140,8 +140,12 @@ def issue_admin_partial_refund(
             raise ValueError("The selected extra-work proposal does not match this payment.")
     if extra_work is not None and extra_work.booking_id != booking.pk:
         raise ValueError("The selected extra-work proposal does not belong to this booking.")
+    if extra_work is not None and (
+        extra_work.status != "approved" or extra_work.payment_status != "paid"
+    ):
+        raise ValueError("Only approved and paid extra-work proposals can be refunded.")
 
-    with transaction.atomic():
+    with transaction.atomic()
         existing = PaymentRefund.objects.filter(idempotency_key=idempotency_key).first()
         if existing:
             if (
