@@ -297,6 +297,12 @@ class BookingAssignment(TimeStampedModel):
         default=False,
         help_text="Worker-controlled permission to share foreground GPS with the customer during the 30-minute pre-appointment window and active job.",
     )
+    arrival_requested_at = models.DateTimeField(null=True, blank=True)
+    arrival_verified_at = models.DateTimeField(null=True, blank=True)
+    arrival_otp_hash = models.CharField(max_length=256, blank=True)
+    arrival_otp_expires_at = models.DateTimeField(null=True, blank=True)
+    arrival_otp_attempts = models.PositiveSmallIntegerField(default=0)
+    arrival_otp_last_sent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-assigned_at"]
