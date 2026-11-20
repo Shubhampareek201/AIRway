@@ -115,8 +115,9 @@ def create_or_get_order_payment(
     wallet_amount=Decimal("0.00"),
     trigger_source="checkout",
     stage=Payment.Stage.ADVANCE,
+    appointment_group=None,
 ):
-    """Create or retrieve an idempotent advance or balance payment for an order."""
+    """Create or retrieve an idempotent order-stage or appointment-group balance payment."""
     try:
         requested = Decimal(str(wallet_amount))
     except (InvalidOperation, TypeError, ValueError):
@@ -127,8 +128,18 @@ def create_or_get_order_payment(
         raise ValueError("Order not found or access denied.")
     if stage not in (Payment.Stage.LEGACY, Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
         raise ValueError("Unsupported order payment stage.")
+    if appointment_group is not None and (
+        stage != Payment.Stage.BALANCE or appointment_group.order_id != order.pk
+    ):
+        raise ValueError("Appointment-group payment is available only for a balance due on this order.")
 
     items = list(order.items.select_related("booking").order_by("id"))
+    payment_items = [
+        item for item in items
+        if appointment_group is None or item.booking.appointment_group_id == appointment_group.pk
+    ]
+    if appointment_group is not None and not payment_items:
+        raise ValueError("This appointment group has no services in the selected order.")
     if not items:
         raise ValueError("This order has no service bookings.")
 
@@ -166,7 +177,10 @@ def create_or_get_order_payment(
         order.metadata = {**(order.metadata or {}), allocation_key: allocation}
         order.save(update_fields=["metadata", "updated_at"])
 
-    active_items = [item for item in items if item.booking.status != Booking.Status.CANCELLED]
+    active_items = [
+        item for item in payment_items
+        if item.booking.status != Booking.Status.CANCELLED
+    ]
     if stage in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
         if not active_items:
             raise ValueError("There are no active services remaining to pay for.")
