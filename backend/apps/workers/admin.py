@@ -57,7 +57,6 @@ class WorkerProfileAdmin(ModelAdmin):
         "document_summary",
         "service_summary",
         "zone_summary",
-        "commission_rate",
         "created_at",
     )
     list_display_links = ("worker_name", "worker_phone")
