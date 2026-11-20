@@ -261,6 +261,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                   : 'Request ' + proposal['status'].toString(),
               style: const TextStyle(color: violet, fontSize: 12, fontWeight: FontWeight.w800),
             ),
+            _extraWorkRefundSection(row, proposal),
             if (proposal['status'] == 'pending_customer') ...[
               const SizedBox(height: 10),
               if (_extraWorkBusyId == proposal['id'])
