@@ -128,7 +128,7 @@ class WorkerEarningLedgerTests(TestCase):
         earning = sync_worker_earning(self.booking.pk, self.payment.pk)
 
         self.assertEqual(earning.status, WorkerEarning.Status.ON_HOLD)
-        self.assertIsNone(earning.net_amount)
+        self.assertEqual(earning.net_amount, Decimal("80.00"))
         self.assertIn("refund", earning.hold_reason.lower())
 
     def test_commission_is_snapshotted_while_refund_hold_is_active(self):
