@@ -63,8 +63,9 @@ class BookingDisputeListCreateView(APIView):
         if booking.status not in (Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED):
             return Response({"detail": "A dispute can be raised while service is in progress or within the post-completion review window."},
                             status=status.HTTP_400_BAD_REQUEST)
-        if booking.status == Booking.Status.COMPLETED and booking.completed_at:
-            if booking.completed_at < timezone.now() - timedelta(days=7):
+        if booking.status == Booking.Status.COMPLETED:
+            completion_time = booking.completed_at or booking.updated_at
+            if completion_time < timezone.now() - timedelta(days=7):
                 return Response({"detail": "The 7-day post-completion dispute window has expired."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
