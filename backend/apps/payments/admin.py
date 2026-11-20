@@ -80,9 +80,19 @@ class PaymentRefundAdminForm(forms.ModelForm):
         cleaned = super().clean()
         payment = cleaned.get("payment")
         booking = cleaned.get("booking")
+        extra_work = cleaned.get("extra_work")
         amount = cleaned.get("amount")
         key = cleaned.get("idempotency_key")
         if not (payment and booking and amount and key):
+            return cleaned
+        if payment.extra_work_id:
+            if extra_work is not None and extra_work.pk != payment.extra_work_id:
+                self.add_error("extra_work", "Select the extra-work proposal linked to this payment.")
+                return cleaned
+            extra_work = payment.extra_work
+            cleaned["extra_work"] = extra_work
+        if extra_work is not None and extra_work.booking_id != booking.pk:
+            self.add_error("extra_work", "The extra-work proposal does not belong to this booking.")
             return cleaned
         existing = PaymentRefund.objects.filter(idempotency_key=str(key)).first()
         if existing:
@@ -96,11 +106,22 @@ class PaymentRefundAdminForm(forms.ModelForm):
         if payment.status != Payment.Status.PAID:
             self.add_error("payment", "Only captured payments can be refunded.")
             return cleaned
-        line_total, wallet_captured, gateway_captured, _ = _line_stage_amount(payment, booking)
+        if extra_work is not None and PaymentRefund.objects.filter(
+            payment=payment,
+            booking=booking,
+            extra_work__isnull=True,
+        ).exists():
+            self.add_error("extra_work", "A booking-level refund already exists, so this proposal cannot be isolated safely.")
+            return cleaned
+        line_total, wallet_captured, gateway_captured, _ = _line_stage_amount(
+            payment, booking, extra_work=extra_work
+        )
         if line_total <= 0:
             self.add_error("booking", "This payment has no captured allocation for this service.")
             return cleaned
-        _, refunded_wallet, refunded_gateway = _existing_refund_components(payment, booking)
+        _, refunded_wallet, refunded_gateway = _existing_refund_components(
+            payment, booking, extra_work=extra_work
+        )
         remaining = wallet_captured + gateway_captured - refunded_wallet - refunded_gateway
         if remaining < 0:
             self.add_error("amount", "Existing refunds exceed the captured allocation; reconciliation is required.")
