@@ -102,6 +102,11 @@ class WorkerProfile(TimeStampedModel):
                 & Q(acceptance_rate__lte=100),
                 name="worker_acceptance_range",
             ),
+            models.CheckConstraint(
+                condition=Q(commission_rate__isnull=True)
+                | (Q(commission_rate__gte=0) & Q(commission_rate__lte=100)),
+                name="worker_commission_rate_range",
+            ),
         ]
 
     def __str__(self):
