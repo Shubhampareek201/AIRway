@@ -33,6 +33,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   Map<String, dynamic>? order;
   List<Map<String, dynamic>> disputes = [];
   bool _disputesLoaded = false;
+  final Set<int> _reworkResponding = {};
   double walletBalance = 0;
   bool walletLoading = true;
   bool loading = true;
@@ -709,10 +710,115 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             Text(item['resolution_note'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
           ],
           finalEvidenceCount(item),
+          reworkProposalCard(item),
           if (items.last != item) const Divider(height: 14, color: line),
         ],
       ]),
     );
+  }
+
+
+  Widget reworkProposalCard(Map<String, dynamic> item) {
+    final proposal = item['rework_proposal'];
+    if (proposal is! Map) return const SizedBox.shrink();
+    final data = Map<String, dynamic>.from(proposal);
+    final proposalId = int.tryParse(data['id']?.toString() ?? '');
+    if (proposalId == null) return const SizedBox.shrink();
+    final statusValue = data['status']?.toString() ?? '';
+    final scheduled = data['scheduled_at']?.toString() ?? '';
+    final pending = statusValue == 'pending_customer';
+    final responding = _reworkResponding.contains(proposalId);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2EEFF),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: const Color(0xFFDCD2FF)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.replay_circle_filled_rounded, color: violet, size: 17),
+          SizedBox(width: 7),
+          Expanded(child: Text('No-charge service recovery', style: TextStyle(fontWeight: FontWeight.w900, color: ink, fontSize: 12))),
+        ]),
+        const SizedBox(height: 5),
+        Text('Professional: ${data['worker_name'] ?? 'AIRway Professional'}',
+            style: const TextStyle(color: ink, fontSize: 12)),
+        Text('Proposed visit: ${DateFormatForOrder.format(scheduled)}',
+            style: const TextStyle(color: ink, fontSize: 12)),
+        if (pending) ...[
+          const SizedBox(height: 9),
+          const Text('AIRway has proposed a free follow-up visit. Confirm the time to schedule it.',
+              style: TextStyle(color: sub, fontSize: 11)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: OutlinedButton(
+              onPressed: responding ? null : () => _respondToRework(proposalId, item['id'] as int? ?? 0, false),
+              child: const Text('Decline'),
+            )),
+            const SizedBox(width: 8),
+            Expanded(child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: violet),
+              onPressed: responding ? null : () => _respondToRework(proposalId, item['id'] as int? ?? 0, true),
+              child: responding
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Accept visit'),
+            )),
+          ]),
+        ] else
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              statusValue == 'accepted'
+                  ? 'Confirmed • No payment required'
+                  : statusValue == 'declined'
+                      ? 'You declined this proposed visit'
+                      : 'This proposal is no longer active',
+              style: const TextStyle(color: sub, fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Future<void> _respondToRework(int proposalId, int disputeId, bool accept) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(accept ? 'Accept recovery visit?' : 'Decline recovery visit?'),
+        content: Text(accept
+            ? 'Confirm this proposed time. AIRway will schedule the follow-up visit at no extra charge.'
+            : 'Are you sure you want to decline this proposed visit?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Back')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(accept ? 'Confirm visit' : 'Decline visit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _reworkResponding.add(proposalId));
+    try {
+      await BookingApi.respondToRework(disputeId: disputeId, accept: accept);
+      await loadDisputes(force: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(accept
+            ? 'Your no-charge recovery visit is confirmed.'
+            : 'The proposed recovery visit was declined.'),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update the recovery visit: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _reworkResponding.remove(proposalId));
+    }
   }
 
   Widget finalEvidenceCount(Map<String, dynamic> item) {
