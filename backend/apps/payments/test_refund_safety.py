@@ -11,7 +11,12 @@ from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
 from apps.payments.models import Payment, PaymentRefund
-from apps.payments.refunds import _line_stage_amount, process_payment_refund, request_booking_refunds
+from apps.payments.refunds import (
+    _line_stage_amount,
+    issue_admin_partial_refund,
+    process_payment_refund,
+    request_booking_refunds,
+)
 from apps.workers.models import WorkerProfile
 
 
@@ -72,6 +77,81 @@ class RefundRetrySafetyTests(TestCase):
             status=PaymentRefund.Status.PENDING,
         )
 
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_admin_partial_refund_is_source_allocated_and_idempotent(self, process_refund):
+        self.refund.delete()
+        payment = Payment.objects.get(booking=self.booking)
+        process_refund.side_effect = lambda refund_id: PaymentRefund.objects.get(pk=refund_id)
+
+        first = issue_admin_partial_refund(
+            payment=payment,
+            booking=self.booking,
+            amount="250.00",
+            requested_by=self.staff_user,
+            admin_note="Approved after service-quality review.",
+            idempotency_key="admin-refund-request-001",
+        )
+        second = issue_admin_partial_refund(
+            payment=payment,
+            booking=self.booking,
+            amount="250.00",
+            requested_by=self.staff_user,
+            admin_note="Approved after service-quality review.",
+            idempotency_key="admin-refund-request-001",
+        )
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(first.amount, Decimal("250.00"))
+        self.assertEqual(first.wallet_amount, Decimal("0.00"))
+        self.assertEqual(first.gateway_amount, Decimal("250.00"))
+        self.assertEqual(first.requested_by, self.staff_user)
+        self.assertEqual(PaymentRefund.objects.filter(payment=payment, booking=self.booking).count(), 1)
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_admin_partial_refund_cannot_exceed_remaining_captured_amount(self, process_refund):
+        self.refund.delete()
+        payment = Payment.objects.get(booking=self.booking)
+        issue_admin_partial_refund(
+            payment=payment,
+            booking=self.booking,
+            amount="700.00",
+            requested_by=self.staff_user,
+            admin_note="First approved partial refund.",
+            idempotency_key="admin-refund-request-002",
+        )
+        with self.assertRaisesMessage(ValueError, "remaining refundable amount"):
+            issue_admin_partial_refund(
+                payment=payment,
+                booking=self.booking,
+                amount="400.00",
+                requested_by=self.staff_user,
+                admin_note="Would exceed the captured amount.",
+                idempotency_key="admin-refund-request-003",
+            )
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_cancellation_refund_only_refunds_remaining_amount_after_admin_partial(self, process_refund):
+        self.refund.delete()
+        payment = Payment.objects.get(booking=self.booking)
+        issue_admin_partial_refund(
+            payment=payment,
+            booking=self.booking,
+            amount="250.00",
+            requested_by=self.staff_user,
+            admin_note="Partial refund before cancellation.",
+            idempotency_key="admin-refund-request-004",
+        )
+
+        refunds = request_booking_refunds(self.booking)
+
+        self.assertEqual(
+            sum(refunds.values_list("amount", flat=True), Decimal("0.00")),
+            Decimal("1000.00"),
+        )
+        cancellation_refund = refunds.get(reason=PaymentRefund.Reason.CUSTOMER_CANCELLATION)
+        self.assertEqual(cancellation_refund.amount, Decimal("750.00"))
+        self.assertEqual(cancellation_refund.gateway_amount, Decimal("750.00"))
 
     @patch("apps.payments.refunds.process_payment_refund")
     def test_separately_paid_extra_work_is_included_in_booking_refund(self, process_refund):
