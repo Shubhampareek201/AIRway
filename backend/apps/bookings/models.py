@@ -886,3 +886,42 @@ class BookingDisputeEvidence(TimeStampedModel):
 
     def __str__(self):
         return f"Evidence #{self.pk} for dispute #{self.dispute_id}"
+
+
+class BookingReworkProposal(TimeStampedModel):
+    """Admin-approved, no-charge follow-up visit offered to a customer after a rework dispute."""
+
+    class Status(models.TextChoices):
+        PENDING_CUSTOMER = "pending_customer", "Awaiting customer decision"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+        EXPIRED = "expired", "Expired"
+
+    dispute = models.OneToOneField(
+        BookingDispute, on_delete=models.PROTECT, related_name="rework_proposal"
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile", on_delete=models.PROTECT, related_name="rework_proposals"
+    )
+    scheduled_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=24, choices=Status.choices,
+        default=Status.PENDING_CUSTOMER, db_index=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="created_booking_rework_proposals",
+    )
+    responded_at = models.DateTimeField(null=True, blank=True)
+    followup_booking = models.OneToOneField(
+        Booking, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="rework_source",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "scheduled_at"], name="rework_status_slot_idx")]
+
+    def __str__(self):
+        return f"Rework proposal for dispute #{self.dispute_id} ({self.status})"
+
