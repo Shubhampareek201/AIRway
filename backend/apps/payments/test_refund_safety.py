@@ -6,12 +6,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking
+from apps.bookings.models import Booking, BookingExtraWork, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
 from apps.payments.models import Payment, PaymentRefund
-from apps.payments.refunds import process_payment_refund
+from apps.payments.refunds import process_payment_refund, request_booking_refunds
+from apps.workers.models import WorkerProfile
 
 
 class RefundRetrySafetyTests(TestCase):
@@ -43,7 +44,7 @@ class RefundRetrySafetyTests(TestCase):
             pricing_type=Service.PricingType.FIXED,
             is_active=True,
         )
-        booking = Booking.objects.create(
+        self.booking = Booking.objects.create(
             customer=self.customer,
             address=address,
             service=service,
@@ -53,7 +54,7 @@ class RefundRetrySafetyTests(TestCase):
             pricing_snapshot={"total": "1000.00"},
         )
         payment = Payment.objects.create(
-            booking=booking,
+            booking=self.booking,
             customer=self.customer,
             stage=Payment.Stage.LEGACY,
             amount=Decimal("1000.00"),
@@ -63,13 +64,71 @@ class RefundRetrySafetyTests(TestCase):
         )
         self.refund = PaymentRefund.objects.create(
             payment=payment,
-            booking=booking,
+            booking=self.booking,
             amount=Decimal("1000.00"),
             wallet_amount=Decimal("0.00"),
             gateway_amount=Decimal("1000.00"),
             reason=PaymentRefund.Reason.CUSTOMER_CANCELLATION,
             status=PaymentRefund.Status.PENDING,
         )
+
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_separately_paid_extra_work_is_included_in_booking_refund(self, process_refund):
+        worker_user = User.objects.create_user(
+            phone="+919876543296",
+            password="test-password",
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            total_amount=Decimal("1000.00"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            booking=self.booking,
+            line_total=Decimal("1000.00"),
+        )
+        extra_work = BookingExtraWork.objects.create(
+            booking=self.booking,
+            worker=worker,
+            reason="Additional repair requested during service",
+            line_items=[{
+                "description": "Replacement part",
+                "quantity": 1,
+                "unit_price": "100.00",
+                "line_total": "100.00",
+            }],
+            subtotal=Decimal("100.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("100.00"),
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.SEPARATE,
+            payment_status="paid",
+        )
+        extra_payment = Payment.objects.create(
+            order=order,
+            extra_work=extra_work,
+            customer=self.customer,
+            stage=Payment.Stage.EXTRA_WORK,
+            amount=Decimal("80.00"),
+            wallet_amount=Decimal("20.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="pay_extra_work_refund",
+        )
+
+        refunds = request_booking_refunds(self.booking)
+
+        refund = refunds.get(payment=extra_payment)
+        self.assertEqual(refund.amount, Decimal("100.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("20.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("80.00"))
+        process_refund.assert_called_once_with(refund.pk)
 
     @patch("apps.payments.refunds.razorpay.Client", side_effect=RuntimeError("gateway timeout"))
     def test_uncertain_gateway_result_is_not_automatically_retried(self, gateway_client):
