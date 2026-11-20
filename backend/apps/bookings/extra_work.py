@@ -27,6 +27,7 @@ def _extra_work_payload(item):
         "additional_duration_minutes": item.additional_duration_minutes,
         "status": item.status,
         "payment_choice": item.payment_choice,
+        "payment_status": item.payment_status,
         "customer_response_note": item.customer_response_note,
         "expires_at": item.expires_at.isoformat() if item.expires_at else None,
         "responded_at": item.responded_at.isoformat() if item.responded_at else None,
@@ -163,6 +164,7 @@ class CustomerExtraWorkDecisionView(APIView):
                 return Response({"detail": "Choose separate payment or add to appointment balance."}, status=status.HTTP_400_BAD_REQUEST)
             proposal.status = BookingExtraWork.Status.APPROVED
             proposal.payment_choice = choice
+            proposal.payment_status = "pending"
             proposal.customer_response_note = note
             proposal.approved_at = timezone.now()
         else:
@@ -170,7 +172,7 @@ class CustomerExtraWorkDecisionView(APIView):
 
         proposal.responded_at = timezone.now()
         proposal.save(update_fields=[
-            "status", "payment_choice", "customer_response_note",
+            "status", "payment_choice", "payment_status", "customer_response_note",
             "approved_at", "responded_at", "updated_at",
         ])
         return Response(_extra_work_payload(proposal))
