@@ -123,6 +123,9 @@ class StagedOrderPaymentServiceTests(TestCase):
             quantity=1,
             line_total=Decimal("1000.00"),
         )
+        self.order.subtotal = Decimal("2000.00")
+        self.order.total_amount = Decimal("2000.00")
+        self.order.save(update_fields=["subtotal", "total_amount", "updated_at"])
         group_a = AppointmentGroup.objects.create(
             order=self.order, group_number=1, scheduled_at=self.booking.scheduled_at
         )
