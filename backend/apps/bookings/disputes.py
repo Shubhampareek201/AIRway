@@ -28,7 +28,7 @@ def _is_assigned_worker(booking, user):
 
 
 def _serialize_dispute(dispute):
-    proposal = getattr(dispute, "rework_proposal", None)
+    proposal = dispute.rework_proposals.order_by("-created_at").first()
     rework = None
     if proposal is not None:
         rework = {
@@ -208,6 +208,7 @@ class BookingDisputeReworkDecisionView(APIView):
                 "worker__user", "dispute"
             ),
             dispute=dispute,
+            status=BookingReworkProposal.Status.PENDING_CUSTOMER,
         )
         if proposal.status != BookingReworkProposal.Status.PENDING_CUSTOMER:
             return Response({"detail": "This recovery appointment has already been answered."}, status=status.HTTP_409_CONFLICT)
