@@ -4060,6 +4060,89 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             order.items.values_list("booking__scheduled_at", flat=True).distinct().count(),
             1,
         )
+        group = order.appointment_groups.get()
+        self.assertEqual(group.bookings.count(), 2)
+        self.assertEqual(group.scheduled_at, order.items.first().booking.scheduled_at)
+
+    def test_shared_appointment_dispatches_and_assigns_one_worker_for_every_service(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        worker_user = self._create_user("+919876543285")
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED, is_online=True
+        )
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerService.objects.create(worker=worker, service=second_service)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker, weekday=weekday, is_active=True,
+                start_time=time(0, 0), end_time=time(23, 59),
+            )
+
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        same_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
+        )
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "same_appointment",
+                "group_message": "Please call once you arrive.",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": same_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": same_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        group = order.appointment_groups.get()
+        self.assertEqual(group.bookings.count(), 2)
+        self.assertEqual(group.customer_message, "Please call once you arrive.")
+
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            order=order, customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+        )
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_order(order)
+
+        group_offers = WorkerOffer.objects.filter(appointment_group=group)
+        self.assertEqual(group_offers.count(), 1)
+        offer = group_offers.get()
+        self.assertEqual(offer.worker_id, worker.pk)
+        self.assertFalse(
+            WorkerOffer.objects.filter(
+                booking__appointment_group=group,
+                appointment_group__isnull=True,
+                status=WorkerOffer.Status.PENDING,
+            ).exists()
+        )
+
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offer.pk}/accept/", {}, format="json"
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        assignments = BookingAssignment.objects.filter(booking__appointment_group=group)
+        self.assertEqual(assignments.count(), 2)
+        self.assertEqual(set(assignments.values_list("worker_id", flat=True)), {worker.pk})
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
 
     def test_shared_appointment_rejects_different_service_times_atomically(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
