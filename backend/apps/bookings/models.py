@@ -213,6 +213,11 @@ class BookingExtraWork(TimeStampedModel):
                 condition=models.Q(total_amount__gt=0),
                 name="extra_work_total_positive",
             ),
+            models.UniqueConstraint(
+                fields=["booking"],
+                condition=models.Q(status="pending_customer"),
+                name="one_pending_extra_work_per_booking",
+            ),
         ]
 
     def __str__(self):
