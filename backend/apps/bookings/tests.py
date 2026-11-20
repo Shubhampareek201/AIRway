@@ -1589,6 +1589,7 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
 
         start_url = f"/api/v1/bookings/{booking.id}/start/"
