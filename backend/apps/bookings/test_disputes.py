@@ -325,6 +325,27 @@ class BookingDisputeAPITests(TestCase):
         )
         self.assertEqual(replacement.dispute_id, proposal.dispute_id)
 
+
+    def test_customer_cancellation_closes_accepted_rework_proposal(self):
+        proposal = self._resolved_rework_proposal()
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        proposal.refresh_from_db()
+        followup = proposal.followup_booking
+        cancelled = self.customer_client.post(
+            f"/api/v1/bookings/{followup.pk}/cancel/",
+            {"reason": "Customer no longer needs the recovery visit"},
+            format="json",
+        )
+        self.assertEqual(cancelled.status_code, 200, cancelled.data)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.CANCELLED)
+        self.assertEqual(proposal.followup_booking.status, Booking.Status.CANCELLED)
+
     def test_unrelated_user_cannot_accept_rework_proposal(self):
         proposal = self._resolved_rework_proposal()
         response = self.other_client.post(
