@@ -89,15 +89,20 @@ class RefundRetrySafetyTests(TestCase):
     def test_partial_refund_admin_requires_dedicated_finance_permission(self):
         model_admin = PaymentRefundAdmin(PaymentRefund, AdminSite())
         request = RequestFactory().get("/admin/payments/paymentrefund/add/")
-        request.user = self.customer
-        request.user.is_staff = True
+        ordinary_staff = User.objects.create_user(
+            phone="+919876543295",
+            password="test-password",
+            is_staff=True,
+        )
+        request.user = ordinary_staff
 
         self.assertFalse(model_admin.has_add_permission(request))
         permission = Permission.objects.get(
             content_type__app_label="payments",
             codename="issue_partial_paymentrefund",
         )
-        self.customer.user_permissions.add(permission)
+        ordinary_staff.user_permissions.add(permission)
+        ordinary_staff.refresh_from_db()
         self.assertTrue(model_admin.has_add_permission(request))
 
     @patch("apps.payments.refunds.process_payment_refund")
