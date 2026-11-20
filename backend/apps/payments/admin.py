@@ -155,7 +155,7 @@ class PaymentRefundAdmin(ModelAdmin):
         "booking__customer__phone", "failure_reason",
     )
     readonly_fields = (
-        "payment", "booking", "order_item", "amount", "wallet_amount",
+        "payment", "booking", "extra_work", "order_item", "amount", "wallet_amount",
         "gateway_amount", "reason", "status", "gateway_refund_id",
         "failure_reason", "processed_at", "requested_by", "admin_note",
         "idempotency_key", "created_at", "updated_at",
