@@ -32,6 +32,27 @@ class BookingAPITestMixin:
     def _create_user(self, phone="+919876543210"):
         return User.objects.create_user(phone=phone, password="password123")
 
+    def _start_job_with_arrival_otp(self, worker_client, booking_id, customer):
+        start_url = f"/api/v1/bookings/{booking_id}/start/"
+        response = worker_client.post(start_url, format="json")
+        if response.data.get("arrival_otp_required"):
+            notification = Notification.objects.filter(
+                user=customer,
+                title="Your professional has arrived",
+            ).latest("created_at")
+            match = re.search(
+                r"arrival code with your AIRway professional: (\d{6})\.",
+                notification.body,
+            )
+            if not match:
+                raise AssertionError("Arrival OTP was not present in customer notification.")
+            response = worker_client.post(
+                start_url,
+                {"arrival_otp": match.group(1)},
+                format="json",
+            )
+        return response
+
     def _create_category(self, title="Cleaning", slug="cleaning"):
         return Category.objects.create(title=title, slug="cleaning")
 
@@ -2034,8 +2055,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
 
         # Worker starts job
-        start_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        self.assertEqual(start_resp.status_code, 200)
+        start_resp = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(start_resp.status_code, 200, start_resp.data)
         self.assertEqual(start_resp.data["status"], "in_progress")
 
     def test_8_worker_completes_job(self):
@@ -2062,8 +2085,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        start_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        self.assertEqual(start_resp.status_code, 200)
+        start_resp = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(start_resp.status_code, 200, start_resp.data)
 
         # First request issues the customer-shared completion OTP.
         complete_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/complete/", format="json")
@@ -2112,7 +2137,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
+        worker_client_response = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(worker_client_response.status_code, 200, worker_client_response.data)
         otp_response = worker_client.post(
             f"/api/v1/bookings/{booking_id}/complete/", format="json"
         )
@@ -5320,9 +5348,8 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         self.assertEqual(booking.status, Booking.Status.ASSIGNED)
         self.assertEqual(visit.status, RecurringWashVisit.Status.BOOKED)
 
-        started = worker_client.post(
-            f"/api/v1/bookings/{booking.pk}/start/",
-            format="json",
+        started = self._start_job_with_arrival_otp(
+            worker_client, booking.pk, self.customer
         )
         self.assertEqual(started.status_code, 200, started.data)
         visit.refresh_from_db()
