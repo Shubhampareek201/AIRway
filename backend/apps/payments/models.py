@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from simple_history.models import HistoricalRecords
@@ -140,6 +142,17 @@ class PaymentRefund(TimeStampedModel):
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="refunds"
     )
+    idempotency_key = models.CharField(
+        max_length=100, unique=True, default=uuid.uuid4, editable=False
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_payment_refunds",
+    )
+    admin_note = models.TextField(blank=True)
     booking = models.ForeignKey(
         Booking, on_delete=models.PROTECT, related_name="payment_refunds"
     )
@@ -163,10 +176,10 @@ class PaymentRefund(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        permissions = [
+            ("issue_partial_paymentrefund", "Can issue partial payment refunds"),
+        ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["payment", "booking"], name="unique_payment_refund_booking"
-            ),
             models.CheckConstraint(
                 condition=models.Q(amount__gt=0),
                 name="payment_refund_amount_positive",
