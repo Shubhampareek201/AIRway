@@ -315,6 +315,15 @@ def process_payment_refund(refund_id):
             return refund
         refund.status = PaymentRefund.Status.PROCESSING
         refund.save(update_fields=["status", "updated_at"])
+        from apps.workers.models import WorkerEarning
+        WorkerEarning.objects.filter(
+            booking_id=refund.booking_id,
+            status__in=(WorkerEarning.Status.PENDING, WorkerEarning.Status.AVAILABLE),
+        ).update(
+            status=WorkerEarning.Status.ON_HOLD,
+            hold_reason="A refund is being processed; finance reconciliation is required.",
+            updated_at=timezone.now(),
+        )
         payment = Payment.objects.select_for_update().get(pk=refund.payment_id)
 
         if refund.wallet_amount > 0:
@@ -445,6 +454,10 @@ def reconcile_gateway_refund(refund_id, event_type, gateway_status, gateway_amou
         if refund.status == PaymentRefund.Status.PROCESSED:
             _notify_refund(refund)
         else:
+            if refund.status == PaymentRefund.Status.FAILED:
+                transaction.on_commit(
+                    lambda booking_id=refund.booking_id, payment_id=refund.payment_id: __import__("apps.workers.earnings", fromlist=["sync_worker_earning"]).sync_worker_earning(booking_id, payment_id)
+                )
             _notify_refund_attention(
                 refund,
                 "Razorpay could not complete a refund. AIRway support has been alerted to reconcile it.",
