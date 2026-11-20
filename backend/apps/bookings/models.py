@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q, Sum
+import uuid
 from simple_history.models import HistoricalRecords
 
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
@@ -165,7 +166,7 @@ class BookingExtraWork(TimeStampedModel):
         SEPARATE = "separate", "Separate payment"
         ADD_TO_BALANCE = "add_to_balance", "Add to appointment balance"
 
-    request_key = models.UUIDField(default=__import__("uuid").uuid4, unique=True, editable=False)
+    request_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     booking = models.ForeignKey(
         Booking, on_delete=models.PROTECT, related_name="extra_work_requests"
     )
@@ -197,8 +198,6 @@ class BookingExtraWork(TimeStampedModel):
     expires_at = models.DateTimeField(null=True, blank=True)
     responded_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
-    history = HistoricalRecords()
-
     class Meta:
         ordering = ["-created_at"]
         indexes = [
