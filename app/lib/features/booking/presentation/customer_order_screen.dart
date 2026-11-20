@@ -19,12 +19,12 @@ class CustomerOrderScreen extends StatefulWidget {
 }
 
 class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
-  static const violet = Color(0xFF075B3C);
+  static const violet = Color(0xFF6C4AE3);
   static const ink = Color(0xFF1E2923);
   static const sub = Color(0xFF748078);
   static const bg = Color(0xFFFFFFFF);
-  static const pale = Color(0xFFEAF1EA);
-  static const line = Color(0xFFE6EBE7);
+  static const pale = Color(0xFFF1EDFF);
+  static const line = Color(0xFFE8E2F5);
 
   final Razorpay razorpay = Razorpay();
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
@@ -1775,23 +1775,23 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F7F3),
+        color: const Color(0xFFF7F4FF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDCE9DF)),
+        border: Border.all(color: const Color(0xFFE5DDFB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF075B3C), size: 19),
+              Icon(Icons.account_balance_wallet_outlined, color: violet, size: 19),
               SizedBox(width: 7),
               Text(AirwayText.tr('Refund updates', 'रिफंड अपडेट'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
             ],
           ),
           const SizedBox(height: 9),
           for (var index = 0; index < refunds.length; index++) ...[
-            if (index > 0) const Divider(height: 16, color: Color(0xFFDCE9DF)),
+            if (index > 0) const Divider(height: 16, color: Color(0xFFE5DDFB)),
             _refundRow(refunds[index]),
           ],
         ],
@@ -1814,9 +1814,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       'processing' => const Color(0xFF946200),
       _ => const Color(0xFF52665A),
     };
-    final reasonText = reason == 'platform_unfulfilled'
-        ? 'AIRway could not fulfil this service'
-        : 'Service cancellation';
+    final reasonText = switch (reason) {
+      'platform_unfulfilled' => 'AIRway could not fulfil this service',
+      'admin_adjustment' => 'AIRway adjustment',
+      'dispute_resolution' => 'Dispute resolution',
+      'recurring_plan_cancellation' => 'Unused recurring plan visits',
+      _ => 'Service cancellation',
+    };
     final amountValue = amount(refund['amount']);
     final walletValue = amount(refund['wallet_amount']);
     final gatewayValue = amount(refund['gateway_amount']);
@@ -1826,7 +1830,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         Row(
           children: [
             Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.w800, color: statusColor))),
-            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF075B3C))),
+            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: violet)),
           ],
         ),
         const SizedBox(height: 4),
