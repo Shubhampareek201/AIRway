@@ -1417,7 +1417,7 @@ class WorkerEarningsView(APIView):
                 "net_amount": str(earning.net_amount) if earning.net_amount is not None else None,
                 "amount": str(earning.net_amount) if earning.net_amount is not None else "0.00",
                 "status": earning.status,
-                "hold_reason": earning.hold_reason,
+                "hold_reason": earning.hold_reason if earning.status == WorkerEarning.Status.ON_HOLD else "",
                 "payout_reference": earning.payout_reference,
                 "paid_at": earning.paid_at.isoformat() if earning.paid_at else None,
                 "created_at": earning.created_at.isoformat() if earning.created_at else "",
