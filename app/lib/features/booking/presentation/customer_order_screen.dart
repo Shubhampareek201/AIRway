@@ -187,6 +187,47 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
+  Widget _extraWorkRefundSection(
+    Map<String, dynamic> row,
+    Map<String, dynamic> proposal,
+  ) {
+    final proposalId = proposal['id']?.toString();
+    final refunds = (row['refunds'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((refund) => refund['extra_work_id']?.toString() == proposalId)
+        .toList();
+    if (refunds.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F4FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5DDFB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.account_balance_wallet_outlined, size: 16, color: violet),
+            const SizedBox(width: 6),
+            const Text(
+              'Refund for this additional work',
+              style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12),
+            ),
+          ]),
+          const SizedBox(height: 7),
+          for (var index = 0; index < refunds.length; index++) ...[
+            if (index > 0) const Divider(height: 12, color: Color(0xFFE5DDFB)),
+            _refundRow(refunds[index]),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget extraWorkSection(Map<String, dynamic> row) {
     final proposals = (row['extra_work'] as List? ?? []).whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item)).toList();
