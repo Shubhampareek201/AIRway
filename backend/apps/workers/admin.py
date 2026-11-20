@@ -436,7 +436,9 @@ class WorkerEarningAdmin(ModelAdmin):
             fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
         elif obj.status == WorkerEarning.Status.AVAILABLE:
             fields.extend(["adjustment_amount", "adjustment_note"])
-        elif obj.status != WorkerEarning.Status.ON_HOLD:
+        elif obj.status == WorkerEarning.Status.ON_HOLD:
+            fields.append("payout_reference")
+        else:
             fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
         return tuple(dict.fromkeys(fields))
 
