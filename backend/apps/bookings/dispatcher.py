@@ -416,7 +416,7 @@ class DispatcherService:
         return True
 
     @classmethod
-    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None, recurring_visit=None):
+    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None, recurring_visit=None, appointment_group=None):
         from datetime import timedelta
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
@@ -432,6 +432,7 @@ class DispatcherService:
                 # assignment was withdrawn before work started (for example,
                 # because the accepted worker was suspended).
                 offer.order = order
+                offer.appointment_group = appointment_group
                 offer.batch_number = batch_number
                 offer.status = WorkerOffer.Status.PENDING
                 offer.offered_at = timezone.now()
@@ -439,23 +440,22 @@ class DispatcherService:
                 offer.responded_at = None
                 offer.accepted_at = None
                 offer.save(update_fields=[
-                    "order", "batch_number", "status", "offered_at",
+                    "order", "appointment_group", "batch_number", "status", "offered_at",
                     "expires_at", "responded_at", "accepted_at", "updated_at",
                 ])
             elif offer is None:
                 offer = WorkerOffer.objects.create(
-                    booking=booking, order=order, worker=worker,
-                    batch_number=batch_number, expires_at=expiry,
+                    booking=booking, order=order, appointment_group=appointment_group,
+                    worker=worker, batch_number=batch_number, expires_at=expiry,
                 )
             else:
                 continue
             created.append(offer)
-            notification_title = "New Service Order" if order else "Job Offer"
+            notification_title = "New Appointment" if appointment_group else ("New Service Order" if order else "Job Offer")
             notification_body = (
-                f"New order ({len(service_titles)} services): {summary}"
-                if order else
-                f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
-            )
+                f"New appointment ({len(service_titles)} services): {summary}"
+                if appointment_group else (f"New order ({len(service_titles)} services): {summary}" if order else
+                f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"))
             from apps.payments.models import Payment
             if recurring_visit:
                 from decimal import Decimal
@@ -463,6 +463,30 @@ class DispatcherService:
                 advance_received = str(recurring_visit.prepaid_amount)
                 remaining_balance = "0.00"
                 address_text = booking.address.full_address
+            elif appointment_group:
+                from decimal import Decimal
+                payment_context = order or payment_order
+                group_bookings = list(
+                    appointment_group.bookings.select_related("order_item").all()
+                )
+                customer_total = str(sum(
+                    (item.order_item.line_total for item in group_bookings if hasattr(item, "order_item")),
+                    Decimal("0.00"),
+                ))
+                allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
+                group_item_ids = {
+                    item.order_item_id for item in group_bookings
+                    if hasattr(item, "order_item")
+                }
+                advance_received = str(sum(
+                    (Decimal(str(row.get("amount", "0"))) for row in allocation.get("advance", [])
+                     if row.get("order_item_id") in group_item_ids),
+                    Decimal("0.00"),
+                ))
+                remaining_balance = str(max(
+                    Decimal(customer_total) - Decimal(advance_received), Decimal("0.00")
+                ))
+                address_text = payment_context.address.full_address
             elif order or payment_order:
                 from decimal import Decimal
                 payment_context = order or payment_order
@@ -498,6 +522,15 @@ class DispatcherService:
                 1 if booking.service.pricing_type == "per_unit"
                 else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
             )
+            if appointment_group:
+                duration_minutes = sum(
+                    (
+                        (item.variant.duration_minutes if item.variant_id and item.variant.duration_minutes else item.service.duration_minutes or 60)
+                        * (1 if item.service.pricing_type == "per_unit" else max(int((item.pricing_snapshot or {}).get("quantity", 1) or 1), 1))
+                    )
+                    + max(int(item.service.buffer_minutes or 0), 0)
+                    for item in appointment_group.bookings.select_related("service", "variant").all()
+                )
             service_quantity = (
                 booking.order_item.quantity
                 if hasattr(booking, "order_item")
@@ -512,20 +545,28 @@ class DispatcherService:
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
+                "appointment_group_message": appointment_group.customer_message if appointment_group else "",
                 "quantity": service_quantity,
                 "service_unit_label": service_unit_label,
                 "order_id": (
                     (order or payment_order).pk if (order or payment_order)
                     else recurring_visit.plan.order_id if recurring_visit else None
                 ),
-                "service_ids": list((order or payment_order).items.values_list("booking__service_id", flat=True)) if (order or payment_order) else [booking.service_id],
+                "service_ids": (
+                    list(appointment_group.bookings.values_list("service_id", flat=True))
+                    if appointment_group else (
+                        list((order or payment_order).items.values_list("booking__service_id", flat=True))
+                        if (order or payment_order) else [booking.service_id]
+                    )
+                ),
                 "recurring_plan_id": recurring_visit.plan_id if recurring_visit else None,
                 "recurring_visit_id": recurring_visit.pk if recurring_visit else None,
                 "recurring_visit_number": recurring_visit.visit_number if recurring_visit else None,
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "address": address_text,
-                "customer_instructions": booking.notes or "",
+                "customer_instructions": (appointment_group.customer_message if appointment_group else booking.notes) or "",
                 "expected_duration_minutes": duration_minutes,
                 "customer_total": customer_total,
                 "advance_received": advance_received,
@@ -538,6 +579,7 @@ class DispatcherService:
             location_preview = (address_text or "").strip()[:90]
             notification_body = (
                 f"{summary} • {booking.scheduled_at.strftime('%d %b, %I:%M %p')} "
+                f"{('• ' + appointment_group.customer_message[:100] + ' ') if appointment_group and appointment_group.customer_message else ''}"
                 f"• {location_preview} "
                 f"{('• ' + quantity_preview + ' ') if quantity_preview else ''}"
                 f"• Advance ₹{advance_received} • Balance ₹{remaining_balance}"
