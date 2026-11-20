@@ -142,6 +142,10 @@ class CustomerExtraWorkDecisionView(APIView):
 
         if proposal.status != BookingExtraWork.Status.PENDING_CUSTOMER:
             return Response({"detail": "This proposal has already been decided or is no longer active."}, status=status.HTTP_409_CONFLICT)
+
+        booking = Booking.objects.select_for_update().get(pk=proposal.booking_id)
+        if booking.status != Booking.Status.IN_PROGRESS:
+            return Response({"detail": "The appointment is no longer in progress; this proposal cannot be approved."}, status=status.HTTP_409_CONFLICT)
         if proposal.expires_at and proposal.expires_at <= timezone.now():
             proposal.status = BookingExtraWork.Status.EXPIRED
             proposal.responded_at = timezone.now()
