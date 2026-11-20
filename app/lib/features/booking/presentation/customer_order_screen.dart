@@ -982,7 +982,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
-                          onPressed: () => cancelAppointmentGroup(groupId),
+                          onPressed: () => cancelAppointmentGroup(groupId!),
                           icon: const Icon(Icons.cancel_outlined, size: 15),
                           label: Text(AirwayText.tr('Cancel this appointment', 'यह अपॉइंटमेंट रद्द करें')),
                           style: TextButton.styleFrom(
