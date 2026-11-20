@@ -196,7 +196,7 @@ class BookingDisputeReworkDecisionView(APIView):
     @transaction.atomic
     def post(self, request, dispute_id):
         dispute = get_object_or_404(
-            BookingDispute.objects.select_for_update().select_related(
+            BookingDispute.objects.select_for_update(of=("self",)).select_related(
                 "booking__customer", "booking__service__category",
                 "booking__variant", "booking__address__zone__city",
             ),
@@ -204,7 +204,7 @@ class BookingDisputeReworkDecisionView(APIView):
             booking__customer=request.user,
         )
         proposal = get_object_or_404(
-            BookingReworkProposal.objects.select_for_update().select_related(
+            BookingReworkProposal.objects.select_for_update(of=("self",)).select_related(
                 "worker__user", "dispute"
             ),
             dispute=dispute,
