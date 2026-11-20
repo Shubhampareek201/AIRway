@@ -324,6 +324,16 @@ class WorkerEarning(TimeStampedModel):
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     commission_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     net_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    adjustment_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    adjustment_note = models.TextField(blank=True)
+    adjusted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="worker_earning_adjustments",
+    )
+    adjusted_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
     hold_reason = models.CharField(max_length=255, blank=True)
     payout_reference = models.CharField(max_length=100, blank=True)
