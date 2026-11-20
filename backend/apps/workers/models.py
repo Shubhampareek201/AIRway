@@ -53,6 +53,13 @@ class WorkerProfile(TimeStampedModel):
     landmark = models.CharField(max_length=255, blank=True)
 
     upi_id = models.CharField(max_length=100, blank=True)
+    commission_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Finance-configured worker commission percentage. Leave blank until agreed.",
+    )
 
     is_online = models.BooleanField(default=False)
 
@@ -295,6 +302,44 @@ class WorkerLeave(TimeStampedModel):
 
     def __str__(self):
         return f"{self.worker.user.phone} - Leave"
+
+class WorkerEarning(TimeStampedModel):
+    """Per-booking earning calculation and payout state."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending settlement"
+        ON_HOLD = "on_hold", "On hold"
+        AVAILABLE = "available", "Available for payout"
+        PAID = "paid", "Paid"
+
+    worker = models.ForeignKey(WorkerProfile, on_delete=models.PROTECT, related_name="earnings")
+    booking = models.ForeignKey("bookings.Booking", on_delete=models.PROTECT, related_name="worker_earnings")
+    payment = models.ForeignKey("payments.Payment", on_delete=models.PROTECT, null=True, blank=True, related_name="worker_earnings")
+    gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    commission_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    net_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    hold_reason = models.CharField(max_length=255, blank=True)
+    payout_reference = models.CharField(max_length=100, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=("booking",), name="unique_worker_earning_per_booking"),
+            models.CheckConstraint(condition=models.Q(gross_amount__gte=0), name="worker_earning_gross_nonnegative"),
+            models.CheckConstraint(
+                condition=models.Q(commission_rate__isnull=True) | (
+                    models.Q(commission_rate__gte=0) & models.Q(commission_rate__lte=100)
+                ),
+                name="worker_earning_commission_range",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Worker earning #{self.pk} - booking #{self.booking_id} - {self.status}"
+
 
 class WorkerJobStreak(TimeStampedModel):
     """Tracks milestone bonuses awarded to workers for completed job streaks."""
