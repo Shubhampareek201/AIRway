@@ -320,11 +320,8 @@ def process_payment_refund(refund_id):
             booking_id=refund.booking_id,
             status__in=(WorkerEarning.Status.PENDING, WorkerEarning.Status.AVAILABLE),
         )
-        earning_rows = (
-            earning_rows.filter(extra_work=refund.extra_work)
-            if refund.extra_work_id
-            else earning_rows.filter(extra_work__isnull=True)
-        )
+        if refund.extra_work_id:
+            earning_rows = earning_rows.filter(extra_work=refund.extra_work)
         earning_rows.update(
             status=WorkerEarning.Status.ON_HOLD,
             hold_reason="A refund is being processed; finance reconciliation is required.",
