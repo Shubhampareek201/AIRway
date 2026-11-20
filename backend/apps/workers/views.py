@@ -1401,7 +1401,7 @@ class WorkerEarningsView(APIView):
 
         from .models import WorkerEarning
         earnings = WorkerEarning.objects.filter(worker=profile).select_related(
-            "booking__service", "payment"
+            "booking__service", "payment", "extra_work"
         ).order_by("-created_at")[:100]
         results = []
         for earning in earnings:
