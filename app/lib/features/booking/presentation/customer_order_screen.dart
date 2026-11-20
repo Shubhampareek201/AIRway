@@ -379,15 +379,35 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       return;
     }
     try {
+      final extraWorkId = _currentExtraWorkId;
       final verification = await PaymentApi.verifyPayment(
         razorpayOrderId: orderId,
         razorpayPaymentId: paymentId,
         razorpaySignature: signature,
       );
       if (!mounted) return;
-      setState(() => paying = false);
+      setState(() {
+        paying = false;
+        _currentExtraWorkId = null;
+      });
       await loadOrder(showLoader: false);
+      await loadWalletBalance();
       if (!mounted) return;
+      if (extraWorkId != null) {
+        final extraPaid = verification['status']?.toString().toLowerCase() == 'paid';
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: Icon(extraPaid ? Icons.verified_rounded : Icons.hourglass_top_rounded, color: extraPaid ? violet : sub, size: 44),
+            title: Text(extraPaid ? 'Extra-work payment successful' : 'Extra-work payment not confirmed'),
+            content: Text(extraPaid
+                ? 'Your approved additional work payment has been verified.'
+                : 'AIRway has not confirmed this payment as paid yet. Refresh the order before retrying.'),
+            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+          ),
+        );
+        return;
+      }
 
       // Razorpay's client callback only means the checkout flow returned.
       // The backend's verified PAID state is the only success condition.
@@ -437,7 +457,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   void onPaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
-    setState(() => paying = false);
+    setState(() {
+      paying = false;
+      _currentExtraWorkId = null;
+    });
     loadWalletBalance();
     loadOrder(showLoader: false);
     ScaffoldMessenger.of(context).showSnackBar(
