@@ -7,6 +7,8 @@ from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from unfold.admin import ModelAdmin, TabularInline
 
+from apps.notifications.models import Notification
+
 from .models import (
     Booking,
     BookingAddOn,
@@ -569,6 +571,14 @@ class BookingReworkProposalAdmin(ModelAdmin):
             raise ValidationError("A rework proposal cannot be edited after it is sent to the customer.")
         obj.created_by = request.user
         super().save_model(request, obj, form, change)
+        Notification.objects.create(
+            user=obj.dispute.booking.customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="AIRway proposed a free recovery visit",
+            body=f"A no-charge recovery appointment is proposed for {timezone.localtime(obj.scheduled_at):%d %b %Y, %I:%M %p}. Review and accept it in your order details.",
+            channel=Notification.Channel.IN_APP,
+            data={"dispute_id": obj.dispute_id, "rework_proposal_id": obj.pk},
+        )
 
     def has_add_permission(self, request):
         return request.user.is_staff
