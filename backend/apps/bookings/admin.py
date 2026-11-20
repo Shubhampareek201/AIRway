@@ -474,8 +474,12 @@ class BookingReworkProposalAdminForm(forms.ModelForm):
             resolved_by__isnull=False,
             resolved_at__isnull=False,
             booking__booking_mode=Booking.BookingMode.SCHEDULED,
-            rework_proposal__isnull=True,
-        ).select_related("booking__service", "booking__address__zone")
+        ).exclude(
+            rework_proposals__status__in=[
+                BookingReworkProposal.Status.PENDING_CUSTOMER,
+                BookingReworkProposal.Status.ACCEPTED,
+            ]
+        ).select_related("booking__service", "booking__address__zone").distinct()
         self.fields["worker"].queryset = self.fields["worker"].queryset.filter(
             status="approved",
             is_online=True,
@@ -611,8 +615,11 @@ class BookingDisputeAdmin(ModelAdmin):
             or obj.requested_outcome != BookingDispute.RequestedOutcome.REWORK
         ):
             return "Resolve this rework case before scheduling."
-        proposal = getattr(obj, "rework_proposal", None)
-        if proposal:
+        proposal = obj.rework_proposals.order_by("-created_at").first()
+        if proposal and proposal.status in (
+            BookingReworkProposal.Status.PENDING_CUSTOMER,
+            BookingReworkProposal.Status.ACCEPTED,
+        ):
             return (
                 f"Proposal #{proposal.pk}: {proposal.get_status_display()} — "
                 f"{timezone.localtime(proposal.scheduled_at):%d %b %Y, %I:%M %p}"
