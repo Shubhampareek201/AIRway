@@ -143,8 +143,10 @@ def issue_admin_partial_refund(
             dispute.status != BookingDispute.Status.RESOLVED
             or dispute.requested_outcome != BookingDispute.RequestedOutcome.REFUND_REVIEW
             or not dispute.resolution_note.strip()
+            or dispute.resolved_by_id is None
+            or dispute.resolved_at is None
         ):
-            raise ValueError("Only a resolved refund-review dispute with an Admin resolution note can be refunded.")
+            raise ValueError("Only an Admin-resolved refund-review dispute with a resolution note can be refunded.")
     elif dispute is not None:
         raise ValueError("A dispute link is only valid for a dispute-resolution refund.")
     if payment.extra_work_id:
