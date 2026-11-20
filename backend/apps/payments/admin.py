@@ -212,6 +212,23 @@ class PaymentRefundAdmin(ModelAdmin):
             messages.error(request, "; ".join(exc.messages))
             return HttpResponseRedirect(request.path)
 
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        dispute_id = request.GET.get("dispute")
+        if dispute_id:
+            dispute = BookingDispute.objects.filter(
+                pk=dispute_id,
+                status=BookingDispute.Status.RESOLVED,
+                requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+            ).first()
+            if dispute:
+                initial.update({
+                    "dispute": dispute.pk,
+                    "booking": dispute.booking_id,
+                    "reason": PaymentRefund.Reason.DISPUTE_RESOLUTION,
+                })
+        return initial
+
     def save_model(self, request, obj, form, change):
         if change:
             raise PermissionDenied("Refund records are immutable.")
