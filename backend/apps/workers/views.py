@@ -887,7 +887,11 @@ class WorkerJobDetailView(APIView):
                 request.build_absolute_uri(f"/api/v1/bookings/issue-photos/{booking.id}/")
                 if has_issue_photo else None
             ),
-            "notes": booking.notes,
+            "notes": (
+                booking.appointment_group.customer_message
+                if booking.appointment_group_id else booking.notes
+            ),
+            "appointment_group_id": booking.appointment_group_id,
             "worker_notes": booking.worker_notes,
             "addons": [
                 {
