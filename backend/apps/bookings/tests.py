@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from datetime import timedelta, time, datetime
 from unittest.mock import patch
 import pytz
+import re
 import datetime as dt_module
 
 from apps.accounts.models import User, Address
@@ -1590,8 +1591,25 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             worker=self.worker_profile,
         )
 
-        start_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
+        start_url = f"/api/v1/bookings/{booking.id}/start/"
+        start_resp = self.worker_client.post(start_url, format="json")
         self.assertEqual(start_resp.status_code, 200)
+        self.assertTrue(start_resp.data["arrival_otp_required"])
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+
+        notification = Notification.objects.get(
+            user=self.customer,
+            title="Your professional has arrived",
+        )
+        arrival_code = re.search(
+            r"arrival code with your AIRway professional: (\d{6})\.",
+            notification.body,
+        ).group(1)
+        start_resp = self.worker_client.post(
+            start_url, {"arrival_otp": arrival_code}, format="json"
+        )
+        self.assertEqual(start_resp.status_code, 200, start_resp.data)
         self.assertEqual(start_resp.data["status"], "in_progress")
 
         booking.refresh_from_db()
