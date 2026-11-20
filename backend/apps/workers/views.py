@@ -942,6 +942,51 @@ def _get_assignment_and_booking(job_id, profile):
         return None, None
 
 
+class WorkerJobLocationSharingView(APIView):
+    """Let the assigned worker explicitly enable or disable customer-visible GPS."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "Only approved workers can share job location."}, status=status.HTTP_403_FORBIDDEN)
+        if not assignment.accepted_at or booking.status not in (
+            Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS,
+        ):
+            return Response({"detail": "Location sharing is available only for an accepted active job."}, status=status.HTTP_409_CONFLICT)
+
+        enabled = request.data.get("enabled")
+        if not isinstance(enabled, bool):
+            return Response({"enabled": ["Provide true or false."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        assignment.location_sharing_enabled = enabled
+        update_fields = ["location_sharing_enabled", "updated_at"]
+        if not enabled:
+            assignment.live_latitude = None
+            assignment.live_longitude = None
+            assignment.live_accuracy_m = None
+            assignment.live_location_updated_at = None
+            update_fields += [
+                "live_latitude", "live_longitude",
+                "live_accuracy_m", "live_location_updated_at",
+            ]
+        assignment.save(update_fields=update_fields)
+        return Response({
+            "location_sharing_enabled": assignment.location_sharing_enabled,
+            "customer_visibility_starts_at": (
+                (booking.scheduled_at - timedelta(minutes=30)).isoformat()
+            ),
+        })
+
+
 class WorkerJobLocationUpdateView(APIView):
     """Accept foreground GPS only from the worker currently assigned to an active job."""
 
@@ -962,6 +1007,11 @@ class WorkerJobLocationUpdateView(APIView):
             return Response({"detail": "Accept this job before sharing your location."}, status=status.HTTP_409_CONFLICT)
         if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS):
             return Response({"detail": "Location sharing is available only for active assigned jobs."}, status=status.HTTP_409_CONFLICT)
+        if not assignment.location_sharing_enabled:
+            return Response({"detail": "Enable live location sharing before sending GPS updates."}, status=status.HTTP_403_FORBIDDEN)
+        now = timezone.now()
+        if now < booking.scheduled_at - timedelta(minutes=30):
+            return Response({"detail": "Customer-visible live location becomes available 30 minutes before the appointment."}, status=status.HTTP_409_CONFLICT)
 
         try:
             latitude = Decimal(str(request.data.get("latitude")))
@@ -985,7 +1035,6 @@ class WorkerJobLocationUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        now = timezone.now()
         assignment.live_latitude = latitude
         assignment.live_longitude = longitude
         assignment.live_accuracy_m = accuracy
