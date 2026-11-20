@@ -67,6 +67,8 @@ class PaymentRefundAdminForm(forms.ModelForm):
         self.fields["dispute"].queryset = BookingDispute.objects.filter(
             status=BookingDispute.Status.RESOLVED,
             requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+            resolved_by__isnull=False,
+            resolved_at__isnull=False,
         ).select_related("booking")
         self.fields["dispute"].required = False
         self.fields["dispute"].help_text = (
@@ -220,6 +222,8 @@ class PaymentRefundAdmin(ModelAdmin):
                 pk=dispute_id,
                 status=BookingDispute.Status.RESOLVED,
                 requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+                resolved_by__isnull=False,
+                resolved_at__isnull=False,
             ).first()
             if dispute:
                 initial.update({
