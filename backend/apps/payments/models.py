@@ -158,6 +158,13 @@ class PaymentRefund(TimeStampedModel):
     booking = models.ForeignKey(
         Booking, on_delete=models.PROTECT, related_name="payment_refunds"
     )
+    dispute = models.ForeignKey(
+        "bookings.BookingDispute",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_refunds",
+    )
     extra_work = models.ForeignKey(
         "bookings.BookingExtraWork",
         on_delete=models.PROTECT,
