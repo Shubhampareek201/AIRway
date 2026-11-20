@@ -473,6 +473,8 @@ class BookingReworkProposalAdminForm(forms.ModelForm):
             requested_outcome=BookingDispute.RequestedOutcome.REWORK,
             resolved_by__isnull=False,
             resolved_at__isnull=False,
+            booking__booking_mode=Booking.BookingMode.SCHEDULED,
+            rework_proposal__isnull=True,
         ).select_related("booking__service", "booking__address__zone")
         self.fields["worker"].queryset = self.fields["worker"].queryset.filter(
             status="approved",
@@ -517,9 +519,13 @@ class BookingReworkProposalAdminForm(forms.ModelForm):
             if booking.variant_id and booking.variant.duration_minutes
             else booking.service.duration_minutes
         ) or 60
-        required_gender = required_worker_gender_for_booking(
-            booking.service, booking.customer_answers
-        )
+        try:
+            required_gender = required_worker_gender_for_booking(
+                booking.service, booking.customer_answers
+            )
+        except ValueError as exc:
+            self.add_error("dispute", str(exc))
+            return cleaned
         eligible = DispatcherService._get_eligible_workers(
             service=booking.service,
             zone=booking.address.zone,
