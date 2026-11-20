@@ -1060,6 +1060,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             'AIRway commission (${item['commission_rate'] ?? '—'}%)',
             -commission,
           ),
+        if ((double.tryParse('${item['adjustment_amount'] ?? '0'}') ?? 0) != 0)
+          _earningAmountLine(
+            'Finance adjustment',
+            double.tryParse('${item['adjustment_amount']}') ?? 0,
+          ),
         const SizedBox(height: 5),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           const Text('Your earning', style: TextStyle(fontWeight: FontWeight.w800)),
@@ -1068,6 +1073,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6C4AE3), fontSize: 16),
           ),
         ]),
+        if ((item['adjustment_note']?.toString() ?? '').isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text('Finance note: ${item['adjustment_note']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+        ],
         if ((item['hold_reason']?.toString() ?? '').isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(item['hold_reason'].toString(), style: const TextStyle(color: Color(0xFFB45309), fontSize: 12)),
