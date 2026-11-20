@@ -249,6 +249,9 @@ class BookingDisputeReworkDecisionView(APIView):
             required_gender = required_worker_gender_for_booking(original.service, original.customer_answers)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        # Serialize against concurrent worker acceptances before rechecking the slot.
+        from apps.workers.models import WorkerProfile
+        locked_worker = WorkerProfile.objects.select_for_update().get(pk=proposal.worker_id)
         eligible = DispatcherService._get_eligible_workers(
             service=original.service,
             zone=original.address.zone,
@@ -259,7 +262,7 @@ class BookingDisputeReworkDecisionView(APIView):
             required_gender=required_gender,
             required_tasks=(original.variant.included_tasks if original.variant_id else []),
         )
-        if not eligible.filter(pk=proposal.worker_id).exists():
+        if not eligible.filter(pk=locked_worker.pk).exists():
             return Response({"detail": "The proposed professional is no longer available for this time. AIRway support must reschedule."}, status=status.HTTP_409_CONFLICT)
 
         followup = Booking.objects.create(
