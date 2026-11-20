@@ -1,14 +1,18 @@
 from datetime import timedelta
+from io import BytesIO
+from tempfile import TemporaryDirectory
 
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, BookingAssignment, BookingDispute
+from apps.bookings.models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.workers.models import WorkerProfile
+from PIL import Image
 
 
 class BookingDisputeAPITests(TestCase):
