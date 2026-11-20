@@ -418,10 +418,17 @@ def _process_verified_payment(
                     DispatcherService.dispatch_order(parent_order)
                 message = f"Your 30% advance for AIRway order #{parent_order.id} was received. We are arranging your services."
             elif payment.stage == Payment.Stage.BALANCE:
-                active_order_items = [
+                all_active_order_items = [
                     row for row in order_items
                     if row.booking.status != Booking.Status.CANCELLED
                 ]
+                active_order_items = (
+                    [
+                        row for row in all_active_order_items
+                        if row.booking.appointment_group_id == payment.appointment_group_id
+                    ]
+                    if payment.appointment_group_id else all_active_order_items
+                )
                 if (
                     not active_order_items
                     or any(
@@ -429,15 +436,15 @@ def _process_verified_payment(
                         for row in active_order_items
                     )
                 ):
-                    logger.error("Balance payment %s captured before all active services completed", payment.pk)
-                    return Response({"detail": "Captured payment requires reconciliation: all active services must be complete.", "payment_id": payment.pk}, status=status.HTTP_409_CONFLICT)
+                    logger.error("Balance payment %s captured before its active services completed", payment.pk)
+                    return Response({"detail": "Captured payment requires reconciliation: the services for this payment must be complete.", "payment_id": payment.pk}, status=status.HTTP_409_CONFLICT)
 
                 if payment.appointment_group_id:
                     allocation = (parent_order.metadata or {}).get("payment_allocation_v1", {})
                     balance_rows = allocation.get("balance", [])
                     active_group_ids = {
                         row.booking.appointment_group_id
-                        for row in active_order_items
+                        for row in all_active_order_items
                         if row.booking.appointment_group_id
                     }
                     paid_group_ids = set(
@@ -463,10 +470,27 @@ def _process_verified_payment(
                             Decimal("0.00"),
                         )
                         if group_due > 0 and group_id not in paid_group_ids:
-                            paid_group_ids.add(payment.appointment_group_id)
+                            all_group_balances_paid = False
                     all_group_balances_paid = all(
-                        group_id in paid_group_ids
-                        for group_id in active_group_ids
+                        group_due_is_zero or group_id in paid_group_ids
+                        for group_id, group_due_is_zero in [
+                            (
+                                group_id,
+                                sum(
+                                    (
+                                        Decimal(str(item.get("amount", "0")))
+                                        for item in balance_rows
+                                        if item.get("order_item_id") in {
+                                            row.id for row in order_items
+                                            if row.booking.appointment_group_id == group_id
+                                            and row.booking.status != Booking.Status.CANCELLED
+                                        }
+                                    ),
+                                    Decimal("0.00"),
+                                ) <= 0,
+                            )
+                            for group_id in active_group_ids
+                        ]
                     )
                     if all_group_balances_paid:
                         parent_order.status = (
