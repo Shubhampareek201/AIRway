@@ -710,7 +710,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             Text(item['resolution_note'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
           ],
           finalEvidenceCount(item),
-          reworkProposalCard(item),
+          reworkProposalCard(item, row),
           if (items.last != item) const Divider(height: 14, color: line),
         ],
       ]),
@@ -718,7 +718,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
-  Widget reworkProposalCard(Map<String, dynamic> item) {
+  Widget reworkProposalCard(Map<String, dynamic> item, Map<String, dynamic> orderRow) {
     final proposal = item['rework_proposal'];
     if (proposal is! Map) return const SizedBox.shrink();
     final data = Map<String, dynamic>.from(proposal);
@@ -790,9 +790,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                     MaterialPageRoute(
                       builder: (_) => BookingTrackingScreen(
                         bookingId: bookingId,
-                        serviceTitle: (order?['items'] is List && order!['items'].isNotEmpty)
-                            ? (order!['items'][0]['service']?['service_title']?.toString() ?? 'AIRway Service')
-                            : 'AIRway Service',
+                        serviceTitle: (orderRow['service'] is Map
+                            ? orderRow['service']['service_title']?.toString()
+                            : null) ?? 'AIRway Service',
                         initialStatus: data['followup_status']?.toString() ?? 'assigned',
                       ),
                     ),
