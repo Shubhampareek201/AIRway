@@ -24,6 +24,7 @@ from .models import (
     RecurringWashPlan,
     RecurringWashVisit,
     BookingDispute,
+    BookingDisputeEvidence,
 )
 
 
@@ -447,8 +448,17 @@ class RecurringWashPlanAdmin(ModelAdmin):
 
 
 
+class BookingDisputeEvidenceInline(TabularInline):
+    model = BookingDisputeEvidence
+    extra = 0
+    can_delete = False
+    readonly_fields = ("uploaded_by", "original_name", "file_path", "note", "created_at", "updated_at")
+    fields = readonly_fields
+
+
 @admin.register(BookingDispute)
 class BookingDisputeAdmin(ModelAdmin):
+    inlines = [BookingDisputeEvidenceInline]
     list_display = ("id", "booking", "raised_by", "raised_by_role", "category", "status", "created_at")
     list_filter = ("status", "category", "raised_by_role", "created_at")
     search_fields = ("booking__id", "raised_by__phone", "description")
@@ -490,13 +500,5 @@ class BookingDisputeAdmin(ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
-
-class BookingDisputeEvidenceInline(TabularInline):
-    model = BookingDisputeEvidence
-    extra = 0
-    can_delete = False
-    readonly_fields = ("uploaded_by", "original_name", "file_path", "note", "created_at", "updated_at")
-    fields = readonly_fields
 
 
