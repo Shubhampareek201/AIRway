@@ -151,6 +151,75 @@ class BookingWorkEvidence(TimeStampedModel):
         return f"{self.get_stage_display()} evidence for booking #{self.booking_id}"
 
 
+class BookingExtraWork(TimeStampedModel):
+    """Immutable worker proposal for additional work during an active appointment."""
+
+    class Status(models.TextChoices):
+        PENDING_CUSTOMER = "pending_customer", "Awaiting customer decision"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class PaymentChoice(models.TextChoices):
+        SEPARATE = "separate", "Separate payment"
+        ADD_TO_BALANCE = "add_to_balance", "Add to appointment balance"
+
+    request_key = models.UUIDField(default=__import__("uuid").uuid4, unique=True, editable=False)
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="extra_work_requests"
+    )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="extra_work_requests",
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile", on_delete=models.PROTECT,
+        related_name="extra_work_requests",
+    )
+    reason = models.CharField(max_length=500)
+    line_items = models.JSONField(
+        default=list,
+        help_text="Immutable item snapshot: description, quantity, unit price and line total.",
+    )
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    additional_duration_minutes = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(
+        max_length=24, choices=Status.choices,
+        default=Status.PENDING_CUSTOMER, db_index=True,
+    )
+    payment_choice = models.CharField(
+        max_length=24, choices=PaymentChoice.choices, blank=True,
+    )
+    customer_response_note = models.CharField(max_length=1000, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["booking", "status"]),
+            models.Index(fields=["appointment_group", "status"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(subtotal__gt=0),
+                name="extra_work_subtotal_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_amount__gt=0),
+                name="extra_work_total_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Extra work #{self.pk} for booking #{self.booking_id} ({self.status})"
+
+
 class BookingQuote(TimeStampedModel):
     """Worker-submitted inspection estimate requiring explicit customer approval."""
 
