@@ -105,11 +105,6 @@ class Payment(TimeStampedModel):
                 name="group_payment_requires_parent_order",
             ),
             models.UniqueConstraint(
-                fields=["extra_work"],
-                condition=models.Q(extra_work__isnull=False),
-                name="unique_extra_work_payment",
-            ),
-            models.UniqueConstraint(
                 fields=["razorpay_order_id"],
                 condition=~models.Q(razorpay_order_id=""),
                 name="unique_razorpay_order_id",
