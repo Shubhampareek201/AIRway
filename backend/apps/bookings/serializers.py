@@ -823,7 +823,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         if obj.appointment_group_id:
             from decimal import Decimal
             return str(sum(
-                (item.order_item.line_total for item in obj.appointment_group.bookings.select_related("order_item").all() if hasattr(item, "order_item")),
+                (item.order_item.line_total for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED).select_related("order_item").all() if hasattr(item, "order_item")),
                 Decimal("0.00"),
             ))
         if obj.order_id:
@@ -839,7 +839,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             from decimal import Decimal
             order_item_ids = {
                 item.order_item_id
-                for item in obj.appointment_group.bookings.all()
+                for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED)
                 if hasattr(item, "order_item")
             }
             allocation = (obj.booking.order_item.order.metadata or {}).get("payment_allocation_v1", {})
@@ -885,7 +885,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 "variant_title": item.variant.title if item.variant_id else None,
                 "scheduled_at": item.scheduled_at,
                 "quantity": item.order_item.quantity if hasattr(item, "order_item") else 1,
-            } for item in obj.appointment_group.bookings.select_related(
+            } for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED).select_related(
                 "service", "variant", "order_item"
             ).all()]
         if not obj.order_id:
