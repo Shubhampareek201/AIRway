@@ -34,6 +34,11 @@ class RefundRetrySafetyTests(TestCase):
             password="test-password",
             is_staff=True,
         )
+        finance_permission = Permission.objects.get(
+            content_type__app_label="payments",
+            codename="issue_partial_paymentrefund",
+        )
+        self.staff_user.user_permissions.add(finance_permission)
         city = City.objects.create(name="Refund City", state="Rajasthan")
         zone = Zone.objects.create(name="Refund Zone", city=city, is_active=True)
         address = Address.objects.create(
