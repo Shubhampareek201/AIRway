@@ -32,6 +32,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
   Map<String, dynamic>? order;
   List<Map<String, dynamic>> disputes = [];
+  bool _disputesLoaded = false;
   double walletBalance = 0;
   bool walletLoading = true;
   bool loading = true;
@@ -649,6 +650,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      await loadDisputes(force: true);
       await loadOrder(showLoader: false);
     } catch (e) {
       if (!mounted) return;
@@ -658,11 +660,12 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
-  Future<void> loadDisputes() async {
+  Future<void> loadDisputes({bool force = false}) async {
+    if (_disputesLoaded && !force) return;
     try {
       final result = await BookingApi.getDisputes();
       if (!mounted) return;
-      setState(() => disputes = result);
+      setState(() { disputes = result; _disputesLoaded = true; });
     } catch (_) {
       // Order details remain usable if support history is temporarily unavailable.
     }
