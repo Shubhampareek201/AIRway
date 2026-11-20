@@ -68,19 +68,121 @@ def _component_allocation(payment, line_total, stage_total):
     return wallet_part, gateway_part
 
 
+def _existing_refund_components(payment, booking):
+    refunds = PaymentRefund.objects.filter(payment=payment, booking=booking)
+    return (
+        sum(refunds.values_list("amount", flat=True), Decimal("0.00")),
+        sum(refunds.values_list("wallet_amount", flat=True), Decimal("0.00")),
+        sum(refunds.values_list("gateway_amount", flat=True), Decimal("0.00")),
+    )
+
+
+def issue_admin_partial_refund(
+    payment,
+    booking,
+    amount,
+    requested_by,
+    admin_note,
+    idempotency_key,
+    reason=PaymentRefund.Reason.ADMIN_ADJUSTMENT,
+):
+    """Create an audited, source-proportional partial refund under a unique request key."""
+    try:
+        requested_amount = Decimal(str(amount))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Enter a valid refund amount.")
+    if (
+        not requested_amount.is_finite()
+        or requested_amount <= 0
+        or requested_amount.quantize(CENT) != requested_amount
+    ):
+        raise ValueError("Refund amount must be positive and have at most two decimal places.")
+    if not idempotency_key or len(idempotency_key) > 100:
+        raise ValueError("A valid refund request key is required.")
+    if not admin_note or not admin_note.strip():
+        raise ValueError("An audit note is required for an admin-issued refund.")
+    if reason not in (
+        PaymentRefund.Reason.ADMIN_ADJUSTMENT,
+        PaymentRefund.Reason.DISPUTE_RESOLUTION,
+    ):
+        raise ValueError("Unsupported admin refund reason.")
+
+    with transaction.atomic():
+        existing = PaymentRefund.objects.filter(idempotency_key=idempotency_key).first()
+        if existing:
+            if (
+                existing.payment_id != payment.pk
+                or existing.booking_id != booking.pk
+                or existing.amount != requested_amount
+            ):
+                raise ValueError("This refund request key was already used for a different request.")
+            refund = existing
+            created = False
+        else:
+            locked_payment = Payment.objects.select_for_update().select_related("extra_work").get(
+                pk=payment.pk
+            )
+            locked_booking = Booking.objects.select_for_update().get(pk=booking.pk)
+            if locked_payment.status != Payment.Status.PAID:
+                raise ValueError("Only captured payments can be partially refunded.")
+            line_total, wallet_captured, gateway_captured, order_item = _line_stage_amount(
+                locked_payment, locked_booking
+            )
+            if line_total <= 0:
+                raise ValueError("This payment has no captured allocation for the selected service.")
+            refunded_total, refunded_wallet, refunded_gateway = _existing_refund_components(
+                locked_payment, locked_booking
+            )
+            remaining_wallet = wallet_captured - refunded_wallet
+            remaining_gateway = gateway_captured - refunded_gateway
+            remaining_total = remaining_wallet + remaining_gateway
+            if remaining_wallet < 0 or remaining_gateway < 0:
+                raise ValueError("Existing refunds exceed the captured payment allocation. Reconciliation is required.")
+            if requested_amount > remaining_total:
+                raise ValueError(
+                    f"Refund exceeds the remaining refundable amount of ₹{remaining_total:.2f}."
+                )
+            wallet_refund = (
+                requested_amount * remaining_wallet / remaining_total
+            ).quantize(CENT, rounding=ROUND_HALF_UP) if remaining_total else Decimal("0.00")
+            wallet_refund = min(wallet_refund, remaining_wallet)
+            gateway_refund = requested_amount - wallet_refund
+            if gateway_refund > remaining_gateway:
+                gateway_refund = remaining_gateway
+                wallet_refund = requested_amount - gateway_refund
+            if wallet_refund < 0 or gateway_refund < 0:
+                raise ValueError("The requested refund cannot be allocated to the original payment sources.")
+
+            refund = PaymentRefund.objects.create(
+                payment=locked_payment,
+                booking=locked_booking,
+                order_item=order_item,
+                amount=requested_amount,
+                wallet_amount=wallet_refund,
+                gateway_amount=gateway_refund,
+                reason=reason,
+                status=PaymentRefund.Status.PENDING,
+                requested_by=requested_by,
+                admin_note=admin_note.strip(),
+                idempotency_key=idempotency_key,
+            )
+            created = True
+
+    if refund.status == PaymentRefund.Status.PENDING:
+        return process_payment_refund(refund.pk)
+    return refund
+
+
 def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCELLATION):
     """
-    Create one idempotent refund per paid payment/service line, then process
-    wallet credits and Razorpay refunds. Call only after the booking is cancelled.
+    Create an idempotent refund for the remaining captured amount per payment/service.
+    Existing partial refunds are deducted before a cancellation refund is created.
     """
     booking = Booking.objects.select_related("customer").get(pk=booking.pk)
     if booking.status != Booking.Status.CANCELLED:
         raise ValueError("Only cancelled bookings can be refunded.")
 
     if hasattr(booking, "order_item"):
-        # Invalidate the wallet hold for any in-flight parent-order attempt.
-        # A late Razorpay capture is still recognised by its order ID and the
-        # staged-payment guard reverses it against the changed active allocation.
         from apps.wallet.services import release_wallet_reservation
 
         pending_attempts = Payment.objects.filter(
@@ -101,16 +203,26 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
     created_ids = []
     for payment in payments.distinct():
         with transaction.atomic():
-            locked = Payment.objects.select_for_update().get(pk=payment.pk)
-            line_total, wallet_part, gateway_part, item = _line_stage_amount(locked, booking)
-            if line_total <= 0 or wallet_part + gateway_part <= 0:
+            locked = Payment.objects.select_for_update().select_related("extra_work").get(pk=payment.pk)
+            line_total, wallet_captured, gateway_captured, item = _line_stage_amount(locked, booking)
+            if line_total <= 0:
                 continue
+            _, refunded_wallet, refunded_gateway = _existing_refund_components(locked, booking)
+            wallet_part = wallet_captured - refunded_wallet
+            gateway_part = gateway_captured - refunded_gateway
+            if wallet_part < 0 or gateway_part < 0:
+                raise ValueError("Existing refunds exceed the captured service allocation. Manual reconciliation is required.")
+            amount = wallet_part + gateway_part
+            if amount <= 0:
+                continue
+            key = f"booking-cancel:{locked.pk}:{booking.pk}"
             refund, was_created = PaymentRefund.objects.get_or_create(
-                payment=locked,
-                booking=booking,
+                idempotency_key=key,
                 defaults={
+                    "payment": locked,
+                    "booking": booking,
                     "order_item": item,
-                    "amount": wallet_part + gateway_part,
+                    "amount": amount,
                     "wallet_amount": wallet_part,
                     "gateway_amount": gateway_part,
                     "reason": reason,
@@ -119,6 +231,12 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
             )
             if was_created:
                 created_ids.append(refund.pk)
+            elif (
+                refund.amount != amount
+                or refund.wallet_amount != wallet_part
+                or refund.gateway_amount != gateway_part
+            ):
+                raise ValueError("The cancellation refund allocation changed after it was first created. Manual reconciliation is required.")
 
     for refund_id in created_ids:
         process_payment_refund(refund_id)
