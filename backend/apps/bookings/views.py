@@ -1276,6 +1276,31 @@ class BookingViewSet(viewsets.ModelViewSet):
                 data={"booking_id": locked_booking.id, "order_id": order.order_id if order else None},
             )
 
+        # A legacy full payment may settle before service completion.
+        # Sync here as well as from the final-balance webhook.
+        from apps.payments.models import Payment
+        from apps.workers.earnings import sync_worker_earning
+        order_item = OrderItem.objects.filter(booking_id=locked_booking.pk).select_related("order").first()
+        if order_item:
+            settled = Payment.objects.filter(
+                order=order_item.order,
+                status=Payment.Status.PAID,
+            ).filter(
+                Q(stage=Payment.Stage.LEGACY)
+                | Q(
+                    stage=Payment.Stage.BALANCE,
+                    appointment_group_id=locked_booking.appointment_group_id,
+                )
+            )
+        else:
+            settled = Payment.objects.filter(
+                booking=locked_booking,
+                stage=Payment.Stage.LEGACY,
+                status=Payment.Status.PAID,
+            )
+        for settled_payment in settled:
+            sync_worker_earning(locked_booking.pk, settled_payment.pk)
+
         return Response({
             "detail": "Service completion verified successfully.",
             "status": Booking.Status.COMPLETED,
