@@ -1807,6 +1807,10 @@ class CustomerOrderDetailView(APIView):
                 "order_item_id": row.id,
                 "booking_id": booking.id,
                 "appointment_group_id": booking.appointment_group_id,
+                "appointment_group_number": (
+                    booking.appointment_group.group_number
+                    if booking.appointment_group_id else None
+                ),
                 "appointment_group_message": (
                     booking.appointment_group.customer_message
                     if booking.appointment_group_id else ""
