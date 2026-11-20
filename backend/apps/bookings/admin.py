@@ -570,6 +570,12 @@ class BookingReworkProposalAdmin(ModelAdmin):
         obj.created_by = request.user
         super().save_model(request, obj, form, change)
 
+    def has_add_permission(self, request):
+        return request.user.is_staff
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_staff
+
     def has_change_permission(self, request, obj=None):
         return request.user.is_staff and obj is None
 
