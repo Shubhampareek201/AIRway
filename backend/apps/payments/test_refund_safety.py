@@ -181,6 +181,19 @@ class RefundRetrySafetyTests(TestCase):
         self.assertEqual(cancellation_refund.amount, Decimal("750.00"))
         self.assertEqual(cancellation_refund.gateway_amount, Decimal("750.00"))
 
+    def test_repeated_cancellation_refund_call_retries_same_pending_record(self):
+        refund_id = self.refund.pk
+        with patch("apps.payments.refunds.process_payment_refund") as process_refund:
+            first = request_booking_refunds(self.booking)
+            process_refund.assert_called_once_with(refund_id)
+        with patch("apps.payments.refunds.process_payment_refund") as process_refund:
+            second = request_booking_refunds(self.booking)
+            process_refund.assert_called_once_with(refund_id)
+
+        self.assertEqual(first.count(), 1)
+        self.assertEqual(second.count(), 1)
+        self.assertEqual(PaymentRefund.objects.filter(booking=self.booking).count(), 1)
+
     @patch("apps.payments.refunds.process_payment_refund")
     def test_separately_paid_extra_work_is_included_in_booking_refund(self, process_refund):
         worker_user = User.objects.create_user(
