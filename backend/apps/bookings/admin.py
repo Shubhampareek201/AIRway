@@ -1,6 +1,8 @@
 from django.contrib import admin, messages
 from django.db import transaction
 from django.utils import timezone
+from django.urls import reverse
+from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from unfold.admin import ModelAdmin, TabularInline
 
@@ -465,9 +467,28 @@ class BookingDisputeAdmin(ModelAdmin):
     readonly_fields = (
         "booking", "raised_by", "raised_by_role", "category", "description",
         "requested_outcome", "evidence_items", "resolved_by", "resolved_at",
-        "created_at", "updated_at",
+        "created_at", "updated_at", "refund_history",
     )
     fields = readonly_fields + ("status", "resolution_note")
+
+    @admin.display(description="Linked dispute refunds")
+    def refund_history(self, obj):
+        if not obj.pk:
+            return "Save the dispute first."
+        refunds = list(obj.payment_refunds.all())
+        if refunds:
+            return "; ".join(
+                "Refund #" + str(item.pk) + ": ₹" + str(item.amount)
+                + " (" + item.get_status_display() + ")"
+                for item in refunds
+            )
+        if (
+            obj.status == BookingDispute.Status.RESOLVED
+            and obj.requested_outcome == BookingDispute.RequestedOutcome.REFUND_REVIEW
+        ):
+            url = reverse("admin:payments_paymentrefund_add") + "?dispute=" + str(obj.pk)
+            return format_html('<a href="{}">Create linked dispute refund</a>', url)
+        return "No refund linked."
 
     def save_model(self, request, obj, form, change):
         if change:
