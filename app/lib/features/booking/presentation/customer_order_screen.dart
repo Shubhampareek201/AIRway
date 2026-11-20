@@ -1566,9 +1566,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ],
           ),
         ],
-        if (row['refunds'] is List && (row['refunds'] as List).isNotEmpty) ...[
+        if (_bookingLevelRefunds(row).isNotEmpty) ...[
           const SizedBox(height: 10),
-          refundSection((row['refunds'] as List).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()),
+          refundSection(_bookingLevelRefunds(row)),
         ],
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
@@ -1810,6 +1810,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         SnackBar(content: Text(AirwayText.tr('Could not submit rating: $e', 'रेटिंग भेजी नहीं जा सकी: $e'))),
       );
     }
+  }
+
+  List<Map<String, dynamic>> _bookingLevelRefunds(Map<String, dynamic> row) {
+    return (row['refunds'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((refund) => refund['extra_work_id'] == null)
+        .toList();
   }
 
   Widget refundSection(List<Map<String, dynamic>> refunds) {
