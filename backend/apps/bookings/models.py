@@ -808,3 +808,60 @@ class RecurringWashVisit(TimeStampedModel):
 
     def __str__(self):
         return f"Plan #{self.plan_id} visit {self.visit_number} ({self.status})"
+
+
+class BookingDispute(TimeStampedModel):
+    """Auditable customer/worker case linked to one service booking."""
+
+    class Category(models.TextChoices):
+        SERVICE_QUALITY = "service_quality", "Service quality"
+        DAMAGE = "damage", "Property or item damage"
+        PAYMENT = "payment", "Payment or refund"
+        WORKER_CONDUCT = "worker_conduct", "Professional conduct"
+        CUSTOMER_CONDUCT = "customer_conduct", "Customer conduct"
+        SAFETY = "safety", "Safety concern"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        IN_REVIEW = "in_review", "In review"
+        RESOLVED = "resolved", "Resolved"
+        REJECTED = "rejected", "Rejected"
+        CLOSED = "closed", "Closed"
+
+    class RequestedOutcome(models.TextChoices):
+        REFUND_REVIEW = "refund_review", "Refund review"
+        REWORK = "rework", "Rework or service recovery"
+        INVESTIGATION = "investigation", "Investigation"
+        OTHER = "other", "Other"
+
+    booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name="disputes")
+    raised_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="raised_booking_disputes"
+    )
+    raised_by_role = models.CharField(max_length=12, choices=[("customer", "Customer"), ("worker", "Worker")])
+    category = models.CharField(max_length=24, choices=Category.choices)
+    description = models.TextField(max_length=5000)
+    requested_outcome = models.CharField(max_length=24, choices=RequestedOutcome.choices)
+    evidence_items = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN, db_index=True)
+    resolution_note = models.TextField(blank=True, max_length=5000)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="resolved_booking_disputes",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "created_at"], name="booking_dispute_status_idx")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking"],
+                condition=models.Q(status__in=["open", "in_review"]),
+                name="one_active_dispute_per_booking",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Dispute #{self.pk} for booking #{self.booking_id} ({self.status})"
