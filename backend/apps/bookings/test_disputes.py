@@ -296,6 +296,35 @@ class BookingDisputeAPITests(TestCase):
         latest = next(row for row in listed.data if row["id"] == proposal.dispute_id)
         self.assertEqual(latest["rework_proposal"]["id"], replacement.pk)
 
+
+    def test_worker_rejection_reopens_rework_scheduling(self):
+        proposal = self._resolved_rework_proposal()
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/disputes/{proposal.dispute_id}/rework-decision/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        proposal.refresh_from_db()
+        followup = proposal.followup_booking
+        rejected = self.worker_client.post(
+            f"/api/v1/workers/jobs/{followup.assignment_id}/reject/",
+            {"reason": "Unexpected availability conflict"},
+            format="json",
+        )
+        self.assertEqual(rejected.status_code, 200, rejected.data)
+        proposal.refresh_from_db()
+        followup.refresh_from_db()
+        self.assertEqual(followup.status, Booking.Status.CANCELLED)
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.EXPIRED)
+        replacement = BookingReworkProposal.objects.create(
+            dispute=proposal.dispute,
+            worker=self.worker,
+            scheduled_at=timezone.now() + timedelta(days=4),
+            created_by=self.staff_user,
+        )
+        self.assertEqual(replacement.dispute_id, proposal.dispute_id)
+
     def test_unrelated_user_cannot_accept_rework_proposal(self):
         proposal = self._resolved_rework_proposal()
         response = self.other_client.post(
