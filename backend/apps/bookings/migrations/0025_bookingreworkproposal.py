@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("scheduled_at", models.DateTimeField()),
-                ("status", models.CharField(choices=[("pending_customer", "Awaiting customer decision"), ("accepted", "Accepted"), ("declined", "Declined"), ("expired", "Expired")], db_index=True, default="pending_customer", max_length=24)),
+                ("status", models.CharField(choices=[("pending_customer", "Awaiting customer decision"), ("accepted", "Accepted"), ("declined", "Declined"), ("expired", "Expired"), ("cancelled", "Cancelled by customer")], db_index=True, default="pending_customer", max_length=24)),
                 ("responded_at", models.DateTimeField(blank=True, null=True)),
                 ("created_by", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="created_booking_rework_proposals", to=settings.AUTH_USER_MODEL)),
                 ("dispute", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="rework_proposals", to="bookings.bookingdispute")),
