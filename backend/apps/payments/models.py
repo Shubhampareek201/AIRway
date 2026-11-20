@@ -16,6 +16,7 @@ class Payment(TimeStampedModel):
         LEGACY = "legacy", "Legacy full payment"
         ADVANCE = "advance", "30% advance"
         BALANCE = "balance", "70% balance"
+        EXTRA_WORK = "extra_work", "Approved extra work"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -44,6 +45,14 @@ class Payment(TimeStampedModel):
         null=True,
         blank=True,
         help_text="Set for a balance payment belonging to one completed appointment group.",
+    )
+    extra_work = models.OneToOneField(
+        "bookings.BookingExtraWork",
+        on_delete=models.PROTECT,
+        related_name="payment",
+        null=True,
+        blank=True,
+        help_text="Set only for a separately paid approved extra-work proposal.",
     )
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -79,12 +88,13 @@ class Payment(TimeStampedModel):
                 condition=(
                     models.Q(order__isnull=False)
                     & models.Q(appointment_group__isnull=True)
+                    & ~models.Q(stage="extra_work")
                 ),
                 name="unique_order_payment_stage",
             ),
             models.UniqueConstraint(
                 fields=["appointment_group", "stage"],
-                condition=models.Q(appointment_group__isnull=False),
+                condition=models.Q(appointment_group__isnull=False, stage="balance"),
                 name="unique_appointment_group_payment_stage",
             ),
             models.CheckConstraint(
@@ -93,6 +103,11 @@ class Payment(TimeStampedModel):
                     | models.Q(order__isnull=False)
                 ),
                 name="group_payment_requires_parent_order",
+            ),
+            models.UniqueConstraint(
+                fields=["extra_work"],
+                condition=models.Q(extra_work__isnull=False),
+                name="unique_extra_work_payment",
             ),
             models.UniqueConstraint(
                 fields=["razorpay_order_id"],
