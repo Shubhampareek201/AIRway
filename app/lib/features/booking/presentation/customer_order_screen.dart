@@ -837,6 +837,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             : 'The proposed recovery visit was declined.'),
       ));
     } catch (e) {
+      await loadDisputes(force: true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not update the recovery visit: $e')),
