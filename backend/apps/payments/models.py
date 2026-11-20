@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from simple_history.models import HistoricalRecords
 
-from apps.bookings.models import Booking, Order
+from apps.bookings.models import AppointmentGroup, Booking, Order
 from apps.core.models import TimeStampedModel
 
 
@@ -37,6 +37,14 @@ class Payment(TimeStampedModel):
         null=True,
         blank=True,
     )
+    appointment_group = models.ForeignKey(
+        AppointmentGroup,
+        on_delete=models.PROTECT,
+        related_name="payments",
+        null=True,
+        blank=True,
+        help_text="Set for a balance payment belonging to one completed appointment group.",
+    )
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -68,8 +76,23 @@ class Payment(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["order", "stage"],
-                condition=models.Q(order__isnull=False),
+                condition=(
+                    models.Q(order__isnull=False)
+                    & models.Q(appointment_group__isnull=True)
+                ),
                 name="unique_order_payment_stage",
+            ),
+            models.UniqueConstraint(
+                fields=["appointment_group", "stage"],
+                condition=models.Q(appointment_group__isnull=False),
+                name="unique_appointment_group_payment_stage",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(appointment_group__isnull=True)
+                    | models.Q(order__isnull=False)
+                ),
+                name="group_payment_requires_parent_order",
             ),
             models.UniqueConstraint(
                 fields=["razorpay_order_id"],
