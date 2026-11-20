@@ -213,12 +213,6 @@ class CustomerExtraWorkDecisionView(APIView):
         booking = Booking.objects.select_for_update().get(pk=proposal.booking_id)
         if booking.status != Booking.Status.IN_PROGRESS:
             return Response({"detail": "The appointment is no longer in progress; this proposal cannot be approved."}, status=status.HTTP_409_CONFLICT)
-        if proposal.expires_at and proposal.expires_at <= timezone.now():
-            proposal.status = BookingExtraWork.Status.EXPIRED
-            proposal.responded_at = timezone.now()
-            proposal.save(update_fields=["status", "responded_at", "updated_at"])
-            return Response({"detail": "This proposal has expired."}, status=status.HTTP_409_CONFLICT)
-
         decision = request.data.get("decision")
         note = str(request.data.get("note", "")).strip()[:1000]
         if decision == "reject":
