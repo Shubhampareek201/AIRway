@@ -1595,6 +1595,81 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_409_CONFLICT,
                     )
 
+            if group_offer:
+                from apps.availability.models import WorkerBlockedSlot
+                from apps.bookings.services import _booking_intervals, _intervals_overlap
+
+                group_duration = 0
+                for booking in bookings:
+                    duration = (
+                        booking.variant.duration_minutes
+                        if booking.variant_id and booking.variant.duration_minutes
+                        else booking.service.duration_minutes
+                    ) or 60
+                    quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                    duration *= 1 if booking.service.pricing_type == "per_unit" else quantity
+                    group_duration += duration + max(int(booking.service.buffer_minutes or 0), 0)
+
+                group_start = group.scheduled_at
+                group_end = group_start + timedelta(minutes=max(group_duration, 1))
+                local_start = timezone.localtime(group_start)
+                local_end = timezone.localtime(group_end)
+                if local_start.date() != local_end.date() or not worker.schedules.filter(
+                    weekday=local_start.weekday(),
+                    is_active=True,
+                    start_time__lte=local_start.time(),
+                    end_time__gte=local_end.time(),
+                ).exists():
+                    return Response(
+                        {"detail": "Your working schedule no longer covers the full appointment duration."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if WorkerBlockedSlot.objects.filter(
+                    worker=worker.user, start_at__lt=group_end, end_at__gt=group_start
+                ).exists() or worker.leaves.filter(
+                    start_at__lt=group_end, end_at__gt=group_start
+                ).exists():
+                    return Response(
+                        {"detail": "You have a blocked time or leave during this appointment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                existing_assignments = BookingAssignment.objects.filter(
+                    worker=worker,
+                    booking__status__in=(
+                        Booking.Status.ASSIGNED, Booking.Status.CONFIRMED,
+                        Booking.Status.IN_PROGRESS,
+                    ),
+                ).exclude(booking__appointment_group=group).select_related(
+                    "booking__service", "booking__variant"
+                )
+                for existing_assignment in existing_assignments:
+                    existing = existing_assignment.booking
+                    existing_duration = (
+                        existing.variant.duration_minutes
+                        if existing.variant_id and existing.variant.duration_minutes
+                        else existing.service.duration_minutes
+                    ) or 60
+                    existing_quantity = max(int((existing.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                    existing_duration *= (
+                        1 if existing.service.pricing_type == "per_unit"
+                        else existing_quantity
+                    )
+                    occupied = _booking_intervals(
+                        existing.scheduled_at,
+                        existing_duration,
+                        existing.service.buffer_minutes,
+                        existing.drop_scheduled_at
+                        if existing.booking_mode == Booking.BookingMode.PICKUP_DROP else None,
+                    )
+                    if any(
+                        _intervals_overlap((group_start, group_end), interval)
+                        for interval in occupied
+                    ):
+                        return Response(
+                            {"detail": "You are no longer available for the full appointment duration."},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+
             assignments = []
             for booking in bookings:
                 assignment = BookingAssignment.objects.create(
