@@ -401,12 +401,30 @@ def create_or_get_order_payment(
                     "0",
                 )))
                 if line_value > 0:
-                    line_values.append((active_item, line_value))
+                    line_values.append((active_item, line_value, "service"))
+            if stage == Payment.Stage.BALANCE:
+                extra_work_due = BookingExtraWork.objects.filter(
+                    booking__order_item__order=locked_order,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                )
+                if appointment_group is not None:
+                    extra_work_due = extra_work_due.filter(appointment_group=appointment_group)
+                else:
+                    extra_work_due = extra_work_due.filter(appointment_group__isnull=True)
+                line_values.extend(
+                    (extra_work, extra_work.total_amount, "extra_work")
+                    for extra_work in extra_work_due
+                )
         else:
-            line_values = [(item, item.line_total) for item in locked_items if item.line_total > 0]
+            line_values = [
+                (item, item.line_total, "service")
+                for item in locked_items if item.line_total > 0
+            ]
         service_rows = []
         wallet_allocated = Decimal("0.00")
-        for index, (active_item, line_value) in enumerate(line_values):
+        for index, (allocation_item, line_value, allocation_type) in enumerate(line_values):
             if index == len(line_values) - 1:
                 wallet_line = requested - wallet_allocated
             else:
@@ -417,15 +435,18 @@ def create_or_get_order_payment(
                     wallet_line,
                     max(Decimal("0.00"), requested - wallet_allocated),
                 )
-                wallet_allocated += wallet_line
             wallet_line = max(Decimal("0.00"), min(wallet_line, line_value))
+            wallet_allocated += wallet_line
             service_rows.append({
-                "order_item_id": active_item.id,
-                "booking_id": active_item.booking_id,
+                "allocation_type": allocation_type,
+                "order_item_id": allocation_item.id if allocation_type == "service" else None,
+                "booking_id": allocation_item.booking_id if allocation_type == "service" else allocation_item.booking_id,
+                "extra_work_id": allocation_item.id if allocation_type == "extra_work" else None,
                 "total": str(line_value),
                 "wallet_amount": str(wallet_line),
                 "gateway_amount": str(line_value - wallet_line),
             })
+
         payment.raw_response = {
             **(payment.raw_response or {}),
             "service_allocation_v1": service_rows,
