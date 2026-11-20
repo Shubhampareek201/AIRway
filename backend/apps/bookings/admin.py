@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django import forms
 from django.db import transaction
 from django.utils import timezone
 from django.urls import reverse
@@ -26,6 +27,7 @@ from .models import (
     RecurringWashPlan,
     RecurringWashVisit,
     BookingDispute,
+    BookingReworkProposal,
     BookingDisputeEvidence,
 )
 
@@ -458,6 +460,112 @@ class BookingDisputeEvidenceInline(TabularInline):
     fields = readonly_fields
 
 
+
+class BookingReworkProposalAdminForm(forms.ModelForm):
+    class Meta:
+        model = BookingReworkProposal
+        fields = ("dispute", "worker", "scheduled_at")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["dispute"].queryset = BookingDispute.objects.filter(
+            status=BookingDispute.Status.RESOLVED,
+            requested_outcome=BookingDispute.RequestedOutcome.REWORK,
+            resolved_by__isnull=False,
+            resolved_at__isnull=False,
+        ).select_related("booking__service", "booking__address__zone")
+        self.fields["worker"].queryset = self.fields["worker"].queryset.filter(
+            status="approved",
+            is_online=True,
+        ).distinct()
+        dispute_id = self.data.get("dispute") or self.initial.get("dispute")
+        if dispute_id:
+            dispute = BookingDispute.objects.filter(pk=dispute_id).select_related(
+                "booking__service", "booking__address__zone"
+            ).first()
+            if dispute:
+                self.fields["worker"].queryset = self.fields["worker"].queryset.filter(
+                    worker_services__service=dispute.booking.service,
+                    worker_zones__zone=dispute.booking.address.zone,
+                ).distinct()
+
+    def clean(self):
+        cleaned = super().clean()
+        dispute = cleaned.get("dispute")
+        worker = cleaned.get("worker")
+        scheduled_at = cleaned.get("scheduled_at")
+        if not (dispute and worker and scheduled_at):
+            return cleaned
+        booking = dispute.booking
+        if (
+            dispute.status != BookingDispute.Status.RESOLVED
+            or dispute.requested_outcome != BookingDispute.RequestedOutcome.REWORK
+            or dispute.resolved_by_id is None
+        ):
+            self.add_error("dispute", "Only an Admin-resolved rework case can receive a recovery appointment.")
+            return cleaned
+        if booking.booking_mode != Booking.BookingMode.SCHEDULED:
+            self.add_error("dispute", "Automatic rework scheduling currently supports scheduled services only.")
+            return cleaned
+        if scheduled_at <= timezone.now():
+            self.add_error("scheduled_at", "Choose a future recovery appointment time.")
+            return cleaned
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.workers.eligibility import required_worker_gender_for_booking
+        duration = (
+            booking.variant.duration_minutes
+            if booking.variant_id and booking.variant.duration_minutes
+            else booking.service.duration_minutes
+        ) or 60
+        required_gender = required_worker_gender_for_booking(
+            booking.service, booking.customer_answers
+        )
+        eligible = DispatcherService._get_eligible_workers(
+            service=booking.service,
+            zone=booking.address.zone,
+            scheduled_at=scheduled_at,
+            duration_minutes=duration,
+            exclude_booking_id=booking.pk,
+            exclude_customer_id=booking.customer_id,
+            required_gender=required_gender,
+            required_tasks=(booking.variant.included_tasks if booking.variant_id else []),
+        )
+        if not eligible.filter(pk=worker.pk).exists():
+            self.add_error(
+                "worker",
+                "This professional is not currently eligible or available for the selected service, zone and time.",
+            )
+        return cleaned
+
+
+@admin.register(BookingReworkProposal)
+class BookingReworkProposalAdmin(ModelAdmin):
+    form = BookingReworkProposalAdminForm
+    list_display = ("id", "dispute", "worker", "scheduled_at", "status", "followup_booking")
+    list_filter = ("status", "scheduled_at")
+    search_fields = ("dispute__booking__id", "worker__user__phone")
+    readonly_fields = ("status", "created_by", "responded_at", "followup_booking", "created_at", "updated_at")
+    fields = ("dispute", "worker", "scheduled_at") + readonly_fields
+
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        dispute_id = request.GET.get("dispute")
+        if dispute_id:
+            initial["dispute"] = dispute_id
+        return initial
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            raise ValidationError("A rework proposal cannot be edited after it is sent to the customer.")
+        obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_staff and obj is None
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 @admin.register(BookingDispute)
 class BookingDisputeAdmin(ModelAdmin):
     inlines = [BookingDisputeEvidenceInline]
@@ -467,7 +575,7 @@ class BookingDisputeAdmin(ModelAdmin):
     readonly_fields = (
         "booking", "raised_by", "raised_by_role", "category", "description",
         "requested_outcome", "evidence_items", "resolved_by", "resolved_at",
-        "created_at", "updated_at", "refund_history",
+        "created_at", "updated_at", "refund_history", "rework_action",
     )
     fields = readonly_fields + ("status", "resolution_note")
 
@@ -489,6 +597,22 @@ class BookingDisputeAdmin(ModelAdmin):
             url = reverse("admin:payments_paymentrefund_add") + "?dispute=" + str(obj.pk)
             return format_html('<a href="{}">Create linked dispute refund</a>', url)
         return "No refund linked."
+
+    @admin.display(description="Rework scheduling")
+    def rework_action(self, obj):
+        if (
+            obj.status != BookingDispute.Status.RESOLVED
+            or obj.requested_outcome != BookingDispute.RequestedOutcome.REWORK
+        ):
+            return "Resolve this rework case before scheduling."
+        proposal = getattr(obj, "rework_proposal", None)
+        if proposal:
+            return (
+                f"Proposal #{proposal.pk}: {proposal.get_status_display()} — "
+                f"{timezone.localtime(proposal.scheduled_at):%d %b %Y, %I:%M %p}"
+            )
+        url = reverse("admin:bookings_bookingreworkproposal_add") + "?dispute=" + str(obj.pk)
+        return format_html('<a href="{}">Propose a no-charge rework appointment</a>', url)
 
     def save_model(self, request, obj, form, change):
         if change:
