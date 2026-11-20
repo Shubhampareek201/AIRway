@@ -998,8 +998,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             service__is_active=True,
             service__category__is_active=True,
         ).select_related("service", "service__category").order_by("service__title") if worker_is_approved else worker.worker_services.none()
+        location_window_open = timezone.now() >= booking.scheduled_at - timedelta(minutes=30)
         location_is_fresh = bool(
             worker_is_approved
+            and assignment.location_sharing_enabled
+            and location_window_open
             and assignment.accepted_at
             and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
             and assignment.live_location_updated_at
@@ -1035,7 +1038,17 @@ class BookingViewSet(viewsets.ModelViewSet):
             "worker_longitude": float(assignment.live_longitude) if location_is_fresh else None,
             "worker_location_accuracy_m": float(assignment.live_accuracy_m) if location_is_fresh and assignment.live_accuracy_m is not None else None,
             "worker_location_updated_at": assignment.live_location_updated_at.isoformat() if location_is_fresh else None,
+            "location_sharing_enabled": bool(assignment.location_sharing_enabled),
+            "location_window_open": location_window_open,
             "location_is_fresh": location_is_fresh,
+            "location_unavailable_reason": (
+                None if location_is_fresh else
+                "Worker has not enabled live location sharing."
+                if not assignment.location_sharing_enabled else
+                "Live location becomes visible 30 minutes before the appointment."
+                if not location_window_open else
+                "Live location unavailable or the latest GPS update is stale."
+            ),
         })
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
