@@ -308,7 +308,7 @@ class BookingDisputeAPITests(TestCase):
         proposal.refresh_from_db()
         followup = proposal.followup_booking
         rejected = self.worker_client.post(
-            f"/api/v1/workers/jobs/{followup.assignment_id}/reject/",
+            f"/api/v1/workers/jobs/{followup.assignment.pk}/reject/",
             {"reason": "Unexpected availability conflict"},
             format="json",
         )
