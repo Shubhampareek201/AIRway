@@ -424,6 +424,75 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           const Text('Additional work', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
           const SizedBox(height: 6),
           const Text('If the customer needs work beyond the booked service, send a priced request. Do not start or charge for it until the customer approves.'),
+          if (job.extraWorkRequests.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Divider(),
+            const Text('Request history', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            ...job.extraWorkRequests.map((request) {
+              final status = request['status']?.toString() ?? 'pending_customer';
+              final label = switch (status) {
+                'approved' => 'Approved',
+                'rejected' => 'Declined',
+                'expired' => 'Expired',
+                'cancelled' => 'Cancelled',
+                _ => 'Awaiting customer',
+              };
+              final paymentStatus = request['payment_status']?.toString() ?? 'not_due';
+              final paymentLabel = paymentStatus == 'paid'
+                  ? 'Paid'
+                  : paymentStatus == 'pending'
+                      ? 'Payment pending'
+                      : '';
+              final items = (request['line_items'] as List? ?? [])
+                  .whereType<Map>()
+                  .map((item) => item['description']?.toString() ?? '')
+                  .where((value) => value.isNotEmpty)
+                  .join(', ');
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AirwayColors.primarySoft.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
+                          Text('₹${request['total_amount'] ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                      if ((request['reason']?.toString() ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(request['reason'].toString()),
+                        ),
+                      if (items.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(items, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                        ),
+                      if (paymentLabel.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(paymentLabel, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                        ),
+                      if ((request['customer_response_note']?.toString() ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('Customer note: ${request['customer_response_note']}'),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
           const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: FilledButton.icon(
             onPressed: _isActionInProgress ? null : _proposeExtraWork,
