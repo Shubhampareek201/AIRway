@@ -521,7 +521,7 @@ def create_or_get_extra_work_payment(extra_work, customer, wallet_amount="0.00")
         raise ValueError("Wallet amount cannot exceed the extra-work total.")
 
     with transaction.atomic():
-        locked = BookingExtraWork.objects.select_for_update().select_related(
+        locked = BookingExtraWork.objects.select_for_update(of=("self",)).select_related(
             "booking__order_item__order"
         ).get(pk=extra_work.pk, booking__customer=customer)
         payment = Payment.objects.select_for_update().filter(extra_work=locked).first()
