@@ -57,6 +57,7 @@ class WorkerProfileAdmin(ModelAdmin):
         "document_summary",
         "service_summary",
         "zone_summary",
+        "commission_rate",
         "created_at",
     )
     list_display_links = ("worker_name", "worker_phone")
@@ -401,7 +402,7 @@ class WorkerLeaveAdmin(ModelAdmin):
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
         "id", "worker", "booking", "gross_amount", "commission_rate",
-        "commission_amount", "net_amount", "status", "paid_at", "paid_by",
+        "commission_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
     search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "payout_reference")
