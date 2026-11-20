@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.models import Notification
+
 from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork
 from apps.workers.models import WorkerProfile
 
@@ -34,6 +36,35 @@ def _extra_work_payload(item):
         "approved_at": item.approved_at.isoformat() if item.approved_at else None,
         "created_at": item.created_at.isoformat(),
     }
+
+
+
+def _notify_extra_work(user, *, title, body, proposal, event):
+    """Best-effort in-app event; notification failure must not break the job."""
+    try:
+        Notification.objects.get_or_create(
+            user=user,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title=title,
+            data__extra_work_id=proposal.pk,
+            data__event=event,
+            defaults={
+                "body": body,
+                "channel": Notification.Channel.IN_APP,
+                "data": {
+                    "extra_work_id": proposal.pk,
+                    "booking_id": proposal.booking_id,
+                    "appointment_group_id": proposal.appointment_group_id,
+                    "event": event,
+                },
+            },
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Could not create %s notification for extra-work proposal %s",
+            event, proposal.pk,
+        )
 
 
 class WorkerExtraWorkProposalView(APIView):
@@ -115,6 +146,13 @@ class WorkerExtraWorkProposalView(APIView):
         except IntegrityError:
             return Response({"detail": "A pending extra-work proposal already exists for this booking."}, status=status.HTTP_409_CONFLICT)
 
+        _notify_extra_work(
+            booking.customer,
+            title="Additional work needs your approval",
+            body=f"Your AIRway professional requested ₹{proposal.total_amount} for additional work. Review the details before approving.",
+            proposal=proposal,
+            event="proposed",
+        )
         return Response(_extra_work_payload(proposal), status=status.HTTP_201_CREATED)
 
 
@@ -175,4 +213,15 @@ class CustomerExtraWorkDecisionView(APIView):
             "status", "payment_choice", "payment_status", "customer_response_note",
             "approved_at", "responded_at", "updated_at",
         ])
+        _notify_extra_work(
+            proposal.worker.user,
+            title="Customer responded to extra-work request",
+            body=(
+                f"The customer approved the additional work for ₹{proposal.total_amount}."
+                if decision == "approve"
+                else "The customer declined the additional work request."
+            ),
+            proposal=proposal,
+            event=f"customer_{decision}",
+        )
         return Response(_extra_work_payload(proposal))
