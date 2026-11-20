@@ -3,6 +3,7 @@ name: Worker approval backend tests
 on:
   pull_request:
     branches:
+      - feat/appointment-group-foundation
       - feat/worker-onboarding-service-availability
       - feat/airway-30-70-payment-lifecycle
       - feat/airway-account-profile-preferences
