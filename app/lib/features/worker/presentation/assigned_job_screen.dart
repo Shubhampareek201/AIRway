@@ -324,6 +324,117 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
+
+  Future<void> _proposeExtraWork() async {
+    final job = _jobDetail;
+    if (job == null || job.status != BookingStatus.inProgress || _isActionInProgress) return;
+    final reasonController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final priceController = TextEditingController();
+    final quantityController = TextEditingController(text: '1');
+    final durationController = TextEditingController(text: '0');
+    final proposal = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Request additional work'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Explain why the additional work is needed and enter its price. The customer must approve it before any extra charge is made.'),
+            const SizedBox(height: 12),
+            TextField(controller: reasonController, maxLength: 500, maxLines: 2,
+              decoration: const InputDecoration(labelText: 'Reason', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: descriptionController, maxLength: 250,
+              decoration: const InputDecoration(labelText: 'Additional work item', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: TextField(controller: quantityController, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()))),
+              const SizedBox(width: 8),
+              Expanded(child: TextField(controller: priceController, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Unit price (₹)', border: OutlineInputBorder()))),
+            ]),
+            const SizedBox(height: 8),
+            TextField(controller: durationController, keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Extra time (minutes)', border: OutlineInputBorder())),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () {
+            final reason = reasonController.text.trim();
+            final description = descriptionController.text.trim();
+            final quantity = int.tryParse(quantityController.text.trim());
+            final price = double.tryParse(priceController.text.trim());
+            final duration = int.tryParse(durationController.text.trim());
+            if (reason.isEmpty || description.isEmpty || quantity == null || quantity < 1 ||
+                price == null || !price.isFinite || price <= 0 ||
+                duration == null || duration < 0 || duration > 600) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('Enter a reason, item, valid quantity, positive price and extra time between 0 and 600 minutes.')),
+              );
+              return;
+            }
+            Navigator.pop(dialogContext, {
+              'reason': reason,
+              'description': description,
+              'quantity': quantity.toString(),
+              'unit_price': price.toStringAsFixed(2),
+              'duration': duration.toString(),
+            });
+          }, child: const Text('Send for approval')),
+        ],
+      ),
+    );
+    reasonController.dispose();
+    descriptionController.dispose();
+    priceController.dispose();
+    quantityController.dispose();
+    durationController.dispose();
+    if (proposal == null || !mounted) return;
+    setState(() => _isActionInProgress = true);
+    try {
+      await WorkerApi.proposeExtraWork(
+        job.bookingId,
+        reason: proposal['reason']!,
+        description: proposal['description']!,
+        quantity: int.parse(proposal['quantity']!),
+        unitPrice: proposal['unit_price']!,
+        additionalDurationMinutes: int.parse(proposal['duration']!),
+      );
+      await _loadAssignedJob();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Extra-work request sent. Wait for customer approval before proceeding.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not send extra-work request: ' + e.toString())));
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  Widget _buildExtraWorkCard(WorkerAssignmentDetail job) {
+    if (job.status != BookingStatus.inProgress) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Additional work', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 6),
+          const Text('If the customer needs work beyond the booked service, send a priced request. Do not start or charge for it until the customer approves.'),
+          const SizedBox(height: 10),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: _isActionInProgress ? null : _proposeExtraWork,
+            icon: const Icon(Icons.add_task_rounded),
+            label: const Text('Request customer approval'),
+          )),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _completeJob() async {
     if (!mounted || _jobDetail == null) return;
     setState(() => _isActionInProgress = true);
@@ -452,6 +563,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             _buildPaymentInfo(job),
             const SizedBox(height: 16),
             _buildQuoteCard(job),
+            const SizedBox(height: 16),
+            _buildExtraWorkCard(job),
             const SizedBox(height: 16),
             _buildEvidenceCard(job),
             const SizedBox(height: 16),
