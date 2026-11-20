@@ -204,6 +204,15 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertIsNone(self.assignment.live_latitude)
         self.assertIsNone(self.assignment.live_location_updated_at)
 
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=self.customer)
+        tracking = customer_client.get(
+            f"/api/v1/bookings/{self.booking.pk}/track/"
+        )
+        self.assertEqual(tracking.status_code, 200)
+        self.assertFalse(tracking.data["location_is_fresh"])
+        self.assertIsNone(tracking.data["worker_latitude"])
+
     def test_only_assigned_worker_can_request_completion_code(self):
         other_user = User.objects.create_user(
             phone="+919876543203", password="password123"
