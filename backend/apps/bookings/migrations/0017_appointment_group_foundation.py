@@ -80,6 +80,18 @@ class Migration(migrations.Migration):
                 to="bookings.appointmentgroup",
             ),
         ),
+        migrations.AddField(
+            model_name="historicalbooking",
+            name="appointment_group",
+            field=models.ForeignKey(
+                blank=True,
+                db_constraint=False,
+                null=True,
+                on_delete=django.db.models.deletion.DO_NOTHING,
+                related_name="+",
+                to="bookings.appointmentgroup",
+            ),
+        ),
         migrations.AddConstraint(
             model_name="appointmentgroup",
             constraint=models.UniqueConstraint(
