@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -90,18 +91,26 @@ class WorkerExtraWorkProposalView(APIView):
             return Response({"detail": "The proposal total is outside the allowed range."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            proposal = BookingExtraWork.objects.create(
-                booking=booking,
-                appointment_group=booking.appointment_group,
-                worker=worker,
-                reason=reason,
-                line_items=items,
-                subtotal=subtotal,
-                tax_amount=Decimal("0.00"),
-                total_amount=subtotal,
-                additional_duration_minutes=max(0, min(int(request.data.get("additional_duration_minutes", 0)), 600)),
-                expires_at=timezone.now() + timezone.timedelta(hours=24),
-            )
+            duration = int(request.data.get("additional_duration_minutes", 0))
+            if duration < 0 or duration > 600:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({"detail": "Additional duration must be between 0 and 600 minutes."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                proposal = BookingExtraWork.objects.create(
+                    booking=booking,
+                    appointment_group=booking.appointment_group,
+                    worker=worker,
+                    reason=reason,
+                    line_items=items,
+                    subtotal=subtotal,
+                    tax_amount=Decimal("0.00"),
+                    total_amount=subtotal,
+                    additional_duration_minutes=duration,
+                    expires_at=timezone.now() + timedelta(hours=24),
+                )
         except IntegrityError:
             return Response({"detail": "A pending extra-work proposal already exists for this booking."}, status=status.HTTP_409_CONFLICT)
 
