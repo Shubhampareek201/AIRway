@@ -198,6 +198,19 @@ def create_or_get_order_payment(
             ),
             Decimal("0.00"),
         )
+
+    if stage == Payment.Stage.BALANCE:
+        extra_work_query = BookingExtraWork.objects.filter(
+            booking__order_item__order=order,
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+            payment_status="pending",
+        )
+        if appointment_group is not None:
+            extra_work_query = extra_work_query.filter(appointment_group=appointment_group)
+        else:
+            extra_work_query = extra_work_query.filter(appointment_group__isnull=True)
+        stage_total += sum(extra_work_query.values_list("total_amount", flat=True), Decimal("0.00"))
     else:
         stage_total = order.total_amount
     if stage == Payment.Stage.LEGACY:
@@ -302,6 +315,21 @@ def create_or_get_order_payment(
                 ),
                 Decimal("0.00"),
             )
+            if stage == Payment.Stage.BALANCE:
+                locked_extra_work = BookingExtraWork.objects.filter(
+                    booking__order_item__order=locked_order,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                )
+                if appointment_group is not None:
+                    locked_extra_work = locked_extra_work.filter(appointment_group=appointment_group)
+                else:
+                    locked_extra_work = locked_extra_work.filter(appointment_group__isnull=True)
+                locked_stage_total += sum(
+                    locked_extra_work.values_list("total_amount", flat=True),
+                    Decimal("0.00"),
+                )
             if locked_stage_total != stage_total:
                 raise ValueError("The order changed while checkout was starting. Refresh the order and retry.")
             if stage == Payment.Stage.BALANCE and (
