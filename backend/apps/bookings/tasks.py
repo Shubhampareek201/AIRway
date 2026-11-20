@@ -160,17 +160,25 @@ def timeout_pending_payments():
                 "advance": "30% advance",
                 "balance": "final balance",
                 "legacy": "full order payment",
+                "extra_work": "approved extra-work payment",
             }.get(payment.stage, "order payment")
+            is_extra_work = bool(payment.extra_work_id)
             Notification.objects.create(
                 user=payment.customer,
                 type=Notification.Type.PAYMENT_TIMEOUT,
-                title="Order Payment Timed Out",
-                body=f"Your {stage_label} timed out. The wallet amount has been released; you can retry this payment stage.",
+                title="Extra-work Payment Timed Out" if is_extra_work else "Order Payment Timed Out",
+                body=(
+                    f"Your {stage_label} attempt timed out. The wallet amount has been released; "
+                    "your approved request is still available to retry."
+                    if is_extra_work else
+                    f"Your {stage_label} timed out. The wallet amount has been released; you can retry this payment stage."
+                ),
                 channel=Notification.Channel.IN_APP,
                 data={
                     "order_id": payment.order_id,
                     "payment_id": payment.id,
                     "payment_stage": payment.stage,
+                    "extra_work_id": payment.extra_work_id,
                 },
             )
             count += 1
