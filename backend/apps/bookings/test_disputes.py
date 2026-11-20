@@ -247,6 +247,13 @@ class BookingDisputeAPITests(TestCase):
         self.assertEqual(followup.assignment.worker_id, self.worker.pk)
         self.assertIsNotNone(followup.assignment.accepted_at)
         self.assertTrue(followup.notes.startswith("No-charge AIRway service recovery"))
+        worker_detail = self.worker_client.get(
+            f"/api/v1/workers/jobs/{followup.assignment.pk}/"
+        )
+        self.assertEqual(worker_detail.status_code, 200, worker_detail.data)
+        self.assertEqual(worker_detail.data["payment_label"], "No-charge service recovery")
+        self.assertEqual(worker_detail.data["rework_case"]["category"], proposal.dispute.category)
+        self.assertIn("Reason:", worker_detail.data["notes"])
 
 
     def test_completed_rework_creates_airway_funded_worker_earning(self):
