@@ -31,6 +31,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   final Razorpay razorpay = Razorpay();
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
   Map<String, dynamic>? order;
+  List<Map<String, dynamic>> disputes = [];
   double walletBalance = 0;
   bool walletLoading = true;
   bool loading = true;
@@ -72,6 +73,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     try {
       final result = await BookingApi.request('/api/v1/bookings/orders/' + widget.orderId.toString() + '/');
       if (mounted) setState(() { order = Map<String, dynamic>.from(result); loading = false; error = null; });
+      await loadDisputes();
     } catch (e) {
       if (mounted) setState(() { loading = false; error = e.toString(); });
     }
@@ -654,6 +656,69 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         SnackBar(content: Text('Could not submit report: $e')),
       );
     }
+  }
+
+  Future<void> loadDisputes() async {
+    try {
+      final result = await BookingApi.getDisputes();
+      if (!mounted) return;
+      setState(() => disputes = result);
+    } catch (_) {
+      // Order details remain usable if support history is temporarily unavailable.
+    }
+  }
+
+  Widget disputeSection(Map<String, dynamic> row) {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return const SizedBox.shrink();
+    final items = disputes.where((item) =>
+        int.tryParse(item['booking_id']?.toString() ?? '') == bookingId).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: pale,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: line),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.support_agent_rounded, color: violet, size: 17),
+          SizedBox(width: 7),
+          Text('Your AIRway support reports', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12)),
+        ]),
+        const SizedBox(height: 8),
+        for (final item in items) ...[
+          Row(children: [
+            Expanded(child: Text(
+              (item['category']?.toString() ?? 'other').replaceAll('_', ' '),
+              style: const TextStyle(fontWeight: FontWeight.w700, color: ink, fontSize: 12),
+            )),
+            Text(
+              (item['status']?.toString() ?? 'open').replaceAll('_', ' ').toUpperCase(),
+              style: const TextStyle(fontWeight: FontWeight.w800, color: violet, fontSize: 10),
+            ),
+          ]),
+          if ((item['resolution_note']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(item['resolution_note'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
+          ],
+          finalEvidenceCount(item),
+          if (items.last != item) const Divider(height: 14, color: line),
+        ],
+      ]),
+    );
+  }
+
+  Widget finalEvidenceCount(Map<String, dynamic> item) {
+    final files = item['evidence_files'] as List? ?? const [];
+    if (files.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text('${files.length} evidence photo(s) attached', style: const TextStyle(color: sub, fontSize: 11)),
+    );
   }
 
   Future<void> cancelService(Map<String, dynamic> row) async {
@@ -1638,6 +1703,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           _quoteCard(row),
         ],
         extraWorkSection(row),
+        disputeSection(row),
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 12),
