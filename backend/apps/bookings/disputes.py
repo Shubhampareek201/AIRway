@@ -209,6 +209,8 @@ class BookingDisputeDetailView(APIView):
             recipients[assignment.worker.user_id] = assignment.worker.user
         status_label = dispute.get_status_display()
         for recipient in recipients.values():
+            if recipient.pk == request.user.pk:
+                continue
             Notification.objects.create(
                 user=recipient,
                 type=Notification.Type.SYSTEM_ANNOUNCEMENT,
