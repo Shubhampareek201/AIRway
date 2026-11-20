@@ -616,6 +616,10 @@ def _process_verified_payment(
                 if payment.appointment_group_id else order_items
             )
             settled_booking_ids = [row.booking_id for row in settled_items]
+            if payment.stage in (Payment.Stage.BALANCE, Payment.Stage.LEGACY):
+                from apps.workers.earnings import sync_worker_earning
+                for booking_id in settled_booking_ids:
+                    sync_worker_earning(booking_id, payment.pk)
             Notification.objects.create(
                 user=payment.customer,
                 type=Notification.Type.PAYMENT_SUCCESS,
