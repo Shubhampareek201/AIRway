@@ -1,0 +1,102 @@
+from datetime import timedelta
+from decimal import Decimal
+
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.accounts.models import Address, User
+from apps.catalog.models import Category, Service
+from apps.bookings.models import Booking, BookingAssignment
+from apps.payments.models import Payment
+from apps.workers.earnings import sync_worker_earning
+from apps.workers.models import WorkerEarning, WorkerProfile
+from apps.wallet.models import Wallet, WalletTransaction
+
+
+class WorkerEarningLedgerTests(TestCase):
+    def setUp(self):
+        self.customer = User.objects.create_user(phone="+919800000101", name="Customer")
+        self.worker_user = User.objects.create_user(phone="+919800000102", name="Worker")
+        self.worker = WorkerProfile.objects.create(
+            user=self.worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
+        )
+        category = Category.objects.create(title="Earning tests", slug="earning-tests")
+        service = Service.objects.create(category=category, title="Test service", is_active=True)
+        address = Address.objects.create(
+            user=self.customer,
+            label="home",
+            house_details="House 1",
+            full_address="Test address",
+        )
+        self.booking = Booking.objects.create(
+            customer=self.customer,
+            address=address,
+            service=service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"total": "100.00"},
+            completed_at=timezone.now(),
+        )
+        BookingAssignment.objects.create(
+            booking=self.booking,
+            worker=self.worker,
+            completed_at=timezone.now(),
+        )
+        self.payment = Payment.objects.create(
+            booking=self.booking,
+            customer=self.customer,
+            stage=Payment.Stage.LEGACY,
+            amount=Decimal("100.00"),
+            status=Payment.Status.PAID,
+            paid_at=timezone.now(),
+        )
+
+    def test_verified_settlement_creates_net_worker_earning_once(self):
+        first = sync_worker_earning(self.booking.pk, self.payment.pk)
+        second = sync_worker_earning(self.booking.pk, self.payment.pk)
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(WorkerEarning.objects.filter(booking=self.booking).count(), 1)
+        self.assertEqual(first.gross_amount, Decimal("100.00"))
+        self.assertEqual(first.commission_rate, Decimal("20.00"))
+        self.assertEqual(first.commission_amount, Decimal("20.00"))
+        self.assertEqual(first.net_amount, Decimal("80.00"))
+        self.assertEqual(first.status, WorkerEarning.Status.AVAILABLE)
+
+    def test_missing_commission_rate_holds_earning_without_guessing_net(self):
+        self.worker.commission_rate = None
+        self.worker.save(update_fields=["commission_rate", "updated_at"])
+
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+
+        self.assertEqual(earning.status, WorkerEarning.Status.ON_HOLD)
+        self.assertIsNone(earning.net_amount)
+        self.assertIn("Commission rate", earning.hold_reason)
+
+    def test_unpaid_or_incomplete_booking_does_not_create_earning(self):
+        self.payment.status = Payment.Status.PENDING
+        self.payment.save(update_fields=["status", "updated_at"])
+
+        self.assertIsNone(sync_worker_earning(self.booking.pk, self.payment.pk))
+        self.assertFalse(WorkerEarning.objects.filter(booking=self.booking).exists())
+
+    def test_worker_earnings_api_does_not_count_unrelated_wallet_credits(self):
+        wallet = Wallet.objects.create(user=self.worker_user)
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            type=WalletTransaction.Type.CREDIT,
+            amount=Decimal("500.00"),
+            description="Unrelated wallet credit",
+            status=WalletTransaction.Status.COMPLETED,
+        )
+        client = APIClient()
+        client.force_authenticate(user=self.worker_user)
+
+        response = client.get("/api/v1/workers/earnings/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
