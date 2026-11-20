@@ -145,7 +145,7 @@ def issue_admin_partial_refund(
     ):
         raise ValueError("Only approved and paid extra-work proposals can be refunded.")
 
-    with transaction.atomic()
+    with transaction.atomic():
         existing = PaymentRefund.objects.filter(idempotency_key=idempotency_key).first()
         if existing:
             if (
