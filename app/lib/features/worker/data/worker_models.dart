@@ -246,11 +246,6 @@ class WorkerJob {
   final String status;
   final String serviceTitle;
   final String customerName;
-  final String? customerPhone;
-  final bool customerContactAvailable;
-  final DateTime? customerContactAvailableAt;
-  final double? addressLatitude;
-  final double? addressLongitude;
   final String? address;
   final DateTime scheduledAt;
   final DateTime? dropScheduledAt;
@@ -263,11 +258,6 @@ class WorkerJob {
     required this.status,
     required this.serviceTitle,
     required this.customerName,
-    this.customerPhone,
-    this.customerContactAvailable = false,
-    this.customerContactAvailableAt,
-    this.addressLatitude,
-    this.addressLongitude,
     this.address,
     required this.scheduledAt,
     this.dropScheduledAt,
@@ -282,11 +272,6 @@ class WorkerJob {
       status: map['status'] ?? '',
       serviceTitle: map['service_title'] ?? '',
       customerName: map['customer_name'] ?? '',
-      customerPhone: map['customer_phone']?.toString(),
-      customerContactAvailable: map['customer_contact_available'] == true,
-      customerContactAvailableAt: map['customer_contact_available_at'] != null ? DateTime.parse(map['customer_contact_available_at']) : null,
-      addressLatitude: double.tryParse(map['address_latitude']?.toString() ?? ''),
-      addressLongitude: double.tryParse(map['address_longitude']?.toString() ?? ''),
       address: map['address'],
       scheduledAt: DateTime.parse(map['scheduled_at']),
       dropScheduledAt: map['drop_scheduled_at'] != null ? DateTime.parse(map['drop_scheduled_at']) : null,
@@ -303,6 +288,11 @@ class WorkerAssignmentDetail {
   final String status;
   final String serviceTitle;
   final String customerName;
+  final String? customerPhone;
+  final bool customerContactAvailable;
+  final DateTime? customerContactAvailableAt;
+  final double? addressLatitude;
+  final double? addressLongitude;
   final String? address;
   final DateTime scheduledAt;
   final DateTime? dropScheduledAt;
@@ -334,6 +324,11 @@ class WorkerAssignmentDetail {
     required this.status,
     required this.serviceTitle,
     required this.customerName,
+    this.customerPhone,
+    this.customerContactAvailable = false,
+    this.customerContactAvailableAt,
+    this.addressLatitude,
+    this.addressLongitude,
     this.address,
     required this.scheduledAt,
     this.dropScheduledAt,
@@ -367,6 +362,11 @@ class WorkerAssignmentDetail {
       status: map['status'] ?? '',
       serviceTitle: map['service_title'] ?? '',
       customerName: map['customer_name'] ?? '',
+      customerPhone: map['customer_phone']?.toString(),
+      customerContactAvailable: map['customer_contact_available'] == true,
+      customerContactAvailableAt: map['customer_contact_available_at'] != null ? DateTime.parse(map['customer_contact_available_at']) : null,
+      addressLatitude: double.tryParse(map['address_latitude']?.toString() ?? ''),
+      addressLongitude: double.tryParse(map['address_longitude']?.toString() ?? ''),
       address: map['address'],
       scheduledAt: DateTime.parse(map['scheduled_at']),
       dropScheduledAt: map['drop_scheduled_at'] != null ? DateTime.parse(map['drop_scheduled_at']) : null,
