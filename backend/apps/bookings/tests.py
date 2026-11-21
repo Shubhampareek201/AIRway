@@ -4375,7 +4375,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             {Booking.Status.IN_PROGRESS},
         )
 
-    def test_group_dispatch_prioritizes_exact_service_set_then_same_root_then_multi_category(self):
+    def test_group_dispatch_offers_to_all_eligible_workers_and_first_acceptance_wins(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
         second_variant = self._create_variant(second_service, price=500, mrp=600)
         CityService.objects.update_or_create(
@@ -4452,24 +4452,31 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         DispatcherService.dispatch_order(order)
         offers = list(group.worker_offers.filter(
             status=WorkerOffer.Status.PENDING
-        ).order_by("offered_at"))
-        self.assertEqual([offer.worker_id for offer in offers], [workers[0].pk])
+        ).order_by("worker_id"))
+        self.assertEqual(
+            {offer.worker_id for offer in offers},
+            {worker.pk for worker in workers},
+        )
 
-        offers[0].status = WorkerOffer.Status.DECLINED
-        offers[0].save(update_fields=["status", "updated_at"])
-        DispatcherService.dispatch_order(order)
-        offers = list(group.worker_offers.filter(
-            status=WorkerOffer.Status.PENDING
-        ).order_by("offered_at"))
-        self.assertEqual([offer.worker_id for offer in offers], [workers[1].pk])
+        # Every eligible worker receives the request at the same time.
+        # The first valid acceptance wins and closes the other offers.
+        winning_offer = next(offer for offer in offers if offer.worker_id == workers[0].pk)
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=workers[0].user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{winning_offer.pk}/accept/", {}, format="json"
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
 
-        offers[0].status = WorkerOffer.Status.EXPIRED
-        offers[0].save(update_fields=["status", "updated_at"])
-        DispatcherService.dispatch_order(order)
-        offers = list(group.worker_offers.filter(
-            status=WorkerOffer.Status.PENDING
-        ).order_by("offered_at"))
-        self.assertEqual([offer.worker_id for offer in offers], [workers[2].pk])
+        winning_offer.refresh_from_db()
+        self.assertEqual(winning_offer.status, WorkerOffer.Status.ACCEPTED)
+        self.assertFalse(group.worker_offers.filter(status=WorkerOffer.Status.PENDING).exists())
+        self.assertEqual(
+            set(BookingAssignment.objects.filter(
+                booking__appointment_group=group
+            ).values_list("worker_id", flat=True)),
+            {workers[0].pk},
+        )
 
     def test_cancelling_one_appointment_group_does_not_cancel_other_groups(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
