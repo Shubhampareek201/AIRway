@@ -2380,8 +2380,8 @@ class OfferExpiryTaskTest(TestCase):
             password="password123"
         )
 
-    def test_expire_pending_offers_marks_expired_offers(self):
-        """PENDING offers past expires_at should be marked EXPIRED."""
+    def test_expire_pending_offers_keeps_pending_offers_available(self):
+        """Launch policy leaves pending offers available regardless of timestamp."""
         from apps.bookings.tasks import expire_pending_offers
 
         # Create a booking with offers
@@ -2439,11 +2439,11 @@ class OfferExpiryTaskTest(TestCase):
         # Run the task
         count = expire_pending_offers()
 
-        # Verify the offer was expired
+        # No automatic expiry or redispatch during initial launch.
         offer.refresh_from_db()
-        self.assertEqual(offer.status, WorkerOffer.Status.EXPIRED)
-        self.assertIsNotNone(offer.responded_at)
-        self.assertEqual(count, 1)
+        self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
+        self.assertIsNone(offer.responded_at)
+        self.assertEqual(count, 0)
 
     def test_expire_pending_offers_does_not_expire_accepted_offers(self):
         """ACCEPTED offers should not be affected."""
@@ -2514,8 +2514,8 @@ class OfferExpiryTaskTest(TestCase):
         self.assertIsNone(offer.responded_at)
         self.assertEqual(count, 0)
 
-    def test_expire_pending_offers_is_idempotent(self):
-        """Running the task multiple times should be safe."""
+    def test_expire_pending_offers_is_a_safe_no_op_during_launch(self):
+        """Repeated task runs must not expire pending offers during launch."""
         from apps.bookings.tasks import expire_pending_offers
 
         # Create pending expired offers
@@ -2563,9 +2563,9 @@ class OfferExpiryTaskTest(TestCase):
         expire_pending_offers()
         expire_pending_offers()
 
-        # Verify offer is still expired
+        # The offer remains available until a worker or customer responds.
         offer.refresh_from_db()
-        self.assertEqual(offer.status, WorkerOffer.Status.EXPIRED)
+        self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
 
 
 class FailedDispatchRetryTaskTest(TestCase):
