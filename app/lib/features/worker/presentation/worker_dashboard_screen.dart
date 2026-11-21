@@ -178,7 +178,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 ],
                 const SizedBox(height: 8),
                 if (offer.scheduledAt != null) Text(AirwayText.tr('Requested time: ${_dateLabel(offer.scheduledAt)}', 'अनुरोधित समय: ${_dateLabel(offer.scheduledAt)}')),
-                if (offer.serviceAddress?.isNotEmpty == true) Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
+                if (offer.serviceAddress?.isNotEmpty == true) ...[
+                  Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
+                  TextButton.icon(
+                    onPressed: () => _openOfferMap(offer),
+                    icon: const Icon(Icons.directions_rounded, size: 17),
+                    label: Text(AirwayText.tr('Open customer location', 'ग्राहक की लोकेशन खोलें')),
+                  ),
+                ],
                 if (offer.bookingNotes?.trim().isNotEmpty == true)
                   Padding(padding: const EdgeInsets.only(top: 6), child: Text(AirwayText.tr('Customer message: ${offer.bookingNotes}', 'ग्राहक का संदेश: ${offer.bookingNotes}'), style: const TextStyle(fontSize: 12, height: 1.35))),
                 Text(offer.workerPayout == null ? AirwayText.tr('Worker payout is not configured yet.', 'वर्कर की कमाई अभी तय नहीं है।') : 'Your earning: ₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.success)),
