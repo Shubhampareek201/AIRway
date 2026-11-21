@@ -2526,9 +2526,11 @@ class WorkerLeaveLifecycleAPITest(TestCase):
             worker=self.worker, start_at=start, end_at=end,
             status=WorkerLeave.Status.PENDING,
         )
-        admin = User.objects.create_superuser(
+        admin = User.objects.create_user(
             phone="+919876543298", password="password123",
         )
+        admin.is_staff = True
+        admin.save(update_fields=["is_staff"])
         reviewed = review_worker_leave(
             leave_id=leave.pk, reviewer=admin,
             decision=WorkerLeave.Status.APPROVED,
