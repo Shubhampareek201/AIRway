@@ -25,7 +25,12 @@ class AirwayLocale {
   static Future<void> initialize() async {
     if (_initialized) return;
 
-    final saved = await _storage.read(key: _languageKey);
+    String? saved;
+    try {
+      saved = await _storage.read(key: _languageKey);
+    } catch (_) {
+      // Storage failures must not prevent the app from opening in English.
+    }
     if (saved == 'en' || saved == 'hi') {
       _hasLocalPreference = true;
       notifier.value = Locale(saved);
@@ -46,7 +51,7 @@ class AirwayLocale {
     final code = _normalize(language);
     notifier.value = Locale(code);
     _hasLocalPreference = true;
-    unawaited(_storage.write(key: _languageKey, value: code));
+    unawaited(_persist(code));
   }
 
   /// Saves a user-initiated selection locally before the caller syncs the API.
@@ -55,7 +60,15 @@ class AirwayLocale {
     final code = _normalize(language);
     notifier.value = Locale(code);
     _hasLocalPreference = true;
-    await _storage.write(key: _languageKey, value: code);
+    await _persist(code);
+  }
+
+  static Future<void> _persist(String code) async {
+    try {
+      await _storage.write(key: _languageKey, value: code);
+    } catch (_) {
+      // The app can still run; the account preference remains the fallback.
+    }
   }
 
   static String _normalize(String language) =>
