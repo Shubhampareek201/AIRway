@@ -29,6 +29,7 @@ from .models import (
     RecurringWashPlan,
     RecurringWashVisit,
     BookingDispute,
+    BookingDisputeHistory,
     BookingReworkProposal,
     BookingDisputeEvidence,
 )
@@ -504,6 +505,14 @@ class BookingDisputeEvidenceInline(TabularInline):
     fields = readonly_fields
 
 
+class BookingDisputeHistoryInline(TabularInline):
+    model = BookingDisputeHistory
+    extra = 0
+    can_delete = False
+    readonly_fields = ("from_status", "to_status", "changed_by", "note", "created_at")
+    fields = readonly_fields
+
+
 
 class BookingReworkProposalAdminForm(forms.ModelForm):
     class Meta:
@@ -642,7 +651,7 @@ class BookingReworkProposalAdmin(ModelAdmin):
 
 @admin.register(BookingDispute)
 class BookingDisputeAdmin(ModelAdmin):
-    inlines = [BookingDisputeEvidenceInline]
+    inlines = [BookingDisputeEvidenceInline, BookingDisputeHistoryInline]
     list_display = ("id", "booking", "raised_by", "raised_by_role", "category", "status", "created_at")
     list_filter = ("status", "category", "raised_by_role", "created_at")
     search_fields = ("booking__id", "raised_by__phone", "description")
@@ -717,6 +726,13 @@ class BookingDisputeAdmin(ModelAdmin):
                     obj.resolved_at = timezone.now()
         super().save_model(request, obj, form, change)
         if change and obj.status != previous.status:
+            BookingDisputeHistory.objects.create(
+                dispute=obj,
+                from_status=previous.status,
+                to_status=obj.status,
+                changed_by=request.user,
+                note=obj.resolution_note,
+            )
             booking = obj.booking
             recipients = {booking.customer_id: booking.customer}
             assignment = getattr(booking, "assignment", None)
