@@ -371,8 +371,18 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
               children: [
                 for (final entry in offer.customerAnswers.entries)
                   Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 5), child: Text(workerCustomerAnswerLabel(entry.key, entry.value), style: const TextStyle(fontSize: 12)))),
-                for (final answer in offer.formResponses)
-                  Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 5), child: Text('${answer['label'] ?? answer['key']}: ${answer['value']}', style: const TextStyle(fontSize: 12)))),
+                for (final answer in offer.formResponses) ...[
+                  Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 5), child: Text('${answer['field_label'] ?? answer['label'] ?? answer['key']}: ${answer['value']}', style: const TextStyle(fontSize: 12)))),
+                  if (answer['photo_url']?.toString().isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(answer['photo_url'].toString(), height: 150, width: double.infinity, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Text(AirwayText.tr('Attached photo could not be loaded.', 'संलग्न फोटो लोड नहीं हो सकी।'))),
+                      ),
+                    ),
+                ],
                 if (offer.addons.isNotEmpty)
                   Align(alignment: Alignment.centerLeft, child: Text('Add-ons: ${offer.addons.map((addon) => addon['title']).join(', ')}', style: const TextStyle(fontSize: 12))),
               ],
