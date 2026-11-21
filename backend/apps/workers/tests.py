@@ -260,6 +260,7 @@ class JobOfferAPITest(TestCase):
             booking_mode=Booking.BookingMode.SCHEDULED,
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
+            pricing_snapshot={"subtotal": "100.00", "total": "118.00"},
         )
         from apps.payments.models import Payment
         Payment.objects.create(
@@ -880,6 +881,7 @@ class JobOfferConcurrencyTest(TestCase):
             booking_mode=Booking.BookingMode.SCHEDULED,
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.PENDING,
+            pricing_snapshot={"subtotal": "100.00", "total": "118.00"},
         )
         from apps.payments.models import Payment
         Payment.objects.create(
@@ -1588,6 +1590,7 @@ class WorkerAcceptancePaymentTest(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.CONFIRMED,
+            pricing_snapshot={"subtotal": "100.00", "total": "118.00"},
         )
 
         from apps.payments.models import Payment
