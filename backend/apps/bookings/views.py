@@ -941,7 +941,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 drop_scheduled_at=drop_scheduled_at,
                 exclude_booking_ids=exclude_booking_ids,
             )
-            if required_gender:
+            if address:
                 from apps.bookings.services import has_eligible_worker_for_slot
                 if not has_eligible_worker_for_slot(
                     service=service,
@@ -956,19 +956,29 @@ class BookingViewSet(viewsets.ModelViewSet):
                         category_answers.get("professional_preference") == "female"
                         and not service.requires_female_worker
                     )
+                    message = (
+                        "No female professional is available for this time slot. "
+                        "Choose another time or change the preference to No preference."
+                        if preference_can_change
+                        else (
+                            "No female professional is available for this service at the selected time. Choose another time."
+                            if required_gender
+                            else "No professional is currently available for this service at the selected time and area. Please choose another time."
+                        )
+                    )
+                    reason = (
+                        "female_professional_unavailable"
+                        if preference_can_change
+                        else (
+                            "required_female_worker_unavailable"
+                            if required_gender
+                            else "no_eligible_professional"
+                        )
+                    )
                     return Response({
                         "available": False,
-                        "message": (
-                            "No female professional is available for this time slot. "
-                            "Choose another time or change the preference to No preference."
-                            if preference_can_change
-                            else "No female professional is available for this service at the selected time. Choose another time."
-                        ),
-                        "reason": (
-                            "female_professional_unavailable"
-                            if preference_can_change
-                            else "required_female_worker_unavailable"
-                        ),
+                        "message": message,
+                        "reason": reason,
                     })
 
             return Response({"available": True, "message": "Slot is available for booking."})
