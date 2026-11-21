@@ -1345,8 +1345,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   Future<void> _openCustomerMap(WorkerAssignmentDetail job) async {
     final latitude = job.addressLatitude;
     final longitude = job.addressLongitude;
-    if (latitude == null || longitude == null) return;
-    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    final query = latitude != null && longitude != null
+        ? '$latitude,$longitude'
+        : (job.address?.trim() ?? '');
+    if (query.isEmpty) return;
+    final uri = Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': query});
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -1384,8 +1387,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           if (job.address?.isNotEmpty == true) ...[
             const SizedBox(height: 8),
             Text(job.address!, style: const TextStyle(fontSize: 12, height: 1.4)),
-            if (job.addressLatitude != null && job.addressLongitude != null)
-              Align(
+            Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   onPressed: () => _openCustomerMap(job),
