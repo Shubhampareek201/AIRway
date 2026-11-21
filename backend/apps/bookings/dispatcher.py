@@ -424,7 +424,11 @@ class DispatcherService:
         from datetime import timedelta
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
-        expiry = timezone.now() + timedelta(minutes=max(int(expiry_minutes), 1))
+        # Launch policy: worker requests stay available until a worker responds,
+        # the customer cancels, or Admin resolves the booking. Keep a far-future
+        # database timestamp for compatibility with the existing non-null field;
+        # the app does not expose a countdown and the expiry task will not retire it.
+        expiry = timezone.now() + timedelta(days=36500)
         created = []
         summary = ", ".join(service_titles)
         for worker in workers:
