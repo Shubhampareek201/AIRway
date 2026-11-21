@@ -863,6 +863,15 @@ class WorkerJobDetailView(APIView):
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
+        contact_available_at = (
+            booking.scheduled_at - timedelta(hours=1)
+            if booking.scheduled_at else None
+        )
+        customer_contact_available = bool(
+            contact_available_at
+            and timezone.now() >= contact_available_at
+            and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+        )
         payment_label = (
             "No-charge service recovery"
             if getattr(booking, "rework_source", None) is not None
@@ -977,7 +986,12 @@ class WorkerJobDetailView(APIView):
             ),
             "service_title": booking.service.title,
             "customer_name": booking.customer.name or "AIRway Customer",
+            "customer_contact_available": customer_contact_available,
+            "customer_contact_available_at": contact_available_at.isoformat() if contact_available_at else None,
+            "customer_phone": booking.customer.phone if customer_contact_available else None,
             "address": booking.address.full_address,
+            "address_latitude": str(booking.address.latitude) if booking.address.latitude is not None else None,
+            "address_longitude": str(booking.address.longitude) if booking.address.longitude is not None else None,
             "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
