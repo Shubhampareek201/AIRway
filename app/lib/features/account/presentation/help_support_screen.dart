@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 
 class HelpSupportScreen extends StatelessWidget {
@@ -56,7 +57,7 @@ class HelpSupportScreen extends StatelessWidget {
           ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Help & support')),
+      appBar: AppBar(title: Text(AirwayText.tr('Help & support', 'सहायता और सपोर्ट'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -82,7 +83,7 @@ class HelpSupportScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          const Text('Common questions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(AirwayText.tr('Common questions', 'आम सवाल'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           for (final item in questions)
             Card(
