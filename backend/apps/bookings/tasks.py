@@ -376,10 +376,16 @@ def expire_unpaid_checkouts():
 
             # A live gateway attempt must be resolved by the payment-timeout
             # task; a captured payment must never be cancelled by this task.
-            if Payment.objects.filter(
-                order=order,
-                status__in=(Payment.Status.PENDING, Payment.Status.PAID),
-            ).exists():
+            if (
+                Payment.objects.filter(
+                    order=order,
+                    status__in=(Payment.Status.PENDING, Payment.Status.PAID),
+                ).exists()
+                or Payment.objects.filter(
+                    booking__order_item__order=order,
+                    status__in=(Payment.Status.PENDING, Payment.Status.PAID),
+                ).exists()
+            ):
                 continue
 
             bookings = list(
