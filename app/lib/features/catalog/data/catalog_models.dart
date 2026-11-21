@@ -1,4 +1,5 @@
 import 'package:airway/core/network/auth_api.dart';
+import 'package:airway/core/localization/airway_locale.dart';
 
 bool _catalogBool(dynamic value, {bool fallback = false}) {
   if (value is bool) return value;
@@ -67,6 +68,14 @@ class CatalogBanner {
 }
 
 class Category {
+
+  String get displayTitle {
+    final translated = titleHi?.trim();
+    return AirwayLocale.current.languageCode == 'hi' &&
+            translated != null && translated.isNotEmpty
+        ? translated
+        : title;
+  }
   final int id;
   final String title;
   final String? titleHi;
@@ -145,6 +154,14 @@ class ServiceImage {
 }
 
 class ServiceVariant {
+
+  String get displayTitle {
+    final translated = titleHi?.trim();
+    return AirwayLocale.current.languageCode == 'hi' &&
+            translated != null && translated.isNotEmpty
+        ? translated
+        : title;
+  }
   final int id;
   final String title;
   final String? titleHi;
@@ -195,6 +212,14 @@ class ServiceVariant {
 }
 
 class AddOn {
+
+  String get displayTitle {
+    final translated = titleHi?.trim();
+    return AirwayLocale.current.languageCode == 'hi' &&
+            translated != null && translated.isNotEmpty
+        ? translated
+        : title;
+  }
   final int id;
   final String title;
   final String? titleHi;
@@ -236,6 +261,14 @@ class AddOn {
 }
 
 class CatalogFormField {
+
+  String get displayLabel {
+    final translated = labelHi?.trim();
+    return AirwayLocale.current.languageCode == 'hi' &&
+            translated != null && translated.isNotEmpty
+        ? translated
+        : label;
+  }
   final int id;
   final String key;
   final String label;
@@ -309,6 +342,14 @@ class CatalogFormField {
 }
 
 class Service {
+
+  String get displayTitle {
+    final translated = titleHi?.trim();
+    return AirwayLocale.current.languageCode == 'hi' &&
+            translated != null && translated.isNotEmpty
+        ? translated
+        : title;
+  }
   final int id;
   final int categoryId;
   final String categoryName;
