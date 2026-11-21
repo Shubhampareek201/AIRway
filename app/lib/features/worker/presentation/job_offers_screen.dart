@@ -311,15 +311,22 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
             const SizedBox(height: 12),
             Text(AirwayText.tr('Customer reference photo', 'ग्राहक की भेजी फोटो'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
             const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                offer.customerIssuePhotoUrl!,
-                width: double.infinity,
-                height: 180,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Text(AirwayText.tr('Photo could not be loaded.', 'फोटो लोड नहीं हो सकी।')),
-              ),
+            FutureBuilder<Map<String, String>>(
+              future: WorkerApi.getAuthHeaders(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    offer.customerIssuePhotoUrl!,
+                    headers: snapshot.data,
+                    width: double.infinity,
+                    height: 180,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Text(AirwayText.tr('Photo could not be loaded.', 'फोटो लोड नहीं हो सकी।')),
+                  ),
+                );
+              },
             ),
           ],
           const SizedBox(height: 8),
@@ -381,10 +388,16 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
                   if (answer['photo_url']?.toString().isNotEmpty == true)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(answer['photo_url'].toString(), height: 150, width: double.infinity, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Text(AirwayText.tr('Attached photo could not be loaded.', 'संलग्न फोटो लोड नहीं हो सकी।'))),
+                      child: FutureBuilder<Map<String, String>>(
+                        future: WorkerApi.getAuthHeaders(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(answer['photo_url'].toString(), headers: snapshot.data, height: 150, width: double.infinity, fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Text(AirwayText.tr('Attached photo could not be loaded.', 'संलग्न फोटो लोड नहीं हो सकी।'))),
+                          );
+                        },
                       ),
                     ),
                 ],
