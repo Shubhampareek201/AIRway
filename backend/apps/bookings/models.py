@@ -867,6 +867,27 @@ class BookingDispute(TimeStampedModel):
         return f"Dispute #{self.pk} for booking #{self.booking_id} ({self.status})"
 
 
+class BookingDisputeHistory(TimeStampedModel):
+    """Append-only audit trail for every dispute status transition."""
+
+    dispute = models.ForeignKey(
+        BookingDispute, on_delete=models.PROTECT, related_name="status_history"
+    )
+    from_status = models.CharField(max_length=16, blank=True)
+    to_status = models.CharField(max_length=16, choices=BookingDispute.Status.choices)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="booking_dispute_status_changes",
+    )
+    note = models.TextField(blank=True, max_length=5000)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    def __str__(self):
+        return f"Dispute #{self.dispute_id}: {self.from_status or 'created'} → {self.to_status}"
+
+
 class BookingDisputeEvidence(TimeStampedModel):
     """Private evidence file attached to a booking dispute."""
 
