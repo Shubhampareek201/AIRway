@@ -41,4 +41,5 @@ class Migration(migrations.Migration):
             ],
             options={"ordering": ["created_at", "pk"]},
         ),
+        migrations.RunPython(backfill_existing_dispute_history, migrations.RunPython.noop),
     ]
