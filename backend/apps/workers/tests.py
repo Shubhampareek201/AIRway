@@ -2516,6 +2516,11 @@ class WorkerLeaveLifecycleAPITest(TestCase):
         leave.refresh_from_db()
         self.assertEqual(leave.status, WorkerLeave.Status.CANCELLED)
         self.assertEqual(WorkerLeaveHistory.objects.filter(leave=leave).count(), 1)
+        from apps.notifications.models import Notification
+        self.assertTrue(Notification.objects.filter(
+            type=Notification.Type.WORKER_LEAVE_CANCELLED,
+            data__worker_leave_id=leave.pk,
+        ).exists())
 
     def test_admin_approval_records_decision_and_notifies_worker(self):
         from apps.workers.leave_management import review_worker_leave
