@@ -427,3 +427,108 @@ class WorkerJobStreak(TimeStampedModel):
 
     def __str__(self):
         return f"{self.worker.user.phone} - {self.jobs_completed} jobs"
+
+
+class WorkerRewardWallet(TimeStampedModel):
+    """Withdrawable mission-reward balance, separate from customer discount wallet."""
+
+    worker = models.OneToOneField(
+        WorkerProfile,
+        on_delete=models.PROTECT,
+        related_name="reward_wallet",
+    )
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_earned = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_withdrawn = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    eligible_jobs_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(balance__gte=0), name="worker_reward_balance_nonnegative"),
+            models.CheckConstraint(condition=Q(total_earned__gte=0), name="worker_reward_earned_nonnegative"),
+            models.CheckConstraint(condition=Q(total_withdrawn__gte=0), name="worker_reward_withdrawn_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"Mission rewards for worker #{self.worker_id}: ₹{self.balance}"
+
+
+class WorkerRewardTransaction(TimeStampedModel):
+    class Type(models.TextChoices):
+        ELIGIBLE_JOB = "eligible_job", "Eligible completed service"
+        MISSION_REWARD = "mission_reward", "Mission reward"
+        WITHDRAWAL = "withdrawal", "Withdrawal request"
+        REFUND = "refund", "Withdrawal refund"
+
+    wallet = models.ForeignKey(
+        WorkerRewardWallet,
+        on_delete=models.PROTECT,
+        related_name="transactions",
+    )
+    worker = models.ForeignKey(
+        WorkerProfile,
+        on_delete=models.PROTECT,
+        related_name="reward_transactions",
+    )
+    booking = models.ForeignKey(
+        "bookings.Booking",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="worker_reward_transactions",
+    )
+    type = models.CharField(max_length=20, choices=Type.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    milestone_jobs = models.PositiveSmallIntegerField(null=True, blank=True)
+    reference_key = models.CharField(max_length=120, unique=True)
+    description = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gte=0), name="worker_reward_txn_amount_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.worker_id} · {self.type} · ₹{self.amount}"
+
+
+class WorkerRewardWithdrawal(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Approved for payout"
+        REJECTED = "rejected", "Rejected"
+        PAID = "paid", "Paid"
+
+    wallet = models.ForeignKey(
+        WorkerRewardWallet,
+        on_delete=models.PROTECT,
+        related_name="withdrawals",
+    )
+    worker = models.ForeignKey(
+        WorkerProfile,
+        on_delete=models.PROTECT,
+        related_name="reward_withdrawals",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payout_upi_id = models.CharField(max_length=100)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    payout_reference = models.CharField(max_length=120, blank=True)
+    admin_note = models.TextField(blank=True)
+    processed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="processed_worker_reward_withdrawals",
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gt=0), name="worker_reward_withdrawal_positive"),
+        ]
+
+    def __str__(self):
+        return f"Worker reward withdrawal #{self.pk} · ₹{self.amount} · {self.status}"
