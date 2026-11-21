@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/features/catalog/data/beauty_audience.dart';
 
 /// First step of the Beauty journey: explicitly choose the intended audience.
@@ -44,7 +45,7 @@ class BeautyAudienceScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8F5),
       appBar: AppBar(
-        title: const Text('Beauty & Salon'),
+        title: Text(AirwayText.tr('Beauty & Salon', 'ब्यूटी और सैलून')),
         backgroundColor: const Color(0xFFF8F8F5),
       ),
       body: ListView(
@@ -211,11 +212,11 @@ class BeautyAudienceScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Both', style: TextStyle(
+                          Text(AirwayText.tr('Both', 'दोनों'), style: TextStyle(
                             color: _ink, fontSize: 18, fontWeight: FontWeight.w900,
                           )),
                           SizedBox(height: 3),
-                          Text('Unisex services for everyone', style: TextStyle(
+                          Text(AirwayText.tr('Unisex services for everyone', 'सभी के लिए यूनिसेक्स सेवाएँ'), style: TextStyle(
                             color: _muted, fontSize: 12,
                           )),
                         ],
