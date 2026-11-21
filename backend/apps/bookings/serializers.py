@@ -814,8 +814,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_service_image_url(self, obj):
-        image = obj.booking.service.image
+    def _service_image_url(self, service):
+        image = service.image
         if not image:
             return None
         try:
@@ -824,6 +824,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             return None
         request = self.context.get("request")
         return request.build_absolute_uri(url) if request else url
+
+    def get_service_image_url(self, obj):
+        return self._service_image_url(obj.booking.service)
 
     def get_customer_issue_photo_url(self, obj):
         answers = obj.booking.customer_answers or {}
@@ -943,6 +946,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 "booking_id": item.id,
                 "service_id": item.service_id,
                 "service_title": item.service.title,
+                "service_description": item.service.description,
+                "service_image_url": self._service_image_url(item.service),
                 "service_unit_label": item.service.unit_label,
                 "variant_title": item.variant.title if item.variant_id else None,
                 "scheduled_at": item.scheduled_at,
@@ -955,6 +960,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 "booking_id": obj.booking_id,
                 "service_id": obj.booking.service_id,
                 "service_title": obj.booking.service.title,
+                "service_description": obj.booking.service.description,
+                "service_image_url": self._service_image_url(obj.booking.service),
                 "service_unit_label": obj.booking.service.unit_label,
                 "variant_title": obj.booking.variant.title if obj.booking.variant_id else None,
                 "scheduled_at": obj.booking.scheduled_at,
@@ -963,6 +970,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "booking_id": item.booking_id,
             "service_id": item.booking.service_id,
             "service_title": item.booking.service.title,
+            "service_description": item.booking.service.description,
+            "service_image_url": self._service_image_url(item.booking.service),
             "service_unit_label": item.booking.service.unit_label,
             "variant_title": item.booking.variant.title if item.booking.variant_id else None,
             "scheduled_at": item.booking.scheduled_at,
