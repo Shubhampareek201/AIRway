@@ -15,6 +15,7 @@ import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
 import 'package:airway/features/worker/presentation/job_offers_screen.dart';
 import 'package:airway/features/worker/presentation/worker_profile_edit_screen.dart';
+import 'package:airway/features/worker/presentation/worker_leave_screen.dart';
 import 'package:airway/features/worker/presentation/worker_service_management_screen.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/notification/presentation/notification_bell_button.dart';
@@ -875,6 +876,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       ),
       const SizedBox(height: 14),
       OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined), label: Text(t('Edit profile details', 'प्रोफ़ाइल विवरण संपादित करें'))),
+      const SizedBox(height: 10),
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.event_busy_outlined, color: AirwayColors.primary),
+          title: Text(t('Leave management', 'छुट्टी प्रबंधन')),
+          subtitle: Text(t('Request time off and track Admin decisions', 'छुट्टी का अनुरोध करें और एडमिन का निर्णय देखें')),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const WorkerLeaveScreen()),
+          ),
+        ),
+      ),
       const SizedBox(height: 16),
       Card(
         child: ListTile(
