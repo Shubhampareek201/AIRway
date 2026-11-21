@@ -137,6 +137,12 @@ class WorkerOffer {
   final String? workerName;
   final String? workerPhone;
   final String? serviceTitle;
+  final String? customerName;
+  final String? serviceDescription;
+  final String? serviceImageUrl;
+  final String? customerIssuePhotoUrl;
+  final double? addressLatitude;
+  final double? addressLongitude;
   final String? variantTitle;
   final String? serviceUnitLabel;
   final DateTime? scheduledAt;
@@ -165,6 +171,12 @@ class WorkerOffer {
     this.workerName,
     this.workerPhone,
     this.serviceTitle,
+    this.customerName,
+    this.serviceDescription,
+    this.serviceImageUrl,
+    this.customerIssuePhotoUrl,
+    this.addressLatitude,
+    this.addressLongitude,
     this.variantTitle,
     this.serviceUnitLabel,
     this.scheduledAt,
@@ -195,6 +207,12 @@ class WorkerOffer {
       workerName: map['worker_name'] as String?,
       workerPhone: map['worker_phone'] as String?,
       serviceTitle: map['service_title'] as String?,
+      customerName: map['customer_name'] as String?,
+      serviceDescription: map['service_description'] as String?,
+      serviceImageUrl: map['service_image_url'] as String?,
+      customerIssuePhotoUrl: map['customer_issue_photo_url'] as String?,
+      addressLatitude: double.tryParse(map['address_latitude']?.toString() ?? ''),
+      addressLongitude: double.tryParse(map['address_longitude']?.toString() ?? ''),
       variantTitle: map['variant_title'] as String?,
       serviceUnitLabel: map['service_unit_label']?.toString(),
       scheduledAt: map['scheduled_at'] != null ? DateTime.parse(map['scheduled_at'] as String) : null,
