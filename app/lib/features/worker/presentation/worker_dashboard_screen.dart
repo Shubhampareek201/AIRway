@@ -1256,13 +1256,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                     style: OutlinedButton.styleFrom(foregroundColor: AirwayColors.error, minimumSize: const Size.fromHeight(48)),
                   )),
                 if (offer.canDecline && offer.canAccept) const SizedBox(width: 10),
-                if (offer.canAccept)
-                  Expanded(flex: 2, child: FilledButton.icon(
-                    onPressed: () => _respondToOfferFromHome(offer, accept: true),
-                    icon: const Icon(Icons.check_circle_outline_rounded),
-                    label: Text(AirwayText.tr('Accept job', 'काम स्वीकार करें')),
-                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                  )),
+                Expanded(flex: 2, child: FilledButton.icon(
+                  onPressed: offer.canAccept ? () => _respondToOfferFromHome(offer, accept: true) : null,
+                  icon: const Icon(Icons.check_circle_outline_rounded),
+                  label: Text(offer.workerPayout == null
+                      ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
+                      : AirwayText.tr('Accept job', 'काम स्वीकार करें')),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                )),
               ]),
             Align(alignment: Alignment.centerRight, child: TextButton.icon(
               onPressed: _openOffers,
