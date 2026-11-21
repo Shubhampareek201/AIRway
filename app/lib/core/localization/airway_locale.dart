@@ -60,7 +60,7 @@ class AirwayLocale {
     final code = _normalize(language);
     notifier.value = Locale(code);
     _hasLocalPreference = true;
-    await _persist(code);
+    await _storage.write(key: _languageKey, value: code);
   }
 
   static Future<void> _persist(String code) async {
