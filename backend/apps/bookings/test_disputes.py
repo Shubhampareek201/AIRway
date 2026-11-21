@@ -462,3 +462,28 @@ class BookingDisputeAPITests(TestCase):
             format="multipart",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_unanswered_rework_proposal_expires_after_its_slot_and_notifies_participants(self):
+        from apps.bookings.tasks import expire_past_rework_proposals
+        from apps.notifications.models import Notification
+
+        proposal = self._resolved_rework_proposal()
+        proposal.scheduled_at = timezone.now() - timedelta(minutes=1)
+        proposal.save(update_fields=["scheduled_at", "updated_at"])
+
+        self.assertEqual(expire_past_rework_proposals(), 1)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, BookingReworkProposal.Status.EXPIRED)
+        self.assertIsNotNone(proposal.responded_at)
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer,
+            data__rework_proposal_id=proposal.pk,
+            title="Recovery appointment proposal expired",
+        ).exists())
+        self.assertTrue(Notification.objects.filter(
+            user=self.staff_user,
+            data__rework_proposal_id=proposal.pk,
+            title="Recovery proposal expired",
+        ).exists())
+        self.assertEqual(expire_past_rework_proposals(), 0)
+
