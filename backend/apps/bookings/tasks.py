@@ -16,8 +16,19 @@ PAYMENT_TIMEOUT_MINUTES = 5
 
 @shared_task
 def expire_pending_offers():
-    """Offer expiry is intentionally disabled during AIRway's initial launch."""
-    return 0
+    """Expire unanswered worker offers when their scheduled service time arrives."""
+    from apps.bookings.models import WorkerOffer
+
+    now = timezone.now()
+    expired_count = WorkerOffer.objects.filter(
+        status=WorkerOffer.Status.PENDING,
+        expires_at__lte=now,
+    ).update(
+        status=WorkerOffer.Status.EXPIRED,
+        responded_at=now,
+    )
+    logger.info("Expired %s worker offers at or after their scheduled service time.", expired_count)
+    return expired_count
 
 @shared_task
 def retry_failed_dispatches():
