@@ -590,6 +590,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
               Text(item['resolution_note'].toString(),
                   style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
             ],
+            for (final event in (item['status_history'] as List? ?? const []).whereType<Map>())
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${(event['to_status']?.toString() ?? '').replaceAll('_', ' ').toUpperCase()}${(event['note']?.toString() ?? '').isNotEmpty ? ' — ${event['note']}' : ''}',
+                  style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+                ),
+              ),
             finalEvidenceCount(item),
             if (_jobDisputes.last != item) const Divider(height: 16),
           ],
@@ -652,6 +660,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
               style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
             ),
           ],
+          for (final event in (recovery['status_history'] as List? ?? const []).whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${(event['to_status']?.toString() ?? '').replaceAll('_', ' ').toUpperCase()}${(event['note']?.toString() ?? '').isNotEmpty ? ' — ${event['note']}' : ''}',
+                style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary),
+              ),
+            ),
           if (evidence.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
