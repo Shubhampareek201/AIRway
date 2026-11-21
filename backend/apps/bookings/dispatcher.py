@@ -592,11 +592,10 @@ class DispatcherService:
             # location, appointment, and payment split.
             location_preview = (address_text or "").strip()[:90]
             notification_body = (
-                f"{summary} • {booking.scheduled_at.strftime('%d %b, %I:%M %p')} "
-                f"{('• ' + appointment_group.customer_message[:100] + ' ') if appointment_group and appointment_group.customer_message else ''}"
-                f"• {location_preview} "
+                f"New AIRway service request: {summary} • "
+                f"{booking.scheduled_at.strftime('%d %b, %I:%M %p')} • {location_preview} "
                 f"{('• ' + quantity_preview + ' ') if quantity_preview else ''}"
-                f"• Advance ₹{advance_received} • Balance ₹{remaining_balance}"
+                "Open AIRway to review the service details and your earning."
             )
             Notification.objects.create(
                 user=worker.user,
