@@ -1010,17 +1010,46 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   }
 
   Widget _buildAvailabilityCard(WorkerProfile profile) {
-    return Card(
-      child: SwitchListTile(
-        value: profile.isOnline,
-        onChanged: _availabilitySaving ? null : _toggleAvailability,
-        secondary: Icon(
-          profile.isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-          color: profile.isOnline ? Colors.green : AirwayColors.textSecondary,
-        ),
-        title: Text(profile.isOnline ? 'You are online' : 'You are offline',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(profile.isOnline ? 'You can receive new job offers' : 'Turn on to receive nearby job offers'),
+    final online = profile.isOnline;
+    final accent = online ? const Color(0xFF21834A) : AirwayColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: online ? const Color(0xFFEDF8F0) : const Color(0xFFF4F2F8),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: online ? const Color(0xFFCDEBD5) : const Color(0xFFE5E1EC)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+            child: Icon(online ? Icons.wifi_rounded : Icons.wifi_off_rounded, color: accent, size: 23),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  online ? AirwayText.tr('You are available for work', 'आप काम के लिए उपलब्ध हैं') : AirwayText.tr('You are currently offline', 'आप अभी ऑफलाइन हैं'),
+                  style: TextStyle(fontWeight: FontWeight.w900, color: accent, fontSize: 14),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  online ? AirwayText.tr('New service requests can reach you', 'आपको नई सर्विस रिक्वेस्ट मिल सकती हैं') : AirwayText.tr('Turn on to receive service requests', 'सर्विस रिक्वेस्ट पाने के लिए ऑनलाइन हों'),
+                  style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          if (_availabilitySaving)
+            const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+          else
+            Switch.adaptive(value: online, onChanged: _toggleAvailability, activeColor: AirwayColors.primary),
+        ],
       ),
     );
   }
