@@ -2380,8 +2380,8 @@ class OfferExpiryTaskTest(TestCase):
             password="password123"
         )
 
-    def test_expire_pending_offers_keeps_pending_offers_available(self):
-        """Launch policy leaves pending offers available regardless of timestamp."""
+    def test_pending_offer_stays_available_until_scheduled_service_time(self):
+        """A pending offer remains active while its scheduled service is in the future."""
         from apps.bookings.tasks import expire_pending_offers
 
         # Create a booking with offers
@@ -2431,15 +2431,13 @@ class OfferExpiryTaskTest(TestCase):
         offer = WorkerOffer.objects.create(
             booking=booking,
             worker=worker,
-            expires_at=timezone.now() - timezone.timedelta(hours=1),
+            expires_at=booking.scheduled_at,
         )
 
         self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
 
-        # Run the task
         count = expire_pending_offers()
 
-        # No automatic expiry or redispatch during initial launch.
         offer.refresh_from_db()
         self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
         self.assertIsNone(offer.responded_at)
@@ -2514,8 +2512,8 @@ class OfferExpiryTaskTest(TestCase):
         self.assertIsNone(offer.responded_at)
         self.assertEqual(count, 0)
 
-    def test_expire_pending_offers_is_a_safe_no_op_during_launch(self):
-        """Repeated task runs must not expire pending offers during launch."""
+    def test_pending_offer_expires_once_scheduled_service_time_has_arrived(self):
+        """Repeated task runs expire a pending offer once, at its service time."""
         from apps.bookings.tasks import expire_pending_offers
 
         # Create pending expired offers
@@ -2549,23 +2547,24 @@ class OfferExpiryTaskTest(TestCase):
             customer=customer,
             address=address,
             service=service,
-            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            scheduled_at=timezone.now() - timezone.timedelta(minutes=30),
             status=Booking.Status.PENDING,
         )
 
         offer = WorkerOffer.objects.create(
             booking=booking,
             worker=worker,
-            expires_at=timezone.now() - timezone.timedelta(minutes=30),
+            expires_at=booking.scheduled_at,
         )
 
-        # Run the task twice
-        expire_pending_offers()
-        expire_pending_offers()
+        first_count = expire_pending_offers()
+        second_count = expire_pending_offers()
 
-        # The offer remains available until a worker or customer responds.
         offer.refresh_from_db()
-        self.assertEqual(offer.status, WorkerOffer.Status.PENDING)
+        self.assertEqual(first_count, 1)
+        self.assertEqual(second_count, 0)
+        self.assertEqual(offer.status, WorkerOffer.Status.EXPIRED)
+        self.assertIsNotNone(offer.responded_at)
 
 
 class FailedDispatchRetryTaskTest(TestCase):
