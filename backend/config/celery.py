@@ -37,4 +37,8 @@ app.conf.beat_schedule = {
         'task': 'apps.bookings.tasks.dispatch_due_recurring_wash_visits',
         'schedule': 60.0,
     },
+    'expire-past-worker-leave-requests-every-hour': {
+        'task': 'apps.workers.tasks.expire_past_worker_leave_requests',
+        'schedule': 3600.0,
+    },
 }
