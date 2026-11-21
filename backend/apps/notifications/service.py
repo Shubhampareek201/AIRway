@@ -28,7 +28,7 @@ def send_push_notification(user, title, body="", data=None, channel_id="airway_g
             data={str(key): str(value) for key, value in (data or {}).items() if value is not None},
             android=messaging.AndroidConfig(
                 priority="high",
-                ttl=timedelta(hours=24 if channel_id == "airway_job_alerts" else 10),
+                ttl=timedelta(weeks=4) if channel_id == "airway_job_alerts" else timedelta(minutes=10),
                 notification=messaging.AndroidNotification(
                     channel_id=channel_id,
                     sound="default",
