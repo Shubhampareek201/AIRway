@@ -5708,3 +5708,76 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.scheduled_at, self.original_time)
 
+
+
+class UnpaidCheckoutExpiryTaskTest(BookingAPITestMixin, TestCase):
+    """An abandoned unpaid checkout must release its held service slot."""
+
+    def setUp(self):
+        self.customer = self._create_user("+919876543701")
+        self.category = self._create_category("Checkout expiry", "checkout-expiry")
+        self.service = self._create_service(self.category, "Home cleaning")
+        self.address = self._create_address(self.customer)
+
+    def _create_old_order(self):
+        from apps.bookings.models import Order, OrderItem
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=2),
+            status=Booking.Status.PENDING,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            total_amount=Decimal("500.00"),
+        )
+        OrderItem.objects.create(
+            order=order, booking=booking, line_total=Decimal("500.00")
+        )
+        Order.objects.filter(pk=order.pk).update(
+            created_at=timezone.now() - timedelta(minutes=20)
+        )
+        return order, booking
+
+    def test_abandoned_checkout_is_cancelled_and_slot_released(self):
+        from apps.bookings.tasks import expire_unpaid_checkouts
+        order, booking = self._create_old_order()
+
+        self.assertEqual(expire_unpaid_checkouts(), 1)
+        order.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CANCELLED)
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertTrue(booking.status_history.filter(
+            to_status=Booking.Status.CANCELLED
+        ).exists())
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer, data__reason="unpaid_checkout_expired"
+        ).exists())
+
+    def test_pending_or_paid_payment_protects_checkout_from_expiry(self):
+        from apps.bookings.tasks import expire_unpaid_checkouts
+        from apps.payments.models import Payment
+        order, booking = self._create_old_order()
+        payment = Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            amount=Decimal("150.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+        )
+
+        self.assertEqual(expire_unpaid_checkouts(), 0)
+        order.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+        self.assertEqual(booking.status, Booking.Status.PENDING)
+
+        payment.status = Payment.Status.PAID
+        payment.save(update_fields=["status", "updated_at"])
+        self.assertEqual(expire_unpaid_checkouts(), 0)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
