@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/network/auth_api.dart';
@@ -178,6 +179,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 const SizedBox(height: 8),
                 if (offer.scheduledAt != null) Text(AirwayText.tr('Requested time: ${_dateLabel(offer.scheduledAt)}', 'अनुरोधित समय: ${_dateLabel(offer.scheduledAt)}')),
                 if (offer.serviceAddress?.isNotEmpty == true) Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
+                Text(offer.workerPayout == null ? AirwayText.tr('Worker payout is not configured yet.', 'वर्कर की कमाई अभी तय नहीं है।') : 'Your earning: ₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.success)),
                 Text(AirwayText.tr('Quantity: ${offer.quantity}', 'मात्रा: ${offer.quantity}')),
                 for (final entry in offer.customerAnswers.entries)
                   Text(workerCustomerAnswerLabel(entry.key, entry.value)),
@@ -1115,6 +1117,17 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     );
   }
 
+  Future<void> _openOfferMap(WorkerOffer offer) async {
+    final latitude = offer.addressLatitude;
+    final longitude = offer.addressLongitude;
+    if (latitude == null || longitude == null) return;
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not open Maps.', 'Maps नहीं खुल सका।'))));
+    }
+  }
+
   Future<void> _respondToOfferFromHome(WorkerOffer offer, {required bool accept}) async {
     if (_offerActionsInProgress.contains(offer.id)) return;
     setState(() => _offerActionsInProgress.add(offer.id));
@@ -1215,7 +1228,15 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             if (address.isNotEmpty) ...[
               const SizedBox(height: 7),
               _offerInfoLine(Icons.location_on_outlined, address, maxLines: 2),
+              if (offer.addressLatitude != null && offer.addressLongitude != null)
+                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+                  onPressed: () => _openOfferMap(offer),
+                  icon: const Icon(Icons.directions_rounded, size: 17),
+                  label: Text(AirwayText.tr('Open map', 'मैप खोलें')),
+                )),
             ],
+            const SizedBox(height: 7),
+            _offerInfoLine(Icons.currency_rupee_rounded, offer.workerPayout == null ? AirwayText.tr('Worker payout not configured yet', 'वर्कर की कमाई अभी तय नहीं है') : 'Your earning after completion: ₹${offer.workerPayout!.toStringAsFixed(2)}'),
             const SizedBox(height: 7),
             _offerInfoLine(Icons.timer_outlined, '${offer.expectedDurationMinutes} min estimated service time'),
             if (offer.quantity > 1) ...[
