@@ -1759,7 +1759,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
             worker__user=self.request.user,
             worker__status=WorkerProfile.Status.APPROVED,
         ).select_related(
-            "booking__service", "booking__variant", "booking__address", "booking__order_item__order", "worker__user", "order", "appointment_group"
+            "booking__service", "booking__variant", "booking__address", "booking__customer", "booking__order_item__order", "worker__user", "order", "appointment_group"
         ).prefetch_related(
             "booking__form_responses__form_field",
             "booking__booking_addons__addon",
