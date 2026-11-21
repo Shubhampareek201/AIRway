@@ -332,6 +332,23 @@ class WorkerApi {
         .toList();
   }
 
+  static Future<Map<String, dynamic>> getMissionWallet() async {
+    final result = await _request('/api/v1/workers/mission-wallet/');
+    if (result is! Map) {
+      throw const FormatException('Unexpected mission wallet response');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+  static Future<Map<String, dynamic>> requestMissionWithdrawal(String amount) async {
+    final result = await _request(
+      '/api/v1/workers/mission-wallet/',
+      method: 'POST',
+      data: {'amount': amount},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<List<Map<String, dynamic>>> getLeaves() async {
     final result = await _request('/api/v1/workers/leaves/');
     if (result is! List) throw const FormatException('Unexpected leave response');
