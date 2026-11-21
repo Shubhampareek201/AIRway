@@ -179,6 +179,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 const SizedBox(height: 8),
                 if (offer.scheduledAt != null) Text(AirwayText.tr('Requested time: ${_dateLabel(offer.scheduledAt)}', 'अनुरोधित समय: ${_dateLabel(offer.scheduledAt)}')),
                 if (offer.serviceAddress?.isNotEmpty == true) Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
+                if (offer.bookingNotes?.trim().isNotEmpty == true)
+                  Padding(padding: const EdgeInsets.only(top: 6), child: Text(AirwayText.tr('Customer message: ${offer.bookingNotes}', 'ग्राहक का संदेश: ${offer.bookingNotes}'), style: const TextStyle(fontSize: 12, height: 1.35))),
                 Text(offer.workerPayout == null ? AirwayText.tr('Worker payout is not configured yet.', 'वर्कर की कमाई अभी तय नहीं है।') : 'Your earning: ₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.success)),
                 Text(AirwayText.tr('Quantity: ${offer.quantity}', 'मात्रा: ${offer.quantity}')),
                 for (final entry in offer.customerAnswers.entries)
@@ -1227,6 +1229,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             if (offer.serviceDescription?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 7),
               Text(offer.serviceDescription!, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.35, color: AirwayColors.textSecondary)),
+            ],
+            if (offer.bookingNotes?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.message_outlined, 'Customer message: ${offer.bookingNotes}', maxLines: 2),
             ],
             const SizedBox(height: 12),
             _offerInfoLine(Icons.calendar_month_outlined, when),
