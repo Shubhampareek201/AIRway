@@ -19,12 +19,12 @@ class CustomerOrderScreen extends StatefulWidget {
 }
 
 class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
-  static const violet = Color(0xFF075B3C);
+  static const violet = Color(0xFF6C4AE3);
   static const ink = Color(0xFF1E2923);
   static const sub = Color(0xFF748078);
   static const bg = Color(0xFFFFFFFF);
-  static const pale = Color(0xFFEAF1EA);
-  static const line = Color(0xFFE6EBE7);
+  static const pale = Color(0xFFF1EDFF);
+  static const line = Color(0xFFE8E2F5);
 
   final Razorpay razorpay = Razorpay();
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
@@ -35,6 +35,8 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   bool paying = false;
   bool _quoteResponding = false;
   bool _rescheduling = false;
+  int? _currentExtraWorkId;
+  int? _extraWorkBusyId;
   String _currentPaymentStage = 'advance';
   String? error;
   Timer? refreshTimer;
@@ -93,19 +95,244 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
-  Future<void> startPayment() async {
-    final advanceReady = order?['ready_for_advance'] == true;
-    final balanceReady = order?['ready_for_balance'] == true;
-    final legacyReady = order?['ready_for_legacy_payment'] == true;
+
+  Future<void> respondToExtraWork(Map<String, dynamic> proposal, String decision, {String? paymentChoice}) async {
+    final id = int.tryParse(proposal['id']?.toString() ?? '');
+    if (id == null || _extraWorkBusyId != null) return;
+    setState(() => _extraWorkBusyId = id);
+    try {
+      final result = await BookingApi.request(
+        '/api/v1/bookings/extra-work/' + id.toString() + '/decision/',
+        method: 'POST',
+        data: {'decision': decision, if (paymentChoice != null) 'payment_choice': paymentChoice},
+      );
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      if (decision == 'approve' && paymentChoice == 'separate') {
+        await startExtraWorkPayment(result);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(decision == 'reject' ? 'Extra-work request rejected.' : 'Approved amount will be included in this appointment’s final balance.'),
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not update extra-work request: ' + e.toString())));
+      await loadOrder(showLoader: false);
+    } finally {
+      if (mounted) setState(() => _extraWorkBusyId = null);
+    }
+  }
+
+  Future<void> startExtraWorkPayment(Map<String, dynamic> proposal) async {
+    final id = int.tryParse(proposal['id']?.toString() ?? '');
+    final total = amount(proposal['total_amount']);
+    if (id == null || total <= 0 || paying) return;
+    final walletController = TextEditingController(text: '0.00');
+    final walletAmount = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Pay for approved extra work'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Total: ₹' + total.toStringAsFixed(2)),
+          const SizedBox(height: 12),
+          Text('Available AIRway wallet: ₹' + walletBalance.toStringAsFixed(2)),
+          const SizedBox(height: 8),
+          TextField(controller: walletController, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Use wallet amount (₹)', border: OutlineInputBorder())),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Pay later')),
+          FilledButton(onPressed: () {
+            final value = double.tryParse(walletController.text.trim());
+            if (value == null || !value.isFinite || value < 0 || value > walletBalance || value > total ||
+                (value * 100).roundToDouble() != value * 100) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Enter a valid wallet amount within your available balance and proposal total.')));
+              return;
+            }
+            Navigator.pop(dialogContext, value);
+          }, child: const Text('Continue')),
+        ],
+      ),
+    );
+    walletController.dispose();
+    if (walletAmount == null || !mounted) return;
+    setState(() { paying = true; _currentExtraWorkId = id; });
+    try {
+      final payment = await PaymentApi.createExtraWorkPayment(id, walletAmount: walletAmount.toStringAsFixed(2));
+      await loadWalletBalance();
+      if (payment['already_paid'] == true || payment['payment_status']?.toString() == 'paid') {
+        if (!mounted) return;
+        setState(() { paying = false; _currentExtraWorkId = null; });
+        await loadOrder(showLoader: false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extra-work payment is complete.')));
+        return;
+      }
+      final gatewayOrderId = payment['order_id']?.toString() ?? '';
+      final key = payment['key_id']?.toString() ?? '';
+      if (gatewayOrderId.isEmpty || key.isEmpty) throw Exception('Payment gateway order could not be initialized.');
+      razorpay.open({
+        'key': key, 'amount': payment['amount'], 'currency': payment['currency'] ?? 'INR',
+        'name': 'AIRway', 'description': 'Approved extra work #' + id.toString(),
+        'order_id': gatewayOrderId, 'theme': {'color': '#075B43'},
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() { paying = false; _currentExtraWorkId = null; });
+        await loadOrder(showLoader: false);
+        await loadWalletBalance();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start extra-work payment: ' + e.toString())));
+      }
+    }
+  }
+
+  Widget _extraWorkRefundSection(
+    Map<String, dynamic> row,
+    Map<String, dynamic> proposal,
+  ) {
+    final proposalId = proposal['id']?.toString();
+    final refunds = (row['refunds'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((refund) => refund['extra_work_id']?.toString() == proposalId)
+        .toList();
+    if (refunds.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F4FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5DDFB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.account_balance_wallet_outlined, size: 16, color: violet),
+            const SizedBox(width: 6),
+            const Text(
+              'Refund for this additional work',
+              style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12),
+            ),
+          ]),
+          const SizedBox(height: 7),
+          for (var index = 0; index < refunds.length; index++) ...[
+            if (index > 0) const Divider(height: 12, color: Color(0xFFE5DDFB)),
+            _refundRow(refunds[index]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget extraWorkSection(Map<String, dynamic> row) {
+    final proposals = (row['extra_work'] as List? ?? []).whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item)).toList();
+    if (proposals.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 12),
+      for (final proposal in proposals)
+        Container(
+          margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(color: const Color(0xFFFBFAFF), borderRadius: BorderRadius.circular(15), border: Border.all(color: const Color(0xFFE8E2F5))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.add_task_rounded, color: violet, size: 18), const SizedBox(width: 7),
+              const Expanded(child: Text('Additional work request', style: TextStyle(fontWeight: FontWeight.w900, color: ink))),
+              Text('₹' + amount(proposal['total_amount']).toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+            ]),
+            const SizedBox(height: 7),
+            Text(proposal['reason']?.toString() ?? '', style: const TextStyle(color: sub, fontSize: 13)),
+            for (final item in (proposal['line_items'] as List? ?? []).whereType<Map>())
+              Padding(padding: const EdgeInsets.only(top: 5), child: Row(children: [
+                Expanded(child: Text(item['description'].toString() + ' × ' + item['quantity'].toString(), style: const TextStyle(color: ink, fontSize: 12))),
+                Text('₹' + amount(item['line_total']).toStringAsFixed(2), style: const TextStyle(color: ink, fontSize: 12, fontWeight: FontWeight.w700)),
+              ])),
+            if ((proposal['additional_duration_minutes'] as num? ?? 0) > 0)
+              Padding(padding: const EdgeInsets.only(top: 5), child: Text('Additional time: ' + proposal['additional_duration_minutes'].toString() + ' minutes', style: const TextStyle(color: sub, fontSize: 12))),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1EDFF),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Text(
+                proposal['status'] == 'pending_customer' ? 'Awaiting your decision'
+                  : proposal['status'] == 'approved'
+                    ? 'Approved • ' + (proposal['payment_choice'] == 'separate' ? 'Separate payment' : 'Added to appointment balance') + ' • ' + (proposal['payment_status'] == 'paid' ? 'Paid' : 'Payment pending')
+                    : 'Request ' + proposal['status'].toString(),
+                style: const TextStyle(color: violet, fontSize: 12, fontWeight: FontWeight.w800),
+              ),
+            ),
+            _extraWorkRefundSection(row, proposal),
+            if (proposal['status'] == 'pending_customer') ...[
+              const SizedBox(height: 10),
+              if (_extraWorkBusyId == proposal['id'])
+                const Center(child: CircularProgressIndicator())
+              else
+                Wrap(spacing: 8, children: [
+                  OutlinedButton(onPressed: () => respondToExtraWork(proposal, 'reject'), child: const Text('Reject')),
+                  FilledButton(onPressed: () => showDialog<String>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Approve extra work'),
+                      content: Text('Choose how to pay ₹' + amount(proposal['total_amount']).toStringAsFixed(2) + '.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(dialogContext, 'separate'), child: const Text('Pay separately')),
+                        FilledButton(onPressed: () => Navigator.pop(dialogContext, 'add_to_balance'), child: const Text('Add to final balance')),
+                      ],
+                    ),
+                  ).then((choice) { if (choice != null) respondToExtraWork(proposal, 'approve', paymentChoice: choice); }),
+                    child: const Text('Approve')),
+                ]),
+            ] else if (proposal['status'] == 'approved' && proposal['payment_choice'] == 'separate' && proposal['payment_status'] != 'paid') ...[
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                onPressed: paying ? null : () => startExtraWorkPayment(proposal),
+                icon: const Icon(Icons.payment_rounded, size: 17), label: const Text('Pay approved extra work'),
+              )),
+            ],
+          ]),
+        ),
+    ]);
+  }
+
+  Future<void> startPayment({int? appointmentGroupId}) async {
+    Map<String, dynamic>? selectedGroup;
+    if (appointmentGroupId != null) {
+      for (final rawGroup in (order?['appointment_groups'] as List? ?? [])) {
+        if (rawGroup is Map &&
+            rawGroup['id']?.toString() == appointmentGroupId.toString()) {
+          selectedGroup = Map<String, dynamic>.from(rawGroup);
+          break;
+        }
+      }
+    }
+    final hasAppointmentGroups =
+        (order?['appointment_groups'] as List? ?? []).isNotEmpty;
+    final advanceReady = appointmentGroupId == null &&
+        order?['ready_for_advance'] == true;
+    final balanceReady = selectedGroup != null
+        ? selectedGroup['ready_for_balance'] == true
+        : !hasAppointmentGroups && order?['ready_for_balance'] == true;
+    final legacyReady = appointmentGroupId == null &&
+        order?['ready_for_legacy_payment'] == true;
     if ((!advanceReady && !balanceReady && !legacyReady) || paying) return;
-    final stage = advanceReady ? 'advance' : balanceReady ? 'balance' : 'legacy';
+    final stage = selectedGroup != null
+        ? 'balance'
+        : advanceReady ? 'advance' : balanceReady ? 'balance' : 'legacy';
     _currentPaymentStage = stage;
-    final stageDueKey = advanceReady
-        ? 'advance_due'
-        : balanceReady
-            ? 'balance_due'
-            : 'legacy_payment_due';
-    final stageDue = amount(order == null ? null : order![stageDueKey]);
+    final stageDue = selectedGroup != null
+        ? amount(selectedGroup['balance_due'])
+        : amount(order == null
+            ? null
+            : order![advanceReady
+                ? 'advance_due'
+                : balanceReady ? 'balance_due' : 'legacy_payment_due']);
     final rawWalletAmount = walletAmountController.text.trim();
     final parsedWalletAmount = rawWalletAmount.isEmpty ? 0.0 : double.tryParse(rawWalletAmount);
     if (parsedWalletAmount == null || !parsedWalletAmount.isFinite) {
@@ -114,7 +341,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       );
       return;
     }
-    final walletAmount = parsedWalletAmount;
+    final walletAmount = selectedGroup != null
+        ? parsedWalletAmount.clamp(0.0, stageDue).toDouble()
+        : parsedWalletAmount;
     if (walletAmount < 0 || walletAmount > walletBalance || walletAmount > stageDue) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AirwayText.tr('Enter a wallet amount within your available balance and the amount due now.', 'उपलब्ध वॉलेट बैलेंस और अभी देय राशि के भीतर रकम दर्ज करें।'))),
@@ -134,6 +363,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         widget.orderId,
         walletAmount: walletAmount.toStringAsFixed(2),
         stage: stage,
+        appointmentGroupId: appointmentGroupId,
       );
       await loadWalletBalance();
       if (payment['fully_paid_by_wallet'] == true || payment['already_paid'] == true) {
@@ -168,7 +398,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         'amount': payment['amount'],
         'currency': payment['currency'] ?? 'INR',
         'name': 'AIRway',
-        'description': 'Service order #' + widget.orderId.toString(),
+        'description': selectedGroup != null
+            ? 'Appointment #' + selectedGroup['group_number'].toString() + ' balance'
+            : 'Service order #' + widget.orderId.toString(),
         'order_id': gatewayOrderId,
         'theme': {'color': '#075B43'},
       });
@@ -187,7 +419,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final signature = response.signature;
     if (orderId == null || paymentId == null || signature == null) {
       if (mounted) {
-        setState(() => paying = false);
+        setState(() {
+          paying = false;
+          _currentExtraWorkId = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(AirwayText.tr('Payment could not be verified. Please check your order before retrying.', 'भुगतान वेरिफ़ाई नहीं हो सका। दोबारा कोशिश करने से पहले अपना ऑर्डर जाँचें।'))),
         );
@@ -196,15 +431,35 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       return;
     }
     try {
+      final extraWorkId = _currentExtraWorkId;
       final verification = await PaymentApi.verifyPayment(
         razorpayOrderId: orderId,
         razorpayPaymentId: paymentId,
         razorpaySignature: signature,
       );
       if (!mounted) return;
-      setState(() => paying = false);
+      setState(() {
+        paying = false;
+        _currentExtraWorkId = null;
+      });
       await loadOrder(showLoader: false);
+      await loadWalletBalance();
       if (!mounted) return;
+      if (extraWorkId != null) {
+        final extraPaid = verification['status']?.toString().toLowerCase() == 'paid';
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: Icon(extraPaid ? Icons.verified_rounded : Icons.hourglass_top_rounded, color: extraPaid ? violet : sub, size: 44),
+            title: Text(extraPaid ? 'Extra-work payment successful' : 'Extra-work payment not confirmed'),
+            content: Text(extraPaid
+                ? 'Your approved additional work payment has been verified.'
+                : 'AIRway has not confirmed this payment as paid yet. Refresh the order before retrying.'),
+            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+          ),
+        );
+        return;
+      }
 
       // Razorpay's client callback only means the checkout flow returned.
       // The backend's verified PAID state is the only success condition.
@@ -241,7 +496,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       );
     } catch (e) {
       if (mounted) {
-        setState(() => paying = false);
+        setState(() {
+          paying = false;
+          _currentExtraWorkId = null;
+        });
         await loadOrder(showLoader: false);
         await loadWalletBalance();
         if (!mounted) return;
@@ -254,7 +512,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   void onPaymentError(PaymentFailureResponse response) {
     if (!mounted) return;
-    setState(() => paying = false);
+    setState(() {
+      paying = false;
+      _currentExtraWorkId = null;
+    });
     loadWalletBalance();
     loadOrder(showLoader: false);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -264,7 +525,10 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
 
   void onExternalWallet(ExternalWalletResponse response) {
     if (!mounted) return;
-    setState(() => paying = false);
+    setState(() {
+      paying = false;
+      _currentExtraWorkId = null;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AirwayText.tr('External wallet selected: ${response.walletName ?? 'Wallet'}', 'बाहरी वॉलेट चुना गया: ${response.walletName ?? 'वॉलेट'}'))),
     );
@@ -409,6 +673,52 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       ),
     );
     if (mounted) await loadOrder(showLoader: false);
+  }
+
+  Future<void> cancelAppointmentGroup(int groupId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AirwayText.tr('Cancel this appointment?', 'यह अपॉइंटमेंट रद्द करें?')),
+        content: Text(AirwayText.tr(
+          'All services in this appointment will be cancelled. Other appointments in this order will remain unchanged. Eligible refunds will be processed separately.',
+          'इस अपॉइंटमेंट की सभी सेवाएँ रद्द हो जाएँगी। इस ऑर्डर के दूसरे अपॉइंटमेंट पर असर नहीं पड़ेगा। लागू रिफंड अलग से प्रोसेस होंगे।',
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(AirwayText.tr('Keep appointment', 'अपॉइंटमेंट जारी रखें')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(AirwayText.tr('Cancel appointment', 'अपॉइंटमेंट रद्द करें')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await BookingApi.cancelAppointmentGroup(groupId);
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Appointment cancelled. Other appointments were not changed.',
+          'अपॉइंटमेंट रद्द हो गया। दूसरे अपॉइंटमेंट नहीं बदले गए।',
+        ))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await loadOrder(showLoader: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Could not cancel this appointment: $e',
+          'अपॉइंटमेंट रद्द नहीं हो सका: $e',
+        ))),
+      );
+    }
   }
 
   String statusLabel(String value) {
@@ -667,7 +977,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final advanceReady = order?['ready_for_advance'] == true;
     final balanceReady = order?['ready_for_balance'] == true;
     final legacyReady = order?['ready_for_legacy_payment'] == true;
+    final hasAppointmentGroups =
+        (order?['appointment_groups'] as List? ?? []).isNotEmpty;
     final ready = advanceReady || balanceReady || legacyReady;
+    final footerPaymentReady =
+        advanceReady || (balanceReady && !hasAppointmentGroups) || legacyReady;
     final advancePaid = order?['advance_paid'] == true;
     final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
@@ -699,11 +1013,11 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(20)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(paid ? 'Payment complete' : balanceReady ? 'All services verified' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Payment required',
+              Text(paid ? 'Payment complete' : balanceReady ? 'An appointment is complete' : advancePaid ? 'Your professionals are being arranged' : advanceReady ? 'Confirm your order' : legacyReady ? 'Complete your payment' : 'Payment required',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: ink)),
               const SizedBox(height: 6),
               Text(paid ? 'Your order is fully paid.' : balanceReady
-                  ? 'Every active service is verified. Pay the remaining balance to close your order.'
+                  ? 'One or more appointments are complete. Pay each completed appointment balance; other appointments continue independently.'
                   : advancePaid
                       ? 'Your $initialPaymentLabel is received. Worker matching and service progress will appear here.'
                       : advanceReady
@@ -719,7 +1033,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 14),
           orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
           const SizedBox(height: 14),
-          scheduleOverview(rows),
+          appointmentGroupsOverview(rows),
           if (order?['recurring_wash_plan'] is Map) ...[
             const SizedBox(height: 14),
             recurringWashSection(Map<String, dynamic>.from(order!['recurring_wash_plan'] as Map)),
@@ -820,7 +1134,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
         decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: line))),
         child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (ready && !paid)
+          if (footerPaymentReady && !paid)
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: paying ? null : startPayment,
               child: paying ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(
@@ -843,6 +1157,143 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     ]);
   }
 
+
+  Widget appointmentGroupsOverview(List<Map<String, dynamic>> rows) {
+    final groups = (order?['appointment_groups'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList()
+      ..sort((a, b) => (a['group_number'] as int? ?? 0).compareTo(b['group_number'] as int? ?? 0));
+    if (groups.isEmpty) return scheduleOverview(rows);
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.calendar_month_rounded, color: violet, size: 19),
+            const SizedBox(width: 8),
+            Text(AirwayText.tr('Your appointments', 'आपके अपॉइंटमेंट'),
+                style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
+          ]),
+          const SizedBox(height: 8),
+          for (var index = 0; index < groups.length; index++) ...[
+            if (index > 0) const Divider(height: 18),
+            Builder(builder: (context) {
+              final group = groups[index];
+              final groupId = int.tryParse(group['id']?.toString() ?? '');
+              final groupNumber = group['group_number']?.toString() ?? '${index + 1}';
+              final groupRows = rows.where((row) =>
+                  row['appointment_group_id']?.toString() == group['id']?.toString()
+              ).toList();
+              final serviceNames = groupRows.map((row) {
+                final service = row['service'] is Map
+                    ? (row['service']['service_title']?.toString() ?? 'Service')
+                    : 'Service';
+                return service;
+              }).toList();
+              final groupStatus = group['status']?.toString() ?? 'pending';
+              final canCancel = groupId != null &&
+                  ['pending', 'confirmed', 'assigned'].contains(groupStatus);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(9)),
+                      child: Text(groupNumber, style: const TextStyle(color: violet, fontWeight: FontWeight.w900)),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AirwayText.tr('Appointment $groupNumber', 'अपॉइंटमेंट $groupNumber'),
+                          style: const TextStyle(fontWeight: FontWeight.w800, color: ink),
+                        ),
+                        Text(
+                          DateFormatForOrder.format(group['scheduled_at']?.toString() ?? ''),
+                          style: const TextStyle(color: sub, fontSize: 12),
+                        ),
+                      ],
+                    )),
+                    Text(statusLabel(groupStatus), style: const TextStyle(color: violet, fontSize: 11, fontWeight: FontWeight.w700)),
+                  ]),
+                  if (serviceNames.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Text(serviceNames.join(' • '), style: const TextStyle(color: sub, fontSize: 12)),
+                    ),
+                  if (group['customer_message']?.toString().trim().isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Text(
+                        AirwayText.tr(
+                          'Message to professional: ${group['customer_message']}',
+                          'प्रोफेशनल के लिए संदेश: ${group['customer_message']}',
+                        ),
+                        style: const TextStyle(color: sub, fontSize: 12),
+                      ),
+                    ),
+                  if (group['ready_for_balance'] == true && groupId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.tonalIcon(
+                          onPressed: paying
+                              ? null
+                              : () => startPayment(appointmentGroupId: groupId),
+                          icon: const Icon(Icons.payment_rounded, size: 16),
+                          label: Text(AirwayText.tr(
+                            'Pay balance ₹${amount(group['balance_due']).toStringAsFixed(2)}',
+                            'शेष ₹${amount(group['balance_due']).toStringAsFixed(2)} दें',
+                          )),
+                        ),
+                      ),
+                    ),
+                  if (group['balance_paid'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Text(
+                        AirwayText.tr('Appointment balance paid', 'अपॉइंटमेंट का शेष भुगतान हो गया'),
+                        style: const TextStyle(color: Color(0xFF2E7D52), fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  if (canCancel)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 37, top: 5),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => cancelAppointmentGroup(groupId!),
+                          icon: const Icon(Icons.cancel_outlined, size: 15),
+                          label: Text(AirwayText.tr('Cancel this appointment', 'यह अपॉइंटमेंट रद्द करें')),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFB3261E),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget scheduleOverview(List<Map<String, dynamic>> rows) {
     final groups = <String, List<String>>{};
@@ -955,6 +1406,28 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           Text('₹' + amount(row['line_total']).toStringAsFixed(0),
               style: const TextStyle(fontWeight: FontWeight.w900, color: ink)),
         ]),
+        if (row['appointment_group_number'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              AirwayText.tr(
+                'Appointment ${row['appointment_group_number']}',
+                'अपॉइंटमेंट ${row['appointment_group_number']}',
+              ),
+              style: const TextStyle(color: violet, fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ),
+        if (row['appointment_group_message']?.toString().trim().isNotEmpty == true)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              AirwayText.tr(
+                'Message for professional: ${row['appointment_group_message']}',
+                'प्रोफेशनल के लिए संदेश: ${row['appointment_group_message']}',
+              ),
+              style: const TextStyle(color: sub, fontSize: 12),
+            ),
+          ),
         if (snapshot['variant_title'] != null) Text(snapshot['variant_title'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
         if (snapshot['unit_label']?.toString().isNotEmpty ?? false)
           Text('${row['quantity']} ${snapshot['unit_label']}', style: const TextStyle(color: sub, fontSize: 12)),
@@ -1043,6 +1516,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           const SizedBox(height: 12),
           _quoteCard(row),
         ],
+        extraWorkSection(row),
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 12),
@@ -1099,9 +1573,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ],
           ),
         ],
-        if (row['refunds'] is List && (row['refunds'] as List).isNotEmpty) ...[
+        if (_bookingLevelRefunds(row).isNotEmpty) ...[
           const SizedBox(height: 10),
-          refundSection((row['refunds'] as List).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()),
+          refundSection(_bookingLevelRefunds(row)),
         ],
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(
@@ -1345,28 +1819,36 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     }
   }
 
+  List<Map<String, dynamic>> _bookingLevelRefunds(Map<String, dynamic> row) {
+    return (row['refunds'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((refund) => refund['extra_work_id'] == null)
+        .toList();
+  }
+
   Widget refundSection(List<Map<String, dynamic>> refunds) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F7F3),
+        color: const Color(0xFFF7F4FF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDCE9DF)),
+        border: Border.all(color: const Color(0xFFE5DDFB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF075B3C), size: 19),
+              Icon(Icons.account_balance_wallet_outlined, color: violet, size: 19),
               SizedBox(width: 7),
               Text(AirwayText.tr('Refund updates', 'रिफंड अपडेट'), style: TextStyle(fontWeight: FontWeight.w900, color: ink)),
             ],
           ),
           const SizedBox(height: 9),
           for (var index = 0; index < refunds.length; index++) ...[
-            if (index > 0) const Divider(height: 16, color: Color(0xFFDCE9DF)),
+            if (index > 0) const Divider(height: 16, color: Color(0xFFE5DDFB)),
             _refundRow(refunds[index]),
           ],
         ],
@@ -1389,9 +1871,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       'processing' => const Color(0xFF946200),
       _ => const Color(0xFF52665A),
     };
-    final reasonText = reason == 'platform_unfulfilled'
-        ? 'AIRway could not fulfil this service'
-        : 'Service cancellation';
+    final reasonText = switch (reason) {
+      'platform_unfulfilled' => 'AIRway could not fulfil this service',
+      'admin_adjustment' => 'AIRway adjustment',
+      'dispute_resolution' => 'Dispute resolution',
+      'recurring_plan_cancellation' => 'Unused recurring plan visits',
+      _ => 'Service cancellation',
+    };
     final amountValue = amount(refund['amount']);
     final walletValue = amount(refund['wallet_amount']);
     final gatewayValue = amount(refund['gateway_amount']);
@@ -1401,7 +1887,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         Row(
           children: [
             Expanded(child: Text(statusText, style: TextStyle(fontWeight: FontWeight.w800, color: statusColor))),
-            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF075B3C))),
+            Text('₹${amountValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, color: violet)),
           ],
         ),
         const SizedBox(height: 4),

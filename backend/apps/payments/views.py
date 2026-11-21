@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction, IntegrityError
 
-from apps.bookings.models import Booking, Order
+from apps.bookings.models import AppointmentGroup, Booking, BookingExtraWork, Order
 from .models import Payment
 
 logger = logging.getLogger(__name__)
@@ -115,8 +115,9 @@ def create_or_get_order_payment(
     wallet_amount=Decimal("0.00"),
     trigger_source="checkout",
     stage=Payment.Stage.ADVANCE,
+    appointment_group=None,
 ):
-    """Create or retrieve an idempotent advance or balance payment for an order."""
+    """Create or retrieve an idempotent order-stage or appointment-group balance payment."""
     try:
         requested = Decimal(str(wallet_amount))
     except (InvalidOperation, TypeError, ValueError):
@@ -127,8 +128,18 @@ def create_or_get_order_payment(
         raise ValueError("Order not found or access denied.")
     if stage not in (Payment.Stage.LEGACY, Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
         raise ValueError("Unsupported order payment stage.")
+    if appointment_group is not None and (
+        stage != Payment.Stage.BALANCE or appointment_group.order_id != order.pk
+    ):
+        raise ValueError("Appointment-group payment is available only for a balance due on this order.")
 
     items = list(order.items.select_related("booking").order_by("id"))
+    payment_items = [
+        item for item in items
+        if appointment_group is None or item.booking.appointment_group_id == appointment_group.pk
+    ]
+    if appointment_group is not None and not payment_items:
+        raise ValueError("This appointment group has no services in the selected order.")
     if not items:
         raise ValueError("This order has no service bookings.")
 
@@ -166,7 +177,10 @@ def create_or_get_order_payment(
         order.metadata = {**(order.metadata or {}), allocation_key: allocation}
         order.save(update_fields=["metadata", "updated_at"])
 
-    active_items = [item for item in items if item.booking.status != Booking.Status.CANCELLED]
+    active_items = [
+        item for item in payment_items
+        if item.booking.status != Booking.Status.CANCELLED
+    ]
     if stage in (Payment.Stage.ADVANCE, Payment.Stage.BALANCE):
         if not active_items:
             raise ValueError("There are no active services remaining to pay for.")
@@ -184,7 +198,20 @@ def create_or_get_order_payment(
             ),
             Decimal("0.00"),
         )
-    else:
+
+    if stage == Payment.Stage.BALANCE:
+        extra_work_query = BookingExtraWork.objects.filter(
+            booking__order_item__order=order,
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+            payment_status="pending",
+        )
+        if appointment_group is not None:
+            extra_work_query = extra_work_query.filter(appointment_group=appointment_group)
+        else:
+            extra_work_query = extra_work_query.filter(appointment_group__isnull=True)
+        stage_total += sum(extra_work_query.values_list("total_amount", flat=True), Decimal("0.00"))
+    elif stage == Payment.Stage.LEGACY:
         stage_total = order.total_amount
     if stage == Payment.Stage.LEGACY:
         # Idempotent retries must still succeed after the first payment has
@@ -193,6 +220,7 @@ def create_or_get_order_payment(
         paid = Payment.objects.filter(
             order=order,
             stage=Payment.Stage.LEGACY,
+            appointment_group__isnull=True,
             status=Payment.Status.PAID,
         ).first()
         if paid:
@@ -202,18 +230,44 @@ def create_or_get_order_payment(
         ):
             raise ValueError("Legacy full payment is available only for an assigned order awaiting payment.")
     elif stage == Payment.Stage.ADVANCE:
-        if Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
-            paid = Payment.objects.get(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID)
+        if Payment.objects.filter(
+            order=order, stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True, status=Payment.Status.PAID,
+        ).exists():
+            paid = Payment.objects.get(
+                order=order, stage=Payment.Stage.ADVANCE,
+                appointment_group__isnull=True, status=Payment.Status.PAID,
+            )
             return paid, paid.razorpay_order_id, True
         if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.AWAITING_PAYMENT, Order.Status.PARTIALLY_CANCELLED):
             raise ValueError("This order is not eligible for an advance payment.")
     else:
-        if not Payment.objects.filter(order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).exists():
+        if appointment_group is None and order.appointment_groups.exists() and not Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.BALANCE,
+            appointment_group__isnull=True,
+        ).exists():
+            raise ValueError("This order collects the final balance separately for each completed appointment. Select the appointment you want to pay for.")
+        if not Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True,
+            status=Payment.Status.PAID,
+        ).exists():
             raise ValueError("The advance payment must be completed first.")
         if any(item.booking.status != Booking.Status.COMPLETED for item in active_items):
-            raise ValueError("Final balance is available only after every active service is completed and verified.")
-        if Payment.objects.filter(order=order, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).exists():
-            paid = Payment.objects.get(order=order, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID)
+            raise ValueError(
+                "This appointment's balance is available only after every active service in the appointment is completed and verified."
+                if appointment_group else
+                "Final balance is available only after every active service is completed and verified."
+            )
+        paid = Payment.objects.filter(
+            order=order,
+            stage=Payment.Stage.BALANCE,
+            appointment_group=appointment_group,
+            status=Payment.Status.PAID,
+        ).first()
+        if paid:
             return paid, paid.razorpay_order_id, True
 
     if stage_total <= 0:
@@ -227,7 +281,9 @@ def create_or_get_order_payment(
     with transaction.atomic():
         locked_order = Order.objects.select_for_update().get(pk=order.pk, customer=customer)
         payment = Payment.objects.select_for_update().filter(
-            order=locked_order, stage=stage
+            order=locked_order,
+            stage=stage,
+            appointment_group=appointment_group,
         ).first()
         # Check the settled record before validating the pre-payment order
         # state: successful retries naturally arrive after the order changed.
@@ -240,8 +296,12 @@ def create_or_get_order_payment(
                 "advance" if stage == Payment.Stage.ADVANCE else "balance", []
             )
             locked_items = list(locked_order.items.select_related("booking"))
-            locked_active_items = [
+            locked_payment_items = [
                 item for item in locked_items
+                if appointment_group is None or item.booking.appointment_group_id == appointment_group.pk
+            ]
+            locked_active_items = [
+                item for item in locked_payment_items
                 if item.booking.status != Booking.Status.CANCELLED
             ]
             locked_stage_total = sum(
@@ -255,13 +315,32 @@ def create_or_get_order_payment(
                 ),
                 Decimal("0.00"),
             )
+            if stage == Payment.Stage.BALANCE:
+                locked_extra_work = BookingExtraWork.objects.filter(
+                    booking__order_item__order=locked_order,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                )
+                if appointment_group is not None:
+                    locked_extra_work = locked_extra_work.filter(appointment_group=appointment_group)
+                else:
+                    locked_extra_work = locked_extra_work.filter(appointment_group__isnull=True)
+                locked_stage_total += sum(
+                    locked_extra_work.values_list("total_amount", flat=True),
+                    Decimal("0.00"),
+                )
             if locked_stage_total != stage_total:
                 raise ValueError("The order changed while checkout was starting. Refresh the order and retry.")
             if stage == Payment.Stage.BALANCE and (
                 not locked_active_items
                 or any(item.booking.status != Booking.Status.COMPLETED for item in locked_active_items)
             ):
-                raise ValueError("Final balance is available only after every active service is completed and verified.")
+                raise ValueError(
+                    "This appointment's balance is available only after every active service in the appointment is completed and verified."
+                    if appointment_group else
+                    "Final balance is available only after every active service is completed and verified."
+                )
         elif stage == Payment.Stage.LEGACY:
             locked_items = list(locked_order.items.select_related("booking"))
             if locked_order.status != Order.Status.AWAITING_PAYMENT or any(
@@ -288,6 +367,7 @@ def create_or_get_order_payment(
         if payment is None:
             payment = Payment.objects.create(
                 order=locked_order,
+                appointment_group=appointment_group,
                 customer=customer,
                 stage=stage,
                 amount=stage_total - requested,
@@ -321,12 +401,30 @@ def create_or_get_order_payment(
                     "0",
                 )))
                 if line_value > 0:
-                    line_values.append((active_item, line_value))
+                    line_values.append((active_item, line_value, "service"))
+            if stage == Payment.Stage.BALANCE:
+                extra_work_due = BookingExtraWork.objects.filter(
+                    booking__order_item__order=locked_order,
+                    status=BookingExtraWork.Status.APPROVED,
+                    payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                    payment_status="pending",
+                )
+                if appointment_group is not None:
+                    extra_work_due = extra_work_due.filter(appointment_group=appointment_group)
+                else:
+                    extra_work_due = extra_work_due.filter(appointment_group__isnull=True)
+                line_values.extend(
+                    (extra_work, extra_work.total_amount, "extra_work")
+                    for extra_work in extra_work_due
+                )
         else:
-            line_values = [(item, item.line_total) for item in locked_items if item.line_total > 0]
+            line_values = [
+                (item, item.line_total, "service")
+                for item in locked_items if item.line_total > 0
+            ]
         service_rows = []
         wallet_allocated = Decimal("0.00")
-        for index, (active_item, line_value) in enumerate(line_values):
+        for index, (allocation_item, line_value, allocation_type) in enumerate(line_values):
             if index == len(line_values) - 1:
                 wallet_line = requested - wallet_allocated
             else:
@@ -337,15 +435,18 @@ def create_or_get_order_payment(
                     wallet_line,
                     max(Decimal("0.00"), requested - wallet_allocated),
                 )
-                wallet_allocated += wallet_line
             wallet_line = max(Decimal("0.00"), min(wallet_line, line_value))
+            wallet_allocated += wallet_line
             service_rows.append({
-                "order_item_id": active_item.id,
-                "booking_id": active_item.booking_id,
+                "allocation_type": allocation_type,
+                "order_item_id": allocation_item.id if allocation_type == "service" else None,
+                "booking_id": allocation_item.booking_id if allocation_type == "service" else allocation_item.booking_id,
+                "extra_work_id": allocation_item.id if allocation_type == "extra_work" else None,
                 "total": str(line_value),
                 "wallet_amount": str(wallet_line),
                 "gateway_amount": str(line_value - wallet_line),
             })
+
         payment.raw_response = {
             **(payment.raw_response or {}),
             "service_allocation_v1": service_rows,
@@ -366,6 +467,7 @@ def create_or_get_order_payment(
                 "receipt": f"airway_{stage}_{locked_order.id}_{payment.id}",
                 "notes": {
                     "airway_order_id": str(locked_order.id),
+                    "appointment_group_id": str(appointment_group.pk) if appointment_group else "",
                     "payment_stage": stage,
                     "customer_id": str(customer.id),
                     "wallet_amount": str(payment.wallet_amount),
@@ -390,6 +492,144 @@ def create_or_get_order_payment(
     raise ValueError("Razorpay order could not be initialized. Please retry.")
 
 
+def create_or_get_extra_work_payment(extra_work, customer, wallet_amount="0.00"):
+    """Create one idempotent gateway/wallet payment for an approved extra-work proposal."""
+    try:
+        requested = Decimal(str(wallet_amount)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Provide a valid wallet amount.")
+    if not requested.is_finite() or requested < 0 or requested != Decimal(str(wallet_amount)):
+        raise ValueError("Wallet amount must be non-negative with at most two decimal places.")
+    if extra_work.booking.customer_id != customer.id:
+        raise ValueError("Extra-work proposal not found or access denied.")
+    if extra_work.status != BookingExtraWork.Status.APPROVED:
+        raise ValueError("Only customer-approved extra work can be paid.")
+    if extra_work.payment_choice != BookingExtraWork.PaymentChoice.SEPARATE:
+        raise ValueError("This proposal was added to the appointment balance and cannot be paid separately.")
+    if extra_work.payment_status == "paid":
+        payment = Payment.objects.get(extra_work=extra_work)
+        return payment, payment.razorpay_order_id, True
+
+    order_item = getattr(extra_work.booking, "order_item", None)
+    if order_item is None:
+        raise ValueError("This booking is not linked to a payable order. Contact AIRway support.")
+    order = order_item.order
+    if order.currency != "INR":
+        raise ValueError("AIRway wallet and extra-work payments currently support INR only.")
+    total = extra_work.total_amount
+    if requested > total:
+        raise ValueError("Wallet amount cannot exceed the extra-work total.")
+
+    with transaction.atomic():
+        locked = BookingExtraWork.objects.select_for_update(of=("self",)).select_related(
+            "booking__order_item__order"
+        ).get(pk=extra_work.pk, booking__customer=customer)
+        payment = Payment.objects.select_for_update().filter(extra_work=locked).first()
+        if payment and payment.status == Payment.Status.PAID:
+            return payment, payment.razorpay_order_id, True
+        if payment and payment.status == Payment.Status.PENDING:
+            if payment.wallet_amount != requested:
+                raise ValueError("A payment attempt already exists with a different wallet amount.")
+            if payment.amount > 0 and payment.razorpay_order_id:
+                return payment, payment.razorpay_order_id, True
+        if payment is None:
+            payment = Payment.objects.create(
+                order=order,
+                extra_work=locked,
+                customer=customer,
+                stage=Payment.Stage.EXTRA_WORK,
+                amount=total - requested,
+                wallet_amount=requested,
+                method=Payment.Method.WALLET if requested == total else Payment.Method.RAZORPAY,
+                status=Payment.Status.PENDING,
+            )
+        else:
+            payment.amount = total - requested
+            payment.wallet_amount = requested
+            payment.status = Payment.Status.PENDING
+            payment.failed_at = None
+            payment.razorpay_order_id = ""
+            payment.razorpay_payment_id = ""
+            payment.razorpay_signature = ""
+            payment.raw_response = {}
+            payment.save(update_fields=[
+                "amount", "wallet_amount", "status", "failed_at",
+                "razorpay_order_id", "razorpay_payment_id",
+                "razorpay_signature", "raw_response", "updated_at",
+            ])
+
+        locked.payment_status = "pending"
+        locked.save(update_fields=["payment_status", "updated_at"])
+        if requested > 0:
+            from apps.wallet.services import reserve_wallet_amount
+            reserve_wallet_amount(payment, requested)
+
+        if payment.amount > 0:
+            gateway_order = client.order.create(data={
+                "amount": int(payment.amount * 100),
+                "currency": order.currency,
+                "receipt": f"airway_extra_{locked.pk}_{payment.pk}",
+                "notes": {
+                    "airway_order_id": str(order.pk),
+                    "extra_work_id": str(locked.pk),
+                    "payment_id": str(payment.pk),
+                    "payment_stage": Payment.Stage.EXTRA_WORK,
+                    "customer_id": str(customer.pk),
+                    "wallet_amount": str(requested),
+                },
+            })
+            payment.razorpay_order_id = gateway_order["id"]
+            payment.save(update_fields=["razorpay_order_id", "updated_at"])
+
+    if payment.amount == 0:
+        from .verify_view import _process_verified_payment
+        result = _process_verified_payment(payment, "", "", customer, "wallet")
+        if getattr(result, "status_code", 500) >= 400:
+            raise ValueError("Wallet payment could not be completed. Please retry.")
+        payment.refresh_from_db()
+        return payment, "", False
+    return payment, payment.razorpay_order_id, False
+
+
+class CreateExtraWorkPaymentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, extra_work_id):
+        try:
+            extra_work = BookingExtraWork.objects.select_related(
+                "booking__order_item__order"
+            ).get(pk=extra_work_id, booking__customer=request.user)
+        except BookingExtraWork.DoesNotExist:
+            return Response({"detail": "Extra-work proposal not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            payment, razorpay_order_id, existed = create_or_get_extra_work_payment(
+                extra_work, request.user, request.data.get("wallet_amount", "0.00")
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Extra-work payment initialization failed for proposal %s", extra_work_id)
+            return Response({"detail": "Could not initialize extra-work payment. Please retry."}, status=status.HTTP_502_BAD_GATEWAY)
+
+        data = {
+            "order_id": razorpay_order_id,
+            "amount": int(payment.amount * 100),
+            "stage_amount": str(payment.amount + payment.wallet_amount),
+            "wallet_amount": str(payment.wallet_amount),
+            "currency": "INR",
+            "payment_exists": existed,
+            "already_paid": payment.status == Payment.Status.PAID,
+            "payment_status": payment.status,
+            "payment_stage": payment.stage,
+            "payment_id": payment.pk,
+            "extra_work_id": extra_work.pk,
+            "airway_order_id": payment.order_id,
+        }
+        if razorpay_order_id:
+            data["key_id"] = settings.RAZORPAY_KEY_ID
+        return Response(data)
+
+
 class CreateOrderView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -405,6 +645,24 @@ class CreateOrderView(APIView):
             try:
                 raw_wallet_amount = request.data.get("wallet_amount", "0.00")
                 requested_stage = request.data.get("stage")
+                appointment_group = None
+                appointment_group_id = request.data.get("appointment_group_id")
+                if appointment_group_id:
+                    try:
+                        appointment_group = AppointmentGroup.objects.get(
+                            pk=appointment_group_id, order=parent_order
+                        )
+                    except (AppointmentGroup.DoesNotExist, ValueError, TypeError):
+                        return Response(
+                            {"detail": "Appointment group not found in this order."},
+                            status=status.HTTP_404_NOT_FOUND,
+                        )
+                    if requested_stage not in (None, Payment.Stage.BALANCE):
+                        return Response(
+                            {"detail": "Appointment-group payments are balance payments only."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    requested_stage = Payment.Stage.BALANCE
                 if not requested_stage:
                     # New checkout orders always start with the 30% advance.
                     # Preserve the legacy full-settlement path only for orders
@@ -455,6 +713,7 @@ class CreateOrderView(APIView):
                     wallet_amount=raw_wallet_amount,
                     trigger_source="checkout",
                     stage=requested_stage,
+                    appointment_group=appointment_group,
                 )
             except ValueError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -476,6 +735,7 @@ class CreateOrderView(APIView):
                 "payment_status": payment.status,
                 "airway_order_id": parent_order.id,
                 "payment_id": payment.id,
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
             }
             if razorpay_order_id:
                 response_data["key_id"] = settings.RAZORPAY_KEY_ID

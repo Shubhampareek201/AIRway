@@ -42,7 +42,9 @@ class DispatcherService:
         order_id = OrderItem.objects.filter(
             booking_id=booking.pk
         ).values_list("order_id", flat=True).first()
-        if order_id and parent_order is None:
+        if order_id and (parent_order is None or booking.appointment_group_id):
+            # Grouped bookings must never fall back to independent line offers.
+            # Route every trigger through the parent-order dispatcher.
             from apps.bookings.models import Order
             return cls.dispatch_order(Order.objects.get(pk=order_id))
         booking = Booking.objects.select_for_update(of=("self",)).select_related(
@@ -106,7 +108,17 @@ class DispatcherService:
             status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
         ).values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered]
-        # The launch default offers every eligible worker simultaneously. Keep
+        # Eligibility remains exact-service based; this only ranks the workers
+        # who are already qualified for the requested service.
+        scope_tiers = cls._service_scope_tiers(candidates, booking.service)
+        if scope_tiers:
+            best_tier = min(scope_tiers.values())
+            candidates = [
+                worker for worker in candidates
+                if scope_tiers[worker.pk] == best_tier
+            ]
+        # Only the best available skill tier receives this batch. Declines or
+        # expiries are excluded on retry, allowing the next tier to be offered. Keep
         # the explicit batch_size argument meaningful for controlled dispatches
         # and callers that intentionally request a smaller batch.
         if batch_size is not None:
@@ -120,6 +132,199 @@ class DispatcherService:
             service_titles=[booking.service.title],
             payment_order=parent_order,
             recurring_visit=recurring_visit if prepaid_recurring else None,
+        )
+
+    @classmethod
+    @transaction.atomic
+    def dispatch_appointment_group(cls, group, parent_order):
+        """Offer one appointment to workers qualified and available for every service in it."""
+        from django.db.models import Max
+        from apps.bookings.models import (
+            AppointmentGroup, Booking, BookingAssignment, WorkerOffer,
+            DispatchConfiguration,
+        )
+        from apps.workers.models import WorkerProfile
+        from apps.workers.eligibility import required_worker_gender_for_booking
+        from apps.availability.models import WorkerBlockedSlot
+        from apps.bookings.services import _booking_intervals, _intervals_overlap
+        from apps.payments.models import Payment
+
+        group = AppointmentGroup.objects.select_for_update().get(pk=group.pk)
+        if not (parent_order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
+            order=parent_order, stage=Payment.Stage.ADVANCE,
+            status=Payment.Status.PAID,
+        ).exists():
+            return []
+
+        bookings = list(
+            group.bookings.exclude(status=Booking.Status.CANCELLED)
+            .select_related("service__category", "variant", "address__zone__city")
+            .order_by("pk")
+        )
+        if not bookings or any(
+            booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+            or BookingAssignment.objects.filter(booking=booking).exists()
+            or booking.scheduled_at != group.scheduled_at
+            for booking in bookings
+        ):
+            return []
+
+        active_offers = WorkerOffer.objects.filter(
+            appointment_group=group,
+            status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+        )
+        if active_offers.exists():
+            return []
+
+        now = timezone.now()
+        # Retire any pre-migration line offers so a worker can receive one
+        # coherent group offer rather than competing offers for individual lines.
+        WorkerOffer.objects.filter(
+            booking__in=bookings,
+            order__isnull=True,
+            appointment_group__isnull=True,
+            status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+        ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=now)
+
+        config = DispatchConfiguration.get_solo()
+        if not config.is_enabled:
+            return []
+
+        common_worker_ids = None
+        group_duration = 0
+        for booking in bookings:
+            zone = booking.address.zone if booking.address_id else None
+            duration = (
+                booking.variant.duration_minutes
+                if booking.variant_id and booking.variant.duration_minutes
+                else booking.service.duration_minutes
+            ) or 60
+            quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+            duration *= 1 if booking.service.pricing_type == "per_unit" else quantity
+            group_duration += duration + max(int(booking.service.buffer_minutes or 0), 0)
+            try:
+                gender = required_worker_gender_for_booking(
+                    booking.service, booking.customer_answers
+                )
+            except ValueError:
+                logger.exception("Invalid worker preference for booking %s", booking.pk)
+                return []
+            candidates = cls._get_eligible_workers(
+                service=booking.service,
+                zone=zone,
+                scheduled_at=group.scheduled_at,
+                duration_minutes=duration,
+                drop_scheduled_at=(
+                    booking.drop_scheduled_at
+                    if booking.booking_mode == Booking.BookingMode.PICKUP_DROP else None
+                ),
+                exclude_booking_id=booking.pk,
+                exclude_customer_id=booking.customer_id,
+                required_gender=gender,
+                priority_order=config.priority_order,
+                required_tasks=(booking.variant.included_tasks if booking.variant_id else []),
+            )
+            candidate_ids = set(candidates.values_list("pk", flat=True))
+            common_worker_ids = (
+                candidate_ids if common_worker_ids is None
+                else common_worker_ids.intersection(candidate_ids)
+            )
+            if not common_worker_ids:
+                break
+
+        if not common_worker_ids:
+            cls._notify_dispatch_exhausted(bookings[0], order=parent_order)
+            return []
+
+        # The combined appointment must fit inside one worker shift and must
+        # not overlap blocked time or another assigned job.
+        start_at = group.scheduled_at
+        end_at = start_at + timedelta(minutes=max(group_duration, 1))
+        local_start = timezone.localtime(start_at)
+        local_end = timezone.localtime(end_at)
+        if local_start.date() != local_end.date():
+            cls._notify_dispatch_exhausted(bookings[0], order=parent_order)
+            return []
+
+        eligible_ids = []
+        active_statuses = (
+            Booking.Status.ASSIGNED, Booking.Status.CONFIRMED,
+            Booking.Status.IN_PROGRESS,
+        )
+        for worker in WorkerProfile.objects.filter(pk__in=common_worker_ids).prefetch_related("schedules", "leaves"):
+            if not worker.schedules.filter(
+                weekday=local_start.weekday(),
+                is_active=True,
+                start_time__lte=local_start.time(),
+                end_time__gte=local_end.time(),
+            ).exists():
+                continue
+            if WorkerBlockedSlot.objects.filter(
+                worker=worker.user, start_at__lt=end_at, end_at__gt=start_at
+            ).exists() or worker.leaves.filter(
+                start_at__lt=end_at, end_at__gt=start_at
+            ).exists():
+                continue
+
+            conflict = False
+            assignments = BookingAssignment.objects.filter(
+                worker=worker, booking__status__in=active_statuses,
+            ).exclude(booking__appointment_group=group).select_related(
+                "booking__service", "booking__variant",
+            )
+            for assignment in assignments:
+                existing = assignment.booking
+                occupied = cls._assigned_booking_intervals(existing)
+                if any(
+                    _intervals_overlap((start_at, end_at), current)
+                    for current in occupied
+                ):
+                    conflict = True
+                    break
+            if not conflict:
+                eligible_ids.append(worker.pk)
+
+        candidates = list(
+            WorkerProfile.objects.filter(pk__in=eligible_ids)
+            .order_by(*cls._priority_ordering(config.priority_order))
+            .select_related("user")
+        )
+        already_responded = set(
+            WorkerOffer.objects.filter(
+                appointment_group=group,
+                status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED),
+            ).values_list("worker_id", flat=True)
+        )
+        candidates = [
+            worker for worker in candidates
+            if worker.pk not in already_responded
+        ]
+        # Prefer workers whose registered skill set exactly matches this
+        # appointment, then workers focused on its root category, then
+        # multi-category workers. Every candidate has already passed the
+        # exact qualification check for every service in the group.
+        group_tiers = cls._appointment_group_tiers(candidates, bookings)
+        if group_tiers:
+            best_tier = min(group_tiers.values())
+            candidates = [
+                worker for worker in candidates
+                if group_tiers[worker.pk] == best_tier
+            ]
+        if not candidates:
+            cls._notify_dispatch_exhausted(bookings[0], order=parent_order)
+            return []
+
+        existing = WorkerOffer.objects.filter(appointment_group=group)
+        batch_number = (existing.aggregate(value=Max("batch_number"))["value"] or 0) + 1
+        return cls._create_offers(
+            booking=bookings[0],
+            order=None,
+            appointment_group=group,
+            workers=candidates,
+            batch_number=batch_number,
+            expiry_minutes=config.offer_expiry_minutes,
+            service_titles=[booking.service.title for booking in bookings],
+            payment_order=parent_order,
         )
 
     @classmethod
@@ -153,7 +358,21 @@ class DispatcherService:
                 .order_by("created_at")
             )
             created = []
+            grouped_booking_ids = set()
+            for group in order.appointment_groups.order_by("group_number"):
+                group_bookings = list(
+                    group.bookings.exclude(status=Booking.Status.CANCELLED)
+                    .order_by("pk").values_list("pk", flat=True)
+                )
+                grouped_booking_ids.update(group_bookings)
+                if group_bookings and not BookingAssignment.objects.filter(
+                    booking_id__in=group_bookings
+                ).exists():
+                    created.extend(cls.dispatch_appointment_group(group, parent_order=order))
+
             for booking in bookings:
+                if booking.pk in grouped_booking_ids:
+                    continue
                 if booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED):
                     continue
                 if BookingAssignment.objects.filter(booking=booking).exists():
@@ -217,7 +436,7 @@ class DispatcherService:
         return True
 
     @classmethod
-    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None, recurring_visit=None):
+    def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None, recurring_visit=None, appointment_group=None):
         from datetime import timedelta
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
@@ -225,14 +444,21 @@ class DispatcherService:
         created = []
         summary = ", ".join(service_titles)
         for worker in workers:
-            offer = WorkerOffer.objects.filter(
-                booking=booking, worker=worker
-            ).first()
+            offer = None
+            if appointment_group:
+                offer = WorkerOffer.objects.filter(
+                    appointment_group=appointment_group, worker=worker
+                ).first()
+            if offer is None:
+                offer = WorkerOffer.objects.filter(
+                    booking=booking, worker=worker
+                ).first()
             if offer is not None and offer.status == WorkerOffer.Status.WITHDRAWN:
                 # Reuse the unique booking/worker offer row when a previous
                 # assignment was withdrawn before work started (for example,
                 # because the accepted worker was suspended).
                 offer.order = order
+                offer.appointment_group = appointment_group
                 offer.batch_number = batch_number
                 offer.status = WorkerOffer.Status.PENDING
                 offer.offered_at = timezone.now()
@@ -240,23 +466,22 @@ class DispatcherService:
                 offer.responded_at = None
                 offer.accepted_at = None
                 offer.save(update_fields=[
-                    "order", "batch_number", "status", "offered_at",
+                    "order", "appointment_group", "batch_number", "status", "offered_at",
                     "expires_at", "responded_at", "accepted_at", "updated_at",
                 ])
             elif offer is None:
                 offer = WorkerOffer.objects.create(
-                    booking=booking, order=order, worker=worker,
-                    batch_number=batch_number, expires_at=expiry,
+                    booking=booking, order=order, appointment_group=appointment_group,
+                    worker=worker, batch_number=batch_number, expires_at=expiry,
                 )
             else:
                 continue
             created.append(offer)
-            notification_title = "New Service Order" if order else "Job Offer"
+            notification_title = "New Appointment" if appointment_group else ("New Service Order" if order else "Job Offer")
             notification_body = (
-                f"New order ({len(service_titles)} services): {summary}"
-                if order else
-                f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"
-            )
+                f"New appointment ({len(service_titles)} services): {summary}"
+                if appointment_group else (f"New order ({len(service_titles)} services): {summary}" if order else
+                f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"))
             from apps.payments.models import Payment
             if recurring_visit:
                 from decimal import Decimal
@@ -264,6 +489,30 @@ class DispatcherService:
                 advance_received = str(recurring_visit.prepaid_amount)
                 remaining_balance = "0.00"
                 address_text = booking.address.full_address
+            elif appointment_group:
+                from decimal import Decimal
+                payment_context = order or payment_order
+                group_bookings = list(
+                    appointment_group.bookings.exclude(status="cancelled").select_related("order_item").all()
+                )
+                customer_total = str(sum(
+                    (item.order_item.line_total for item in group_bookings if hasattr(item, "order_item")),
+                    Decimal("0.00"),
+                ))
+                allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
+                group_item_ids = {
+                    item.order_item.id for item in group_bookings
+                    if hasattr(item, "order_item")
+                }
+                advance_received = str(sum(
+                    (Decimal(str(row.get("amount", "0"))) for row in allocation.get("advance", [])
+                     if row.get("order_item_id") in group_item_ids),
+                    Decimal("0.00"),
+                ))
+                remaining_balance = str(max(
+                    Decimal(customer_total) - Decimal(advance_received), Decimal("0.00")
+                ))
+                address_text = payment_context.address.full_address
             elif order or payment_order:
                 from decimal import Decimal
                 payment_context = order or payment_order
@@ -299,6 +548,15 @@ class DispatcherService:
                 1 if booking.service.pricing_type == "per_unit"
                 else max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
             )
+            if appointment_group:
+                duration_minutes = sum(
+                    (
+                        (item.variant.duration_minutes if item.variant_id and item.variant.duration_minutes else item.service.duration_minutes or 60)
+                        * (1 if item.service.pricing_type == "per_unit" else max(int((item.pricing_snapshot or {}).get("quantity", 1) or 1), 1))
+                    )
+                    + max(int(item.service.buffer_minutes or 0), 0)
+                    for item in appointment_group.bookings.exclude(status="cancelled").select_related("service", "variant").all()
+                )
             service_quantity = (
                 booking.order_item.quantity
                 if hasattr(booking, "order_item")
@@ -313,20 +571,28 @@ class DispatcherService:
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
+                "appointment_group_id": appointment_group.pk if appointment_group else None,
+                "appointment_group_message": appointment_group.customer_message if appointment_group else "",
                 "quantity": service_quantity,
                 "service_unit_label": service_unit_label,
                 "order_id": (
                     (order or payment_order).pk if (order or payment_order)
                     else recurring_visit.plan.order_id if recurring_visit else None
                 ),
-                "service_ids": list((order or payment_order).items.values_list("booking__service_id", flat=True)) if (order or payment_order) else [booking.service_id],
+                "service_ids": (
+                    list(appointment_group.bookings.exclude(status="cancelled").values_list("service_id", flat=True))
+                    if appointment_group else (
+                        list((order or payment_order).items.values_list("booking__service_id", flat=True))
+                        if (order or payment_order) else [booking.service_id]
+                    )
+                ),
                 "recurring_plan_id": recurring_visit.plan_id if recurring_visit else None,
                 "recurring_visit_id": recurring_visit.pk if recurring_visit else None,
                 "recurring_visit_number": recurring_visit.visit_number if recurring_visit else None,
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "address": address_text,
-                "customer_instructions": booking.notes or "",
+                "customer_instructions": (appointment_group.customer_message if appointment_group else booking.notes) or "",
                 "expected_duration_minutes": duration_minutes,
                 "customer_total": customer_total,
                 "advance_received": advance_received,
@@ -339,6 +605,7 @@ class DispatcherService:
             location_preview = (address_text or "").strip()[:90]
             notification_body = (
                 f"{summary} • {booking.scheduled_at.strftime('%d %b, %I:%M %p')} "
+                f"{('• ' + appointment_group.customer_message[:100] + ' ') if appointment_group and appointment_group.customer_message else ''}"
                 f"• {location_preview} "
                 f"{('• ' + quantity_preview + ' ') if quantity_preview else ''}"
                 f"• Advance ₹{advance_received} • Balance ₹{remaining_balance}"
@@ -364,6 +631,124 @@ class DispatcherService:
             )
         logger.info("Dispatched %s offers for %s %s in batch %s", len(created), "order" if order else "booking", order.pk if order else booking.pk, batch_number)
         return created
+
+    @staticmethod
+    def _assigned_booking_intervals(booking):
+        """Return occupied time for a booking, expanding multi-service groups once."""
+        from apps.bookings.models import Booking
+        from apps.bookings.services import _booking_intervals
+
+        if booking.appointment_group_id:
+            group = booking.appointment_group
+            group_bookings = list(
+                group.bookings.exclude(status=Booking.Status.CANCELLED)
+                .select_related("service", "variant")
+            )
+            total_minutes = 0
+            for item in group_bookings:
+                duration = (
+                    item.variant.duration_minutes
+                    if item.variant_id and item.variant.duration_minutes
+                    else item.service.duration_minutes
+                ) or 60
+                quantity = max(int((item.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+                duration *= 1 if item.service.pricing_type == "per_unit" else quantity
+                total_minutes += duration + max(int(item.service.buffer_minutes or 0), 0)
+            return [(
+                group.scheduled_at,
+                group.scheduled_at + timedelta(minutes=max(total_minutes, 1)),
+            )]
+
+        duration = (
+            booking.variant.duration_minutes
+            if booking.variant_id and booking.variant.duration_minutes
+            else booking.service.duration_minutes
+        ) or 60
+        quantity = max(int((booking.pricing_snapshot or {}).get("quantity", 1) or 1), 1)
+        duration *= 1 if booking.service.pricing_type == "per_unit" else quantity
+        return _booking_intervals(
+            booking.scheduled_at,
+            duration,
+            booking.service.buffer_minutes,
+            booking.drop_scheduled_at
+            if booking.booking_mode == Booking.BookingMode.PICKUP_DROP else None,
+        )
+
+    @staticmethod
+    def _root_category_id(category):
+        while category.parent_id:
+            category = category.parent
+        return category.pk
+
+    @classmethod
+    def _service_scope_tiers(cls, workers, requested_service):
+        """Return skill-priority tiers for already eligible exact-service workers."""
+        if not workers:
+            return {}
+
+        from apps.workers.models import WorkerService
+
+        worker_ids = [worker.pk for worker in workers]
+        scopes = {worker_id: {"services": set(), "roots": set()} for worker_id in worker_ids}
+        rows = WorkerService.objects.filter(
+            worker_id__in=worker_ids,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service__category__parent")
+        for row in rows:
+            scopes[row.worker_id]["services"].add(row.service_id)
+            scopes[row.worker_id]["roots"].add(
+                cls._root_category_id(row.service.category)
+            )
+
+        requested_root = cls._root_category_id(requested_service.category)
+        tiers = {}
+        for worker in workers:
+            scope = scopes.get(worker.pk, {"services": set(), "roots": set()})
+            if len(scope["services"]) <= 1:
+                tiers[worker.pk] = 0
+            elif scope["roots"] == {requested_root}:
+                tiers[worker.pk] = 1
+            else:
+                tiers[worker.pk] = 2
+        return tiers
+
+    @classmethod
+    def _appointment_group_tiers(cls, workers, bookings):
+        """Return exact-service-set, same-root, and multi-category worker tiers."""
+        if not workers:
+            return {}
+
+        from apps.workers.models import WorkerService
+
+        worker_ids = [worker.pk for worker in workers]
+        target_service_ids = {booking.service_id for booking in bookings}
+        target_root_ids = {
+            cls._root_category_id(booking.service.category)
+            for booking in bookings
+        }
+        scopes = {worker_id: {"services": set(), "roots": set()} for worker_id in worker_ids}
+        rows = WorkerService.objects.filter(
+            worker_id__in=worker_ids,
+            service__is_active=True,
+            service__category__is_active=True,
+        ).select_related("service__category__parent")
+        for row in rows:
+            scopes[row.worker_id]["services"].add(row.service_id)
+            scopes[row.worker_id]["roots"].add(
+                cls._root_category_id(row.service.category)
+            )
+
+        tiers = {}
+        for worker in workers:
+            scope = scopes.get(worker.pk, {"services": set(), "roots": set()})
+            if scope["services"] == target_service_ids:
+                tiers[worker.pk] = 0
+            elif scope["roots"].issubset(target_root_ids):
+                tiers[worker.pk] = 1
+            else:
+                tiers[worker.pk] = 2
+        return tiers
 
     @staticmethod
     def _priority_ordering(priority_order):
@@ -460,19 +845,7 @@ class DispatcherService:
                 existing = assignment.booking
                 if not existing.scheduled_at:
                     continue
-                existing_duration = (
-                    existing.variant.duration_minutes
-                    if existing.variant_id and existing.variant.duration_minutes
-                    else existing.service.duration_minutes
-                ) or 60
-                occupied = _booking_intervals(
-                    existing.scheduled_at,
-                    existing_duration,
-                    existing.service.buffer_minutes,
-                    existing.drop_scheduled_at
-                    if existing.booking_mode == Booking.BookingMode.PICKUP_DROP
-                    else None,
-                )
+                occupied = cls._assigned_booking_intervals(existing)
                 if any(
                     _intervals_overlap(requested, current)
                     for requested in requested_intervals

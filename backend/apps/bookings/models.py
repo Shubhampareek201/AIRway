@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q, Sum
+import uuid
 from simple_history.models import HistoricalRecords
 
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
@@ -44,6 +45,15 @@ class Booking(TimeStampedModel):
         null=True,
         blank=True,
         related_name="bookings",
+    )
+
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bookings",
+        help_text="Appointment grouping for multi-service orders; null for legacy standalone bookings.",
     )
 
     booking_mode = models.CharField(
@@ -140,6 +150,84 @@ class BookingWorkEvidence(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_stage_display()} evidence for booking #{self.booking_id}"
+
+
+class BookingExtraWork(TimeStampedModel):
+    """Immutable worker proposal for additional work during an active appointment."""
+
+    class Status(models.TextChoices):
+        PENDING_CUSTOMER = "pending_customer", "Awaiting customer decision"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class PaymentChoice(models.TextChoices):
+        SEPARATE = "separate", "Separate payment"
+        ADD_TO_BALANCE = "add_to_balance", "Add to appointment balance"
+
+    request_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="extra_work_requests"
+    )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="extra_work_requests",
+    )
+    worker = models.ForeignKey(
+        "workers.WorkerProfile", on_delete=models.PROTECT,
+        related_name="extra_work_requests",
+    )
+    reason = models.CharField(max_length=500)
+    line_items = models.JSONField(
+        default=list,
+        help_text="Immutable item snapshot: description, quantity, unit price and line total.",
+    )
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    additional_duration_minutes = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(
+        max_length=24, choices=Status.choices,
+        default=Status.PENDING_CUSTOMER, db_index=True,
+    )
+    payment_choice = models.CharField(
+        max_length=24, choices=PaymentChoice.choices, blank=True,
+    )
+    payment_status = models.CharField(
+        max_length=16,
+        choices=[("not_due", "Not due"), ("pending", "Pending payment"), ("paid", "Paid")],
+        default="not_due",
+        db_index=True,
+    )
+    customer_response_note = models.CharField(max_length=1000, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["booking", "status"]),
+            models.Index(fields=["appointment_group", "status"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(subtotal__gt=0),
+                name="extra_work_subtotal_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_amount__gt=0),
+                name="extra_work_total_positive",
+            ),
+            models.UniqueConstraint(
+                fields=["booking"],
+                condition=models.Q(status="pending_customer"),
+                name="one_pending_extra_work_per_booking",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Extra work #{self.pk} for booking #{self.booking_id} ({self.status})"
 
 
 class BookingQuote(TimeStampedModel):
@@ -284,6 +372,16 @@ class BookingAssignment(TimeStampedModel):
     live_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     live_accuracy_m = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     live_location_updated_at = models.DateTimeField(null=True, blank=True)
+    location_sharing_enabled = models.BooleanField(
+        default=False,
+        help_text="Worker-controlled permission to share foreground GPS with the customer during the 30-minute pre-appointment window and active job.",
+    )
+    arrival_requested_at = models.DateTimeField(null=True, blank=True)
+    arrival_verified_at = models.DateTimeField(null=True, blank=True)
+    arrival_otp_hash = models.CharField(max_length=256, blank=True)
+    arrival_otp_expires_at = models.DateTimeField(null=True, blank=True)
+    arrival_otp_attempts = models.PositiveSmallIntegerField(default=0)
+    arrival_otp_last_sent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-assigned_at"]
@@ -324,6 +422,14 @@ class WorkerOffer(TimeStampedModel):
         related_name="worker_offers",
         help_text="Set for a parent-order offer covering every booking line.",
     )
+    appointment_group = models.ForeignKey(
+        "AppointmentGroup",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="worker_offers",
+        help_text="Set for a single-worker offer covering every service in one appointment group.",
+    )
     batch_number = models.PositiveIntegerField(default=1)
     worker = models.ForeignKey(
         "workers.WorkerProfile",
@@ -349,6 +455,11 @@ class WorkerOffer(TimeStampedModel):
             models.UniqueConstraint(
                 fields=["booking", "worker"],
                 name="unique_offer_per_booking_worker",
+            ),
+            models.UniqueConstraint(
+                fields=["appointment_group", "worker"],
+                condition=Q(appointment_group__isnull=False),
+                name="unique_group_offer_worker",
             ),
         ]
 
@@ -397,6 +508,36 @@ class Order(TimeStampedModel):
 
     def __str__(self):
         return f"Order #{self.pk} - {self.customer.phone} - ₹{self.total_amount}"
+
+
+class AppointmentGroup(TimeStampedModel):
+    """A customer-facing appointment containing one or more compatible services."""
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="appointment_groups",
+    )
+    group_number = models.PositiveSmallIntegerField()
+    scheduled_at = models.DateTimeField()
+    customer_message = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="One optional message shared with the worker handling this appointment.",
+    )
+
+    class Meta:
+        ordering = ["group_number", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "group_number"],
+                name="unique_order_appointment_group_number",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Order #{self.order_id} - Appointment {self.group_number}"
+
 
 
 class OrderItem(TimeStampedModel):

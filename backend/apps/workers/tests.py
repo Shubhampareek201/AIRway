@@ -606,6 +606,76 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertNotIn("customer_phone", detail_response.data)
         self.assertNotIn(self.customer_user.phone, str(detail_response.data))
 
+
+    def test_worker_job_detail_includes_extra_work_decision_and_payment_history(self):
+        from apps.bookings.models import BookingExtraWork
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.IN_PROGRESS,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+            started_at=timezone.now(),
+        )
+        proposal = BookingExtraWork.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            reason="Customer requested an additional repair",
+            line_items=[{
+                "description": "Replacement part",
+                "quantity": 1,
+                "unit_price": "150.00",
+                "line_total": "150.00",
+            }],
+            subtotal=Decimal("150.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("150.00"),
+            status=BookingExtraWork.Status.APPROVED,
+            payment_choice=BookingExtraWork.PaymentChoice.SEPARATE,
+            payment_status="pending",
+            customer_response_note="Please proceed",
+            responded_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["extra_work_requests"]), 1)
+        row = response.data["extra_work_requests"][0]
+        self.assertEqual(row["id"], proposal.pk)
+        self.assertEqual(row["status"], "approved")
+        self.assertEqual(row["payment_status"], "pending")
+        self.assertEqual(row["payment_choice"], "separate")
+        self.assertEqual(row["customer_response_note"], "Please proceed")
+
+    def _start_with_arrival_otp(self, url):
+        import re
+        from apps.notifications.models import Notification
+
+        response = self.client.post(url, format="json")
+        if response.data.get("arrival_otp_required"):
+            notice = Notification.objects.filter(
+                user=self.customer_user,
+                title="Your professional has arrived",
+            ).latest("created_at")
+            match = re.search(
+                r"arrival code with your AIRway professional: (\d{6})\.",
+                notice.body,
+            )
+            self.assertIsNotNone(match, notice.body)
+            response = self.client.post(
+                url, {"arrival_otp": match.group(1)}, format="json"
+            )
+        return response
+
     def test_worker_can_start_assigned_job(self):
         """Worker can mark a job as in progress after accepting offer."""
         booking = Booking.objects.create(
@@ -619,12 +689,15 @@ class WorkerJobLifecycleTest(TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
 
         self.client.force_authenticate(user=self.worker_user)
-        response = self.client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
+        response = self._start_with_arrival_otp(
+            f"/api/v1/bookings/{booking.id}/start/"
+        )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["status"], "in_progress")
 
     def test_worker_can_complete_in_progress_job(self):
@@ -684,7 +757,9 @@ class WorkerJobLifecycleTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.worker_user)
-        response = self.client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
+        response = self._start_with_arrival_otp(
+            f"/api/v1/bookings/{booking.id}/start/"
+        )
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["status"], Booking.Status.IN_PROGRESS)
@@ -708,9 +783,8 @@ class WorkerJobLifecycleTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.worker_user)
-        response = self.client.post(
-            f"/api/v1/workers/jobs/{assignment.id}/start/",
-            format="json",
+        response = self._start_with_arrival_otp(
+            f"/api/v1/workers/jobs/{assignment.id}/start/"
         )
 
         self.assertEqual(response.status_code, 200, response.data)

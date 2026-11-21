@@ -254,7 +254,9 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           Expanded(
                             child: Text(
                               AirwayText.tr(
-                                'Live location is not available right now. Your booking status will continue to update automatically.',
+                                (_tracking['location_unavailable_reason']?.toString().trim().isNotEmpty ?? false)
+                                    ? _tracking['location_unavailable_reason'].toString()
+                                    : 'Live location is not available right now. Your booking status will continue to update automatically.',
                                 'लाइव लोकेशन अभी उपलब्ध नहीं है। आपकी बुकिंग की स्थिति अपने आप अपडेट होती रहेगी।',
                               ),
                               style: const TextStyle(color: _muted, fontSize: 12, height: 1.45),

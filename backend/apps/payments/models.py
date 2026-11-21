@@ -1,8 +1,10 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from simple_history.models import HistoricalRecords
 
-from apps.bookings.models import Booking, Order
+from apps.bookings.models import AppointmentGroup, Booking, Order
 from apps.core.models import TimeStampedModel
 
 
@@ -16,6 +18,7 @@ class Payment(TimeStampedModel):
         LEGACY = "legacy", "Legacy full payment"
         ADVANCE = "advance", "30% advance"
         BALANCE = "balance", "70% balance"
+        EXTRA_WORK = "extra_work", "Approved extra work"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -36,6 +39,22 @@ class Payment(TimeStampedModel):
         related_name="payments",
         null=True,
         blank=True,
+    )
+    appointment_group = models.ForeignKey(
+        AppointmentGroup,
+        on_delete=models.PROTECT,
+        related_name="payments",
+        null=True,
+        blank=True,
+        help_text="Set for a balance payment belonging to one completed appointment group.",
+    )
+    extra_work = models.OneToOneField(
+        "bookings.BookingExtraWork",
+        on_delete=models.PROTECT,
+        related_name="payment",
+        null=True,
+        blank=True,
+        help_text="Set only for a separately paid approved extra-work proposal.",
     )
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -68,8 +87,24 @@ class Payment(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["order", "stage"],
-                condition=models.Q(order__isnull=False),
+                condition=(
+                    models.Q(order__isnull=False)
+                    & models.Q(appointment_group__isnull=True)
+                    & ~models.Q(stage="extra_work")
+                ),
                 name="unique_order_payment_stage",
+            ),
+            models.UniqueConstraint(
+                fields=["appointment_group", "stage"],
+                condition=models.Q(appointment_group__isnull=False, stage="balance"),
+                name="unique_appointment_group_payment_stage",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(appointment_group__isnull=True)
+                    | models.Q(order__isnull=False)
+                ),
+                name="group_payment_requires_parent_order",
             ),
             models.UniqueConstraint(
                 fields=["razorpay_order_id"],
@@ -103,12 +138,32 @@ class PaymentRefund(TimeStampedModel):
         CUSTOMER_CANCELLATION = "customer_cancellation", "Customer cancellation"
         PLATFORM_UNFULFILLED = "platform_unfulfilled", "AIRway unable to fulfil"
         RECURRING_PLAN_CANCELLATION = "recurring_plan_cancellation", "Unused recurring plan visits"
+        ADMIN_ADJUSTMENT = "admin_adjustment", "Admin partial refund"
+        DISPUTE_RESOLUTION = "dispute_resolution", "Dispute resolution"
 
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="refunds"
     )
+    idempotency_key = models.CharField(
+        max_length=100, unique=True, default=uuid.uuid4, editable=False
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_payment_refunds",
+    )
+    admin_note = models.TextField(blank=True)
     booking = models.ForeignKey(
         Booking, on_delete=models.PROTECT, related_name="payment_refunds"
+    )
+    extra_work = models.ForeignKey(
+        "bookings.BookingExtraWork",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_refunds",
     )
     order_item = models.ForeignKey(
         "bookings.OrderItem",
@@ -130,10 +185,10 @@ class PaymentRefund(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        permissions = [
+            ("issue_partial_paymentrefund", "Can issue partial payment refunds"),
+        ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["payment", "booking"], name="unique_payment_refund_booking"
-            ),
             models.CheckConstraint(
                 condition=models.Q(amount__gt=0),
                 name="payment_refund_amount_positive",

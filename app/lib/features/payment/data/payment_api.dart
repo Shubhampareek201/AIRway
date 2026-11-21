@@ -75,11 +75,31 @@ class PaymentApi {
     int orderId, {
     String walletAmount = '0.00',
     String stage = 'advance',
+    int? appointmentGroupId,
   }) async {
+    final data = <String, dynamic>{
+      'order_id': orderId,
+      'wallet_amount': walletAmount,
+      'stage': stage,
+    };
+    if (appointmentGroupId != null) {
+      data['appointment_group_id'] = appointmentGroupId;
+    }
     return _request(
       '/api/v1/payments/create-order/',
       method: 'POST',
-      data: {'order_id': orderId, 'wallet_amount': walletAmount, 'stage': stage},
+      data: data,
+    );
+  }
+
+  static Future<Map<String, dynamic>> createExtraWorkPayment(
+    int extraWorkId, {
+    String walletAmount = '0.00',
+  }) {
+    return _request(
+      '/api/v1/payments/extra-work/$extraWorkId/create-order/',
+      method: 'POST',
+      data: {'wallet_amount': walletAmount},
     );
   }
 

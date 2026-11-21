@@ -226,6 +226,14 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
           children: [
             if (offer.serviceTitle?.isNotEmpty == true)
               Text(offer.serviceTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
+            if (offer.orderServices.length > 1)
+              Text(
+                AirwayText.tr(
+                  'Appointment services: ${offer.orderServices.map((service) => service['service_title']?.toString() ?? '').where((title) => title.isNotEmpty).join(', ')}',
+                  'अपॉइंटमेंट सेवाएँ: ${offer.orderServices.map((service) => service['service_title']?.toString() ?? '').where((title) => title.isNotEmpty).join(', ')}',
+                ),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
             if (offer.variantTitle?.isNotEmpty == true || offer.quantity > 1)
               Text(
                 [

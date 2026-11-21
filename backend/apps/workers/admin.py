@@ -1,4 +1,6 @@
 from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
 from django.template.response import TemplateResponse
@@ -14,6 +16,7 @@ from .models import (
     WorkerZone,
     WorkerSchedule,
     WorkerLeave,
+    WorkerEarning,
 )
 
 
@@ -75,7 +78,7 @@ class WorkerProfileAdmin(ModelAdmin):
         ("Worker account", {"fields": ("user", "status", "gender")}),
         ("Application details", {"fields": (
             "experience_years", "qualification", "equipment_details",
-            "residential_address", "landmark", "bio", "upi_id",
+            "residential_address", "landmark", "bio", "upi_id", "commission_rate",
         )}),
         ("Review decision", {"fields": ("rejection_reason", "approved_by", "approved_at")}),
         ("Performance (read only)", {
@@ -89,6 +92,12 @@ class WorkerProfileAdmin(ModelAdmin):
         WorkerScheduleInline,
     ]
     actions = ["approve_workers", "suspend_workers", "reject_workers"]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser and not request.user.has_perm("workers.configure_worker_commission"):
+            fields.append("commission_rate")
+        return tuple(fields)
 
     def get_queryset(self, request):
         # Avoid prefetch_related here: Unfold's changelist processing uses
@@ -136,7 +145,11 @@ class WorkerProfileAdmin(ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         previous_status = None
+        previous_commission_rate = None
         if change:
+            previous_commission_rate = (
+                WorkerProfile.objects.filter(pk=obj.pk).values_list("commission_rate", flat=True).first()
+            )
             previous_status = (
                 WorkerProfile.objects
                 .filter(pk=obj.pk)
@@ -177,6 +190,12 @@ class WorkerProfileAdmin(ModelAdmin):
             )
 
         super().save_model(request, obj, form, change)
+
+        if change and previous_commission_rate != obj.commission_rate and obj.commission_rate is not None:
+            from .earnings import refresh_worker_earnings_for_profile
+            transaction.on_commit(
+                lambda worker_id=obj.pk: refresh_worker_earnings_for_profile(worker_id)
+            )
 
         if approval_requested:
             request._worker_approval_requested = True
@@ -375,3 +394,83 @@ class WorkerScheduleAdmin(ModelAdmin):
 class WorkerLeaveAdmin(ModelAdmin):
     list_display = ("worker", "start_at", "end_at")
     search_fields = ("worker__user__phone",)
+
+
+
+@admin.register(WorkerEarning)
+class WorkerEarningAdmin(ModelAdmin):
+    list_display = (
+        "id", "worker", "booking", "extra_work", "gross_amount", "commission_rate",
+        "commission_amount", "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
+    )
+    list_filter = ("status", "created_at")
+    search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "extra_work__id", "payout_reference")
+    readonly_fields = (
+        "worker", "booking", "extra_work", "payment", "gross_amount", "commission_rate",
+        "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
+        "adjusted_by", "adjusted_at", "created_at", "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return bool(
+            request.user.is_superuser
+            or request.user.has_perm("workers.manage_worker_payouts")
+            or request.user.has_perm("workers.configure_worker_commission")
+        )
+
+    def has_change_permission(self, request, obj=None):
+        return bool(
+            request.user.is_superuser
+            or request.user.has_perm("workers.manage_worker_payouts")
+        )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is None:
+            fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
+        elif obj.status == WorkerEarning.Status.AVAILABLE:
+            fields.extend(["adjustment_amount", "adjustment_note"])
+        elif obj.status == WorkerEarning.Status.ON_HOLD:
+            fields.append("payout_reference")
+        else:
+            fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
+        return tuple(dict.fromkeys(fields))
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            raise ValidationError("Worker earning records are created by verified settlement only.")
+        previous = WorkerEarning.objects.get(pk=obj.pk)
+        if previous.status == WorkerEarning.Status.PAID:
+            raise ValidationError("A recorded payout is immutable.")
+
+        if previous.status == WorkerEarning.Status.AVAILABLE and obj.status == WorkerEarning.Status.PAID:
+            if obj.adjustment_amount != previous.adjustment_amount or obj.adjustment_note != previous.adjustment_note:
+                raise ValidationError("Adjustments cannot be changed after earnings become available.")
+            reference = str(obj.payout_reference or "").strip()
+            if not reference:
+                raise ValidationError("A bank/UPI payout reference is required.")
+            obj.payout_reference = reference[:100]
+            obj.paid_at = timezone.now()
+            obj.paid_by = request.user
+        elif previous.status == WorkerEarning.Status.ON_HOLD and obj.status == WorkerEarning.Status.AVAILABLE:
+            if previous.commission_amount is None:
+                raise ValidationError("Configure the worker commission rate before releasing this earning.")
+            if not str(obj.adjustment_note or "").strip():
+                raise ValidationError("A reconciliation note is required to release an earning hold.")
+            adjusted_net = previous.gross_amount - previous.commission_amount + obj.adjustment_amount
+            if adjusted_net < 0:
+                raise ValidationError("The adjustment cannot make the worker earning negative.")
+            obj.net_amount = adjusted_net
+            obj.adjustment_note = obj.adjustment_note.strip()
+            obj.adjusted_by = request.user
+            obj.adjusted_at = timezone.now()
+            obj.hold_reason = previous.hold_reason
+        else:
+            raise ValidationError("Only available earnings can be paid, or held earnings can be reconciled and released.")
+        super().save_model(request, obj, form, change)

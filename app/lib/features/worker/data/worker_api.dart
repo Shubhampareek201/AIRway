@@ -140,6 +140,18 @@ class WorkerApi {
     );
   }
 
+  static Future<Map<String, dynamic>> setJobLocationSharing(
+    int assignmentId, {
+    required bool enabled,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/location-sharing/',
+      method: 'POST',
+      data: {'enabled': enabled},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<Map<String, dynamic>> updateJobLocation(
     int assignmentId, {
     required double latitude,
@@ -158,10 +170,16 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  static Future<Map<String, dynamic>> startJob(int assignmentId) async {
+  static Future<Map<String, dynamic>> startJob(
+    int assignmentId, {
+    String? arrivalOtp,
+  }) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/start/',
       method: 'POST',
+      data: {
+        if (arrivalOtp != null && arrivalOtp.isNotEmpty) 'arrival_otp': arrivalOtp,
+      },
     );
     return Map<String, dynamic>.from(result as Map);
   }
@@ -266,6 +284,28 @@ class WorkerApi {
       throw Exception('Work photo upload failed (${result.status}): ${result.body}');
     }
     return Map<String, dynamic>.from(result.body as Map);
+  }
+
+  static Future<Map<String, dynamic>> proposeExtraWork(
+    int bookingId, {
+    required String reason,
+    required String description,
+    required int quantity,
+    required String unitPrice,
+    required int additionalDurationMinutes,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$bookingId/extra-work/',
+      method: 'POST',
+      data: {
+        'reason': reason,
+        'line_items': [
+          {'description': description, 'quantity': quantity, 'unit_price': unitPrice},
+        ],
+        'additional_duration_minutes': additionalDurationMinutes,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
   }
 
   static Future<Map<String, dynamic>> submitInspectionQuote(

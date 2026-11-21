@@ -32,6 +32,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   bool _locationRequestInProgress = false;
   bool _locationPermissionBlocked = false;
   bool _locationSharingEnabled = false;
+  bool _locationConsentRequestInProgress = false;
 
   @override
   void initState() {
@@ -69,6 +70,17 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       _sharingAssignmentId = null;
       return;
     }
+    final visibilityStartsAt = job.scheduledAt.subtract(const Duration(minutes: 30));
+    final now = DateTime.now();
+    if (now.isBefore(visibilityStartsAt)) {
+      _locationTimer?.cancel();
+      _sharingAssignmentId = null;
+      _locationTimer = Timer(
+        visibilityStartsAt.difference(now),
+        () => _configureLocationSharing(job),
+      );
+      return;
+    }
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
     if (_sharingAssignmentId != job.assignmentId) {
       _locationTimer?.cancel();
@@ -81,19 +93,38 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
-  void _setLocationSharing(bool enabled) {
-    setState(() {
-      _locationSharingEnabled = enabled;
-      if (enabled) _locationPermissionBlocked = false;
-    });
-    if (!enabled) {
-      _locationTimer?.cancel();
-      _locationTimer = null;
-      _sharingAssignmentId = null;
-      return;
-    }
+  Future<void> _setLocationSharing(bool enabled) async {
     final job = _jobDetail;
-    if (job != null) _configureLocationSharing(job);
+    if (job == null || _locationConsentRequestInProgress) return;
+    setState(() => _locationConsentRequestInProgress = true);
+    try {
+      await WorkerApi.setJobLocationSharing(
+        job.assignmentId,
+        enabled: enabled,
+      );
+      if (!mounted) return;
+      setState(() {
+        _locationSharingEnabled = enabled;
+        _locationConsentRequestInProgress = false;
+        if (enabled) _locationPermissionBlocked = false;
+      });
+      if (!enabled) {
+        _locationTimer?.cancel();
+        _locationTimer = null;
+        _sharingAssignmentId = null;
+      } else {
+        _configureLocationSharing(job);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _locationConsentRequestInProgress = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr(
+          'Could not update location-sharing permission: $e',
+          'लोकेशन शेयरिंग अनुमति अपडेट नहीं हो सकी: $e',
+        ))),
+      );
+    }
   }
 
   Future<void> _publishCurrentLocation(int assignmentId) async {
@@ -192,6 +223,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         _jobDetail = parsedDetail;
         setState(() {
           _hasRatedCustomer = hasRatedCustomer;
+          _locationSharingEnabled = parsedDetail.assignment.locationSharingEnabled;
           _loading = false;
         });
         _configureLocationSharing(parsedDetail);
@@ -206,6 +238,51 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
+  Future<String?> _requestArrivalOtp() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AirwayText.tr('Customer arrival code', 'ग्राहक का आगमन कोड')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AirwayText.tr(
+              'Ask the customer for the 6-digit code sent to their AIRway notifications. Work cannot start until the customer shares it.',
+              'ग्राहक से AIRway नोटिफ़िकेशन में भेजा गया 6 अंकों का कोड लें। ग्राहक के कोड के बिना काम शुरू नहीं होगा।',
+            )),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: InputDecoration(
+                labelText: AirwayText.tr('6-digit arrival code', '6 अंकों का आगमन कोड'),
+                border: const OutlineInputBorder(),
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AirwayText.tr('Not now', 'अभी नहीं')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: Text(AirwayText.tr('Verify and start', 'वेरिफ़ाई करके शुरू करें')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return code;
+  }
+
   Future<void> _startJob() async {
     if (!mounted || _jobDetail == null) return;
 
@@ -214,10 +291,21 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     });
 
     try {
-      await WorkerApi.startJob(_jobDetail!.assignmentId);
+      var result = await WorkerApi.startJob(_jobDetail!.assignmentId);
+      if (result['arrival_otp_required'] == true) {
+        final arrivalOtp = await _requestArrivalOtp();
+        if (arrivalOtp == null || arrivalOtp.isEmpty) return;
+        result = await WorkerApi.startJob(
+          _jobDetail!.assignmentId,
+          arrivalOtp: arrivalOtp,
+        );
+        if (result['arrival_otp_required'] == true) {
+          throw Exception(result['detail'] ?? 'Customer arrival code is required.');
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Job started', 'काम शुरू हो गया')) ),
+          SnackBar(content: Text(AirwayText.tr('Arrival verified. Appointment started.', 'आगमन वेरिफ़ाई हो गया। अपॉइंटमेंट शुरू हो गया।')) ),
         );
         await _loadAssignedJob();
       }
@@ -234,6 +322,255 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         });
       }
     }
+  }
+
+
+  Future<void> _proposeExtraWork() async {
+    final job = _jobDetail;
+    if (job == null || job.status != BookingStatus.inProgress || _isActionInProgress) return;
+    final reasonController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final priceController = TextEditingController();
+    final quantityController = TextEditingController(text: '1');
+    final durationController = TextEditingController(text: '0');
+    final proposal = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Request additional work'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Explain why the additional work is needed and enter its price. The customer must approve it before any extra charge is made.'),
+            const SizedBox(height: 12),
+            TextField(controller: reasonController, maxLength: 500, maxLines: 2,
+              decoration: const InputDecoration(labelText: 'Reason', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            TextField(controller: descriptionController, maxLength: 250,
+              decoration: const InputDecoration(labelText: 'Additional work item', border: OutlineInputBorder())),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: TextField(controller: quantityController, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()))),
+              const SizedBox(width: 8),
+              Expanded(child: TextField(controller: priceController, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Unit price (₹)', border: OutlineInputBorder()))),
+            ]),
+            const SizedBox(height: 8),
+            TextField(controller: durationController, keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Extra time (minutes)', border: OutlineInputBorder())),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () {
+            final reason = reasonController.text.trim();
+            final description = descriptionController.text.trim();
+            final quantity = int.tryParse(quantityController.text.trim());
+            final price = double.tryParse(priceController.text.trim());
+            final duration = int.tryParse(durationController.text.trim());
+            if (reason.isEmpty || description.isEmpty || quantity == null || quantity < 1 ||
+                price == null || !price.isFinite || price <= 0 ||
+                duration == null || duration < 0 || duration > 600) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('Enter a reason, item, valid quantity, positive price and extra time between 0 and 600 minutes.')),
+              );
+              return;
+            }
+            Navigator.pop(dialogContext, {
+              'reason': reason,
+              'description': description,
+              'quantity': quantity.toString(),
+              'unit_price': price.toStringAsFixed(2),
+              'duration': duration.toString(),
+            });
+          }, child: const Text('Send for approval')),
+        ],
+      ),
+    );
+    reasonController.dispose();
+    descriptionController.dispose();
+    priceController.dispose();
+    quantityController.dispose();
+    durationController.dispose();
+    if (proposal == null || !mounted) return;
+    setState(() => _isActionInProgress = true);
+    try {
+      await WorkerApi.proposeExtraWork(
+        job.bookingId,
+        reason: proposal['reason']!,
+        description: proposal['description']!,
+        quantity: int.parse(proposal['quantity']!),
+        unitPrice: proposal['unit_price']!,
+        additionalDurationMinutes: int.parse(proposal['duration']!),
+      );
+      await _loadAssignedJob();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Extra-work request sent. Wait for customer approval before proceeding.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not send extra-work request: ' + e.toString())));
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  Widget _buildExtraWorkCard(WorkerAssignmentDetail job) {
+    final canPropose = job.status == BookingStatus.inProgress;
+    if (!canPropose && job.extraWorkRequests.isEmpty) return const SizedBox.shrink();
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE8E2F5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1EDFF),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.add_task_rounded, color: Color(0xFF6C4AE3), size: 19),
+            ),
+            const SizedBox(width: 9),
+            const Expanded(child: Text(
+              'Additional work',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            )),
+          ]),
+          if (canPropose) ...[
+            const SizedBox(height: 7),
+            const Text(
+              'If the customer needs work beyond the booked service, send a priced request. Do not start or charge for it until the customer approves.',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 13),
+            ),
+          ],
+          if (job.extraWorkRequests.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Divider(),
+            const Text('Request history', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            ...job.extraWorkRequests.map((request) {
+              final status = request['status']?.toString() ?? 'pending_customer';
+              final label = switch (status) {
+                'approved' => 'Approved',
+                'rejected' => 'Declined',
+                'expired' => 'Expired',
+                'cancelled' => 'Cancelled',
+                _ => 'Awaiting customer',
+              };
+              final labelColor = switch (status) {
+                'approved' => AirwayColors.success,
+                'rejected' || 'cancelled' => AirwayColors.error,
+                'expired' => AirwayColors.warning,
+                _ => const Color(0xFF6C4AE3),
+              };
+              final labelBackground = switch (status) {
+                'approved' => AirwayColors.successSoft,
+                'rejected' || 'cancelled' => AirwayColors.errorSoft,
+                'expired' => AirwayColors.warningSoft,
+                _ => const Color(0xFFF1EDFF),
+              };
+              final paymentStatus = request['payment_status']?.toString() ?? 'not_due';
+              final paymentLabel = paymentStatus == 'paid'
+                  ? 'Paid'
+                  : paymentStatus == 'pending'
+                      ? 'Payment pending'
+                      : '';
+              final items = (request['line_items'] as List? ?? [])
+                  .whereType<Map>()
+                  .map((item) => item['description']?.toString() ?? '')
+                  .where((value) => value.isNotEmpty)
+                  .join(', ');
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFBFAFF),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE8E2F5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: labelBackground,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: labelColor,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Text('₹${request['total_amount'] ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6C4AE3))),
+                        ],
+                      ),
+                      if ((request['reason']?.toString() ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(request['reason'].toString()),
+                        ),
+                      if (items.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(items, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                        ),
+                      if ((request['additional_duration_minutes'] as num? ?? 0) > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Additional time: ${request['additional_duration_minutes']} minutes',
+                            style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+                          ),
+                        ),
+                      if (paymentLabel.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(paymentLabel, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                        ),
+                      if ((request['customer_response_note']?.toString() ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('Customer note: ${request['customer_response_note']}'),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+          if (canPropose) ...[
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: FilledButton.icon(
+              onPressed: _isActionInProgress ? null : _proposeExtraWork,
+              icon: const Icon(Icons.add_task_rounded),
+              label: const Text('Request customer approval'),
+            )),
+          ],
+        ]),
+      ),
+    );
   }
 
   Future<void> _completeJob() async {
@@ -365,6 +702,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             const SizedBox(height: 16),
             _buildQuoteCard(job),
             const SizedBox(height: 16),
+            _buildExtraWorkCard(job),
+            const SizedBox(height: 16),
             _buildEvidenceCard(job),
             const SizedBox(height: 16),
             if (_canShareLocation(job))
@@ -394,14 +733,25 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                       ],
                     ),
                     const SizedBox(height: 8),
+                    Text(
+                      AirwayText.tr(
+                        'Customer visibility starts 30 minutes before the appointment. You can turn sharing off at any time.',
+                        'ग्राहक को लोकेशन अपॉइंटमेंट से 30 मिनट पहले दिखेगी। आप कभी भी शेयरिंग बंद कर सकते हैं।',
+                      ),
+                      style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+                    ),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: () => _setLocationSharing(!_locationSharingEnabled),
+                        onPressed: _locationConsentRequestInProgress
+                            ? null
+                            : () => _setLocationSharing(!_locationSharingEnabled),
                         icon: Icon(
-                          _locationSharingEnabled
-                              ? Icons.location_off_outlined
-                              : Icons.my_location_rounded,
+                          _locationConsentRequestInProgress
+                              ? Icons.hourglass_top_rounded
+                              : _locationSharingEnabled
+                                  ? Icons.location_off_outlined
+                                  : Icons.my_location_rounded,
                         ),
                         label: Text(
                           _locationSharingEnabled

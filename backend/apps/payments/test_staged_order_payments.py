@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, Order, OrderItem
+from apps.bookings.models import AppointmentGroup, Booking, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.payments.models import Payment
@@ -101,6 +101,94 @@ class StagedOrderPaymentServiceTests(TestCase):
         self.assertEqual(balance_gateway_id, "order_balance_test")
         self.assertEqual(balance.stage, Payment.Stage.BALANCE)
         self.assertEqual(balance.amount, Decimal("700.00"))
+
+    @patch("apps.payments.views.client.order.create")
+    def test_completed_appointment_group_can_pay_balance_while_another_group_is_pending(self, create_gateway_order):
+        create_gateway_order.side_effect = [
+            {"id": "order_group_advance"},
+            {"id": "order_group_a_balance"},
+            {"id": "order_group_b_balance"},
+        ]
+        second_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=2),
+            status=Booking.Status.PENDING,
+            pricing_snapshot={"total": "1000.00"},
+        )
+        second_item = OrderItem.objects.create(
+            order=self.order,
+            booking=second_booking,
+            quantity=1,
+            line_total=Decimal("1000.00"),
+        )
+        self.order.subtotal = Decimal("2000.00")
+        self.order.total_amount = Decimal("2000.00")
+        self.order.save(update_fields=["subtotal", "total_amount", "updated_at"])
+        group_a = AppointmentGroup.objects.create(
+            order=self.order, group_number=1, scheduled_at=self.booking.scheduled_at
+        )
+        group_b = AppointmentGroup.objects.create(
+            order=self.order, group_number=2, scheduled_at=second_booking.scheduled_at
+        )
+        self.booking.appointment_group = group_a
+        self.booking.save(update_fields=["appointment_group", "updated_at"])
+        second_booking.appointment_group = group_b
+        second_booking.save(update_fields=["appointment_group", "updated_at"])
+
+        advance, _, _ = create_or_get_order_payment(self.order, self.customer)
+        advance.status = Payment.Status.PAID
+        advance.save(update_fields=["status"])
+
+        self.booking.status = Booking.Status.COMPLETED
+        self.booking.completed_at = timezone.now()
+        self.booking.save(update_fields=["status", "completed_at"])
+
+        group_a_balance, group_a_order_id, _ = create_or_get_order_payment(
+            self.order,
+            self.customer,
+            stage=Payment.Stage.BALANCE,
+            appointment_group=group_a,
+        )
+        self.assertEqual(group_a_order_id, "order_group_a_balance")
+        self.assertEqual(group_a_balance.appointment_group_id, group_a.pk)
+        self.assertEqual(group_a_balance.amount, Decimal("700.00"))
+
+        with self.assertRaisesMessage(ValueError, "every active service in the appointment"):
+            create_or_get_order_payment(
+                self.order,
+                self.customer,
+                stage=Payment.Stage.BALANCE,
+                appointment_group=group_b,
+            )
+
+        from apps.payments.verify_view import _process_verified_payment
+        result = _process_verified_payment(
+            group_a_balance,
+            "pay_group_a",
+            group_a_order_id,
+            self.customer,
+            "test",
+        )
+        self.assertEqual(result.status_code, 200)
+        group_a_balance.refresh_from_db()
+        self.assertEqual(group_a_balance.status, Payment.Status.PAID)
+        self.order.refresh_from_db()
+        self.assertNotEqual(self.order.status, Order.Status.PAID)
+
+        second_booking.status = Booking.Status.COMPLETED
+        second_booking.completed_at = timezone.now()
+        second_booking.save(update_fields=["status", "completed_at"])
+        group_b_balance, group_b_order_id, _ = create_or_get_order_payment(
+            self.order,
+            self.customer,
+            stage=Payment.Stage.BALANCE,
+            appointment_group=group_b,
+        )
+        self.assertEqual(group_b_order_id, "order_group_b_balance")
+        self.assertEqual(group_b_balance.appointment_group_id, group_b.pk)
+        self.assertEqual(group_b_balance.amount, Decimal("700.00"))
 
     @patch("apps.payments.views.client.order.create")
     def test_balance_is_rejected_until_every_active_service_is_completed(self, create_gateway_order):

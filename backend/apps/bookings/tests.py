@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from datetime import timedelta, time, datetime
 from unittest.mock import patch
 import pytz
+import re
 import datetime as dt_module
 
 from apps.accounts.models import User, Address
@@ -30,6 +31,27 @@ class BookingAPITestMixin:
 
     def _create_user(self, phone="+919876543210"):
         return User.objects.create_user(phone=phone, password="password123")
+
+    def _start_job_with_arrival_otp(self, worker_client, booking_id, customer):
+        start_url = f"/api/v1/bookings/{booking_id}/start/"
+        response = worker_client.post(start_url, format="json")
+        if response.data.get("arrival_otp_required"):
+            notification = Notification.objects.filter(
+                user=customer,
+                title="Your professional has arrived",
+            ).latest("created_at")
+            match = re.search(
+                r"arrival code with your AIRway professional: (\d{6})\.",
+                notification.body,
+            )
+            if not match:
+                raise AssertionError("Arrival OTP was not present in customer notification.")
+            response = worker_client.post(
+                start_url,
+                {"arrival_otp": match.group(1)},
+                format="json",
+            )
+        return response
 
     def _create_category(self, title="Cleaning", slug="cleaning"):
         return Category.objects.create(title=title, slug="cleaning")
@@ -1412,13 +1434,14 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=self._get_booking_time(),
+            scheduled_at=timezone.now() + timedelta(minutes=20),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
             accepted_at=timezone.now(),
+            location_sharing_enabled=True,
         )
 
         update = self.worker_client.post(
@@ -1533,13 +1556,14 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             service=self.service,
             variant=self.variant,
             booking_mode="scheduled",
-            scheduled_at=self._get_booking_time(),
+            scheduled_at=timezone.now() + timedelta(minutes=20),
             status=Booking.Status.ASSIGNED,
         )
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
             accepted_at=timezone.now(),
+            location_sharing_enabled=True,
         )
         response = self.worker_client.post(
             f"/api/v1/workers/jobs/{assignment.id}/location/",
@@ -1588,10 +1612,28 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
         assignment = BookingAssignment.objects.create(
             booking=booking,
             worker=self.worker_profile,
+            accepted_at=timezone.now(),
         )
 
-        start_resp = self.worker_client.post(f"/api/v1/bookings/{booking.id}/start/", format="json")
+        start_url = f"/api/v1/bookings/{booking.id}/start/"
+        start_resp = self.worker_client.post(start_url, format="json")
         self.assertEqual(start_resp.status_code, 200)
+        self.assertTrue(start_resp.data["arrival_otp_required"])
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
+
+        notification = Notification.objects.get(
+            user=self.customer,
+            title="Your professional has arrived",
+        )
+        arrival_code = re.search(
+            r"arrival code with your AIRway professional: (\d{6})\.",
+            notification.body,
+        ).group(1)
+        start_resp = self.worker_client.post(
+            start_url, {"arrival_otp": arrival_code}, format="json"
+        )
+        self.assertEqual(start_resp.status_code, 200, start_resp.data)
         self.assertEqual(start_resp.data["status"], "in_progress")
 
         booking.refresh_from_db()
@@ -2015,8 +2057,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
 
         # Worker starts job
-        start_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        self.assertEqual(start_resp.status_code, 200)
+        start_resp = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(start_resp.status_code, 200, start_resp.data)
         self.assertEqual(start_resp.data["status"], "in_progress")
 
     def test_8_worker_completes_job(self):
@@ -2043,8 +2087,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        start_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
-        self.assertEqual(start_resp.status_code, 200)
+        start_resp = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(start_resp.status_code, 200, start_resp.data)
 
         # First request issues the customer-shared completion OTP.
         complete_resp = worker_client.post(f"/api/v1/bookings/{booking_id}/complete/", format="json")
@@ -2093,7 +2139,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
+        worker_client_response = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(worker_client_response.status_code, 200, worker_client_response.data)
         otp_response = worker_client.post(
             f"/api/v1/bookings/{booking_id}/complete/", format="json"
         )
@@ -2146,7 +2195,10 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         worker_client = APIClient()
         worker_client.force_authenticate(user=self.worker1_user)
         worker_client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
-        worker_client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
+        worker_started = self._start_job_with_arrival_otp(
+            worker_client, booking_id, self.customer
+        )
+        self.assertEqual(worker_started.status_code, 200, worker_started.data)
 
         # Customer tries to start (should fail)
         start_resp = self.client.post(f"/api/v1/bookings/{booking_id}/start/", format="json")
@@ -3137,6 +3189,67 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(actual_ratings, expected_order)
 
 
+    def test_dispatcher_prioritizes_dedicated_then_related_then_multi_category_workers(self):
+        from apps.bookings.dispatcher import DispatcherService
+
+        dedicated = self._create_eligible_worker(rating=3.0, suffix="81")
+        related = self._create_eligible_worker(rating=5.0, suffix="82")
+        multi_category = self._create_eligible_worker(rating=4.5, suffix="83")
+
+        same_root_child = Category.objects.create(
+            parent=self.category,
+            title="Window Cleaning",
+            slug="dispatcher-window-cleaning",
+        )
+        related_service = Service.objects.create(
+            category=same_root_child,
+            title="Window Cleaning",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            is_active=True,
+        )
+        other_root = Category.objects.create(
+            title="Car Care",
+            slug="dispatcher-car-care",
+        )
+        other_service = Service.objects.create(
+            category=other_root,
+            title="Exterior Car Wash",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            is_active=True,
+        )
+        WorkerService.objects.create(worker=related, service=related_service)
+        WorkerService.objects.create(worker=multi_category, service=other_service)
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_service_scope_priority", paid_at=timezone.now(),
+        )
+
+        offers = DispatcherService.dispatch_offers(booking)
+        self.assertEqual([offer.worker_id for offer in offers], [dedicated.pk])
+        offers[0].status = WorkerOffer.Status.DECLINED
+        offers[0].save(update_fields=["status", "updated_at"])
+
+        offers = DispatcherService.dispatch_offers(booking)
+        self.assertEqual([offer.worker_id for offer in offers], [related.pk])
+        offers[0].status = WorkerOffer.Status.EXPIRED
+        offers[0].save(update_fields=["status", "updated_at"])
+
+        offers = DispatcherService.dispatch_offers(booking)
+        self.assertEqual([offer.worker_id for offer in offers], [multi_category.pk])
+
     def test_dispatcher_never_offers_booking_to_its_own_customer_worker(self):
         """A customer who is also an approved worker must not receive their own job."""
         from apps.bookings.dispatcher import DispatcherService
@@ -4060,6 +4173,253 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             order.items.values_list("booking__scheduled_at", flat=True).distinct().count(),
             1,
         )
+        group = order.appointment_groups.get()
+        self.assertEqual(group.bookings.count(), 2)
+        self.assertEqual(group.scheduled_at, order.items.first().booking.scheduled_at)
+
+    def test_shared_appointment_dispatches_and_assigns_one_worker_for_every_service(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        worker_user = self._create_user("+919876543285")
+        worker = WorkerProfile.objects.create(
+            user=worker_user, status=WorkerProfile.Status.APPROVED, is_online=True
+        )
+        WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerService.objects.create(worker=worker, service=second_service)
+        for weekday in range(7):
+            WorkerSchedule.objects.create(
+                worker=worker, weekday=weekday, is_active=True,
+                start_time=time(0, 0), end_time=time(23, 59),
+            )
+
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        same_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
+        )
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "same_appointment",
+                "group_message": "Please call once you arrive.",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": same_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": same_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        group = order.appointment_groups.get()
+        self.assertEqual(group.bookings.count(), 2)
+        self.assertEqual(group.customer_message, "Please call once you arrive.")
+
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            order=order, customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+        )
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_order(order)
+
+        group_offers = WorkerOffer.objects.filter(appointment_group=group)
+        self.assertEqual(group_offers.count(), 1)
+        offer = group_offers.get()
+        self.assertEqual(offer.worker_id, worker.pk)
+        self.assertFalse(
+            WorkerOffer.objects.filter(
+                booking__appointment_group=group,
+                appointment_group__isnull=True,
+                status=WorkerOffer.Status.PENDING,
+            ).exists()
+        )
+
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=worker_user)
+        accepted = worker_client.post(
+            f"/api/v1/workers/offers/{offer.pk}/accept/", {}, format="json"
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        assignments = BookingAssignment.objects.filter(booking__appointment_group=group)
+        self.assertEqual(assignments.count(), 2)
+        self.assertEqual(set(assignments.values_list("worker_id", flat=True)), {worker.pk})
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
+
+        first_assignment = assignments.order_by("pk").first()
+        start_url = f"/api/v1/workers/jobs/{first_assignment.pk}/start/"
+        arrival_requested = worker_client.post(start_url, {}, format="json")
+        self.assertEqual(arrival_requested.status_code, 200, arrival_requested.data)
+        self.assertTrue(arrival_requested.data["arrival_otp_required"])
+        arrival_notice = Notification.objects.get(
+            user=self.customer,
+            title="Your professional has arrived",
+        )
+        arrival_code = re.search(
+            r"arrival code with your AIRway professional: (\d{6})\.",
+            arrival_notice.body,
+        ).group(1)
+        started = worker_client.post(
+            start_url, {"arrival_otp": arrival_code}, format="json"
+        )
+        self.assertEqual(started.status_code, 200, started.data)
+        self.assertEqual(
+            set(group.bookings.values_list("status", flat=True)),
+            {Booking.Status.IN_PROGRESS},
+        )
+
+    def test_group_dispatch_prioritizes_exact_service_set_then_same_root_then_multi_category(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+
+        child_category = Category.objects.create(
+            parent=self.category,
+            title="Window Cleaning",
+            slug="group-priority-window-cleaning",
+        )
+        related_service = self._create_service(child_category, title="Window Cleaning")
+        other_root = Category.objects.create(
+            title="Car Care",
+            slug="group-priority-car-care",
+        )
+        multi_category_service = self._create_service(
+            other_root, title="Exterior Car Wash"
+        )
+
+        workers = []
+        for suffix, rating in (("286", 3.0), ("287", 5.0), ("288", 4.5)):
+            user = self._create_user(f"+919876549{suffix}")
+            worker = WorkerProfile.objects.create(
+                user=user, status=WorkerProfile.Status.APPROVED,
+                is_online=True, rating_avg=rating,
+            )
+            WorkerZone.objects.create(worker=worker, zone=self.address.zone)
+            WorkerService.objects.create(worker=worker, service=self.service)
+            WorkerService.objects.create(worker=worker, service=second_service)
+            for weekday in range(7):
+                WorkerSchedule.objects.create(
+                    worker=worker, weekday=weekday, is_active=True,
+                    start_time=time(0, 0), end_time=time(23, 59),
+                )
+            workers.append(worker)
+
+        WorkerService.objects.create(worker=workers[1], service=related_service)
+        WorkerService.objects.create(worker=workers[2], service=multi_category_service)
+
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        same_time = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=2), time(12, 0))
+        )
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "same_appointment",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": same_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": same_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        group = order.appointment_groups.get()
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            order=order, customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
+            method=Payment.Method.RAZORPAY, status=Payment.Status.PAID,
+        )
+
+        from apps.bookings.dispatcher import DispatcherService
+        DispatcherService.dispatch_order(order)
+        offers = list(group.worker_offers.filter(
+            status=WorkerOffer.Status.PENDING
+        ).order_by("offered_at"))
+        self.assertEqual([offer.worker_id for offer in offers], [workers[0].pk])
+
+        offers[0].status = WorkerOffer.Status.DECLINED
+        offers[0].save(update_fields=["status", "updated_at"])
+        DispatcherService.dispatch_order(order)
+        offers = list(group.worker_offers.filter(
+            status=WorkerOffer.Status.PENDING
+        ).order_by("offered_at"))
+        self.assertEqual([offer.worker_id for offer in offers], [workers[1].pk])
+
+        offers[0].status = WorkerOffer.Status.EXPIRED
+        offers[0].save(update_fields=["status", "updated_at"])
+        DispatcherService.dispatch_order(order)
+        offers = list(group.worker_offers.filter(
+            status=WorkerOffer.Status.PENDING
+        ).order_by("offered_at"))
+        self.assertEqual([offer.worker_id for offer in offers], [workers[2].pk])
+
+    def test_cancelling_one_appointment_group_does_not_cancel_other_groups(self):
+        second_service = self._create_service(self.category, title="Bathroom Cleaning")
+        second_variant = self._create_variant(second_service, price=500, mrp=600)
+        CityService.objects.update_or_create(
+            city=self.address.zone.city,
+            service=second_service,
+            defaults={"is_active": True},
+        )
+        second_item = CartItem.objects.create(
+            cart=self.cart, service=second_service, variant=second_variant,
+            quantity=1, pricing_snapshot={"line_total": "500.00"},
+        )
+        first_time = timezone.now() + timedelta(days=2)
+        second_time = timezone.now() + timedelta(days=3)
+        checkout = self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "schedule_mode": "separate",
+                "items": [
+                    {"cart_item_id": self.cart_item.id, "scheduled_at": first_time.isoformat()},
+                    {"cart_item_id": second_item.id, "scheduled_at": second_time.isoformat()},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(checkout.status_code, 201, checkout.data)
+        order = Order.objects.get(pk=checkout.data["order_id"])
+        groups = list(order.appointment_groups.order_by("group_number"))
+        self.assertEqual(len(groups), 2)
+
+        cancelled = self.client.post(
+            f"/api/v1/bookings/appointment-groups/{groups[0].pk}/cancel/",
+            {},
+            format="json",
+        )
+        self.assertEqual(cancelled.status_code, 200, cancelled.data)
+        self.assertEqual(
+            groups[0].bookings.get().status,
+            Booking.Status.CANCELLED,
+        )
+        self.assertEqual(
+            groups[1].bookings.get().status,
+            Booking.Status.PENDING,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PARTIALLY_CANCELLED)
 
     def test_shared_appointment_rejects_different_service_times_atomically(self):
         second_service = self._create_service(self.category, title="Bathroom Cleaning")
@@ -5171,9 +5531,8 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         self.assertEqual(booking.status, Booking.Status.ASSIGNED)
         self.assertEqual(visit.status, RecurringWashVisit.Status.BOOKED)
 
-        started = worker_client.post(
-            f"/api/v1/bookings/{booking.pk}/start/",
-            format="json",
+        started = self._start_job_with_arrival_otp(
+            worker_client, booking.pk, self.customer
         )
         self.assertEqual(started.status_code, 200, started.data)
         visit.refresh_from_db()

@@ -199,7 +199,7 @@ class WorkerOffer {
       serviceUnitLabel: map['service_unit_label']?.toString(),
       scheduledAt: map['scheduled_at'] != null ? DateTime.parse(map['scheduled_at'] as String) : null,
       serviceAddress: map['service_address'] as String?,
-      bookingNotes: map['booking_notes'] as String?,
+      bookingNotes: (map['appointment_group_message'] as String?) ?? (map['booking_notes'] as String?),
       expectedDurationMinutes: int.tryParse(map['expected_duration_minutes']?.toString() ?? '') ?? 60,
       orderServices: (map['order_services'] as List? ?? [])
           .whereType<Map>()
@@ -285,6 +285,7 @@ class WorkerAssignmentDetail {
   final String pricingType;
   final Map<String, dynamic>? quote;
   final bool canSubmitQuote;
+  final List<Map<String, dynamic>> extraWorkRequests;
   final List<Map<String, dynamic>> workEvidence;
   final Map<String, dynamic>? recurringVisit;
   final WorkerAssignmentInfo assignment;
@@ -314,6 +315,7 @@ class WorkerAssignmentDetail {
     this.pricingType = 'fixed',
     this.quote,
     this.canSubmitQuote = false,
+    this.extraWorkRequests = const [],
     this.workEvidence = const [],
     this.recurringVisit,
     required this.assignment,
@@ -345,6 +347,7 @@ class WorkerAssignmentDetail {
       pricingType: map['pricing_type']?.toString() ?? 'fixed',
       quote: map['quote'] is Map ? Map<String, dynamic>.from(map['quote']) : null,
       canSubmitQuote: map['can_submit_quote'] == true,
+      extraWorkRequests: (map['extra_work_requests'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       workEvidence: (map['work_evidence'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       recurringVisit: map['recurring_visit'] is Map ? Map<String, dynamic>.from(map['recurring_visit']) : null,
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
@@ -357,12 +360,14 @@ class WorkerAssignmentInfo {
   final DateTime? acceptedAt;
   final DateTime? startedAt;
   final DateTime? completedAt;
+  final bool locationSharingEnabled;
 
   WorkerAssignmentInfo({
     this.assignedAt,
     this.acceptedAt,
     this.startedAt,
     this.completedAt,
+    this.locationSharingEnabled = false,
   });
 
   factory WorkerAssignmentInfo.fromMap(Map<String, dynamic> map) {
@@ -371,6 +376,7 @@ class WorkerAssignmentInfo {
       acceptedAt: map['accepted_at'] != null ? DateTime.parse(map['accepted_at']) : null,
       startedAt: map['started_at'] != null ? DateTime.parse(map['started_at']) : null,
       completedAt: map['completed_at'] != null ? DateTime.parse(map['completed_at']) : null,
+      locationSharingEnabled: map['location_sharing_enabled'] == true,
     );
   }
 

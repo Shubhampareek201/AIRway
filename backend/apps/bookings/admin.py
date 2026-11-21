@@ -14,10 +14,12 @@ from .models import (
     CartItem,
     Order,
     OrderItem,
+    AppointmentGroup,
     DispatchConfiguration,
     BookingCompletionOTP,
     WorkerOffer,
     BookingQuote,
+    BookingExtraWork,
     BookingWorkEvidence,
     RecurringWashPlan,
     RecurringWashVisit,
@@ -62,6 +64,12 @@ class CustomerCartAdmin(ModelAdmin):
     inlines = [CartItemInline]
 
 
+class AppointmentGroupInline(TabularInline):
+    model = AppointmentGroup
+    extra = 0
+    readonly_fields = ("group_number", "scheduled_at", "customer_message", "created_at")
+
+
 class OrderItemInline(TabularInline):
     model = OrderItem
     extra = 0
@@ -91,7 +99,7 @@ class OrderAdmin(ModelAdmin):
         "created_at", "updated_at", "subtotal", "tax_amount",
         "discount_amount", "total_amount", "metadata",
     )
-    inlines = [OrderItemInline]
+    inlines = [AppointmentGroupInline, OrderItemInline]
 
 
 @admin.action(description="Mark AIRway unable to fulfil and issue full service refund")
@@ -206,6 +214,33 @@ class BookingWorkEvidenceAdmin(ModelAdmin):
     list_filter = ("stage", "created_at")
     search_fields = ("booking__id", "booking__customer__phone", "worker__user__phone")
     readonly_fields = ("booking", "worker", "stage", "image_path", "note", "created_at", "updated_at")
+    fields = readonly_fields
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(BookingExtraWork)
+class BookingExtraWorkAdmin(ModelAdmin):
+    list_display = (
+        "id", "booking", "appointment_group", "worker", "total_amount",
+        "status", "payment_choice", "payment_status", "created_at",
+    )
+    list_filter = ("status", "payment_choice", "created_at")
+    search_fields = ("booking__id", "booking__customer__phone", "worker__user__phone")
+    readonly_fields = (
+        "request_key", "booking", "appointment_group", "worker", "reason",
+        "line_items", "subtotal", "tax_amount", "total_amount",
+        "additional_duration_minutes", "status", "payment_choice", "payment_status",
+        "customer_response_note", "expires_at", "responded_at",
+        "approved_at", "created_at", "updated_at",
+    )
     fields = readonly_fields
 
     def has_add_permission(self, request):

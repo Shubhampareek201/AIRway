@@ -763,7 +763,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     booking_status = serializers.CharField(source="booking.status", read_only=True)
     worker_name = serializers.CharField(source="worker.user.name", read_only=True)
     worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
-    service_title = serializers.CharField(source="booking.service.title", read_only=True)
+    service_title = serializers.SerializerMethodField()
     service_unit_label = serializers.CharField(source="booking.service.unit_label", read_only=True)
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
@@ -777,6 +777,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     quantity = serializers.SerializerMethodField()
     order_services = serializers.SerializerMethodField()
     order_id = serializers.SerializerMethodField()
+    appointment_group_id = serializers.IntegerField(read_only=True, allow_null=True)
+    appointment_group_message = serializers.SerializerMethodField()
+    appointment_group_services = serializers.SerializerMethodField()
     customer_total = serializers.SerializerMethodField()
     advance_received = serializers.SerializerMethodField()
     remaining_balance = serializers.SerializerMethodField()
@@ -789,8 +792,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     class Meta:
         model = __import__("apps.bookings.models", fromlist=["WorkerOffer"]).WorkerOffer
         fields = [
-            "id", "booking", "order", "order_id", "order_services", "batch_number",
-            "customer_total", "advance_received", "remaining_balance",
+            "id", "booking", "order", "order_id", "order_services",
+            "appointment_group_id", "appointment_group_message", "appointment_group_services",
+            "batch_number", "customer_total", "advance_received", "remaining_balance",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
             "worker_phone", "service_title", "service_unit_label", "variant_title", "scheduled_at",
@@ -807,7 +811,21 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         order_item = getattr(obj.booking, "order_item", None)
         return order_item.order_id if order_item else None
 
+    def get_appointment_group_message(self, obj):
+        return obj.appointment_group.customer_message if obj.appointment_group_id else ""
+
+    def get_appointment_group_services(self, obj):
+        if not obj.appointment_group_id:
+            return []
+        return self.get_order_services(obj)
+
     def get_customer_total(self, obj):
+        if obj.appointment_group_id:
+            from decimal import Decimal
+            return str(sum(
+                (item.order_item.line_total for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED).select_related("order_item").all() if hasattr(item, "order_item")),
+                Decimal("0.00"),
+            ))
         if obj.order_id:
             return str(obj.order.total_amount)
         order_item = getattr(obj.booking, "order_item", None)
@@ -817,6 +835,19 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def get_advance_received(self, obj):
         from apps.payments.models import Payment
+        if obj.appointment_group_id:
+            from decimal import Decimal
+            order_item_ids = {
+                item.order_item.id
+                for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED)
+                if hasattr(item, "order_item")
+            }
+            allocation = (obj.booking.order_item.order.metadata or {}).get("payment_allocation_v1", {})
+            return str(sum(
+                (Decimal(str(row.get("amount", "0"))) for row in allocation.get("advance", [])
+                 if row.get("order_item_id") in order_item_ids),
+                Decimal("0.00"),
+            ))
         if obj.order_id:
             payment = Payment.objects.filter(
                 order=obj.order, stage=Payment.Stage.ADVANCE,
@@ -845,6 +876,18 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         return str(max(total - advance, Decimal("0.00")))
 
     def get_order_services(self, obj):
+        if obj.appointment_group_id:
+            return [{
+                "booking_id": item.id,
+                "service_id": item.service_id,
+                "service_title": item.service.title,
+                "service_unit_label": item.service.unit_label,
+                "variant_title": item.variant.title if item.variant_id else None,
+                "scheduled_at": item.scheduled_at,
+                "quantity": item.order_item.quantity if hasattr(item, "order_item") else 1,
+            } for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED).select_related(
+                "service", "variant", "order_item"
+            ).all()]
         if not obj.order_id:
             return [{
                 "booking_id": obj.booking_id,
@@ -890,12 +933,32 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         order_item = getattr(obj.booking, "order_item", None)
         return order_item.quantity if order_item else int((obj.booking.pricing_snapshot or {}).get("quantity", 1))
 
+    def get_service_title(self, obj):
+        if obj.appointment_group_id:
+            first_active = obj.appointment_group.bookings.exclude(
+                status=Booking.Status.CANCELLED
+            ).select_related("service").order_by("pk").first()
+            if first_active:
+                return first_active.service.title
+        return obj.booking.service.title
+
     def get_can_accept(self, obj):
         from django.utils import timezone
+        if obj.appointment_group_id:
+            active_statuses = list(
+                obj.appointment_group.bookings.exclude(
+                    status=Booking.Status.CANCELLED
+                ).values_list("status", flat=True)
+            )
+            booking_eligible = bool(active_statuses) and all(
+                value in ("pending", "confirmed") for value in active_statuses
+            )
+        else:
+            booking_eligible = obj.booking.status in ("pending", "confirmed")
         return (
             obj.status == obj.Status.PENDING
             and obj.expires_at > timezone.now()
-            and obj.booking.status in ("pending", "confirmed")
+            and booking_eligible
             and obj.worker.status == "approved"
             and obj.worker.is_online
         )

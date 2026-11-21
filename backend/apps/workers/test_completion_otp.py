@@ -111,6 +111,108 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
         self.assertEqual(otp_record.attempts, 1)
 
+    def test_worker_must_verify_customer_arrival_code_before_starting(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.save(update_fields=["started_at", "updated_at"])
+        start_url = f"/api/v1/workers/jobs/{self.assignment.pk}/start/"
+
+        requested = self.client.post(start_url, {}, format="json")
+        self.assertEqual(requested.status_code, 200, requested.data)
+        self.assertTrue(requested.data["arrival_otp_required"])
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+
+        notification = Notification.objects.get(
+            user=self.customer,
+            title="Your professional has arrived",
+        )
+        match = re.search(
+            r"arrival code with your AIRway professional: (\d{6})\.",
+            notification.body,
+        )
+        self.assertIsNotNone(match)
+        code = match.group(1)
+        self.assignment.refresh_from_db()
+        self.assertNotEqual(self.assignment.arrival_otp_hash, code)
+        self.assertTrue(check_password(code, self.assignment.arrival_otp_hash))
+
+        invalid_code = "999999" if code != "999999" else "999998"
+        invalid = self.client.post(
+            start_url, {"arrival_otp": invalid_code}, format="json"
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.arrival_otp_attempts, 1)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+
+        verified = self.client.post(
+            start_url, {"arrival_otp": code}, format="json"
+        )
+        self.assertEqual(verified.status_code, 200, verified.data)
+        self.assertEqual(verified.data["status"], Booking.Status.IN_PROGRESS)
+        self.assignment.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.assertIsNotNone(self.assignment.arrival_verified_at)
+        self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
+
+    def test_worker_location_requires_explicit_consent_and_30_minute_window(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.scheduled_at = timezone.now() + timedelta(hours=2)
+        self.booking.save(update_fields=["status", "scheduled_at", "updated_at"])
+        location_url = f"/api/v1/workers/jobs/{self.assignment.pk}/location/"
+        consent_url = f"/api/v1/workers/jobs/{self.assignment.pk}/location-sharing/"
+
+        denied = self.client.post(
+            location_url,
+            {"latitude": 26.9124, "longitude": 75.7873},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        consent = self.client.post(
+            consent_url, {"enabled": True}, format="json"
+        )
+        self.assertEqual(consent.status_code, 200, consent.data)
+        self.assignment.refresh_from_db()
+        self.assertTrue(self.assignment.location_sharing_enabled)
+
+        too_early = self.client.post(
+            location_url,
+            {"latitude": 26.9124, "longitude": 75.7873},
+            format="json",
+        )
+        self.assertEqual(too_early.status_code, 409)
+
+        self.booking.scheduled_at = timezone.now() + timedelta(minutes=20)
+        self.booking.save(update_fields=["scheduled_at", "updated_at"])
+        accepted = self.client.post(
+            location_url,
+            {"latitude": 26.9124, "longitude": 75.7873, "accuracy_m": 10},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+
+        disabled = self.client.post(
+            consent_url, {"enabled": False}, format="json"
+        )
+        self.assertEqual(disabled.status_code, 200)
+        self.assignment.refresh_from_db()
+        self.assertFalse(self.assignment.location_sharing_enabled)
+        self.assertIsNone(self.assignment.live_latitude)
+        self.assertIsNone(self.assignment.live_location_updated_at)
+
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=self.customer)
+        tracking = customer_client.get(
+            f"/api/v1/bookings/{self.booking.pk}/track/"
+        )
+        self.assertEqual(tracking.status_code, 200)
+        self.assertFalse(tracking.data["location_is_fresh"])
+        self.assertIsNone(tracking.data["worker_latitude"])
+
     def test_only_assigned_worker_can_request_completion_code(self):
         other_user = User.objects.create_user(
             phone="+919876543203", password="password123"

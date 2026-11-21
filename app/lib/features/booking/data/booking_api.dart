@@ -328,6 +328,7 @@ class BookingApi {
   static Future<Map<String, dynamic>> checkoutCart({
     required List<Map<String, dynamic>> items,
     String scheduleMode = 'separate',
+    String groupMessage = '',
   }) async {
     final result = await request(
       '/api/v1/bookings/cart/checkout/',
@@ -335,6 +336,7 @@ class BookingApi {
       data: {
         'items': items,
         'schedule_mode': scheduleMode,
+        'group_message': groupMessage,
       },
     );
     return Map<String, dynamic>.from(result);
@@ -449,6 +451,15 @@ class BookingApi {
       method: 'POST',
       data: data,
     );
+  }
+
+  static Future<Map<String, dynamic>> cancelAppointmentGroup(int groupId) async {
+    final result = await request(
+      '/api/v1/bookings/appointment-groups/$groupId/cancel/',
+      method: 'POST',
+      data: const {},
+    );
+    return Map<String, dynamic>.from(result);
   }
 
   static Future<void> cancelRecurringPlan(int planId, {String? reason}) async {
