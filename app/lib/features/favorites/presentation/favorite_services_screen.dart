@@ -131,13 +131,13 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
                       child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(32),
-                        children: const [
-                          SizedBox(height: 90),
-                          Icon(Icons.favorite_border_rounded, size: 58, color: AirwayColors.primary),
-                          SizedBox(height: 16),
+                        children: [
+                          const SizedBox(height: 90),
+                          const Icon(Icons.favorite_border_rounded, size: 58, color: AirwayColors.primary),
+                          const SizedBox(height: 16),
                           Text(AirwayText.tr('No favorites yet', 'अभी कोई पसंदीदा सेवा नहीं है'), textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(AirwayText.tr('Save services you may want to book later using the heart button on a service page.', 'जिन सेवाओं को बाद में बुक करना चाहते हैं, उन्हें सेवा पेज पर हार्ट बटन दबाकर सेव करें।'),
                               textAlign: TextAlign.center,
                               style: TextStyle(color: AirwayColors.textSecondary, height: 1.45)),
