@@ -705,7 +705,8 @@ class BookingDisputeAdmin(ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         if change:
-            previous = BookingDispute.objects.get(pk=obj.pk)
+            # Serialize Admin edits against concurrent API status transitions.
+            previous = BookingDispute.objects.select_for_update().get(pk=obj.pk)
             allowed = {
                 BookingDispute.Status.OPEN: {
                     BookingDispute.Status.IN_REVIEW,
