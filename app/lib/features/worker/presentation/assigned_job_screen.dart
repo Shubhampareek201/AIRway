@@ -1364,6 +1364,18 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             Expanded(child: Text(job.customerName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
           ]),
           const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: const Color(0xFFEAF7EF), borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(AirwayText.tr('YOUR FIXED EARNING', 'आपकी तय कमाई'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF267747))),
+              const SizedBox(height: 3),
+              Text(job.workerPayout == null ? AirwayText.tr('Not available', 'उपलब्ध नहीं') : '₹${job.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: Color(0xFF176B3A))),
+              Text(AirwayText.tr('This amount is locked for this job and is settled after service completion.', 'यह राशि इस जॉब के लिए तय है और सेवा पूरी होने के बाद सेटल होगी।'), style: const TextStyle(fontSize: 11, color: Color(0xFF5D6F62))),
+            ]),
+          ),
+          const SizedBox(height: 10),
           if (job.customerContactAvailable && job.customerPhone != null) ...[
             Row(children: [
               Expanded(child: OutlinedButton.icon(
