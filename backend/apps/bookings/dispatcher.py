@@ -424,11 +424,13 @@ class DispatcherService:
         from datetime import timedelta
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
-        # Launch policy: worker requests stay available until a worker responds,
-        # the customer cancels, or Admin resolves the booking. Keep a far-future
-        # database timestamp for compatibility with the existing non-null field;
-        # the app does not expose a countdown and the expiry task will not retire it.
-        expiry = timezone.now() + timedelta(days=36500)
+        # A pending request remains available until the scheduled service start.
+        # Grouped appointments use their shared scheduled time; individual service
+        # bookings use the booking's own scheduled_at value.
+        expiry = appointment_group.scheduled_at if appointment_group else booking.scheduled_at
+        if expiry <= timezone.now():
+            logger.info("Skip dispatch for booking %s: scheduled service time has passed.", booking.pk)
+            return []
         created = []
         summary = ", ".join(service_titles)
         for worker in workers:
