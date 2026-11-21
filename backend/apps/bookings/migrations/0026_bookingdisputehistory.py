@@ -3,6 +3,23 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+
+def backfill_existing_dispute_history(apps, schema_editor):
+    Dispute = apps.get_model("bookings", "BookingDispute")
+    History = apps.get_model("bookings", "BookingDisputeHistory")
+    rows = [
+        History(
+            dispute_id=dispute.pk,
+            from_status="",
+            to_status=dispute.status,
+            changed_by_id=dispute.raised_by_id,
+            note="Initial status recorded during dispute audit-history rollout.",
+        )
+        for dispute in Dispute.objects.all().iterator()
+    ]
+    History.objects.bulk_create(rows, batch_size=500)
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("bookings", "0025_bookingreworkproposal"),
