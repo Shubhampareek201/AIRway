@@ -1813,7 +1813,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 else:
                     detail = f"Offer is already {offer.get_status_display().lower()}."
                 return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
-            if offer.expires_at <= now:
+            if offer.expires_at and offer.expires_at <= now:
                 offer.status = WorkerOffer.Status.EXPIRED
                 offer.responded_at = now
                 offer.save(update_fields=["status", "responded_at", "updated_at"])
