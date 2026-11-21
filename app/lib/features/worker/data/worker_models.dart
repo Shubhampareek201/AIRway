@@ -155,6 +155,7 @@ class WorkerOffer {
   final List<Map<String, dynamic>> addons;
   final int quantity;
   final double customerTotal;
+  final double? workerPayout;
   final double advanceReceived;
   final double remainingBalance;
   final bool canAccept;
@@ -189,6 +190,7 @@ class WorkerOffer {
     this.addons = const [],
     this.quantity = 1,
     this.customerTotal = 0,
+    this.workerPayout,
     this.advanceReceived = 0,
     this.remainingBalance = 0,
     required this.canAccept,
@@ -228,6 +230,7 @@ class WorkerOffer {
       addons: (map['addons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
       quantity: int.tryParse(map['quantity']?.toString() ?? '1') ?? 1,
       customerTotal: double.tryParse(map['customer_total']?.toString() ?? '') ?? 0,
+      workerPayout: double.tryParse(map['worker_payout']?.toString() ?? ''),
       advanceReceived: double.tryParse(map['advance_received']?.toString() ?? '') ?? 0,
       remainingBalance: double.tryParse(map['remaining_balance']?.toString() ?? '') ?? 0,
       canAccept: map['can_accept'] as bool? ?? false,
