@@ -44,6 +44,7 @@ from .serializers import (
     WorkerZoneSerializer,
     WorkerScheduleSerializer,
     WorkerLeaveSerializer,
+    WorkerLeaveRequestSerializer,
     WorkerJobStreakSerializer,
 )
 
@@ -141,6 +142,52 @@ class WorkerProfileView(APIView):
 
     def patch(self, request):
         return self.put(request)
+
+
+class WorkerLeaveListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _worker(self, request):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return None
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return None
+        return profile
+
+    def get(self, request):
+        profile = self._worker(request)
+        if profile is None:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
+        leaves = WorkerLeave.objects.filter(worker=profile).prefetch_related("history__changed_by").select_related("reviewed_by")
+        return Response(WorkerLeaveSerializer(leaves, many=True).data)
+
+    def post(self, request):
+        profile = self._worker(request)
+        if profile is None:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = WorkerLeaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from .leave_management import request_worker_leave
+        leave = request_worker_leave(worker=profile, **serializer.validated_data)
+        return Response(WorkerLeaveSerializer(leave).data, status=status.HTTP_201_CREATED)
+
+
+class WorkerLeaveDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, leave_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        leave = WorkerLeave.objects.filter(worker=profile, pk=leave_id).first()
+        if leave is None:
+            return Response({"detail": "Leave request not found."}, status=status.HTTP_404_NOT_FOUND)
+        from .leave_management import cancel_worker_leave
+        cancel_worker_leave(leave=leave, worker=profile)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class WorkerServiceListView(APIView):
