@@ -31,6 +31,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   bool _isActionInProgress = false;
   bool _hasRatedCustomer = false;
   Timer? _locationTimer;
+  Timer? _contactRefreshTimer;
   int? _sharingAssignmentId;
   bool _locationRequestInProgress = false;
   bool _locationPermissionBlocked = false;
@@ -47,6 +48,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   @override
   void dispose() {
     _locationTimer?.cancel();
+    _contactRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -56,6 +58,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     if (state == AppLifecycleState.resumed && _jobDetail != null) {
       _locationPermissionBlocked = false;
       _configureLocationSharing(_jobDetail!);
+      _refreshContactAccess();
     } else if (state != AppLifecycleState.resumed) {
       _locationTimer?.cancel();
       _locationTimer = null;
@@ -224,6 +227,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       }
       if (mounted) {
         _jobDetail = parsedDetail;
+        _scheduleContactUnlock(parsedDetail);
         setState(() {
           _hasRatedCustomer = hasRatedCustomer;
           _locationSharingEnabled = parsedDetail.assignment.locationSharingEnabled;
@@ -239,6 +243,31 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           _loading = false;
         });
       }
+    }
+  }
+
+  void _scheduleContactUnlock(WorkerAssignmentDetail job) {
+    _contactRefreshTimer?.cancel();
+    if (job.customerContactAvailable || job.customerContactAvailableAt == null) return;
+    final delay = job.customerContactAvailableAt!.difference(DateTime.now());
+    _contactRefreshTimer = Timer(
+      delay.isNegative ? Duration.zero : delay,
+      _refreshContactAccess,
+    );
+  }
+
+  Future<void> _refreshContactAccess() async {
+    final current = _jobDetail;
+    if (!mounted || current == null || current.customerContactAvailable ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    try {
+      final data = await WorkerApi.getJobDetail(current.assignmentId);
+      if (!mounted) return;
+      final updated = WorkerAssignmentDetail.fromMap(data);
+      setState(() => _jobDetail = updated);
+      _scheduleContactUnlock(updated);
+    } catch (_) {
+      // A failed refresh must not interrupt the active job; resume will retry.
     }
   }
 
