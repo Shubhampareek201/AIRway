@@ -28,6 +28,7 @@ class Notification(TimeStampedModel):
         WORKER_LEAVE_REQUEST = "worker_leave_request", "Worker Leave Requested"
         WORKER_LEAVE_APPROVED = "worker_leave_approved", "Worker Leave Approved"
         WORKER_LEAVE_REJECTED = "worker_leave_rejected", "Worker Leave Rejected"
+        WORKER_LEAVE_EXPIRED = "worker_leave_expired", "Worker Leave Expired"
 
     class Channel(models.TextChoices):
         IN_APP = "in_app", "In-App"
