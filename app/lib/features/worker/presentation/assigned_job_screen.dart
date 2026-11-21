@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/theme/airway_colors.dart';
@@ -1298,21 +1299,71 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     );
   }
 
+  Future<void> _openCustomerContact(WorkerAssignmentDetail job, {required bool message}) async {
+    final phone = job.customerPhone;
+    if (!job.customerContactAvailable || phone == null || phone.isEmpty) return;
+    final uri = Uri(scheme: message ? 'sms' : 'tel', path: phone);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not open the phone app.', 'फोन ऐप नहीं खुल सका।'))),
+      );
+    }
+  }
+
+  Future<void> _openCustomerMap(WorkerAssignmentDetail job) async {
+    final latitude = job.addressLatitude;
+    final longitude = job.addressLongitude;
+    if (latitude == null || longitude == null) return;
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   Widget _buildCustomerInfo(WorkerAssignmentDetail job) {
     return Card(
-      child: ListTile(
-        leading: const Icon(Icons.person),
-        title: Text(job.customerName),
-        subtitle: Text(
-          job.paymentLabel ?? 'Customer contact details are protected by AIRway.',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: Text(
-          job.paymentLabel == 'No-charge service recovery'
-              ? AirwayText.tr('No charge', 'कोई शुल्क नहीं')
-              : '₹${job.amount.toStringAsFixed(0)}',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.person_outline_rounded, color: AirwayColors.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Text(job.customerName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          ]),
+          const SizedBox(height: 10),
+          if (job.customerContactAvailable && job.customerPhone != null) ...[
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: () => _openCustomerContact(job, message: false),
+                icon: const Icon(Icons.call_rounded),
+                label: Text(AirwayText.tr('Call customer', 'ग्राहक को कॉल करें')),
+              )),
+              const SizedBox(width: 8),
+              Expanded(child: FilledButton.icon(
+                onPressed: () => _openCustomerContact(job, message: true),
+                icon: const Icon(Icons.sms_rounded),
+                label: Text(AirwayText.tr('Message', 'मैसेज')),
+              )),
+            ]),
+          ] else if (job.customerContactAvailableAt != null) ...[
+            Text(
+              AirwayText.tr('Call and message unlock one hour before the appointment: ${_formatDateTime(job.customerContactAvailableAt!)}', 'कॉल और मैसेज अपॉइंटमेंट से एक घंटे पहले उपलब्ध होंगे: ${_formatDateTime(job.customerContactAvailableAt!)}'),
+              style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+            ),
+          ],
+          if (job.address?.isNotEmpty == true) ...[
+            const SizedBox(height: 8),
+            Text(job.address!, style: const TextStyle(fontSize: 12, height: 1.4)),
+            if (job.addressLatitude != null && job.addressLongitude != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _openCustomerMap(job),
+                  icon: const Icon(Icons.directions_rounded),
+                  label: Text(AirwayText.tr('Open location in Maps', 'Maps में लोकेशन खोलें')),
+                ),
+              ),
+          ],
+        ]),
       ),
     );
   }
