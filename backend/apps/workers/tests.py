@@ -2559,7 +2559,10 @@ class WorkerLeaveLifecycleAPITest(TestCase):
                     leave_id=leave.pk, reviewer=admin,
                     decision=WorkerLeave.Status.APPROVED,
                 )
-        self.assertEqual(raised.exception.detail["conflicting_booking_ids"], [901, 902])
+        self.assertEqual(
+            [int(value) for value in raised.exception.detail["conflicting_booking_ids"]],
+            [901, 902],
+        )
         leave.refresh_from_db()
         self.assertEqual(leave.status, WorkerLeave.Status.PENDING)
         self.assertIsNone(leave.reviewed_at)
