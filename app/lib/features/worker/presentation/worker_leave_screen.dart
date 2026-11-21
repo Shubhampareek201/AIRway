@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:intl/intl.dart';
 
 import 'package:airway/core/theme/airway_colors.dart';
@@ -114,7 +115,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not submit leave request: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not submit leave request: $e', 'छुट्टी का अनुरोध नहीं भेजा जा सका: $e'))),
         );
       }
     } finally {
@@ -131,7 +132,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not cancel leave: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not cancel leave: $e', 'छुट्टी रद्द नहीं हो सकी: $e'))),
         );
       }
     }
@@ -150,7 +151,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Leave management')),
+      appBar: AppBar(title: Text(AirwayText.tr('Leave management', 'छुट्टी प्रबंधन'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -164,9 +165,9 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Request time off', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                          Text(AirwayText.tr('Request time off', 'छुट्टी का अनुरोध'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 6),
-                          const Text('Requests are reviewed by AIRway Admin. Approved leave prevents new job assignments. Existing assigned jobs must be resolved before approval.'),
+                          Text(AirwayText.tr('Requests are reviewed by AIRway Admin. Approved leave prevents new job assignments. Existing assigned jobs must be resolved before approval.', 'अनुरोध AIRway एडमिन द्वारा जाँचे जाते हैं। स्वीकृत छुट्टी के दौरान नए काम नहीं मिलेंगे। मंज़ूरी से पहले पहले से मिले काम पूरे करने होंगे।')),
                           const SizedBox(height: 14),
                           OutlinedButton.icon(
                             onPressed: _saving ? null : () async {
@@ -189,7 +190,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                             maxLines: 2,
                             maxLength: 500,
                             decoration: const InputDecoration(
-                              labelText: 'Reason (optional)',
+                              labelText: AirwayText.tr('Reason (optional)', 'कारण (वैकल्पिक)'),
                               border: OutlineInputBorder(),
                             ),
                           ),
@@ -200,7 +201,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                               onPressed: _saving ? null : _submit,
                               child: _saving
                                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : const Text('Submit leave request'),
+                                  : Text(AirwayText.tr('Submit leave request', 'छुट्टी का अनुरोध भेजें')),
                             ),
                           ),
                         ],
@@ -208,7 +209,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text('Your requests', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  Text(AirwayText.tr('Your requests', 'आपके अनुरोध'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                   if (_error != null) Padding(
                     padding: const EdgeInsets.all(12),
                     child: Text(_error!, style: const TextStyle(color: AirwayColors.error)),
@@ -240,8 +241,8 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                                 side: BorderSide.none,
                               ),
                             ]),
-                            if ((leave['reason'] ?? '').toString().isNotEmpty) Text('Reason: ${leave['reason']}'),
-                            if ((leave['admin_note'] ?? '').toString().isNotEmpty) Text('Admin note: ${leave['admin_note']}'),
+                            if ((leave['reason'] ?? '').toString().isNotEmpty) Text(AirwayText.tr('Reason: ${leave['reason']}', 'कारण: ${leave['reason']}')),
+                            if ((leave['admin_note'] ?? '').toString().isNotEmpty) Text(AirwayText.tr('Admin note: ${leave['admin_note']}', 'एडमिन नोट: ${leave['admin_note']}')),
                             for (final item in history)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
@@ -255,7 +256,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                               child: TextButton.icon(
                                 onPressed: () => _cancel(leave),
                                 icon: const Icon(Icons.cancel_outlined),
-                                label: const Text('Cancel request'),
+                                label: Text(AirwayText.tr('Cancel request', 'अनुरोध रद्द करें')),
                               ),
                             ),
                           ],
