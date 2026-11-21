@@ -42,12 +42,15 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   List<Map<String, dynamic>> _assignedJobs = [];
   List<WorkerOffer> _offers = [];
   List<Map<String, dynamic>> _earnings = [];
+  Map<String, dynamic>? _missionWallet;
   bool _loading = true;
   bool _availabilitySaving = false;
   String? _error;
   String? _offersError;
   String? _jobsError;
   String? _earningsError;
+  String? _missionWalletError;
+  bool _missionWithdrawalSaving = false;
   int _selectedTab = 0;
   Timer? _offerPollTimer;
   final Set<int> _knownOfferIds = {};
@@ -271,6 +274,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         _offersError = null;
         _jobsError = null;
         _earningsError = null;
+        _missionWalletError = null;
       });
     }
 
@@ -278,6 +282,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     String? offersError;
     String? jobsError;
     String? earningsError;
+    String? missionWalletError;
 
     final profileFuture = _loadSection(
       WorkerApi.getMyProfile,
@@ -295,6 +300,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       WorkerApi.getEarnings,
       (message) => earningsError = message,
     );
+    final missionWalletFuture = _loadSection(
+      WorkerApi.getMissionWallet,
+      (message) => missionWalletError = message,
+    );
 
     try {
       final profile = await profileFuture;
@@ -309,6 +318,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         offersFuture,
         jobsFuture,
         earningsFuture,
+        missionWalletFuture,
       ]);
       if (!mounted) return;
 
@@ -321,9 +331,13 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         if (results[2] != null) {
           _earnings = results[2] as List<Map<String, dynamic>>;
         }
+        if (results[3] != null) {
+          _missionWallet = results[3] as Map<String, dynamic>;
+        }
         _offersError = offersError;
         _jobsError = jobsError;
         _earningsError = earningsError;
+        _missionWalletError = missionWalletError;
       });
     } catch (error) {
       if (mounted) {
@@ -711,6 +725,148 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     ]);
   }
 
+  Future<void> _withdrawMissionRewards() async {
+    if (_missionWithdrawalSaving || _missionWallet == null) return;
+    final balance = double.tryParse('${_missionWallet!['balance'] ?? '0'}') ?? 0;
+    if (balance <= 0) return;
+    if (_profile?.upiId?.trim().isNotEmpty != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Add your UPI ID in Profile settings first.', 'पहले प्रोफ़ाइल सेटिंग में UPI ID जोड़ें।'))),
+      );
+      _editProfile();
+      return;
+    }
+    setState(() => _missionWithdrawalSaving = true);
+    try {
+      await WorkerApi.requestMissionWithdrawal(balance.toStringAsFixed(2));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Withdrawal request sent to AIRway for review.', 'निकासी अनुरोध AIRway को भेज दिया गया है।'))),
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AirwayText.tr('Could not request withdrawal: $error', 'निकासी अनुरोध नहीं भेज सके: $error'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _missionWithdrawalSaving = false);
+    }
+  }
+
+  Widget _buildMissionRewardsCard() {
+    if (_missionWalletError != null) {
+      return _SectionErrorCard(message: _missionWalletError!, onRetry: _refresh);
+    }
+    final data = _missionWallet;
+    if (data == null) {
+      return const _EmptyCard(icon: Icons.emoji_events_outlined, title: 'Mission rewards are loading', subtitle: 'Refresh to see your reward progress.');
+    }
+    final jobs = int.tryParse('${data['eligible_jobs_count'] ?? 0}') ?? 0;
+    final balance = double.tryParse('${data['balance'] ?? 0}') ?? 0;
+    final totalEarned = double.tryParse('${data['total_earned'] ?? 0}') ?? 0;
+    final milestones = (data['milestones'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final withdrawals = (data['withdrawals'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final hasUpi = _profile?.upiId?.trim().isNotEmpty == true;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.emoji_events_rounded, color: Color(0xFF6C4AE3)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(AirwayText.tr('Worker mission rewards', 'वर्कर मिशन रिवॉर्ड'),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
+          ]),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2EEFF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(AirwayText.tr('Withdrawable reward balance', 'निकालने योग्य रिवॉर्ड बैलेंस'),
+                  style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+              const SizedBox(height: 3),
+              Text('₹${balance.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900, color: Color(0xFF5637C8))),
+              Text(AirwayText.tr('Total rewards earned: ₹${totalEarned.toStringAsFixed(2)}', 'कुल रिवॉर्ड कमाई: ₹${totalEarned.toStringAsFixed(2)}'),
+                  style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          Text(AirwayText.tr('${jobs} eligible services completed', '${jobs} योग्य सेवाएँ पूरी कीं'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 5),
+          for (final milestone in milestones)
+            Builder(builder: (_) {
+              final threshold = int.tryParse('${milestone['jobs']}') ?? 0;
+              final reward = double.tryParse('${milestone['reward']}') ?? 0;
+              final reached = threshold > 0 && jobs >= threshold;
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(reached ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    color: reached ? AirwayColors.success : AirwayColors.textSecondary),
+                title: Text(AirwayText.tr('$threshold completed jobs', '$threshold पूरे किए गए काम'),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(AirwayText.tr('₹${reward.toStringAsFixed(0)} extra reward', '₹${reward.toStringAsFixed(0)} अतिरिक्त रिवॉर्ड')),
+                trailing: Text(reached ? AirwayText.tr('Earned', 'मिल गया') : AirwayText.tr('Pending', 'बाकी'),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                        color: reached ? AirwayColors.success : AirwayColors.textSecondary)),
+              );
+            }),
+          const SizedBox(height: 5),
+          Text(AirwayText.tr('Only each service costing more than ₹300 counts. These rewards are separate from customer discount credits.', 'सिर्फ ₹300 से ज़्यादा कीमत वाली हर सेवा गिनी जाएगी। ये रिवॉर्ड कस्टमर डिस्काउंट क्रेडिट से अलग हैं।'),
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, height: 1.4)),
+          const SizedBox(height: 12),
+          if (!hasUpi)
+            TextButton.icon(
+              onPressed: _editProfile,
+              icon: const Icon(Icons.account_balance_outlined),
+              label: Text(AirwayText.tr('Add UPI ID to withdraw', 'निकासी के लिए UPI ID जोड़ें')),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: balance > 0 && !_missionWithdrawalSaving ? _withdrawMissionRewards : null,
+                icon: _missionWithdrawalSaving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.payments_outlined),
+                label: Text(AirwayText.tr('Withdraw reward balance', 'रिवॉर्ड बैलेंस निकालें')),
+              ),
+            ),
+          if (withdrawals.isNotEmpty) ...[
+            const Divider(height: 22),
+            Text(AirwayText.tr('Withdrawal requests', 'निकासी अनुरोध'),
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+            for (final withdrawal in withdrawals.take(3))
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text('₹${withdrawal['amount'] ?? '0'}'),
+                subtitle: Text(withdrawal['payout_upi_id']?.toString() ?? ''),
+                trailing: Text(withdrawal['status']?.toString().toUpperCase() ?? 'PENDING',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+          ],
+        ]),
+      ),
+    );
+  }
+
   Widget _buildEarningsTab() {
     double totalFor(String status, [String amountKey = 'net_amount']) => _earnings
         .where((item) => item['status'] == status)
@@ -727,6 +883,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     ).format(value);
 
     return _page([
+      _buildMissionRewardsCard(),
+      const SizedBox(height: 12),
       Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
