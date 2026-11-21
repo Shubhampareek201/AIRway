@@ -108,19 +108,11 @@ class DispatcherService:
             status__in=(WorkerOffer.Status.DECLINED, WorkerOffer.Status.EXPIRED)
         ).values_list("worker_id", flat=True))
         candidates = [worker for worker in candidates if worker.pk not in already_offered]
-        # Eligibility remains exact-service based; this only ranks the workers
-        # who are already qualified for the requested service.
-        scope_tiers = cls._service_scope_tiers(candidates, booking.service)
-        if scope_tiers:
-            best_tier = min(scope_tiers.values())
-            candidates = [
-                worker for worker in candidates
-                if scope_tiers[worker.pk] == best_tier
-            ]
-        # Only the best available skill tier receives this batch. Declines or
-        # expiries are excluded on retry, allowing the next tier to be offered. Keep
-        # the explicit batch_size argument meaningful for controlled dispatches
-        # and callers that intentionally request a smaller batch.
+        # Launch policy: offer every currently eligible professional at once.
+        # Eligibility already enforces the exact requested service, zone, schedule,
+        # worker approval/online state, leave and booking-conflict constraints.
+        # Skill breadth is not a reason to hide an otherwise qualified worker.
+        # Keep explicit batch_size support for controlled internal dispatches.
         if batch_size is not None:
             candidates = candidates[:max(int(batch_size), 0)]
         if not candidates:
@@ -299,17 +291,9 @@ class DispatcherService:
             worker for worker in candidates
             if worker.pk not in already_responded
         ]
-        # Prefer workers whose registered skill set exactly matches this
-        # appointment, then workers focused on its root category, then
-        # multi-category workers. Every candidate has already passed the
-        # exact qualification check for every service in the group.
-        group_tiers = cls._appointment_group_tiers(candidates, bookings)
-        if group_tiers:
-            best_tier = min(group_tiers.values())
-            candidates = [
-                worker for worker in candidates
-                if group_tiers[worker.pk] == best_tier
-            ]
+        # Launch policy: every worker who passed every service's exact
+        # qualification and shared-appointment availability checks receives
+        # the offer. Do not suppress qualified workers by skill-breadth tier.
         if not candidates:
             cls._notify_dispatch_exhausted(bookings[0], order=parent_order)
             return []
