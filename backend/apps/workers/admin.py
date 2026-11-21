@@ -591,55 +591,60 @@ class WorkerRewardWithdrawalAdmin(ModelAdmin):
     )
 
     def save_model(self, request, obj, form, change):
-        previous_status = None
-        if change:
-            previous_status = WorkerRewardWithdrawal.objects.filter(
-                pk=obj.pk
-            ).values_list("status", flat=True).first()
+        if not change:
+            super().save_model(request, obj, form, change)
+            return
 
-        if change and previous_status != obj.status:
-            allowed = {
-                WorkerRewardWithdrawal.Status.PENDING: {
-                    WorkerRewardWithdrawal.Status.APPROVED,
-                    WorkerRewardWithdrawal.Status.REJECTED,
-                },
-                WorkerRewardWithdrawal.Status.APPROVED: {
-                    WorkerRewardWithdrawal.Status.PAID,
-                    WorkerRewardWithdrawal.Status.REJECTED,
-                },
-            }
-            if obj.status not in allowed.get(previous_status, set()):
-                raise ValidationError("Invalid withdrawal status transition.")
-            if obj.status == WorkerRewardWithdrawal.Status.PAID and not obj.payout_reference.strip():
-                raise ValidationError("A payout reference is required before marking a withdrawal as paid.")
+        previous_status = WorkerRewardWithdrawal.objects.filter(
+            pk=obj.pk
+        ).values_list("status", flat=True).first()
+        if previous_status == obj.status:
+            super().save_model(request, obj, form, change)
+            return
 
-            with transaction.atomic():
-                locked = WorkerRewardWithdrawal.objects.select_for_update().get(pk=obj.pk)
-                if locked.status != previous_status:
-                    raise ValidationError("This withdrawal was updated by another admin. Reload and try again.")
-                if obj.status == WorkerRewardWithdrawal.Status.REJECTED:
-                    wallet = WorkerRewardWallet.objects.select_for_update().get(pk=locked.wallet_id)
+        allowed = {
+            WorkerRewardWithdrawal.Status.PENDING: {
+                WorkerRewardWithdrawal.Status.APPROVED,
+                WorkerRewardWithdrawal.Status.REJECTED,
+            },
+            WorkerRewardWithdrawal.Status.APPROVED: {
+                WorkerRewardWithdrawal.Status.PAID,
+                WorkerRewardWithdrawal.Status.REJECTED,
+            },
+        }
+        if obj.status not in allowed.get(previous_status, set()):
+            raise ValidationError("Invalid withdrawal status transition.")
+        if obj.status == WorkerRewardWithdrawal.Status.PAID and not obj.payout_reference.strip():
+            raise ValidationError("A payout reference is required before marking a withdrawal as paid.")
+
+        # Keep wallet ledger updates and the withdrawal status change atomic.
+        with transaction.atomic():
+            locked = WorkerRewardWithdrawal.objects.select_for_update().get(pk=obj.pk)
+            if locked.status != previous_status:
+                raise ValidationError("This withdrawal was updated by another admin. Reload and try again.")
+
+            wallet = WorkerRewardWallet.objects.select_for_update().get(pk=locked.wallet_id)
+            if obj.status == WorkerRewardWithdrawal.Status.REJECTED:
+                refund, created = WorkerRewardTransaction.objects.get_or_create(
+                    reference_key=f"mission-withdrawal-refund:{locked.pk}",
+                    defaults={
+                        "wallet": wallet,
+                        "worker": locked.worker,
+                        "type": WorkerRewardTransaction.Type.REFUND,
+                        "amount": locked.amount,
+                        "description": f"Refund for rejected mission withdrawal #{locked.pk}",
+                    },
+                )
+                if created:
                     wallet.balance += locked.amount
                     wallet.save(update_fields=["balance", "updated_at"])
-                    WorkerRewardTransaction.objects.get_or_create(
-                        reference_key=f"mission-withdrawal-refund:{locked.pk}",
-                        defaults={
-                            "wallet": wallet,
-                            "worker": locked.worker,
-                            "type": WorkerRewardTransaction.Type.REFUND,
-                            "amount": locked.amount,
-                            "description": f"Refund for rejected mission withdrawal #{locked.pk}",
-                        },
-                    )
-                elif obj.status == WorkerRewardWithdrawal.Status.PAID:
-                    wallet = WorkerRewardWallet.objects.select_for_update().get(pk=locked.wallet_id)
-                    wallet.total_withdrawn += locked.amount
-                    wallet.save(update_fields=["total_withdrawn", "updated_at"])
+            elif obj.status == WorkerRewardWithdrawal.Status.PAID:
+                wallet.total_withdrawn += locked.amount
+                wallet.save(update_fields=["total_withdrawn", "updated_at"])
 
-                obj.processed_by = request.user
-                obj.processed_at = timezone.now()
-
-        super().save_model(request, obj, form, change)
+            obj.processed_by = request.user
+            obj.processed_at = timezone.now()
+            super().save_model(request, obj, form, change)
 
     def has_add_permission(self, request):
         return False
