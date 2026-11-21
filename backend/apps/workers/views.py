@@ -1834,6 +1834,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     {"detail": "AIRway has not configured your earning rate yet. Please contact Admin before accepting this job."},
                     status=status.HTTP_409_CONFLICT,
                 )
+            if self.get_serializer(offer).data.get("worker_payout") is None:
+                return Response(
+                    {"detail": "AIRway cannot calculate a fixed payout for this request yet. Please contact Admin."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             if group_offer:
                 group = AppointmentGroup.objects.select_for_update().get(pk=group.pk)
