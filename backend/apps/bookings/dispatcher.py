@@ -556,6 +556,33 @@ class DispatcherService:
                 if service_unit_label
                 else (f"Qty {service_quantity}" if service_quantity > 1 else "")
             )
+            worker_payout = None
+            if worker.commission_rate is not None:
+                from decimal import Decimal, ROUND_HALF_UP
+                if appointment_group:
+                    payout_gross = sum(
+                        (Decimal(str(item.order_item.line_subtotal or "0.00"))
+                         for item in appointment_group.bookings.exclude(status="cancelled").select_related("order_item")
+                         if hasattr(item, "order_item")),
+                        Decimal("0.00"),
+                    )
+                elif order:
+                    payout_gross = sum(
+                        (Decimal(str(item.line_subtotal or "0.00")) for item in order.items.all()),
+                        Decimal("0.00"),
+                    )
+                else:
+                    order_item = getattr(booking, "order_item", None)
+                    snapshot = booking.pricing_snapshot or {}
+                    payout_gross = Decimal(str(
+                        order_item.line_subtotal if order_item
+                        else snapshot.get("subtotal", snapshot.get("total", "0.00"))
+                    ))
+                commission = (payout_gross * worker.commission_rate / Decimal("100")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                worker_payout = str(max(payout_gross - commission, Decimal("0.00")))
+
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
@@ -585,6 +612,7 @@ class DispatcherService:
                 "customer_total": customer_total,
                 "advance_received": advance_received,
                 "remaining_balance": remaining_balance,
+                "worker_payout": worker_payout,
                 "notification_kind": "worker_offer",
             }
             # Put actionable facts in the visible push body as well as its data
@@ -595,7 +623,8 @@ class DispatcherService:
                 f"New AIRway service request: {summary} • "
                 f"{booking.scheduled_at.strftime('%d %b, %I:%M %p')} • {location_preview} "
                 f"{('• ' + quantity_preview + ' ') if quantity_preview else ''}"
-                "Open AIRway to review the service details and your earning."
+                f"• Your earning: ₹{worker_payout} " if worker_payout is not None
+                else "• Your earning will appear after AIRway finance configures it. "
             )
             Notification.objects.create(
                 user=worker.user,
