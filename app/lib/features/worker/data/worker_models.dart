@@ -297,6 +297,7 @@ class WorkerAssignmentDetail {
   final DateTime scheduledAt;
   final DateTime? dropScheduledAt;
   final double amount;
+  final double? workerPayout;
   final String? paymentLabel;
   final String? notes;
   final String? issuePhotoUrl;
@@ -333,6 +334,7 @@ class WorkerAssignmentDetail {
     required this.scheduledAt,
     this.dropScheduledAt,
     required this.amount,
+    this.workerPayout,
     this.paymentLabel,
     this.notes,
     this.issuePhotoUrl,
@@ -371,6 +373,7 @@ class WorkerAssignmentDetail {
       scheduledAt: DateTime.parse(map['scheduled_at']),
       dropScheduledAt: map['drop_scheduled_at'] != null ? DateTime.parse(map['drop_scheduled_at']) : null,
       amount: double.tryParse(map['amount'].toString()) ?? 0.0,
+      workerPayout: double.tryParse(map['worker_payout']?.toString() ?? ''),
       paymentLabel: map['payment_label']?.toString(),
       notes: map['notes'],
       issuePhotoUrl: map['issue_photo_url']?.toString(),
