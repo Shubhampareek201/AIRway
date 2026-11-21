@@ -512,6 +512,9 @@ class BookingDisputeHistoryInline(TabularInline):
     readonly_fields = ("from_status", "to_status", "changed_by", "note", "created_at")
     fields = readonly_fields
 
+    def has_add_permission(self, request, obj=None):
+        return False
+
 
 
 class BookingReworkProposalAdminForm(forms.ModelForm):
