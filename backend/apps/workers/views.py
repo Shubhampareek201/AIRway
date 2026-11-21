@@ -1972,7 +1972,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 if WorkerBlockedSlot.objects.filter(
                     worker=worker.user, start_at__lt=group_end, end_at__gt=group_start
                 ).exists() or worker.leaves.filter(
-                    start_at__lt=group_end, end_at__gt=group_start
+                    status="approved", start_at__lt=group_end, end_at__gt=group_start
                 ).exists():
                     return Response(
                         {"detail": "You have a blocked time or leave during this appointment."},
