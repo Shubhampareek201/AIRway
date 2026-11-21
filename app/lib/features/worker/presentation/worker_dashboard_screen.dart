@@ -1122,8 +1122,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   Future<void> _openOfferMap(WorkerOffer offer) async {
     final latitude = offer.addressLatitude;
     final longitude = offer.addressLongitude;
-    if (latitude == null || longitude == null) return;
-    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    final query = latitude != null && longitude != null
+        ? '$latitude,$longitude'
+        : (offer.serviceAddress?.trim() ?? '');
+    if (query.isEmpty) return;
+    final uri = Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': query});
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not open Maps.', 'Maps नहीं खुल सका।'))));
@@ -1230,8 +1233,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             if (address.isNotEmpty) ...[
               const SizedBox(height: 7),
               _offerInfoLine(Icons.location_on_outlined, address, maxLines: 2),
-              if (offer.addressLatitude != null && offer.addressLongitude != null)
-                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+              Align(alignment: Alignment.centerLeft, child: TextButton.icon(
                   onPressed: () => _openOfferMap(offer),
                   icon: const Icon(Icons.directions_rounded, size: 17),
                   label: Text(AirwayText.tr('Open map', 'मैप खोलें')),
