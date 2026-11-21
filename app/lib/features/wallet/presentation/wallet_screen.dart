@@ -37,7 +37,7 @@ class _WalletScreenState extends State<WalletScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not load wallet.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not load wallet.', 'वॉलेट लोड नहीं हो सका।'))));
       }
     }
   }
@@ -64,7 +64,7 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: customController,
-                decoration: const InputDecoration(labelText: 'Or enter custom amount'),
+                decoration: InputDecoration(labelText: AirwayText.tr('Or enter custom amount', 'या अपनी राशि दर्ज करें')),
                 style: const TextStyle(),
                 keyboardType: TextInputType.number,
                 enabled: true,
@@ -81,7 +81,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 try {
                   await WalletApi.topUp(amount: amount);
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Top-up request submitted.')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Top-up request submitted.', 'वॉलेट में पैसे जोड़ने का अनुरोध भेज दिया गया।'))));
                     _load();
                   }
                 } catch (e) {
