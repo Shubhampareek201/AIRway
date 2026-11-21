@@ -2541,3 +2541,57 @@ class WorkerLeaveLifecycleAPITest(TestCase):
         self.assertTrue(Notification.objects.filter(
             user=self.worker_user, type=Notification.Type.WORKER_LEAVE_APPROVED,
         ).exists())
+
+    def test_admin_cannot_approve_leave_with_active_assignment_conflict(self):
+        from unittest.mock import patch
+        from rest_framework.exceptions import ValidationError
+        from apps.workers.leave_management import review_worker_leave
+
+        start, end = self._period()
+        leave = WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=end,
+            status=WorkerLeave.Status.PENDING,
+        )
+        admin = User.objects.create_user(phone="+919876543297", password="password123")
+        with patch("apps.workers.leave_management._assigned_booking_conflicts", return_value=[901, 902]):
+            with self.assertRaises(ValidationError) as raised:
+                review_worker_leave(
+                    leave_id=leave.pk, reviewer=admin,
+                    decision=WorkerLeave.Status.APPROVED,
+                )
+        self.assertEqual(raised.exception.detail["conflicting_booking_ids"], [901, 902])
+        leave.refresh_from_db()
+        self.assertEqual(leave.status, WorkerLeave.Status.PENDING)
+        self.assertIsNone(leave.reviewed_at)
+
+    def test_expired_pending_leave_is_closed_and_history_saved(self):
+        from apps.workers.tasks import expire_past_worker_leave_requests
+        from apps.notifications.models import Notification
+
+        start = timezone.now() - timedelta(days=2)
+        leave = WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=start + timedelta(hours=8),
+            status=WorkerLeave.Status.PENDING,
+        )
+        self.assertEqual(expire_past_worker_leave_requests(), 1)
+        leave.refresh_from_db()
+        self.assertEqual(leave.status, WorkerLeave.Status.CANCELLED)
+        self.assertEqual(WorkerLeaveHistory.objects.filter(
+            leave=leave, to_status=WorkerLeave.Status.CANCELLED,
+        ).count(), 1)
+        self.assertTrue(Notification.objects.filter(
+            user=self.worker_user, data__worker_leave_id=leave.pk,
+            type=Notification.Type.WORKER_LEAVE_REJECTED,
+        ).exists())
+
+    def test_expiry_task_does_not_change_approved_leave(self):
+        from apps.workers.tasks import expire_past_worker_leave_requests
+
+        start = timezone.now() - timedelta(days=2)
+        leave = WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=start + timedelta(hours=8),
+            status=WorkerLeave.Status.APPROVED,
+        )
+        self.assertEqual(expire_past_worker_leave_requests(), 0)
+        leave.refresh_from_db()
+        self.assertEqual(leave.status, WorkerLeave.Status.APPROVED)
