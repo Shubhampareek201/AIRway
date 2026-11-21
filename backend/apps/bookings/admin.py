@@ -151,13 +151,30 @@ def mark_unfulfillable_and_refund(modeladmin, request, queryset):
                 )
                 assignment.delete()
 
-            WorkerOffer.objects.filter(
-                booking=locked,
-                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
-            ).update(
-                status=WorkerOffer.Status.WITHDRAWN,
-                responded_at=timezone.now(),
-            )
+            appointment_group = getattr(locked, "appointment_group", None)
+            if appointment_group is not None:
+                # A group offer belongs to the complete shared appointment.
+                # Keep it alive while any service in the group remains active;
+                # withdraw it only when the whole appointment is cancelled.
+                group_has_active_bookings = appointment_group.bookings.exclude(
+                    status=Booking.Status.CANCELLED
+                ).exists()
+                if not group_has_active_bookings:
+                    WorkerOffer.objects.filter(
+                        appointment_group=appointment_group,
+                        status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+                    ).update(
+                        status=WorkerOffer.Status.WITHDRAWN,
+                        responded_at=timezone.now(),
+                    )
+            else:
+                WorkerOffer.objects.filter(
+                    booking=locked,
+                    status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+                ).update(
+                    status=WorkerOffer.Status.WITHDRAWN,
+                    responded_at=timezone.now(),
+                )
 
             order_item = getattr(locked, "order_item", None)
             if order_item:
