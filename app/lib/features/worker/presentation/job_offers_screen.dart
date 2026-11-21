@@ -13,28 +13,52 @@ class JobOffersScreen extends StatefulWidget {
   State<JobOffersScreen> createState() => _JobOffersScreenState();
 }
 
-class _JobOffersScreenState extends State<JobOffersScreen> {
+class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingObserver {
   List<WorkerOffer> _offers = [];
   bool _loading = true;
   String? _error;
   int _actionInProgress = -1;
   Timer? _activeTimer;
+  Timer? _pollTimer;
+  bool _fetching = false;
   final Map<int, Duration> _timeRemaining = {};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadOffers();
+    // Keep this route current even when it was already open before a customer
+    // completed checkout. The dashboard's polling does not refresh this page.
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _loadOffers(showLoader: false);
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadOffers(showLoader: false);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _activeTimer?.cancel();
+    _pollTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadOffers() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+  Future<void> _loadOffers({bool showLoader = true}) async {
+    if (_fetching) return;
+    _fetching = true;
+    if (mounted) {
+      setState(() {
+        if (showLoader) _loading = true;
+        _error = null;
+      });
+    }
     try {
       final offers = await WorkerApi.getJobOffers();
       if (mounted) {
@@ -55,7 +79,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = AirwayText.tr('Could not load job offers.', 'जॉब ऑफ़र लोड नहीं हो सके।');
+          _error = '${AirwayText.tr('Could not load job offers.', 'जॉब ऑफ़र लोड नहीं हो सके।')}\n${e.toString().replaceFirst('Exception: ', '')}';
         });
       }
     } finally {
