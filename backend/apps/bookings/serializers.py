@@ -764,6 +764,12 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     worker_name = serializers.CharField(source="worker.user.name", read_only=True)
     worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
     service_title = serializers.SerializerMethodField()
+    customer_name = serializers.CharField(source="booking.customer.name", read_only=True)
+    service_description = serializers.CharField(source="booking.service.description", read_only=True)
+    service_image_url = serializers.SerializerMethodField()
+    customer_issue_photo_url = serializers.SerializerMethodField()
+    address_latitude = serializers.DecimalField(source="booking.address.latitude", max_digits=9, decimal_places=6, read_only=True, allow_null=True)
+    address_longitude = serializers.DecimalField(source="booking.address.longitude", max_digits=9, decimal_places=6, read_only=True, allow_null=True)
     service_unit_label = serializers.CharField(source="booking.service.unit_label", read_only=True)
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
@@ -797,13 +803,34 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "batch_number", "customer_total", "advance_received", "remaining_balance",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
-            "worker_phone", "service_title", "service_unit_label", "variant_title", "scheduled_at",
+            "worker_phone", "customer_name", "service_title", "service_description", "service_image_url",
+            "customer_issue_photo_url", "address_latitude", "address_longitude",
+            "service_unit_label", "variant_title", "scheduled_at",
             "service_address", "booking_notes", "expected_duration_minutes",
             "customer_answers", "professional_preference",
             "form_responses", "addons", "quantity", "can_accept", "can_decline",
             "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_service_image_url(self, obj):
+        image = obj.booking.service.image
+        if not image:
+            return None
+        try:
+            url = image.url
+        except (ValueError, OSError):
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request else url
+
+    def get_customer_issue_photo_url(self, obj):
+        answers = obj.booking.customer_answers or {}
+        if not answers.get("_airway_issue_photo"):
+            return None
+        request = self.context.get("request")
+        path = f"/api/v1/bookings/issue-photos/{obj.booking_id}/"
+        return request.build_absolute_uri(path) if request else path
 
     def get_order_id(self, obj):
         if obj.order_id:
@@ -957,7 +984,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             booking_eligible = obj.booking.status in ("pending", "confirmed")
         return (
             obj.status == obj.Status.PENDING
-            and obj.expires_at > timezone.now()
+            and (obj.expires_at is None or obj.expires_at > timezone.now())
             and booking_eligible
             and obj.worker.status == "approved"
             and obj.worker.is_online
