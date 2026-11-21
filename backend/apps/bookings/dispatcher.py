@@ -615,16 +615,15 @@ class DispatcherService:
                 "worker_payout": worker_payout,
                 "notification_kind": "worker_offer",
             }
-            # Put actionable facts in the visible push body as well as its data
-            # payload; workers should not need to open the app just to see the
-            # location, appointment, and payment split.
+            # Keep the lock-screen alert focused on the job and the worker's
+            # own earning; customer payment totals are intentionally not shown.
             location_preview = (address_text or "").strip()[:90]
             notification_body = (
                 f"New AIRway service request: {summary} • "
                 f"{booking.scheduled_at.strftime('%d %b, %I:%M %p')} • {location_preview} "
                 f"{('• ' + quantity_preview + ' ') if quantity_preview else ''}"
-                f"• Your earning: ₹{worker_payout} " if worker_payout is not None
-                else "• Your earning will appear after AIRway finance configures it. "
+                + (f"• Your earning: ₹{worker_payout}" if worker_payout is not None
+                   else "• Your earning is not configured yet; open AIRway for details.")
             )
             Notification.objects.create(
                 user=worker.user,
