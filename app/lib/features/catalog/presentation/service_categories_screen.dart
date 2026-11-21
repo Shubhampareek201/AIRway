@@ -93,7 +93,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       answers['beauty_audience'] = audience;
     }
 
-    final categoryIdentity = '${selectedCategory.slug} ${selectedCategory.displayTitle}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    final categoryIdentity = '${selectedCategory.slug} ${selectedCategory.title}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
     final isCarWashCategory = categoryIdentity.contains('car wash') ||
         categoryIdentity.replaceAll(' ', '').contains('carwash') ||
         selectedCategory.children.any(
@@ -374,7 +374,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       color: AirwayColors.primarySoft,
                       alignment: Alignment.center,
                       child: Icon(
-                        _categoryIcon(category.displayTitle),
+                        _categoryIcon(category.title),
                         color: AirwayColors.primary,
                         size: 38,
                       ),
@@ -386,7 +386,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                         color: AirwayColors.primarySoft,
                         alignment: Alignment.center,
                         child: Icon(
-                          _categoryIcon(category.displayTitle),
+                          _categoryIcon(category.title),
                           color: AirwayColors.primary,
                           size: 48,
                         ),
