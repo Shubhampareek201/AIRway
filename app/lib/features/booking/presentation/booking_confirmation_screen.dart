@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
@@ -58,11 +59,11 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment failed: ${response.message}')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Payment failed: ${response.message}', 'भुगतान विफल: ${response.message}'))));
   }
 
   void _handleExternalWallet(ExternalWalletResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('External wallet: ${response.walletName}')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('External wallet: ${response.walletName}', 'बाहरी वॉलेट: ${response.walletName}'))));
   }
 
   Future<void> _verifyPayment(PaymentSuccessResponse response) async {
@@ -95,7 +96,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Payment verification failed: $e')),
+        SnackBar(content: Text(AirwayText.tr('Payment verification failed: $e', 'भुगतान सत्यापन विफल: $e'))),
       );
     }
   }
@@ -114,7 +115,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
       _razorpay.open(options);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error initiating payment: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Error initiating payment: $e', 'भुगतान शुरू करने में त्रुटि: $e'))));
     }
   }
 
@@ -145,7 +146,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
     return Scaffold(
       backgroundColor: _Ui.bg,
       appBar: AppBar(
-        title: const Text('Booking Confirmed'),
+        title: Text(AirwayText.tr('Booking Confirmed', 'बुकिंग की पुष्टि हो गई')),
         backgroundColor: _Ui.bg,
         automaticallyImplyLeading: false,
       ),
@@ -444,7 +445,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
               child: FilledButton.icon(
                 onPressed: _payNow,
                 icon: const Icon(Icons.credit_card_rounded),
-                label: const Text('Pay Now with Razorpay'),
+                label: Text(AirwayText.tr('Pay Now with Razorpay', 'Razorpay से अभी भुगतान करें')),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -493,7 +494,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
               );
             },
             icon: const Icon(Icons.list_alt_rounded),
-            label: const Text('View My Bookings'),
+            label: Text(AirwayText.tr('View My Bookings', 'मेरी बुकिंग देखें')),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -508,7 +509,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
               Navigator.pop(context);
             },
             icon: const Icon(Icons.home_rounded),
-            label: const Text('Back to Home'),
+            label: Text(AirwayText.tr('Back to Home', 'होम पर जाएँ')),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -537,7 +538,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: _loadBooking,
-                child: const Text('Retry'),
+                child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
               ),
             ],
           ),
