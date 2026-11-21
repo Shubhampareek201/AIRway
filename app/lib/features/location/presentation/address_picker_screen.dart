@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:share_plus/share_plus.dart';
 
@@ -100,11 +101,11 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete saved address?'),
+        title: Text(AirwayText.tr('Delete saved address?', 'सेव किया गया पता हटाएँ?')),
         content: Text(_display(address)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AirwayText.tr('Delete', 'हटाएँ'))),
         ],
       ),
     );
@@ -158,7 +159,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Choose your address')),
+      appBar: AppBar(title: Text(AirwayText.tr('Choose your address', 'अपना पता चुनें'))),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _load,
@@ -166,7 +167,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.search),
-                title: const Text('Search area, street or PIN code'),
+                title: Text(AirwayText.tr('Search area, street or PIN code', 'इलाका, सड़क या PIN कोड खोजें')),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _search,
               ),
@@ -177,7 +178,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
               IconButton(tooltip: 'Refresh saved addresses', onPressed: _load, icon: const Icon(Icons.refresh)),
             ]),
             if (_loading) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-            if (_error != null) ListTile(title: Text(_error!), trailing: TextButton(onPressed: _load, child: const Text('Retry'))),
+            if (_error != null) ListTile(title: Text(_error!), trailing: TextButton(onPressed: _load, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')))),
             if (!_loading && _error == null && _addresses.isEmpty)
               const Padding(padding: EdgeInsets.all(20), child: Text('No saved addresses yet. Choose a location on the map and save it.')),
             for (final address in _addresses) Card(
@@ -188,7 +189,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
                     Text('${address['label'] ?? 'Address'}'.toUpperCase()),
                     if (address['is_default'] == true) ...[
                       const SizedBox(width: 8),
-                      const Text('DEFAULT', style: TextStyle(color: Colors.deepPurple, fontSize: 11)),
+                      Text(AirwayText.tr('DEFAULT', 'डिफ़ॉल्ट'), style: TextStyle(color: Colors.deepPurple, fontSize: 11)),
                     ],
                   ]),
                   subtitle: Text(_display(address)),
@@ -196,11 +197,11 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
                   onTap: () => _pick(address),
                 ),
                 Wrap(alignment: WrapAlignment.end, spacing: 2, children: [
-                  TextButton(onPressed: () => _edit(address), child: const Text('Edit')),
-                  TextButton(onPressed: () => _delete(address), child: const Text('Delete')),
-                  TextButton(onPressed: () => _share(address), child: const Text('Share')),
+                  TextButton(onPressed: () => _edit(address), child: Text(AirwayText.tr('Edit', 'बदलें'))),
+                  TextButton(onPressed: () => _delete(address), child: Text(AirwayText.tr('Delete', 'हटाएँ'))),
+                  TextButton(onPressed: () => _share(address), child: Text(AirwayText.tr('Share', 'शेयर करें'))),
                   if (address['is_default'] != true)
-                    TextButton(onPressed: () => _setDefault(address), child: const Text('Set default')),
+                    TextButton(onPressed: () => _setDefault(address), child: Text(AirwayText.tr('Set default', 'डिफ़ॉल्ट बनाएँ'))),
                 ]),
               ]),
             ),
