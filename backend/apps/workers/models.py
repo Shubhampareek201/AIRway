@@ -285,6 +285,21 @@ class WorkerLeave(TimeStampedModel):
     end_at = models.DateTimeField()
     reason = models.TextField(blank=True)
 
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        CANCELLED = "cancelled", "Cancelled"
+
+    # Existing admin-created leave rows remain effective after migration.
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.APPROVED, db_index=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_worker_leaves",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_note = models.TextField(blank=True)
+
     class Meta:
         ordering = ["-start_at"]
         constraints = [
@@ -306,7 +321,22 @@ class WorkerLeave(TimeStampedModel):
             })
 
     def __str__(self):
-        return f"{self.worker.user.phone} - Leave"
+        return f"{self.worker.user.phone} - Leave ({self.status})"
+
+
+class WorkerLeaveHistory(TimeStampedModel):
+    leave = models.ForeignKey(WorkerLeave, on_delete=models.PROTECT, related_name="history")
+    from_status = models.CharField(max_length=12, blank=True)
+    to_status = models.CharField(max_length=12, choices=WorkerLeave.Status.choices)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"Leave #{self.leave_id}: {self.to_status}"
+
 
 class WorkerEarning(TimeStampedModel):
     """Per-booking earning calculation and payout state."""
