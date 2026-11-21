@@ -1957,6 +1957,14 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 else:
                     detail = f"Offer is already {offer.get_status_display().lower()}."
                 return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+            if offer.expires_at <= now:
+                offer.status = WorkerOffer.Status.EXPIRED
+                offer.responded_at = now
+                offer.save(update_fields=["status", "responded_at", "updated_at"])
+                return Response(
+                    {"detail": "This request has expired because its scheduled service time has arrived."},
+                    status=status.HTTP_409_CONFLICT,
+                )
             if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
                 return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
             if worker.commission_rate is None:
