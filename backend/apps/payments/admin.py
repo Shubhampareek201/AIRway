@@ -6,7 +6,7 @@ from django.http import HttpResponseRedirect
 from django.core.exceptions import PermissionDenied, ValidationError
 from unfold.admin import ModelAdmin
 
-from apps.bookings.models import BookingExtraWork
+from apps.bookings.models import BookingExtraWork, BookingDispute
 from .models import Payment, PaymentRefund
 from .refunds import (
     _existing_refund_components,
@@ -46,7 +46,7 @@ class PaymentRefundAdminForm(forms.ModelForm):
 
     class Meta:
         model = PaymentRefund
-        fields = ("payment", "booking", "extra_work", "amount", "reason", "admin_note")
+        fields = ("payment", "booking", "extra_work", "dispute", "amount", "reason", "admin_note")
         widgets = {
             "admin_note": forms.Textarea(attrs={"rows": 3}),
         }
@@ -63,6 +63,16 @@ class PaymentRefundAdminForm(forms.ModelForm):
         self.fields["extra_work"].required = False
         self.fields["extra_work"].help_text = (
             "Choose a specific extra-work proposal to refund only that approved add-on."
+        )
+        self.fields["dispute"].queryset = BookingDispute.objects.filter(
+            status=BookingDispute.Status.RESOLVED,
+            requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+            resolved_by__isnull=False,
+            resolved_at__isnull=False,
+        ).select_related("booking")
+        self.fields["dispute"].required = False
+        self.fields["dispute"].help_text = (
+            "Required for a dispute-resolution refund; the case must already be resolved by AIRway support."
         )
         self.fields["reason"].choices = [
             (PaymentRefund.Reason.ADMIN_ADJUSTMENT, "Admin partial refund"),
@@ -84,10 +94,19 @@ class PaymentRefundAdminForm(forms.ModelForm):
         payment = cleaned.get("payment")
         booking = cleaned.get("booking")
         extra_work = cleaned.get("extra_work")
+        dispute = cleaned.get("dispute")
+        reason = cleaned.get("reason")
         amount = cleaned.get("amount")
         key = cleaned.get("idempotency_key")
         if not (payment and booking and amount and key):
             return cleaned
+        if reason == PaymentRefund.Reason.DISPUTE_RESOLUTION:
+            if dispute is None:
+                self.add_error("dispute", "Select the resolved dispute this refund settles.")
+            elif dispute.booking_id != booking.pk:
+                self.add_error("dispute", "The selected dispute does not belong to this booking.")
+        elif dispute is not None:
+            self.add_error("dispute", "A dispute can only be linked to a dispute-resolution refund.")
         if payment.extra_work_id:
             if extra_work is not None and extra_work.pk != payment.extra_work_id:
                 self.add_error("extra_work", "Select the extra-work proposal linked to this payment.")
@@ -103,6 +122,7 @@ class PaymentRefundAdminForm(forms.ModelForm):
                 existing.payment_id != payment.pk
                 or existing.booking_id != booking.pk
                 or existing.extra_work_id != (extra_work.pk if extra_work else None)
+                or existing.dispute_id != (dispute.pk if dispute else None)
                 or existing.amount != amount
             ):
                 self.add_error("idempotency_key", "This request key has already been used.")
@@ -145,17 +165,17 @@ class PaymentRefundAdminForm(forms.ModelForm):
 class PaymentRefundAdmin(ModelAdmin):
     form = PaymentRefundAdminForm
     list_display = (
-        "id", "booking", "extra_work", "payment", "amount", "wallet_amount",
+        "id", "booking", "dispute", "extra_work", "payment", "amount", "wallet_amount",
         "gateway_amount", "reason", "status", "requested_by",
         "gateway_refund_id", "failure_summary", "created_at",
     )
     list_filter = ("status", "reason", "created_at")
     search_fields = (
-        "id", "booking__id", "extra_work__id", "payment__id", "gateway_refund_id",
+        "id", "booking__id", "dispute__id", "extra_work__id", "payment__id", "gateway_refund_id",
         "booking__customer__phone", "failure_reason",
     )
     readonly_fields = (
-        "payment", "booking", "extra_work", "order_item", "amount", "wallet_amount",
+        "payment", "booking", "dispute", "extra_work", "order_item", "amount", "wallet_amount",
         "gateway_amount", "reason", "status", "gateway_refund_id",
         "failure_reason", "processed_at", "requested_by", "admin_note",
         "idempotency_key", "created_at", "updated_at",
@@ -163,7 +183,7 @@ class PaymentRefundAdmin(ModelAdmin):
 
     def get_fields(self, request, obj=None):
         if obj is None:
-            return ("payment", "booking", "extra_work", "amount", "reason", "admin_note", "idempotency_key")
+            return ("payment", "booking", "dispute", "extra_work", "amount", "reason", "admin_note", "idempotency_key")
         return self.readonly_fields
 
     def get_readonly_fields(self, request, obj=None):
@@ -194,6 +214,25 @@ class PaymentRefundAdmin(ModelAdmin):
             messages.error(request, "; ".join(exc.messages))
             return HttpResponseRedirect(request.path)
 
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        dispute_id = request.GET.get("dispute")
+        if dispute_id:
+            dispute = BookingDispute.objects.filter(
+                pk=dispute_id,
+                status=BookingDispute.Status.RESOLVED,
+                requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+                resolved_by__isnull=False,
+                resolved_at__isnull=False,
+            ).first()
+            if dispute:
+                initial.update({
+                    "dispute": dispute.pk,
+                    "booking": dispute.booking_id,
+                    "reason": PaymentRefund.Reason.DISPUTE_RESOLUTION,
+                })
+        return initial
+
     def save_model(self, request, obj, form, change):
         if change:
             raise PermissionDenied("Refund records are immutable.")
@@ -207,6 +246,7 @@ class PaymentRefundAdmin(ModelAdmin):
                 idempotency_key=obj.idempotency_key,
                 reason=obj.reason,
                 extra_work=obj.extra_work,
+                dispute=obj.dispute,
             )
         except ValueError as exc:
             raise ValidationError(str(exc))

@@ -3,6 +3,7 @@ name: AIRway Flutter checks
 on:
   push:
     branches:
+      - feat/appointment-group-foundation
       - feat/airway-30-70-payment-lifecycle
       - feat/airway-account-profile-preferences
     paths:
@@ -10,6 +11,7 @@ on:
       - ".github/workflows/flutter-checks.yml"
   pull_request:
     branches:
+      - feat/appointment-group-foundation
       - feat/airway-30-70-payment-lifecycle
       - feat/airway-account-profile-preferences
     paths:

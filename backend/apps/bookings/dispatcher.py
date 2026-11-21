@@ -262,7 +262,7 @@ class DispatcherService:
             if WorkerBlockedSlot.objects.filter(
                 worker=worker.user, start_at__lt=end_at, end_at__gt=start_at
             ).exists() or worker.leaves.filter(
-                start_at__lt=end_at, end_at__gt=start_at
+                status="approved", start_at__lt=end_at, end_at__gt=start_at
             ).exists():
                 continue
 
@@ -826,6 +826,7 @@ class DispatcherService:
                     end_at__gt=start_at,
                 ).exists()
                 or worker.leaves.filter(
+                    status="approved",
                     start_at__lt=end_at,
                     end_at__gt=start_at,
                 ).exists()

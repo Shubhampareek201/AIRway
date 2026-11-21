@@ -288,6 +288,7 @@ class WorkerAssignmentDetail {
   final List<Map<String, dynamic>> extraWorkRequests;
   final List<Map<String, dynamic>> workEvidence;
   final Map<String, dynamic>? recurringVisit;
+  final Map<String, dynamic>? reworkCase;
   final WorkerAssignmentInfo assignment;
 
   WorkerAssignmentDetail({
@@ -318,6 +319,7 @@ class WorkerAssignmentDetail {
     this.extraWorkRequests = const [],
     this.workEvidence = const [],
     this.recurringVisit,
+    this.reworkCase,
     required this.assignment,
   });
 
@@ -350,6 +352,7 @@ class WorkerAssignmentDetail {
       extraWorkRequests: (map['extra_work_requests'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       workEvidence: (map['work_evidence'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       recurringVisit: map['recurring_visit'] is Map ? Map<String, dynamic>.from(map['recurring_visit']) : null,
+      reworkCase: map['rework_case'] is Map ? Map<String, dynamic>.from(map['rework_case']) : null,
       assignment: WorkerAssignmentInfo.fromMap(map['assignment']),
     );
   }

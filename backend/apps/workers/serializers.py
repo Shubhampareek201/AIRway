@@ -140,10 +140,37 @@ class WorkerScheduleSerializer(serializers.ModelSerializer):
         fields = ["id", "weekday", "weekday_display", "start_time", "end_time", "is_active"]
 
 
-class WorkerLeaveSerializer(serializers.ModelSerializer):
+class WorkerLeaveRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkerLeave
-        fields = ["id", "start_at", "end_at", "reason"]
+        fields = ["start_at", "end_at", "reason"]
+
+    def validate(self, attrs):
+        if attrs.get("end_at") <= attrs.get("start_at"):
+            raise serializers.ValidationError({"end_at": "End time must be after start time."})
+        return attrs
+
+
+class WorkerLeaveHistorySerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.CharField(source="changed_by.name", read_only=True, default=None)
+
+    class Meta:
+        from .models import WorkerLeaveHistory
+        model = WorkerLeaveHistory
+        fields = ["id", "from_status", "to_status", "changed_by_name", "note", "created_at"]
+
+
+class WorkerLeaveSerializer(serializers.ModelSerializer):
+    history = WorkerLeaveHistorySerializer(many=True, read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.name", read_only=True, default=None)
+
+    class Meta:
+        model = WorkerLeave
+        fields = [
+            "id", "start_at", "end_at", "reason", "status",
+            "reviewed_by_name", "reviewed_at", "admin_note", "history", "created_at",
+        ]
+        read_only_fields = fields
 
 
 class WorkerJobStreakSerializer(serializers.ModelSerializer):

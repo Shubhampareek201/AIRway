@@ -1,0 +1,42 @@
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("notifications", "0004_worker_leave_notification_types"),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name="notification",
+            name="type",
+            field=models.CharField(
+                choices=[
+                    ("booking_confirmed", "Booking Confirmed"),
+                    ("booking_assigned", "Worker Assigned"),
+                    ("booking_started", "Service Started"),
+                    ("booking_completed", "Service Completed"),
+                    ("booking_cancelled", "Booking Cancelled"),
+                    ("booking_offers_expired", "Offers Expired"),
+                    ("payment_success", "Payment Success"),
+                    ("payment_timeout", "Payment Timeout"),
+                    ("wallet_credit", "Wallet Credited"),
+                    ("referral_reward", "Referral Reward"),
+                    ("worker_bonus", "Worker Bonus"),
+                    ("system_announcement", "System Announcement"),
+                    ("worker_offer", "Job Offer"),
+                    ("worker_offer_withdrawn", "Offer Withdrawn"),
+                    ("worker_offer_expired", "Offer Expired"),
+                    ("worker_application_submitted", "Worker Application Submitted"),
+                    ("worker_application_approved", "Worker Application Approved"),
+                    ("worker_application_rejected", "Worker Application Rejected"),
+                    ("worker_leave_request", "Worker Leave Requested"),
+                    ("worker_leave_approved", "Worker Leave Approved"),
+                    ("worker_leave_rejected", "Worker Leave Rejected"),
+                    ("worker_leave_expired", "Worker Leave Expired"),
+                    ("worker_leave_cancelled", "Worker Leave Cancelled"),
+                ],
+                max_length=30,
+            ),
+        ),
+    ]

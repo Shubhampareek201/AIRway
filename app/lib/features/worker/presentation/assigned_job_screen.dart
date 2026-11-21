@@ -10,6 +10,7 @@ import 'package:airway/features/worker/data/worker_api.dart';
 import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
 import 'package:airway/features/booking/data/booking_models.dart';
+import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/ratings/data/rating_api.dart';
 
 class AssignedJobScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class AssignedJobScreen extends StatefulWidget {
 
 class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindingObserver {
   WorkerAssignmentDetail? _jobDetail;
+  List<Map<String, dynamic>> _jobDisputes = [];
   bool _loading = true;
   String? _error;
   bool _isActionInProgress = false;
@@ -227,6 +229,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           _loading = false;
         });
         _configureLocationSharing(parsedDetail);
+        _loadJobDisputes(parsedDetail.bookingId);
       }
     } catch (e) {
       if (mounted) {
@@ -413,6 +416,359 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
     }
+  }
+
+  Future<void> _raiseJobDispute(WorkerAssignmentDetail job) async {
+    final descriptionController = TextEditingController();
+    var category = 'service_quality';
+    var outcome = 'investigation';
+    File? evidencePhoto;
+    final payload = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(AirwayText.tr('Report a job concern', 'जॉब से जुड़ी समस्या रिपोर्ट करें')),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<String>(
+                value: category,
+                decoration: InputDecoration(labelText: AirwayText.tr('Concern type', 'समस्या का प्रकार')),
+                items: const [
+                  DropdownMenuItem(value: 'service_quality', child: Text('Service quality')),
+                  DropdownMenuItem(value: 'damage', child: Text('Property damage')),
+                  DropdownMenuItem(value: 'payment', child: Text('Payment')),
+                  DropdownMenuItem(value: 'customer_conduct', child: Text('Customer conduct')),
+                  DropdownMenuItem(value: 'safety', child: Text('Safety concern')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => category = value ?? category),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: outcome,
+                decoration: InputDecoration(labelText: AirwayText.tr('Support needed', 'किस सहायता की ज़रूरत है?')),
+                items: const [
+                  DropdownMenuItem(value: 'investigation', child: Text('Investigation')),
+                  DropdownMenuItem(value: 'rework', child: Text('Service recovery')),
+                  DropdownMenuItem(value: 'refund_review', child: Text('Payment review')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => outcome = value ?? outcome),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                maxLines: 4,
+                maxLength: 5000,
+                decoration: InputDecoration(
+                  labelText: AirwayText.tr('Describe the concern', 'समस्या का विवरण दें'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final picked = await ImagePicker().pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                    );
+                    if (picked != null) {
+                      setDialogState(() => evidencePhoto = File(picked.path));
+                    }
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(evidencePhoto == null
+                      ? AirwayText.tr('Attach evidence photo (optional)', 'सबूत की फ़ोटो जोड़ें (वैकल्पिक)')
+                      : AirwayText.tr('Evidence photo selected', 'सबूत की फ़ोटो चुनी गई')),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
+            FilledButton(
+              onPressed: () {
+                if (descriptionController.text.trim().isEmpty) return;
+                Navigator.pop(dialogContext, {
+                  'category': category,
+                  'requested_outcome': outcome,
+                  'description': descriptionController.text.trim(),
+                });
+              },
+              child: Text(AirwayText.tr('Submit', 'जमा करें')),
+            ),
+          ],
+        ),
+      ),
+    );
+    descriptionController.dispose();
+    if (payload == null || !mounted) return;
+    try {
+      final dispute = await BookingApi.createDispute(
+        bookingId: job.bookingId,
+        category: payload['category']!,
+        description: payload['description']!,
+        requestedOutcome: payload['requested_outcome']!,
+      );
+      var message = AirwayText.tr(
+        'Your concern was sent to AIRway support.',
+        'आपकी समस्या AIRway सपोर्ट को भेज दी गई है।',
+      );
+      if (evidencePhoto != null) {
+        try {
+          await BookingApi.uploadDisputeEvidence(
+            disputeId: int.parse(dispute['id'].toString()),
+            photo: evidencePhoto!,
+          );
+        } catch (uploadError) {
+          message = AirwayText.tr(
+            'Report submitted, but evidence upload failed: $uploadError',
+            'रिपोर्ट भेज दी गई, लेकिन सबूत अपलोड नहीं हुआ: $uploadError',
+          );
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      await _loadAssignedJob();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not submit concern: $e', 'समस्या भेजी नहीं जा सकी: $e'))),
+      );
+    }
+  }
+
+  Future<void> _loadJobDisputes(int bookingId) async {
+    try {
+      final all = await BookingApi.getDisputes();
+      if (!mounted) return;
+      setState(() {
+        _jobDisputes = all.where((item) =>
+            int.tryParse(item['booking_id']?.toString() ?? '') == bookingId).toList();
+      });
+    } catch (_) {
+      // Keep the assigned-job flow available if support history is unavailable.
+    }
+  }
+
+  Widget _buildDisputeHistoryCard() {
+    if (_jobDisputes.isEmpty) return const SizedBox.shrink();
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE8E2F5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.history_rounded, color: Color(0xFF6C4AE3)),
+            const SizedBox(width: 9),
+            Expanded(child: Text(
+              AirwayText.tr('Support case history', 'सपोर्ट केस का इतिहास'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            )),
+          ]),
+          const SizedBox(height: 8),
+          for (final item in _jobDisputes) ...[
+            Row(children: [
+              Expanded(child: Text(
+                (item['category']?.toString() ?? 'other').replaceAll('_', ' '),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              )),
+              Text(
+                (item['status']?.toString() ?? 'open').replaceAll('_', ' ').toUpperCase(),
+                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF6C4AE3), fontSize: 10),
+              ),
+            ]),
+            if ((item['resolution_note']?.toString() ?? '').isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(item['resolution_note'].toString(),
+                  style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+            ],
+            for (final event in (item['status_history'] as List? ?? const []).whereType<Map>())
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${(event['to_status']?.toString() ?? '').replaceAll('_', ' ').toUpperCase()}${(event['note']?.toString() ?? '').isNotEmpty ? ' — ${event['note']}' : ''}',
+                  style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+                ),
+              ),
+            finalEvidenceCount(item),
+            if (_jobDisputes.last != item) const Divider(height: 16),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget finalEvidenceCount(Map<String, dynamic> item) {
+    final files = item['evidence_files'] as List? ?? const [];
+    if (files.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        AirwayText.tr('${files.length} evidence photo(s) attached', '${files.length} सबूत की फ़ोटो संलग्न'),
+        style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+      ),
+    );
+  }
+
+
+  Widget _buildReworkCaseCard(WorkerAssignmentDetail job) {
+    final recovery = job.reworkCase;
+    if (recovery == null) return const SizedBox.shrink();
+    final evidence = (recovery['evidence_files'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    return Card(
+      color: const Color(0xFFFFFBF2),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFF0DFC1)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.replay_circle_filled_rounded, color: Color(0xFF9A6418)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              AirwayText.tr('Service recovery instructions', 'सेवा सुधार के निर्देश'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+            )),
+            Text(
+              (recovery['category']?.toString() ?? 'other').replaceAll('_', ' '),
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+            ),
+          ]),
+          const SizedBox(height: 9),
+          Text(
+            recovery['description']?.toString() ?? '',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          if ((recovery['resolution_note']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'AIRway decision: ${recovery['resolution_note']}',
+              style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+            ),
+          ],
+          for (final event in (recovery['status_history'] as List? ?? const []).whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${(event['to_status']?.toString() ?? '').replaceAll('_', ' ').toUpperCase()}${(event['note']?.toString() ?? '').isNotEmpty ? ' — ${event['note']}' : ''}',
+                style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary),
+              ),
+            ),
+          if (evidence.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              AirwayText.tr('Customer evidence', 'ग्राहक के सबूत'),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 104,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: evidence.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final photo = evidence[index];
+                  final url = photo['photo_url']?.toString() ?? '';
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: FutureBuilder<Map<String, String>>(
+                      future: WorkerApi.getAuthHeaders(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Container(
+                            width: 104,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.broken_image_outlined),
+                          );
+                        }
+                        if (!snapshot.hasData) {
+                          return Container(
+                            width: 104,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        return Image.network(
+                          url,
+                          headers: snapshot.data,
+                          width: 104,
+                          height: 104,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 104,
+                            color: Colors.black12,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.broken_image_outlined),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildDisputeCard(WorkerAssignmentDetail job) {
+    final canReport = job.status == BookingStatus.inProgress ||
+        job.status == BookingStatus.completed;
+    if (!canReport) return const SizedBox.shrink();
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE8E2F5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.support_agent_rounded, color: Color(0xFF6C4AE3)),
+            const SizedBox(width: 9),
+            Expanded(child: Text(
+              AirwayText.tr('AIRway support', 'AIRway सहायता'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            )),
+          ]),
+          const SizedBox(height: 7),
+          Text(AirwayText.tr(
+            'If there is a safety, conduct, payment or service concern, report it to AIRway support for review.',
+            'सुरक्षा, व्यवहार, भुगतान या सेवा से जुड़ी समस्या होने पर AIRway सपोर्ट को रिपोर्ट करें।',
+          ), style: const TextStyle(color: AirwayColors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isActionInProgress ? null : () => _raiseJobDispute(job),
+              icon: const Icon(Icons.flag_outlined),
+              label: Text(AirwayText.tr('Report a concern', 'समस्या रिपोर्ट करें')),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 
   Widget _buildExtraWorkCard(WorkerAssignmentDetail job) {
@@ -706,6 +1062,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
             const SizedBox(height: 16),
             _buildEvidenceCard(job),
             const SizedBox(height: 16),
+            _buildDisputeCard(job),
+            const SizedBox(height: 16),
+            _buildReworkCaseCard(job),
+            const SizedBox(height: 16),
+            _buildDisputeHistoryCard(),
+            const SizedBox(height: 16),
             if (_canShareLocation(job))
               Container(
                 padding: const EdgeInsets.all(12),
@@ -946,7 +1308,9 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           style: const TextStyle(fontSize: 12),
         ),
         trailing: Text(
-          '₹${job.amount.toStringAsFixed(0)}',
+          job.paymentLabel == 'No-charge service recovery'
+              ? AirwayText.tr('No charge', 'कोई शुल्क नहीं')
+              : '₹${job.amount.toStringAsFixed(0)}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),

@@ -1,10 +1,12 @@
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction, connection, close_old_connections
 from datetime import timedelta, time, datetime
 from unittest.mock import patch
+from unittest import skipUnless
+import threading
 import pytz
 import re
 import datetime as dt_module
@@ -17,6 +19,7 @@ from apps.workers.models import (
     WorkerService,
     WorkerZone,
     WorkerSchedule,
+    WorkerLeave,
 )
 from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem, RecurringWashPlan, RecurringWashVisit
 from django.contrib.auth.hashers import make_password
@@ -3055,6 +3058,54 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(len(offers), 10)
         self.assertEqual(WorkerOffer.objects.filter(booking=booking).count(), 10)
 
+    def test_dispatcher_only_blocks_approved_worker_leave(self):
+        """Pending/rejected/cancelled/expired leave must not block dispatch."""
+        from apps.bookings.dispatcher import DispatcherService
+
+        statuses = (
+            WorkerLeave.Status.APPROVED,
+            WorkerLeave.Status.PENDING,
+            WorkerLeave.Status.REJECTED,
+            WorkerLeave.Status.CANCELLED,
+            WorkerLeave.Status.EXPIRED,
+        )
+        workers = {}
+        for index, leave_status in enumerate(statuses):
+            worker = self._create_eligible_worker(suffix=f"70{index}")
+            workers[leave_status] = worker
+            WorkerLeave.objects.create(
+                worker=worker,
+                start_at=self._get_booking_time() - timedelta(hours=1),
+                end_at=self._get_booking_time() + timedelta(hours=1),
+                status=leave_status,
+            )
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_leave_status_dispatch", paid_at=timezone.now(),
+        )
+
+        offers = DispatcherService.dispatch_offers(booking)
+        offered_worker_ids = {offer.worker_id for offer in offers}
+        self.assertNotIn(workers[WorkerLeave.Status.APPROVED].pk, offered_worker_ids)
+        for leave_status in (
+            WorkerLeave.Status.PENDING,
+            WorkerLeave.Status.REJECTED,
+            WorkerLeave.Status.CANCELLED,
+            WorkerLeave.Status.EXPIRED,
+        ):
+            self.assertIn(workers[leave_status].pk, offered_worker_ids)
+
     def test_dispatcher_limits_to_batch_size(self):
         """DispatcherService should respect batch_size parameter."""
         from apps.bookings.dispatcher import DispatcherService
@@ -5708,3 +5759,146 @@ class CustomerBookingRescheduleAPITest(BookingAPITestMixin, TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.scheduled_at, self.original_time)
 
+
+
+class UnpaidCheckoutExpiryTaskTest(BookingAPITestMixin, TestCase):
+    """An abandoned unpaid checkout must release its held service slot."""
+
+    def setUp(self):
+        self.customer = self._create_user("+919876543701")
+        self.category = self._create_category("Checkout expiry", "checkout-expiry")
+        self.service = self._create_service(self.category, "Home cleaning")
+        self.address = self._create_address(self.customer)
+
+    def _create_old_order(self):
+        from apps.bookings.models import Order, OrderItem
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() + timedelta(days=2),
+            status=Booking.Status.PENDING,
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            total_amount=Decimal("500.00"),
+        )
+        OrderItem.objects.create(
+            order=order, booking=booking, line_total=Decimal("500.00")
+        )
+        Order.objects.filter(pk=order.pk).update(
+            created_at=timezone.now() - timedelta(minutes=20)
+        )
+        return order, booking
+
+    def test_abandoned_checkout_is_cancelled_and_slot_released(self):
+        from apps.bookings.tasks import expire_unpaid_checkouts
+        order, booking = self._create_old_order()
+
+        self.assertEqual(expire_unpaid_checkouts(), 1)
+        order.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CANCELLED)
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertTrue(booking.status_history.filter(
+            to_status=Booking.Status.CANCELLED
+        ).exists())
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer, data__reason="unpaid_checkout_expired"
+        ).exists())
+
+    def test_pending_or_paid_payment_protects_checkout_from_expiry(self):
+        from apps.bookings.tasks import expire_unpaid_checkouts
+        from apps.payments.models import Payment
+        order, booking = self._create_old_order()
+        payment = Payment.objects.create(
+            order=order,
+            customer=self.customer,
+            amount=Decimal("150.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+        )
+
+        self.assertEqual(expire_unpaid_checkouts(), 0)
+        order.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+        self.assertEqual(booking.status, Booking.Status.PENDING)
+
+        payment.status = Payment.Status.PAID
+        payment.save(update_fields=["status", "updated_at"])
+        self.assertEqual(expire_unpaid_checkouts(), 0)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+
+
+@skipUnless(connection.vendor == "postgresql", "Concurrent row-lock test requires PostgreSQL")
+class ConcurrentServiceSlotReservationTest(BookingAPITestMixin, TransactionTestCase):
+    """Two customers racing for one service/time must never both reserve it."""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.first_customer = self._create_user("+919876543711")
+        self.second_customer = self._create_user("+919876543712")
+        category = self._create_category("Concurrency", "concurrency")
+        self.service = self._create_service(category, "Concurrent slot service")
+        self.first_address = self._create_address(self.first_customer, "first")
+        self.second_address = self._create_address(self.second_customer, "second")
+        self.scheduled_at = timezone.now() + timedelta(days=2)
+
+    def test_only_one_customer_can_reserve_the_same_service_slot_concurrently(self):
+        from django.db import close_old_connections
+        from apps.bookings.services import check_slot_availability, SlotConflictError
+
+        start_gate = threading.Barrier(2)
+        service_id = self.service.pk
+        scheduled_at = self.scheduled_at
+        service_duration = self.service.duration_minutes or 60
+        attempts = [
+            (self.first_customer.pk, self.first_address.pk),
+            (self.second_customer.pk, self.second_address.pk),
+        ]
+
+        def reserve(customer_id, address_id):
+            close_old_connections()
+            try:
+                start_gate.wait(timeout=10)
+                with transaction.atomic():
+                    service = Service.objects.get(pk=service_id)
+                    customer = User.objects.get(pk=customer_id)
+                    address = Address.objects.get(pk=address_id)
+                    check_slot_availability(
+                        service=service,
+                        scheduled_at=scheduled_at,
+                        duration_minutes=service_duration,
+                        booking_mode=Booking.BookingMode.SCHEDULED,
+                    )
+                    Booking.objects.create(
+                        customer=customer,
+                        address=address,
+                        service=service,
+                        scheduled_at=scheduled_at,
+                        status=Booking.Status.PENDING,
+                    )
+                return "reserved"
+            except SlotConflictError:
+                return "conflict"
+            finally:
+                close_old_connections()
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda pair: reserve(*pair), attempts))
+
+        self.assertCountEqual(results, ["reserved", "conflict"])
+        self.assertEqual(
+            Booking.objects.filter(
+                service=self.service,
+                scheduled_at=self.scheduled_at,
+                status=Booking.Status.PENDING,
+            ).count(),
+            1,
+        )

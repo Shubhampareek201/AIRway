@@ -2,6 +2,11 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .extra_work import CustomerExtraWorkListView, CustomerExtraWorkDecisionView
+from .disputes import (
+    BookingDisputeListCreateView, BookingDisputeDetailView,
+    BookingDisputeEvidenceUploadView, BookingDisputeEvidencePhotoView,
+    BookingDisputeReworkDecisionView,
+)
 
 from .views import (
     BookingViewSet,
@@ -23,6 +28,11 @@ router = DefaultRouter()
 router.register(r"", BookingViewSet, basename="booking")
 
 urlpatterns = [
+    path("disputes/", BookingDisputeListCreateView.as_view(), name="booking-dispute-list-create"),
+    path("disputes/<int:dispute_id>/", BookingDisputeDetailView.as_view(), name="booking-dispute-detail"),
+    path("disputes/<int:dispute_id>/evidence/", BookingDisputeEvidenceUploadView.as_view(), name="booking-dispute-evidence-upload"),
+    path("disputes/<int:dispute_id>/rework-decision/", BookingDisputeReworkDecisionView.as_view(), name="booking-dispute-rework-decision"),
+    path("dispute-evidence/<int:evidence_id>/photo/", BookingDisputeEvidencePhotoView.as_view(), name="booking-dispute-evidence-photo"),
     path("cart/", CustomerCartView.as_view(), name="customer-cart"),
     path("cart/checkout/", CustomerCheckoutView.as_view(), name="customer-cart-checkout"),
     path("orders/", CustomerOrderListView.as_view(), name="customer-order-list"),

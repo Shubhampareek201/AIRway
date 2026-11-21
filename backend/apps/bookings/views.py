@@ -293,6 +293,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             return BookingListSerializer
         return BookingDetailSerializer
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
@@ -347,6 +348,20 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking.cancellation_reason = reason
         booking.cancelled_by = request.user
         booking.save()
+
+        rework_proposal = getattr(booking, "rework_source", None)
+        if rework_proposal is not None and rework_proposal.status == "accepted":
+            rework_proposal.status = "cancelled"
+            rework_proposal.responded_at = timezone.now()
+            rework_proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=rework_proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery appointment cancelled by customer",
+                body=f"The customer cancelled recovery booking #{booking.pk}. The dispute case can be reviewed if further recovery is needed.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": rework_proposal.dispute_id},
+            )
 
         assignment = getattr(booking, "assignment", None)
         if assignment:
@@ -1302,6 +1317,12 @@ class BookingViewSet(viewsets.ModelViewSet):
         for settled_payment in settled:
             sync_worker_earning(locked_booking.pk, settled_payment.pk)
 
+        # Recovery visits are free to the customer but still create a normal,
+        # finance-audited worker earning funded by AIRway.
+        if getattr(locked_booking, "rework_source", None) is not None:
+            from apps.workers.earnings import sync_rework_worker_earning
+            sync_rework_worker_earning(locked_booking.pk)
+
         return Response({
             "detail": "Service completion verified successfully.",
             "status": Booking.Status.COMPLETED,
@@ -1923,6 +1944,33 @@ class CustomerOrderDetailView(APIView):
             appointment_group__isnull=True,
             status=Payment.Status.PAID,
         ).first()
+        pending_advance_payment = order.payments.filter(
+            stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True,
+            status=Payment.Status.PENDING,
+        ).order_by("-updated_at").first()
+        checkout_expires_at = None
+        checkout_expiry_kind = None
+        if (
+            not advance_payment
+            and order.status in (
+                Order.Status.AWAITING_ASSIGNMENT,
+                Order.Status.PARTIALLY_CANCELLED,
+            )
+        ):
+            from django.conf import settings
+            if pending_advance_payment:
+                checkout_expires_at = (
+                    pending_advance_payment.updated_at
+                    + timedelta(minutes=getattr(settings, "PAYMENT_TIMEOUT_MINUTES", 5))
+                )
+                checkout_expiry_kind = "payment_attempt"
+            else:
+                checkout_expires_at = (
+                    order.created_at
+                    + timedelta(minutes=getattr(settings, "UNPAID_CHECKOUT_TIMEOUT_MINUTES", 15))
+                )
+                checkout_expiry_kind = "checkout_hold"
         order_level_balance_payment = order.payments.filter(
             stage=Payment.Stage.BALANCE,
             appointment_group__isnull=True,
@@ -2092,6 +2140,8 @@ class CustomerOrderDetailView(APIView):
             "id": order.id,
             "address_id": order.address_id,
             "status": order.status,
+            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+            "checkout_expiry_kind": checkout_expiry_kind,
             "scheduling": (order.metadata or {}).get(
                 "scheduling_v1",
                 {"mode": "separate", "shared_appointment_at": None},

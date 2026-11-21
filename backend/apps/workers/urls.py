@@ -4,6 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     NearbyWorkersView,
     WorkerProfileView,
+    WorkerLeaveListView,
+    WorkerLeaveDetailView,
     WorkerServiceListView,
     WorkerServiceDetailView,
     WorkerZoneListView,
@@ -39,6 +41,8 @@ app_name = "workers"
 urlpatterns = [
     path("nearby/", NearbyWorkersView.as_view(), name="nearby-workers"),
     path("me/", WorkerProfileView.as_view(), name="worker-profile"),
+    path("leaves/", WorkerLeaveListView.as_view(), name="worker-leaves"),
+    path("leaves/<int:leave_id>/", WorkerLeaveDetailView.as_view(), name="worker-leave-detail"),
     path("customer/verified-profile/<int:booking_id>/", CustomerVerifiedWorkerProfileView.as_view(), name="customer-verified-worker-profile"),
     path("onboarding/", WorkerOnboardingView.as_view(), name="worker-onboarding"),
     path("apply/", WorkerOnboardingView.as_view(), name="worker-apply"),

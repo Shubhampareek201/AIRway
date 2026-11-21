@@ -8,7 +8,7 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, BookingExtraWork, Order, OrderItem
+from apps.bookings.models import Booking, BookingDispute, BookingExtraWork, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
@@ -135,6 +135,62 @@ class RefundRetrySafetyTests(TestCase):
         self.assertEqual(first.gateway_amount, Decimal("250.00"))
         self.assertEqual(first.requested_by, self.staff_user)
         self.assertEqual(PaymentRefund.objects.filter(payment=payment, booking=self.booking).count(), 1)
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_dispute_refund_requires_resolved_refund_case_and_records_link(self, process_refund):
+        self.refund.delete()
+        payment = Payment.objects.get(booking=self.booking)
+        process_refund.side_effect = lambda refund_id: PaymentRefund.objects.get(pk=refund_id)
+        dispute = BookingDispute.objects.create(
+            booking=self.booking,
+            raised_by=self.customer,
+            raised_by_role="customer",
+            category=BookingDispute.Category.SERVICE_QUALITY,
+            description="Service quality issue requiring a partial refund.",
+            requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+            status=BookingDispute.Status.RESOLVED,
+            resolution_note="AIRway approved a partial refund after reviewing the evidence.",
+            resolved_by=self.staff_user,
+            resolved_at=timezone.now(),
+        )
+
+        refund = issue_admin_partial_refund(
+            payment=payment,
+            booking=self.booking,
+            amount="200.00",
+            requested_by=self.staff_user,
+            admin_note="Partial refund approved under dispute case.",
+            idempotency_key="dispute-refund-request-001",
+            reason=PaymentRefund.Reason.DISPUTE_RESOLUTION,
+            dispute=dispute,
+        )
+
+        self.assertEqual(refund.dispute_id, dispute.pk)
+        self.assertEqual(refund.reason, PaymentRefund.Reason.DISPUTE_RESOLUTION)
+        self.assertEqual(refund.amount, Decimal("200.00"))
+
+    def test_dispute_refund_cannot_be_issued_without_resolved_case(self):
+        self.refund.delete()
+        payment = Payment.objects.get(booking=self.booking)
+        dispute = BookingDispute.objects.create(
+            booking=self.booking,
+            raised_by=self.customer,
+            raised_by_role="customer",
+            category=BookingDispute.Category.PAYMENT,
+            description="Refund requested.",
+            requested_outcome=BookingDispute.RequestedOutcome.REFUND_REVIEW,
+        )
+        with self.assertRaisesMessage(ValueError, "resolved dispute"):
+            issue_admin_partial_refund(
+                payment=payment,
+                booking=self.booking,
+                amount="100.00",
+                requested_by=self.staff_user,
+                admin_note="Attempt before review.",
+                idempotency_key="dispute-refund-request-002",
+                reason=PaymentRefund.Reason.DISPUTE_RESOLUTION,
+                dispute=dispute,
+            )
 
     @patch("apps.payments.refunds.process_payment_refund")
     def test_admin_partial_refund_cannot_exceed_remaining_captured_amount(self, process_refund):

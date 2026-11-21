@@ -203,6 +203,7 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 # Payment timeout configuration (in minutes)
 PAYMENT_TIMEOUT_MINUTES = int(os.environ.get('PAYMENT_TIMEOUT_MINUTES', '5'))
+UNPAID_CHECKOUT_TIMEOUT_MINUTES = int(os.environ.get('UNPAID_CHECKOUT_TIMEOUT_MINUTES', '15'))
 
 # Dispatch configuration
 DISPATCH_BATCH_SIZE = int(os.environ.get('DISPATCH_BATCH_SIZE', '5'))

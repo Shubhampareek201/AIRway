@@ -16,6 +16,7 @@ from .models import (
     WorkerZone,
     WorkerSchedule,
     WorkerLeave,
+    WorkerLeaveHistory,
     WorkerEarning,
 )
 
@@ -390,17 +391,75 @@ class WorkerScheduleAdmin(ModelAdmin):
     list_filter = ("weekday", "is_active")
 
 
+class WorkerLeaveHistoryInline(TabularInline):
+    model = WorkerLeaveHistory
+    extra = 0
+    can_delete = False
+    fields = ("from_status", "to_status", "changed_by", "note", "created_at")
+    readonly_fields = fields
+
+
 @admin.register(WorkerLeave)
 class WorkerLeaveAdmin(ModelAdmin):
-    list_display = ("worker", "start_at", "end_at")
-    search_fields = ("worker__user__phone",)
+    list_display = ("worker", "start_at", "end_at", "status", "reviewed_by", "reviewed_at")
+    list_filter = ("status", "start_at", "end_at")
+    search_fields = ("worker__user__phone", "worker__user__name")
+    readonly_fields = ("worker", "start_at", "end_at", "reason", "status", "reviewed_by", "reviewed_at")
+    fields = ("worker", "start_at", "end_at", "reason", "status", "admin_note", "reviewed_by", "reviewed_at")
+    inlines = (WorkerLeaveHistoryInline,)
+    actions = ("approve_leave_requests", "reject_leave_requests")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.action(description="Approve selected pending leave requests")
+    def approve_leave_requests(self, request, queryset):
+        from .leave_management import review_worker_leave
+        approved = skipped = 0
+        for leave_id in queryset.values_list("pk", flat=True):
+            try:
+                review_worker_leave(leave_id=leave_id, reviewer=request.user, decision=WorkerLeave.Status.APPROVED)
+                approved += 1
+            except Exception as exc:
+                skipped += 1
+                self.message_user(request, f"Leave #{leave_id} was not approved: {exc}", messages.WARNING)
+        if approved:
+            self.message_user(request, f"{approved} leave request(s) approved.", messages.SUCCESS)
+        if skipped:
+            self.message_user(request, f"{skipped} request(s) need attention; assigned jobs are never changed automatically.", messages.WARNING)
+
+    @admin.action(description="Reject selected pending leave requests (add a note first)")
+    def reject_leave_requests(self, request, queryset):
+        from .leave_management import review_worker_leave
+        rejected = skipped = 0
+        for leave in queryset:
+            note = leave.admin_note.strip()
+            if not note:
+                skipped += 1
+                continue
+            try:
+                review_worker_leave(
+                    leave_id=leave.pk, reviewer=request.user,
+                    decision=WorkerLeave.Status.REJECTED, note=note,
+                )
+                rejected += 1
+            except Exception as exc:
+                skipped += 1
+                self.message_user(request, f"Leave #{leave.pk} was not rejected: {exc}", messages.WARNING)
+        if rejected:
+            self.message_user(request, f"{rejected} leave request(s) rejected.", messages.SUCCESS)
+        if skipped:
+            self.message_user(request, f"{skipped} request(s) skipped. Add a rejection note and select only pending requests.", messages.WARNING)
 
 
 
 @admin.register(WorkerEarning)
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
-        "id", "worker", "booking", "extra_work", "gross_amount", "commission_rate",
+        "id", "worker", "booking", "earning_source", "extra_work", "gross_amount", "commission_rate",
         "commission_amount", "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
@@ -410,6 +469,10 @@ class WorkerEarningAdmin(ModelAdmin):
         "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
         "adjusted_by", "adjusted_at", "created_at", "updated_at",
     )
+
+    @admin.display(description="Earning source")
+    def earning_source(self, obj):
+        return "AIRway-funded recovery" if getattr(obj.booking, "rework_source", None) is not None else "Customer payment"
 
     def has_add_permission(self, request):
         return False

@@ -212,6 +212,41 @@ def sync_worker_earning(booking_id, payment_id):
     return service_earning
 
 
+
+@transaction.atomic
+def sync_rework_worker_earning(booking_id):
+    """Record AIRway-funded worker compensation for a completed no-charge recovery visit."""
+    booking = Booking.objects.select_for_update(of=("self",)).select_related(
+        "rework_source__dispute__booking"
+    ).filter(pk=booking_id, status=Booking.Status.COMPLETED).first()
+    if booking is None:
+        return None
+    proposal = getattr(booking, "rework_source", None)
+    if proposal is None or proposal.status != "accepted":
+        return None
+    assignment = BookingAssignment.objects.select_related("worker").filter(
+        booking=booking
+    ).first()
+    if assignment is None:
+        return None
+    original = proposal.dispute.booking
+    original_item = OrderItem.objects.filter(booking=original).first()
+    if original_item is not None:
+        gross = Decimal(str(original_item.line_subtotal or "0.00"))
+    else:
+        snapshot = original.pricing_snapshot or {}
+        gross = Decimal(str(snapshot.get("subtotal", snapshot.get("total", "0.00"))))
+    if not gross.is_finite() or gross <= 0:
+        return None
+    return _upsert_worker_earning(
+        booking,
+        assignment.worker,
+        None,
+        gross,
+        extra_work=None,
+    )
+
+
 def refresh_worker_earnings_for_profile(worker_id):
     """Recalculate held records after Finance configures a worker's commission."""
     rows = WorkerEarning.objects.filter(
@@ -221,3 +256,11 @@ def refresh_worker_earnings_for_profile(worker_id):
     ).values_list("booking_id", "payment_id")
     for booking_id, payment_id in rows.iterator():
         sync_worker_earning(booking_id, payment_id)
+    recovery_rows = WorkerEarning.objects.filter(
+        worker_id=worker_id,
+        status=WorkerEarning.Status.ON_HOLD,
+        payment__isnull=True,
+        booking__rework_source__isnull=False,
+    ).values_list("booking_id", flat=True)
+    for booking_id in recovery_rows.iterator():
+        sync_rework_worker_earning(booking_id)

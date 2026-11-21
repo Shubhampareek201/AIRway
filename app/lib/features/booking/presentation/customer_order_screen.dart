@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
@@ -29,6 +31,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   final Razorpay razorpay = Razorpay();
   final TextEditingController walletAmountController = TextEditingController(text: '0.00');
   Map<String, dynamic>? order;
+  List<Map<String, dynamic>> disputes = [];
+  bool _disputesLoaded = false;
+  final Set<int> _reworkResponding = {};
   double walletBalance = 0;
   bool walletLoading = true;
   bool loading = true;
@@ -70,6 +75,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     try {
       final result = await BookingApi.request('/api/v1/bookings/orders/' + widget.orderId.toString() + '/');
       if (mounted) setState(() { order = Map<String, dynamic>.from(result); loading = false; error = null; });
+      await loadDisputes();
     } catch (e) {
       if (mounted) setState(() { loading = false; error = e.toString(); });
     }
@@ -535,6 +541,329 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
+  Future<void> raiseDispute(Map<String, dynamic> row) async {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return;
+    final descriptionController = TextEditingController();
+    var category = 'service_quality';
+    var outcome = 'refund_review';
+    File? evidencePhoto;
+    final payload = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Report a service issue'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              DropdownButtonFormField<String>(
+                value: category,
+                decoration: const InputDecoration(labelText: 'Issue type'),
+                items: const [
+                  DropdownMenuItem(value: 'service_quality', child: Text('Service quality')),
+                  DropdownMenuItem(value: 'damage', child: Text('Property damage')),
+                  DropdownMenuItem(value: 'payment', child: Text('Payment or refund')),
+                  DropdownMenuItem(value: 'worker_conduct', child: Text('Professional conduct')),
+                  DropdownMenuItem(value: 'safety', child: Text('Safety concern')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => category = value ?? category),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: outcome,
+                decoration: const InputDecoration(labelText: 'What would help?'),
+                items: const [
+                  DropdownMenuItem(value: 'refund_review', child: Text('Review my refund')),
+                  DropdownMenuItem(value: 'rework', child: Text('Request service recovery')),
+                  DropdownMenuItem(value: 'investigation', child: Text('Investigate this issue')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) => setDialogState(() => outcome = value ?? outcome),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionController,
+                maxLines: 4,
+                maxLength: 5000,
+                decoration: const InputDecoration(
+                  labelText: 'Describe what happened',
+                  hintText: 'Include the relevant details so AIRway support can review it.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final picked = await ImagePicker().pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                    );
+                    if (picked != null) {
+                      setDialogState(() => evidencePhoto = File(picked.path));
+                    }
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(evidencePhoto == null
+                      ? 'Attach an evidence photo (optional)'
+                      : 'Evidence photo selected'),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (descriptionController.text.trim().isEmpty) return;
+                Navigator.pop(dialogContext, {
+                  'category': category,
+                  'requested_outcome': outcome,
+                  'description': descriptionController.text.trim(),
+                });
+              },
+              child: const Text('Submit report'),
+            ),
+          ],
+        ),
+      ),
+    );
+    descriptionController.dispose();
+    if (payload == null || !mounted) return;
+    try {
+      final dispute = await BookingApi.createDispute(
+        bookingId: bookingId,
+        category: payload['category']!,
+        description: payload['description']!,
+        requestedOutcome: payload['requested_outcome']!,
+      );
+      var message = 'Your report has been sent to AIRway support.';
+      if (evidencePhoto != null) {
+        try {
+          await BookingApi.uploadDisputeEvidence(
+            disputeId: int.parse(dispute['id'].toString()),
+            photo: evidencePhoto!,
+          );
+        } catch (uploadError) {
+          message = 'Report submitted, but the evidence photo could not be uploaded: $uploadError';
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      await loadDisputes(force: true);
+      await loadOrder(showLoader: false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit report: $e')),
+      );
+    }
+  }
+
+  Future<void> loadDisputes({bool force = false}) async {
+    if (_disputesLoaded && !force) return;
+    try {
+      final result = await BookingApi.getDisputes();
+      if (!mounted) return;
+      setState(() { disputes = result; _disputesLoaded = true; });
+    } catch (_) {
+      // Order details remain usable if support history is temporarily unavailable.
+    }
+  }
+
+  Widget disputeSection(Map<String, dynamic> row) {
+    final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
+    if (bookingId == null) return const SizedBox.shrink();
+    final items = disputes.where((item) =>
+        int.tryParse(item['booking_id']?.toString() ?? '') == bookingId).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: pale,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: line),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.support_agent_rounded, color: violet, size: 17),
+          SizedBox(width: 7),
+          Text('Your AIRway support reports', style: TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12)),
+        ]),
+        const SizedBox(height: 8),
+        for (final item in items) ...[
+          Row(children: [
+            Expanded(child: Text(
+              (item['category']?.toString() ?? 'other').replaceAll('_', ' '),
+              style: const TextStyle(fontWeight: FontWeight.w700, color: ink, fontSize: 12),
+            )),
+            Text(
+              (item['status']?.toString() ?? 'open').replaceAll('_', ' ').toUpperCase(),
+              style: const TextStyle(fontWeight: FontWeight.w800, color: violet, fontSize: 10),
+            ),
+          ]),
+          if ((item['resolution_note']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(item['resolution_note'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
+          ],
+          for (final event in (item['status_history'] as List? ?? const []).whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${(event['to_status']?.toString() ?? '').replaceAll('_', ' ').toUpperCase()}${(event['note']?.toString() ?? '').isNotEmpty ? ' — ${event['note']}' : ''}',
+                style: const TextStyle(color: sub, fontSize: 11),
+              ),
+            ),
+          finalEvidenceCount(item),
+          reworkProposalCard(item, row),
+          if (items.last != item) const Divider(height: 14, color: line),
+        ],
+      ]),
+    );
+  }
+
+
+  Widget reworkProposalCard(Map<String, dynamic> item, Map<String, dynamic> orderRow) {
+    final proposal = item['rework_proposal'];
+    if (proposal is! Map) return const SizedBox.shrink();
+    final data = Map<String, dynamic>.from(proposal);
+    final proposalId = int.tryParse(data['id']?.toString() ?? '');
+    if (proposalId == null) return const SizedBox.shrink();
+    final statusValue = data['status']?.toString() ?? '';
+    final scheduled = data['scheduled_at']?.toString() ?? '';
+    final pending = statusValue == 'pending_customer';
+    final responding = _reworkResponding.contains(proposalId);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2EEFF),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: const Color(0xFFDCD2FF)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.replay_circle_filled_rounded, color: violet, size: 17),
+          SizedBox(width: 7),
+          Expanded(child: Text('No-charge service recovery', style: TextStyle(fontWeight: FontWeight.w900, color: ink, fontSize: 12))),
+        ]),
+        const SizedBox(height: 5),
+        Text('Professional: ${data['worker_name'] ?? 'AIRway Professional'}',
+            style: const TextStyle(color: ink, fontSize: 12)),
+        Text('Proposed visit: ${DateFormatForOrder.format(scheduled)}',
+            style: const TextStyle(color: ink, fontSize: 12)),
+        if (pending) ...[
+          const SizedBox(height: 9),
+          const Text('AIRway has proposed a free follow-up visit. Confirm the time to schedule it.',
+              style: TextStyle(color: sub, fontSize: 11)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: OutlinedButton(
+              onPressed: responding ? null : () => _respondToRework(proposalId, int.tryParse(item['id']?.toString() ?? '') ?? 0, false),
+              child: const Text('Decline'),
+            )),
+            const SizedBox(width: 8),
+            Expanded(child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: violet),
+              onPressed: responding ? null : () => _respondToRework(proposalId, int.tryParse(item['id']?.toString() ?? '') ?? 0, true),
+              child: responding
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Accept visit'),
+            )),
+          ]),
+        ] else ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(
+              statusValue == 'accepted'
+                  ? 'Confirmed • No payment required'
+                  : statusValue == 'declined'
+                      ? 'You declined this proposed visit'
+                      : 'This proposal is no longer active',
+              style: const TextStyle(color: sub, fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (statusValue == 'accepted' && data['followup_booking_id'] != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final bookingId = int.tryParse(data['followup_booking_id'].toString());
+                  if (bookingId == null) return;
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => BookingTrackingScreen(
+                        bookingId: bookingId,
+                        serviceTitle: (orderRow['service'] is Map
+                            ? orderRow['service']['service_title']?.toString()
+                            : null) ?? 'AIRway Service',
+                        initialStatus: data['followup_status']?.toString() ?? 'assigned',
+                      ),
+                    ),
+                  );
+                  if (mounted) await loadOrder(showLoader: false);
+                },
+                icon: const Icon(Icons.location_on_outlined, size: 16),
+                label: const Text('Track recovery visit'),
+              ),
+            ),
+        ],
+      ]),
+    );
+  }
+
+  Future<void> _respondToRework(int proposalId, int disputeId, bool accept) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(accept ? 'Accept recovery visit?' : 'Decline recovery visit?'),
+        content: Text(accept
+            ? 'Confirm this proposed time. AIRway will schedule the follow-up visit at no extra charge.'
+            : 'Are you sure you want to decline this proposed visit?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Back')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(accept ? 'Confirm visit' : 'Decline visit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _reworkResponding.add(proposalId));
+    try {
+      await BookingApi.respondToRework(disputeId: disputeId, accept: accept);
+      await loadDisputes(force: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(accept
+            ? 'Your no-charge recovery visit is confirmed.'
+            : 'The proposed recovery visit was declined.'),
+      ));
+    } catch (e) {
+      await loadDisputes(force: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update the recovery visit: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _reworkResponding.remove(proposalId));
+    }
+  }
+
+  Widget finalEvidenceCount(Map<String, dynamic> item) {
+    final files = item['evidence_files'] as List? ?? const [];
+    if (files.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text('${files.length} evidence photo(s) attached', style: const TextStyle(color: sub, fontSize: 11)),
+    );
+  }
+
   Future<void> cancelService(Map<String, dynamic> row) async {
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null || row['can_cancel'] != true) return;
@@ -985,6 +1314,23 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final advancePaid = order?['advance_paid'] == true;
     final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
+    final checkoutExpiry = DateTime.tryParse(order?['checkout_expires_at']?.toString() ?? '')?.toLocal();
+    final checkoutExpiryKind = order?['checkout_expiry_kind']?.toString();
+    final checkoutRemaining = checkoutExpiry?.difference(DateTime.now());
+    final checkoutSeconds = checkoutRemaining?.inSeconds ?? 0;
+    final checkoutHour = checkoutExpiry == null
+        ? 0
+        : (checkoutExpiry.hour % 12 == 0 ? 12 : checkoutExpiry.hour % 12);
+    final checkoutMinute = checkoutExpiry?.minute.toString().padLeft(2, '0') ?? '00';
+    final checkoutPeriod = checkoutExpiry != null && checkoutExpiry.hour >= 12 ? 'PM' : 'AM';
+    final checkoutTimeLabel = checkoutExpiry == null
+        ? ''
+        : '$checkoutHour:$checkoutMinute $checkoutPeriod';
+    final checkoutCountdownLabel = checkoutSeconds <= 0
+        ? 'Checkout hold has expired. Refresh the order to see the latest status.'
+        : checkoutSeconds >= 3600
+            ? 'About ${checkoutSeconds ~/ 3600} hr ${(checkoutSeconds % 3600) ~/ 60} min remaining'
+            : 'About ${(checkoutSeconds / 60).ceil()} min remaining';
     final dueNowKey = advanceReady
         ? 'advance_due'
         : balanceReady
@@ -1030,6 +1376,43 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               Text(AirwayText.tr('Order total ₹${total.toStringAsFixed(0)}', 'ऑर्डर कुल ₹${total.toStringAsFixed(0)}'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
+          if (advanceReady && checkoutExpiry != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: checkoutSeconds <= 0 ? const Color(0xFFFFEEEE) : const Color(0xFFFFF5E9),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: checkoutSeconds <= 0 ? const Color(0xFFE7A0A3) : const Color(0xFFE8C99E)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.timer_outlined, color: checkoutSeconds <= 0 ? const Color(0xFFB4232C) : const Color(0xFF80551D), size: 19),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          checkoutExpiryKind == 'payment_attempt'
+                              ? 'Payment attempt expires at $checkoutTimeLabel'
+                              : 'Checkout reservation expires at $checkoutTimeLabel',
+                          style: const TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          checkoutCountdownLabel,
+                          style: const TextStyle(color: sub, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
           const SizedBox(height: 14),
@@ -1517,6 +1900,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
           _quoteCard(row),
         ],
         extraWorkSection(row),
+        disputeSection(row),
         if (row['completion_otp'] is Map &&
             (row['completion_otp']['code']?.toString().isNotEmpty ?? false)) ...[
           const SizedBox(height: 12),
@@ -1603,6 +1987,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               foregroundColor: const Color(0xFFB3261E),
               side: const BorderSide(color: Color(0xFFE7B9B6)),
             ),
+          )),
+        ],
+        if (status == 'in_progress' || status == 'completed') ...[
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => raiseDispute(row),
+            icon: const Icon(Icons.support_agent_rounded, size: 18),
+            label: const Text('Report a problem'),
           )),
         ],
         if (status == 'completed' && worker != null) ...[

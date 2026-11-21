@@ -44,6 +44,7 @@ from .serializers import (
     WorkerZoneSerializer,
     WorkerScheduleSerializer,
     WorkerLeaveSerializer,
+    WorkerLeaveRequestSerializer,
     WorkerJobStreakSerializer,
 )
 
@@ -141,6 +142,52 @@ class WorkerProfileView(APIView):
 
     def patch(self, request):
         return self.put(request)
+
+
+class WorkerLeaveListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _worker(self, request):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return None
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return None
+        return profile
+
+    def get(self, request):
+        profile = self._worker(request)
+        if profile is None:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
+        leaves = WorkerLeave.objects.filter(worker=profile).prefetch_related("history__changed_by").select_related("reviewed_by")
+        return Response(WorkerLeaveSerializer(leaves, many=True).data)
+
+    def post(self, request):
+        profile = self._worker(request)
+        if profile is None:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = WorkerLeaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from .leave_management import request_worker_leave
+        leave = request_worker_leave(worker=profile, **serializer.validated_data)
+        return Response(WorkerLeaveSerializer(leave).data, status=status.HTTP_201_CREATED)
+
+
+class WorkerLeaveDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, leave_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        leave = WorkerLeave.objects.filter(worker=profile, pk=leave_id).first()
+        if leave is None:
+            return Response({"detail": "Leave request not found."}, status=status.HTTP_404_NOT_FOUND)
+        from .leave_management import cancel_worker_leave
+        cancel_worker_leave(leave=leave, worker=profile)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class WorkerServiceListView(APIView):
@@ -559,7 +606,7 @@ class WorkerJobListView(APIView):
         query = (
             BookingAssignment.objects
             .filter(worker=profile)
-            .select_related("booking__service", "booking__customer", "booking__address")
+            .select_related("booking__service", "booking__customer", "booking__address", "booking__rework_source")
         )
         if status_param:
             query = query.filter(booking__status=status_param)
@@ -568,7 +615,11 @@ class WorkerJobListView(APIView):
         results = []
         for assign in query:
             booking = assign.booking
-            payment_label = _worker_payment_label(booking)
+            payment_label = (
+                "No-charge service recovery"
+                if getattr(booking, "rework_source", None) is not None
+                else _worker_payment_label(booking)
+            )
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
@@ -807,12 +858,45 @@ class WorkerJobDetailView(APIView):
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
         try:
             assign = BookingAssignment.objects.select_related(
-                "booking__service", "booking__customer", "booking__address",
+                "booking__service", "booking__customer", "booking__address", "booking__rework_source__dispute",
             ).get(pk=job_id, worker=profile)
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
-        payment_label = _worker_payment_label(booking)
+        payment_label = (
+            "No-charge service recovery"
+            if getattr(booking, "rework_source", None) is not None
+            else _worker_payment_label(booking)
+        )
+        rework_proposal = getattr(booking, "rework_source", None)
+        rework_case_data = None
+        if rework_proposal is not None:
+            dispute = rework_proposal.dispute
+            rework_case_data = {
+                "category": dispute.category,
+                "description": dispute.description,
+                "resolution_note": dispute.resolution_note,
+                "status_history": [
+                    {
+                        "from_status": item.from_status,
+                        "to_status": item.to_status,
+                        "note": item.note,
+                        "created_at": item.created_at,
+                    }
+                    for item in dispute.status_history.order_by("created_at", "pk")
+                ],
+                "evidence_files": [
+                    {
+                        "id": evidence.pk,
+                        "original_name": evidence.original_name,
+                        "note": evidence.note,
+                        "photo_url": request.build_absolute_uri(
+                            f"/api/v1/bookings/dispute-evidence/{evidence.pk}/photo/"
+                        ),
+                    }
+                    for evidence in dispute.evidence.all()
+                ],
+            }
         extra_work_data = [
             {
                 "id": proposal.pk,
@@ -898,6 +982,7 @@ class WorkerJobDetailView(APIView):
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
             "payment_label": payment_label,
+            "rework_case": rework_case_data,
             "recurring_visit": recurring_visit_data,
             "variant_title": booking.variant.title if booking.variant_id else None,
             "service_unit_label": booking.service.unit_label,
@@ -1131,6 +1216,7 @@ class WorkerJobAcceptView(APIView):
 class WorkerJobRejectView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, job_id):
         try:
             profile = request.user.worker_profile
@@ -1139,6 +1225,8 @@ class WorkerJobRejectView(APIView):
         assign, booking = _get_assignment_and_booking(job_id, profile)
         if not booking:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        assign = BookingAssignment.objects.select_for_update().get(pk=assign.pk)
+        booking = Booking.objects.select_for_update(of=("self",)).get(pk=booking.pk)
         if booking.status in (Booking.Status.COMPLETED, Booking.Status.CANCELLED):
             return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.ASSIGNED:
@@ -1161,6 +1249,27 @@ class WorkerJobRejectView(APIView):
             booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
             changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
         )
+        rework_proposal = getattr(booking, "rework_source", None)
+        if rework_proposal is not None and rework_proposal.status == "accepted":
+            rework_proposal.status = "expired"
+            rework_proposal.responded_at = timezone.now()
+            rework_proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=booking.customer,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery appointment needs rescheduling",
+                body="The assigned professional could not take the recovery appointment. AIRway support will arrange another time.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": rework_proposal.dispute_id},
+            )
+            Notification.objects.create(
+                user=rework_proposal.created_by,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery assignment declined",
+                body=f"The assigned professional declined recovery booking #{booking.pk}. Please issue a new proposal.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": booking.pk, "dispute_id": rework_proposal.dispute_id},
+            )
         return Response({"detail": "Job rejected.", "status": booking.status})
 
 
@@ -1401,14 +1510,27 @@ class WorkerEarningsView(APIView):
 
         from .models import WorkerEarning
         earnings = WorkerEarning.objects.filter(worker=profile).select_related(
-            "booking__service", "payment", "extra_work"
+            "booking__service", "booking__rework_source", "payment", "extra_work"
         ).order_by("-created_at")[:100]
         results = []
         for earning in earnings:
             results.append({
                 "id": earning.pk,
                 "booking_id": earning.booking_id,
-                "service_title": (f"Additional work · {earning.extra_work.reason}" if earning.extra_work_id else earning.booking.service.title),
+                "service_title": (
+                    f"Additional work · {earning.extra_work.reason}"
+                    if earning.extra_work_id
+                    else (
+                        f"Service recovery · {earning.booking.service.title}"
+                        if getattr(earning.booking, "rework_source", None) is not None
+                        else earning.booking.service.title
+                    )
+                ),
+                "earning_source": (
+                    "airway_funded_recovery"
+                    if getattr(earning.booking, "rework_source", None) is not None
+                    else "customer_payment"
+                ),
                 "extra_work_id": earning.extra_work_id,
                 "gross_amount": str(earning.gross_amount),
                 "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
@@ -1859,7 +1981,7 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 if WorkerBlockedSlot.objects.filter(
                     worker=worker.user, start_at__lt=group_end, end_at__gt=group_start
                 ).exists() or worker.leaves.filter(
-                    start_at__lt=group_end, end_at__gt=group_start
+                    status="approved", start_at__lt=group_end, end_at__gt=group_start
                 ).exists():
                     return Response(
                         {"detail": "You have a blocked time or leave during this appointment."},
