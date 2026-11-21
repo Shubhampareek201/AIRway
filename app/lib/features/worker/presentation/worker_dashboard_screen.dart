@@ -50,6 +50,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   int _selectedTab = 0;
   Timer? _offerPollTimer;
   final Set<int> _knownOfferIds = {};
+  final Set<int> _offerActionsInProgress = {};
   bool _incomingOfferDialogOpen = false;
   StreamSubscription<RemoteMessage>? _pushOpenSubscription;
   StreamSubscription<RemoteMessage>? _pushForegroundSubscription;
@@ -1114,6 +1115,34 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     );
   }
 
+  Future<void> _respondToOfferFromHome(WorkerOffer offer, {required bool accept}) async {
+    if (_offerActionsInProgress.contains(offer.id)) return;
+    setState(() => _offerActionsInProgress.add(offer.id));
+    try {
+      if (accept) {
+        await WorkerApi.acceptOffer(offer.id);
+      } else {
+        await WorkerApi.declineOffer(offer.id);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(accept
+            ? AirwayText.tr('Service accepted. Your job is confirmed.', 'सेवा स्वीकार हो गई। आपका काम कन्फ़र्म है।')
+            : AirwayText.tr('Request rejected.', 'रिक्वेस्ट अस्वीकार कर दी गई।')),
+      ));
+      await _refresh();
+      if (accept && mounted) _openAssignedJobs();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AirwayText.tr('Could not respond: $error', 'जवाब नहीं भेज सके: $error')),
+      ));
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _offerActionsInProgress.remove(offer.id));
+    }
+  }
+
   Widget _buildOfferPreview(WorkerOffer offer) {
     final serviceName = offer.serviceTitle?.trim().isNotEmpty == true
         ? offer.serviceTitle!.trim()
@@ -1165,9 +1194,21 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 ),
               ],
             ),
+            if (offer.serviceImageUrl?.isNotEmpty == true) ...[
+              const SizedBox(height: 10),
+              ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(offer.serviceImageUrl!, height: 110, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink())),
+            ],
             if (offer.variantTitle?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 10),
               Text(offer.variantTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+            if (offer.customerName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.person_outline_rounded, 'Customer: ${offer.customerName}'),
+            ],
+            if (offer.serviceDescription?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 7),
+              Text(offer.serviceDescription!, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.35, color: AirwayColors.textSecondary)),
             ],
             const SizedBox(height: 12),
             _offerInfoLine(Icons.calendar_month_outlined, when),
@@ -1182,15 +1223,31 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               _offerInfoLine(Icons.format_list_numbered_rounded, 'Quantity: ${offer.quantity}'),
             ],
             const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _openOffers,
-                icon: const Icon(Icons.visibility_outlined),
-                label: Text(AirwayText.tr('Review request & respond', 'रिक्वेस्ट देखें और जवाब दें')),
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              ),
-            ),
+            if (_offerActionsInProgress.contains(offer.id))
+              const Center(child: CircularProgressIndicator())
+            else
+              Row(children: [
+                if (offer.canDecline)
+                  Expanded(child: OutlinedButton.icon(
+                    onPressed: () => _respondToOfferFromHome(offer, accept: false),
+                    icon: const Icon(Icons.close_rounded),
+                    label: Text(AirwayText.tr('Reject', 'मना करें')),
+                    style: OutlinedButton.styleFrom(foregroundColor: AirwayColors.error, minimumSize: const Size.fromHeight(48)),
+                  )),
+                if (offer.canDecline && offer.canAccept) const SizedBox(width: 10),
+                if (offer.canAccept)
+                  Expanded(flex: 2, child: FilledButton.icon(
+                    onPressed: () => _respondToOfferFromHome(offer, accept: true),
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    label: Text(AirwayText.tr('Accept job', 'काम स्वीकार करें')),
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  )),
+              ]),
+            Align(alignment: Alignment.centerRight, child: TextButton.icon(
+              onPressed: _openOffers,
+              icon: const Icon(Icons.open_in_new_rounded, size: 16),
+              label: Text(AirwayText.tr('See full request details', 'पूरी रिक्वेस्ट देखें')),
+            )),
           ],
         ),
       ),
