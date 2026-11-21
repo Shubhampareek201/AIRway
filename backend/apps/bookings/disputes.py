@@ -55,6 +55,15 @@ def _serialize_dispute(dispute):
             for item in dispute.evidence.all()
         ],
         "status": dispute.status,
+        "status_history": [
+            {
+                "from_status": item.from_status,
+                "to_status": item.to_status,
+                "note": item.note,
+                "created_at": item.created_at,
+            }
+            for item in dispute.status_history.order_by("created_at", "pk")
+        ],
         "resolution_note": dispute.resolution_note,
         "resolved_at": dispute.resolved_at,
         "rework_proposal": rework,
