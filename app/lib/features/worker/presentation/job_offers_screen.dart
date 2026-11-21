@@ -324,6 +324,26 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
             ),
           ],
           const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF7EF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(AirwayText.tr('YOUR EARNING AFTER COMPLETION', 'काम पूरा होने पर आपकी कमाई'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF267747), letterSpacing: 0.4)),
+                const SizedBox(height: 3),
+                Text(offer.workerPayout == null ? AirwayText.tr('Not configured yet', 'अभी तय नहीं है') : '₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF176B3A))),
+                if (offer.workerPayout == null)
+                  Text(AirwayText.tr('AIRway finance must set your commission before a fixed payout can be shown.', 'फिक्स कमाई दिखाने के लिए AIRway finance को आपका कमीशन सेट करना होगा।'), style: const TextStyle(fontSize: 11, color: Color(0xFF5D6F62))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
           _infoLine(Icons.timer_outlined, 'Estimated duration: ${offer.expectedDurationMinutes} minutes'),
           if (offer.quantity > 1) ...[
             const SizedBox(height: 8),
