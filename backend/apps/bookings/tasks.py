@@ -460,3 +460,56 @@ def expire_unpaid_checkouts():
     logger.info("Expired %s unpaid AIRway checkouts", expired_count)
     return expired_count
 
+@shared_task
+def expire_past_rework_proposals():
+    """Expire unanswered recovery proposals once their offered appointment time passes."""
+    from apps.bookings.models import BookingReworkProposal
+    from apps.notifications.models import Notification
+
+    now = timezone.now()
+    proposal_ids = list(
+        BookingReworkProposal.objects.filter(
+            status=BookingReworkProposal.Status.PENDING_CUSTOMER,
+            scheduled_at__lte=now,
+        ).values_list("pk", flat=True)[:500]
+    )
+    expired = 0
+    for proposal_id in proposal_ids:
+        with transaction.atomic():
+            proposal = (
+                BookingReworkProposal.objects.select_for_update()
+                .select_related("dispute__booking__customer", "created_by")
+                .filter(
+                    pk=proposal_id,
+                    status=BookingReworkProposal.Status.PENDING_CUSTOMER,
+                    scheduled_at__lte=now,
+                )
+                .first()
+            )
+            if proposal is None:
+                continue
+            proposal.status = BookingReworkProposal.Status.EXPIRED
+            proposal.responded_at = now
+            proposal.save(update_fields=["status", "responded_at", "updated_at"])
+            Notification.objects.create(
+                user=proposal.dispute.booking.customer,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Recovery appointment proposal expired",
+                body="The proposed recovery appointment time passed before you responded. AIRway support can review and send a new proposal.",
+                channel=Notification.Channel.IN_APP,
+                data={"dispute_id": proposal.dispute_id, "rework_proposal_id": proposal.pk, "status": proposal.status},
+            )
+            if proposal.created_by_id != proposal.dispute.booking.customer_id:
+                Notification.objects.create(
+                    user=proposal.created_by,
+                    type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                    title="Recovery proposal expired",
+                    body=f"The customer did not respond to recovery proposal #{proposal.pk} before its scheduled time. You can issue a new proposal if appropriate.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"dispute_id": proposal.dispute_id, "rework_proposal_id": proposal.pk, "status": proposal.status},
+                )
+            expired += 1
+    if expired:
+        logger.info("Expired %s unanswered rework proposals", expired)
+    return expired
+
