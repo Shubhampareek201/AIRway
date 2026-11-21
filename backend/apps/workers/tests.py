@@ -2511,6 +2511,9 @@ class WorkerLeaveLifecycleAPITest(TestCase):
             worker=self.worker, start_at=start, end_at=end,
             status=WorkerLeave.Status.PENDING,
         )
+        staff = User.objects.create_user(phone="+919876543294", password="password123")
+        staff.is_staff = True
+        staff.save(update_fields=["is_staff"])
         response = self.client.delete(f"/api/v1/workers/leaves/{leave.pk}/")
         self.assertEqual(response.status_code, 204)
         leave.refresh_from_db()
