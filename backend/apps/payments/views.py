@@ -332,6 +332,43 @@ def create_or_get_order_payment(
                 )
             if locked_stage_total != stage_total:
                 raise ValueError("The order changed while checkout was starting. Refresh the order and retry.")
+            if stage == Payment.Stage.ADVANCE:
+                # Re-check real worker capacity immediately before creating a
+                # gateway order. Catalogue/serviceability alone does not prove
+                # that an approved, online professional can cover this slot.
+                from apps.bookings.services import has_eligible_worker_for_slot
+                from apps.workers.eligibility import required_worker_gender_for_booking
+
+                for item in locked_active_items:
+                    booking = item.booking
+                    required_gender = required_worker_gender_for_booking(
+                        booking.service,
+                        booking.customer_answers or {},
+                    )
+                    duration = (
+                        booking.variant.duration_minutes
+                        if booking.variant_id and booking.variant.duration_minutes
+                        else booking.service.duration_minutes
+                    ) or 60
+                    if booking.service.pricing_type != "per_unit":
+                        duration *= max(int(item.quantity or 1), 1)
+                    if not has_eligible_worker_for_slot(
+                        service=booking.service,
+                        address=booking.address,
+                        scheduled_at=booking.scheduled_at,
+                        duration_minutes=duration,
+                        required_gender=required_gender,
+                        drop_scheduled_at=(
+                            booking.drop_scheduled_at
+                            if booking.booking_mode == Booking.BookingMode.PICKUP_DROP
+                            else None
+                        ),
+                        exclude_customer_id=customer.pk,
+                    ):
+                        raise ValueError(
+                            f"No professional is currently available for {booking.service.title} "
+                            "at the selected date and time. Choose another slot before paying."
+                        )
             if stage == Payment.Stage.BALANCE and (
                 not locked_active_items
                 or any(item.booking.status != Booking.Status.COMPLETED for item in locked_active_items)
