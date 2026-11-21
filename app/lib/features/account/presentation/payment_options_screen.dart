@@ -33,8 +33,8 @@ class PaymentOptionsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const ListTile(
-            leading: Icon(Icons.shield_outlined, color: AirwayColors.primary),
+          ListTile(
+            leading: const Icon(Icons.shield_outlined, color: AirwayColors.primary),
             title: Text(AirwayText.tr('Payment security', 'भुगतान सुरक्षा')),
             subtitle: Text(
               'AIRway does not display or store your full card details here. Payment credentials are handled by the payment provider.',
