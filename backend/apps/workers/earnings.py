@@ -172,7 +172,7 @@ def _get_paid_base_payment(booking):
 
 @transaction.atomic
 def sync_worker_earning(booking_id, payment_id):
-    """Create service and extra-work earnings only after completion and final settlement."""
+    """Finalize the locked worker earning after completion and final settlement."""
     booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
     payment = Payment.objects.select_for_update().filter(
         pk=payment_id,
