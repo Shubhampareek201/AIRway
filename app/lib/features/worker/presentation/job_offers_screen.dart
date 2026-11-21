@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/worker/data/worker_models.dart';
@@ -18,10 +19,8 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
   bool _loading = true;
   String? _error;
   int _actionInProgress = -1;
-  Timer? _activeTimer;
   Timer? _pollTimer;
   bool _fetching = false;
-  final Map<int, Duration> _timeRemaining = {};
 
   @override
   void initState() {
@@ -45,7 +44,6 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _activeTimer?.cancel();
     _pollTimer?.cancel();
     super.dispose();
   }
@@ -64,16 +62,6 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
       if (mounted) {
         setState(() {
           _offers = offers;
-          _timeRemaining.clear();
-          // Set up countdown timers for each pending offer
-          for (final offer in offers.where((o) => o.status == WorkerOffer.pending && o.expiresAt != null)) {
-            final remaining = offer.expiresAt!.difference(DateTime.now());
-            if (remaining.inSeconds > 0) {
-              _timeRemaining[offer.id] = remaining;
-            }
-          }
-          // Start the timer for countdown updates
-          _startCountdownTimer();
         });
       }
     } catch (e) {
@@ -86,35 +74,6 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
       _fetching = false;
       if (mounted && showLoader) setState(() { _loading = false; });
     }
-  }
-
-  void _startCountdownTimer() {
-    _activeTimer?.cancel();
-    _activeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      bool needsUpdate = false;
-      final toRemove = <int>[];
-
-      for (final entry in _timeRemaining.entries.toList()) {
-        final remaining = entry.value - const Duration(seconds: 1);
-        if (remaining.inSeconds <= 0) {
-          toRemove.add(entry.key);
-          needsUpdate = true;
-        } else {
-          _timeRemaining[entry.key] = remaining;
-        }
-      }
-
-      if (needsUpdate) {
-        setState(() {
-          for (final id in toRemove) {
-            _timeRemaining.remove(id);
-          }
-        });
-        // Reload offers to refresh expired ones
-        _loadOffers();
-      }
-    });
   }
 
   Future<void> _refresh() async {
@@ -282,6 +241,17 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (offer.serviceImageUrl?.isNotEmpty == true)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.network(
+                offer.serviceImageUrl!,
+                width: double.infinity,
+                height: 150,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -315,10 +285,43 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
             ],
           ),
           const SizedBox(height: 14),
+          if (offer.customerName?.trim().isNotEmpty == true)
+            _infoLine(Icons.person_outline_rounded, 'Customer: ${offer.customerName}'),
+          const SizedBox(height: 8),
           _infoLine(Icons.calendar_month_outlined, offer.scheduledAt == null ? 'Schedule to be confirmed' : 'Service time: ${_formatDateTime(offer.scheduledAt!)}'),
           if (address.isNotEmpty) ...[
             const SizedBox(height: 8),
-            _infoLine(Icons.location_on_outlined, address, maxLines: 2),
+            _infoLine(Icons.location_on_outlined, address, maxLines: 3),
+            if (offer.addressLatitude != null && offer.addressLongitude != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: OutlinedButton.icon(
+                  onPressed: () => _openMap(offer),
+                  icon: const Icon(Icons.directions_rounded),
+                  label: Text(AirwayText.tr('Open customer location in Maps', 'ग्राहक की लोकेशन Maps में खोलें')),
+                ),
+              ),
+          ],
+          if (offer.serviceDescription?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            Text(AirwayText.tr('What you need to do', 'आपको क्या काम करना है'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+            const SizedBox(height: 5),
+            Text(offer.serviceDescription!, style: const TextStyle(fontSize: 13, height: 1.45)),
+          ],
+          if (offer.customerIssuePhotoUrl?.isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            Text(AirwayText.tr('Customer reference photo', 'ग्राहक की भेजी फोटो'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                offer.customerIssuePhotoUrl!,
+                width: double.infinity,
+                height: 180,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Text(AirwayText.tr('Photo could not be loaded.', 'फोटो लोड नहीं हो सकी।')),
+              ),
+            ),
           ],
           const SizedBox(height: 8),
           _infoLine(Icons.timer_outlined, 'Estimated duration: ${offer.expectedDurationMinutes} minutes'),
@@ -355,27 +358,6 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
               ],
             ),
           ],
-          if (offer.customerTotal > 0 || offer.advanceReceived > 0 || offer.remainingBalance > 0) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: const Color(0xFFF7F5FC), borderRadius: BorderRadius.circular(12)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (offer.customerTotal > 0) Text('Customer order total: ₹${offer.customerTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                  if (offer.advanceReceived > 0) Text('Advance paid by customer: ₹${offer.advanceReceived.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, color: AirwayColors.success, fontWeight: FontWeight.w700)),
-                  if (offer.remainingBalance > 0) Text('Customer balance: ₹${offer.remainingBalance.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
-                  Text('This is the customer order amount, not your confirmed payout.', style: TextStyle(fontSize: 10, color: AirwayColors.textSecondary)),
-                ],
-              ),
-            ),
-          ],
-          if (pending && offer.expiresAt != null) ...[
-            const SizedBox(height: 10),
-            _buildExpiryCountdown(offer),
-          ],
           if (offer.status == WorkerOffer.accepted)
             Padding(padding: const EdgeInsets.only(top: 10), child: Text(AirwayText.tr('You accepted this request. Open Assigned Jobs to continue.', 'आपने यह रिक्वेस्ट स्वीकार की है। आगे बढ़ने के लिए Assigned Jobs खोलें।'), style: const TextStyle(color: AirwayColors.success, fontSize: 12, fontWeight: FontWeight.w700))),
           if (pending) ...[
@@ -407,6 +389,19 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
     );
   }
 
+  Future<void> _openMap(WorkerOffer offer) async {
+    final latitude = offer.addressLatitude;
+    final longitude = offer.addressLongitude;
+    if (latitude == null || longitude == null) return;
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not open Maps on this device.', 'इस डिवाइस पर Maps नहीं खुल सका।'))),
+      );
+    }
+  }
+
   Widget _infoLine(IconData icon, String value, {int maxLines = 1}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,25 +410,6 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
         const SizedBox(width: 8),
         Expanded(child: Text(value, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary, height: 1.35))),
       ],
-    );
-  }
-
-  Widget _buildExpiryCountdown(WorkerOffer offer) {
-    final countdown = _timeRemaining[offer.id] ?? offer.expiresAt!.difference(DateTime.now());
-    final minutes = countdown.inMinutes;
-    final seconds = countdown.inSeconds % 60;
-
-    Color timeColor = Colors.green;
-    if (countdown.inMinutes < 2) {
-      timeColor = Colors.orange;
-    }
-    if (countdown.inSeconds < 30) {
-      timeColor = Colors.red;
-    }
-
-    return Text(
-      'Expires in: ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-      style: TextStyle(color: timeColor, fontSize: 12, fontWeight: FontWeight.w500),
     );
   }
 
