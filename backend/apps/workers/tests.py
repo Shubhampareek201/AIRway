@@ -2578,13 +2578,13 @@ class WorkerLeaveLifecycleAPITest(TestCase):
         )
         self.assertEqual(expire_past_worker_leave_requests(), 1)
         leave.refresh_from_db()
-        self.assertEqual(leave.status, WorkerLeave.Status.CANCELLED)
+        self.assertEqual(leave.status, WorkerLeave.Status.EXPIRED)
         self.assertEqual(WorkerLeaveHistory.objects.filter(
-            leave=leave, to_status=WorkerLeave.Status.CANCELLED,
+            leave=leave, to_status=WorkerLeave.Status.EXPIRED,
         ).count(), 1)
         self.assertTrue(Notification.objects.filter(
             user=self.worker_user, data__worker_leave_id=leave.pk,
-            type=Notification.Type.WORKER_LEAVE_REJECTED,
+            type=Notification.Type.WORKER_LEAVE_EXPIRED,
         ).exists())
 
     def test_expiry_task_does_not_change_approved_leave(self):
