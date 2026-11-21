@@ -16,48 +16,8 @@ PAYMENT_TIMEOUT_MINUTES = 5
 
 @shared_task
 def expire_pending_offers():
-    """Expire offers and advance each exhausted order/booking to its next batch."""
-    from apps.bookings.models import WorkerOffer, Order, Booking
-    from apps.bookings.dispatcher import DispatcherService
-    from apps.notifications.models import Notification
-
-    now = timezone.now()
-    expired = list(
-        WorkerOffer.objects.filter(
-            status=WorkerOffer.Status.PENDING, expires_at__lte=now
-        ).select_related("booking__service", "booking__customer", "worker__user")
-    )
-    order_ids, booking_ids = set(), set()
-    for offer in expired:
-        updated = WorkerOffer.objects.filter(
-            pk=offer.pk, status=WorkerOffer.Status.PENDING
-        ).update(status=WorkerOffer.Status.EXPIRED, responded_at=now)
-        if not updated:
-            continue
-        if offer.order_id:
-            order_ids.add(offer.order_id)
-        else:
-            booking_ids.add(offer.booking_id)
-        Notification.objects.create(
-            user=offer.worker.user,
-            type=Notification.Type.WORKER_OFFER_EXPIRED,
-            title="Offer Expired",
-            body=f"The job offer for {offer.booking.service.title} has expired.",
-            channel=Notification.Channel.IN_APP,
-            data={"booking_id": offer.booking_id, "order_id": offer.order_id, "offer_id": offer.pk},
-        )
-
-    for order_id in order_ids:
-        if not WorkerOffer.objects.filter(order_id=order_id, status=WorkerOffer.Status.PENDING).exists():
-            DispatcherService.dispatch_order(Order.objects.get(pk=order_id))
-    for booking_id in booking_ids:
-        if not WorkerOffer.objects.filter(booking_id=booking_id, order__isnull=True, status=WorkerOffer.Status.PENDING).exists():
-            booking = Booking.objects.filter(pk=booking_id).first()
-            if booking:
-                DispatcherService.dispatch_offers(booking)
-    logger.info("Expired %s worker offers; advanced %s orders and %s bookings", len(expired), len(order_ids), len(booking_ids))
-    return len(expired)
-
+    """Offer expiry is intentionally disabled during AIRway's initial launch."""
+    return 0
 
 @shared_task
 def retry_failed_dispatches():
