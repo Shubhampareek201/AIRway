@@ -83,7 +83,8 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
         });
       }
     } finally {
-      if (mounted) setState(() { _loading = false; });
+      _fetching = false;
+      if (mounted && showLoader) setState(() { _loading = false; });
     }
   }
 
