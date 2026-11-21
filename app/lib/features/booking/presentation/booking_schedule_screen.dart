@@ -345,7 +345,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                         child: Center(
                           child: CircularProgressIndicator(color: _green),
                         ),
-                      )
+                      ),
                     if (!_checking && _availableSlots.isEmpty)
                       Container(
                         padding: const EdgeInsets.all(16),
