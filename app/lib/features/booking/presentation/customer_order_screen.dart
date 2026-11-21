@@ -1306,6 +1306,18 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final advancePaid = order?['advance_paid'] == true;
     final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
+    final checkoutExpiry = DateTime.tryParse(order?['checkout_expires_at']?.toString() ?? '')?.toLocal();
+    final checkoutExpiryKind = order?['checkout_expiry_kind']?.toString();
+    final checkoutRemaining = checkoutExpiry?.difference(DateTime.now());
+    final checkoutSeconds = checkoutRemaining?.inSeconds ?? 0;
+    final checkoutTimeLabel = checkoutExpiry == null
+        ? ''
+        : DateFormat('h:mm a').format(checkoutExpiry);
+    final checkoutCountdownLabel = checkoutSeconds <= 0
+        ? 'Checkout hold has expired. Refresh the order to see the latest status.'
+        : checkoutSeconds >= 3600
+            ? 'About ${checkoutSeconds ~/ 3600} hr ${(checkoutSeconds % 3600) ~/ 60} min remaining'
+            : 'About ${(checkoutSeconds / 60).ceil()} min remaining';
     final dueNowKey = advanceReady
         ? 'advance_due'
         : balanceReady
@@ -1351,6 +1363,43 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               Text(AirwayText.tr('Order total ₹${total.toStringAsFixed(0)}', 'ऑर्डर कुल ₹${total.toStringAsFixed(0)}'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
+          if (advanceReady && checkoutExpiry != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: checkoutSeconds <= 0 ? const Color(0xFFFFEEEE) : const Color(0xFFFFF5E9),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: checkoutSeconds <= 0 ? const Color(0xFFE7A0A3) : const Color(0xFFE8C99E)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.timer_outlined, color: checkoutSeconds <= 0 ? const Color(0xFFB4232C) : const Color(0xFF80551D), size: 19),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          checkoutExpiryKind == 'payment_attempt'
+                              ? 'Payment attempt expires at $checkoutTimeLabel'
+                              : 'Checkout reservation expires at $checkoutTimeLabel',
+                          style: const TextStyle(fontWeight: FontWeight.w800, color: ink, fontSize: 12),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          checkoutCountdownLabel,
+                          style: const TextStyle(color: sub, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           orderProgress(rows, paid, advancePaid, order?['is_staged_payment'] == true, advancePercentage.round(), acceptedInspectionQuote),
           const SizedBox(height: 14),
