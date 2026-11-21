@@ -876,6 +876,15 @@ class WorkerJobDetailView(APIView):
                 "category": dispute.category,
                 "description": dispute.description,
                 "resolution_note": dispute.resolution_note,
+                "status_history": [
+                    {
+                        "from_status": item.from_status,
+                        "to_status": item.to_status,
+                        "note": item.note,
+                        "created_at": item.created_at,
+                    }
+                    for item in dispute.status_history.order_by("created_at", "pk")
+                ],
                 "evidence_files": [
                     {
                         "id": evidence.pk,
