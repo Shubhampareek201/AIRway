@@ -9,6 +9,7 @@ from apps.accounts.models import Address, User
 from apps.bookings.models import AppointmentGroup, Booking, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
+from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
 from apps.payments.models import Payment
 from apps.payments.views import create_or_get_order_payment
 
@@ -61,6 +62,26 @@ class StagedOrderPaymentServiceTests(TestCase):
             booking=self.booking,
             quantity=1,
             line_total=Decimal("1000.00"),
+        )
+
+        # Advance checkout must prove a real worker can cover the selected slot.
+        worker_user = User.objects.create_user(
+            phone="+919876543212", password="password123"
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+            commission_rate=Decimal("20.00"),
+        )
+        WorkerService.objects.create(worker=worker, service=self.service)
+        WorkerZone.objects.create(worker=worker, zone=zone)
+        WorkerSchedule.objects.create(
+            worker=worker,
+            weekday=timezone.localtime(self.booking.scheduled_at).weekday(),
+            is_active=True,
+            start_time="00:00",
+            end_time="23:59",
         )
 
     @patch("apps.payments.views.client.order.create")
