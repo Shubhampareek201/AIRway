@@ -404,13 +404,14 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
                       child: Text(AirwayText.tr('Decline', 'मना करें')),
                     )),
                   if (offer.canDecline && offer.canAccept) const SizedBox(width: 10),
-                  if (offer.canAccept)
-                    Expanded(flex: 2, child: FilledButton.icon(
-                      onPressed: () => _acceptOffer(offer.id),
-                      icon: const Icon(Icons.check_circle_outline_rounded),
-                      label: Text(AirwayText.tr('Accept request', 'रिक्वेस्ट स्वीकार करें')),
-                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                    )),
+                  Expanded(flex: 2, child: FilledButton.icon(
+                    onPressed: offer.canAccept ? () => _acceptOffer(offer.id) : null,
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    label: Text(offer.workerPayout == null
+                        ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
+                        : AirwayText.tr('Accept request', 'रिक्वेस्ट स्वीकार करें')),
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  )),
                 ],
               ),
           ],
