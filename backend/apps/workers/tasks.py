@@ -35,23 +35,23 @@ def expire_past_worker_leave_requests():
             )
             if leave is None:
                 continue
-            leave.status = WorkerLeave.Status.CANCELLED
+            leave.status = WorkerLeave.Status.EXPIRED
             leave.admin_note = "Automatically closed because the requested leave period ended before review."
             leave.save(update_fields=["status", "admin_note", "updated_at"])
             WorkerLeaveHistory.objects.create(
                 leave=leave,
                 from_status=WorkerLeave.Status.PENDING,
-                to_status=WorkerLeave.Status.CANCELLED,
+                to_status=WorkerLeave.Status.EXPIRED,
                 changed_by=None,
                 note=leave.admin_note,
             )
             Notification.objects.create(
                 user=leave.worker.user,
-                type=Notification.Type.WORKER_LEAVE_REJECTED,
+                type=Notification.Type.WORKER_LEAVE_EXPIRED,
                 title="Leave request expired",
                 body="Your leave request was closed because its requested period ended before Admin review.",
                 channel=Notification.Channel.IN_APP,
-                data={"worker_leave_id": leave.pk, "status": WorkerLeave.Status.CANCELLED, "reason": "expired_before_review"},
+                data={"worker_leave_id": leave.pk, "status": WorkerLeave.Status.EXPIRED, "reason": "expired_before_review"},
             )
             count += 1
     if count:
