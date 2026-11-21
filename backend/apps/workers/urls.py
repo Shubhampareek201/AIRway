@@ -28,6 +28,7 @@ from .views import (
     WorkerDocumentListView,
     WorkerEarningsView,
     WorkerStreaksView,
+    WorkerMissionWalletView,
     WorkerStatusUpdateView,
     WorkerOfferViewSet,
     CustomerVerifiedWorkerProfileView,
@@ -67,6 +68,7 @@ urlpatterns = [
     path("jobs/<int:job_id>/complete/", WorkerJobCompleteView.as_view(), name="worker-job-complete"),
     path("earnings/", WorkerEarningsView.as_view(), name="worker-earnings"),
     path("streaks/", WorkerStreaksView.as_view(), name="worker-streaks"),
+    path("mission-wallet/", WorkerMissionWalletView.as_view(), name="worker-mission-wallet"),
     path("status/", WorkerStatusUpdateView.as_view(), name="worker-status"),
     path("", include(router.urls)),
 ]
