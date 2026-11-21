@@ -141,7 +141,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             serviceAudience: service.audience,
           )) return false;
       if (lower.isEmpty) return true;
-      return service.title.toLowerCase().contains(lower) ||
+      return service.displayTitle.toLowerCase().contains(lower) ||
           service.description?.toLowerCase().contains(lower) == true ||
           service.categoryName.toLowerCase().contains(lower);
     }).toList();
@@ -177,7 +177,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   String _packageDescription(ServiceVariant variant) {
     final description = variant.description?.trim() ?? '';
     if (description.isNotEmpty) return description;
-    final title = variant.title.toLowerCase();
+    final title = variant.displayTitle.toLowerCase();
     if (title.contains('basic') || title.contains('essential')) {
       return 'Essential care for everyday service needs.';
     }
@@ -297,9 +297,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                         ? current
                         : null,
                     decoration: InputDecoration(
-                      labelText: field.isRequired ? '${field.label} *' : field.label,
+                      labelText: field.isRequired ? '${field.displayLabel} *' : field.displayLabel,
                       errorText: invalidFields.contains(field.key)
-                          ? 'Please select ${field.label.toLowerCase()}'
+                          ? 'Please select ${field.displayLabel.toLowerCase()}'
                           : null,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -320,7 +320,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        field.isRequired ? '${field.label} *' : field.label,
+                        field.isRequired ? '${field.displayLabel} *' : field.displayLabel,
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -450,10 +450,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       : null,
                   onChanged: (value) => updateFormAnswer(field.key, value.trim(), setSheetState),
                   decoration: InputDecoration(
-                    labelText: field.isRequired ? '${field.label} *' : field.label,
+                    labelText: field.isRequired ? '${field.displayLabel} *' : field.displayLabel,
                     hintText: field.fieldType == 'date' ? 'Select date' : null,
                     errorText: invalidFields.contains(field.key)
-                        ? 'Please enter ${field.label.toLowerCase()}'
+                        ? 'Please enter ${field.displayLabel.toLowerCase()}'
                         : null,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -488,7 +488,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       Expanded(child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(service.title, style: const TextStyle(
+                          Text(service.displayTitle, style: const TextStyle(
                             fontSize: 19, fontWeight: FontWeight.w900,
                             color: AirwayColors.text,
                           )),
@@ -584,7 +584,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                                     selectedAddons.remove(addon.id);
                                   }
                                 }),
-                                title: Text(addon.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                                title: Text(addon.displayTitle, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                                 subtitle: addon.description?.isNotEmpty == true
                                     ? Text(addon.description!, style: const TextStyle(fontSize: 11))
                                     : null,
@@ -795,7 +795,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(variant.title, style: const TextStyle(
+                  Text(variant.displayTitle, style: const TextStyle(
                     fontSize: 14, fontWeight: FontWeight.w900, color: AirwayColors.text,
                   )),
                   const SizedBox(height: 4),
@@ -934,7 +934,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       Text(AirwayText.tr('Added to cart', 'कार्ट में जोड़ दिया गया'), style: TextStyle(
                         color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800,
                       )),
-                      Text(service.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      Text(service.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: Color(0xFFDCE8DF), fontSize: 11)),
                     ],
                   ),
@@ -1126,7 +1126,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         : service.images.isNotEmpty
             ? service.images.first.image
             : CatalogImageResolver.forService(
-                title: service.title,
+                title: service.displayTitle,
                 categoryName: service.categoryName,
                 audience: service.audience,
               );
@@ -1186,7 +1186,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      service.title,
+                      service.displayTitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
