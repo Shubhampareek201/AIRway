@@ -177,138 +177,244 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
   }
 
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null) {
-      return SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: AirwayColors.error),
-                const SizedBox(height: 16),
-                Text(_error!),
-                const SizedBox(height: 16),
-                FilledButton(onPressed: _refresh, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
-              ],
-            ),
-          ),
-        ),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 70),
+          const Icon(Icons.cloud_off_rounded, size: 48, color: AirwayColors.error),
+          const SizedBox(height: 16),
+          Text(_error!, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          Center(child: FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')))),
+        ],
       );
     }
 
-    // Group offers by valid status
     final pendingOffers = _offers.where((o) => o.status == WorkerOffer.pending).toList();
     final acceptedOffers = _offers.where((o) => o.status == WorkerOffer.accepted).toList();
     final otherOffers = _offers.where((o) => [WorkerOffer.declined, WorkerOffer.expired, WorkerOffer.withdrawn].contains(o.status)).toList();
 
-    if (pendingOffers.isEmpty && acceptedOffers.isEmpty && otherOffers.isEmpty) {
-      return Center(
-        child: Text(AirwayText.tr('No job offers', 'कोई जॉब ऑफ़र नहीं है')),
+    if (_offers.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 55),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(22)),
+            child: Column(
+              children: [
+                const Icon(Icons.inbox_rounded, size: 52, color: AirwayColors.primary),
+                const SizedBox(height: 14),
+                Text(AirwayText.tr('No service requests yet', 'अभी कोई सर्विस रिक्वेस्ट नहीं है'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(AirwayText.tr('New requests for the services you provide will appear here. Keep your availability on and pull down to refresh.', 'आपकी सेवाओं की नई रिक्वेस्ट यहाँ दिखेंगी। उपलब्धता ऑनलाइन रखें और रीफ़्रेश करने के लिए नीचे खींचें।'), textAlign: TextAlign.center, style: TextStyle(color: AirwayColors.textSecondary, height: 1.4)),
+              ],
+            ),
+          ),
+        ],
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        if (pendingOffers.isNotEmpty) ...[
+          Row(
+            children: [
+              Expanded(child: Text(AirwayText.tr('Needs your response', 'आपके जवाब का इंतज़ार'), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(20)),
+                child: Text('${pendingOffers.length} NEW', style: const TextStyle(color: AirwayColors.primary, fontSize: 11, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...pendingOffers.map((o) => _buildOfferCard(o, isAccepted: false)),
+        ],
+        if (acceptedOffers.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(AirwayText.tr('Accepted requests', 'स्वीकृत रिक्वेस्ट'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 10),
+          ...acceptedOffers.map((o) => _buildOfferCard(o, isAccepted: true)),
+        ],
+        if (otherOffers.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(AirwayText.tr('Past requests', 'पुरानी रिक्वेस्ट'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 10),
+          ...otherOffers.take(5).map((o) => _buildOfferCard(o, isAccepted: false)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildOfferCard(WorkerOffer offer, {required bool isAccepted}) {
+    final inProgress = _actionInProgress == offer.id;
+    final pending = offer.status == WorkerOffer.pending;
+    final serviceName = offer.serviceTitle?.trim().isNotEmpty == true
+        ? offer.serviceTitle!.trim()
+        : 'AIRway service';
+    final address = offer.serviceAddress?.trim() ?? '';
+    final statusLabel = switch (offer.status) {
+      WorkerOffer.accepted => AirwayText.tr('Accepted', 'स्वीकृत'),
+      WorkerOffer.declined => AirwayText.tr('Declined', 'अस्वीकृत'),
+      WorkerOffer.expired => AirwayText.tr('Expired', 'समय समाप्त'),
+      WorkerOffer.withdrawn => AirwayText.tr('No longer available', 'अब उपलब्ध नहीं'),
+      _ => AirwayText.tr('New request', 'नई रिक्वेस्ट'),
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: pending ? AirwayColors.primary.withValues(alpha: 0.28) : const Color(0xFFE8E2F5)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.035), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (acceptedOffers.isNotEmpty) ...[
-            Text(AirwayText.tr('Accepted Offers', 'स्वीकृत ऑफ़र'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
+                child: const Icon(Icons.home_repair_service_rounded, color: AirwayColors.primary, size: 25),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text('Booking #${offer.bookingId}', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                    if (offer.variantTitle?.trim().isNotEmpty == true)
+                      Padding(padding: const EdgeInsets.only(top: 3), child: Text(offer.variantTitle!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: pending ? const Color(0xFFEAF7EF) : const Color(0xFFF1EFF7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(statusLabel, style: TextStyle(color: pending ? const Color(0xFF21834A) : AirwayColors.textSecondary, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _infoLine(Icons.calendar_month_outlined, offer.scheduledAt == null ? 'Schedule to be confirmed' : 'Service time: ${_formatDateTime(offer.scheduledAt!)}'),
+          if (address.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ...acceptedOffers.map((o) => _buildOfferCard(o, isAccepted: true)),
+            _infoLine(Icons.location_on_outlined, address, maxLines: 2),
           ],
-          if (pendingOffers.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(AirwayText.tr('Pending Offers', 'लंबित ऑफ़र'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          _infoLine(Icons.timer_outlined, 'Estimated duration: ${offer.expectedDurationMinutes} minutes'),
+          if (offer.quantity > 1) ...[
             const SizedBox(height: 8),
-            ...pendingOffers.map((o) => _buildOfferCard(o, isAccepted: false)),
+            _infoLine(Icons.format_list_numbered_rounded, 'Quantity: ${offer.quantity}'),
           ],
-          if (otherOffers.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(AirwayText.tr('Completed/Expired', 'पूरे हुए / समाप्त ऑफ़र'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ...otherOffers.take(3).map((o) => _buildOfferCard(o, isAccepted: false)),
+          if (offer.orderServices.length > 1) ...[
+            const SizedBox(height: 10),
+            Text(AirwayText.tr('Services in this appointment', 'इस अपॉइंटमेंट की सेवाएँ'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            ...offer.orderServices.map((service) => Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text('• ${service['service_title'] ?? 'Service'}${service['variant_title'] == null ? '' : ' — ${service['variant_title']}'}', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+            )),
+          ],
+          if (offer.bookingNotes?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 10),
+            _infoLine(Icons.notes_rounded, 'Customer instructions: ${offer.bookingNotes}', maxLines: 4),
+          ],
+          if (offer.customerAnswers.isNotEmpty || offer.formResponses.isNotEmpty || offer.addons.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: Text(AirwayText.tr('Service details & customer answers', 'सेवा विवरण और ग्राहक के जवाब'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+              children: [
+                for (final entry in offer.customerAnswers.entries)
+                  Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 5), child: Text(workerCustomerAnswerLabel(entry.key, entry.value), style: const TextStyle(fontSize: 12)))),
+                for (final answer in offer.formResponses)
+                  Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 5), child: Text('${answer['label'] ?? answer['key']}: ${answer['value']}', style: const TextStyle(fontSize: 12)))),
+                if (offer.addons.isNotEmpty)
+                  Align(alignment: Alignment.centerLeft, child: Text('Add-ons: ${offer.addons.map((addon) => addon['title']).join(', ')}', style: const TextStyle(fontSize: 12))),
+              ],
+            ),
+          ],
+          if (offer.customerTotal > 0 || offer.advanceReceived > 0 || offer.remainingBalance > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0xFFF7F5FC), borderRadius: BorderRadius.circular(12)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (offer.customerTotal > 0) Text('Customer order total: ₹${offer.customerTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  if (offer.advanceReceived > 0) Text('Advance paid by customer: ₹${offer.advanceReceived.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, color: AirwayColors.success, fontWeight: FontWeight.w700)),
+                  if (offer.remainingBalance > 0) Text('Customer balance: ₹${offer.remainingBalance.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
+                  Text('This is the customer order amount, not your confirmed payout.', style: TextStyle(fontSize: 10, color: AirwayColors.textSecondary)),
+                ],
+              ),
+            ),
+          ],
+          if (pending && offer.expiresAt != null) ...[
+            const SizedBox(height: 10),
+            _buildExpiryCountdown(offer),
+          ],
+          if (offer.status == WorkerOffer.accepted)
+            Padding(padding: const EdgeInsets.only(top: 10), child: Text(AirwayText.tr('You accepted this request. Open Assigned Jobs to continue.', 'आपने यह रिक्वेस्ट स्वीकार की है। आगे बढ़ने के लिए Assigned Jobs खोलें।'), style: const TextStyle(color: AirwayColors.success, fontSize: 12, fontWeight: FontWeight.w700))),
+          if (pending) ...[
+            const SizedBox(height: 14),
+            if (inProgress)
+              const Center(child: CircularProgressIndicator())
+            else
+              Row(
+                children: [
+                  if (offer.canDecline)
+                    Expanded(child: OutlinedButton(
+                      onPressed: () => _declineOffer(offer.id),
+                      style: OutlinedButton.styleFrom(foregroundColor: AirwayColors.error, side: const BorderSide(color: AirwayColors.error), minimumSize: const Size.fromHeight(48)),
+                      child: Text(AirwayText.tr('Decline', 'मना करें')),
+                    )),
+                  if (offer.canDecline && offer.canAccept) const SizedBox(width: 10),
+                  if (offer.canAccept)
+                    Expanded(flex: 2, child: FilledButton.icon(
+                      onPressed: () => _acceptOffer(offer.id),
+                      icon: const Icon(Icons.check_circle_outline_rounded),
+                      label: Text(AirwayText.tr('Accept request', 'रिक्वेस्ट स्वीकार करें')),
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    )),
+                ],
+              ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildOfferCard(WorkerOffer offer, {required bool isAccepted}) {
-    final inProgress = _actionInProgress == offer.id;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        title: Text(AirwayText.tr('Booking #${offer.bookingId}', 'बुकिंग #${offer.bookingId}'), style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (offer.serviceTitle?.isNotEmpty == true)
-              Text(offer.serviceTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
-            if (offer.orderServices.length > 1)
-              Text(
-                AirwayText.tr(
-                  'Appointment services: ${offer.orderServices.map((service) => service['service_title']?.toString() ?? '').where((title) => title.isNotEmpty).join(', ')}',
-                  'अपॉइंटमेंट सेवाएँ: ${offer.orderServices.map((service) => service['service_title']?.toString() ?? '').where((title) => title.isNotEmpty).join(', ')}',
-                ),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-            if (offer.variantTitle?.isNotEmpty == true || offer.quantity > 1)
-              Text(
-                [
-                  if (offer.variantTitle?.isNotEmpty == true) offer.variantTitle!,
-                  offer.serviceUnitLabel?.isNotEmpty == true
-                      ? '${offer.quantity} ${offer.serviceUnitLabel}'
-                      : 'Qty ${offer.quantity}',
-                ].join(' • '),
-                style: const TextStyle(fontSize: 12),
-              ),
-            if (offer.scheduledAt != null)
-              Text(AirwayText.tr('Requested: ${_formatDateTime(offer.scheduledAt!)}', 'अनुरोधित समय: ${_formatDateTime(offer.scheduledAt!)}')),
-            if (offer.serviceAddress?.isNotEmpty == true)
-              Text(AirwayText.tr('Area: ${offer.serviceAddress}', 'क्षेत्र: ${offer.serviceAddress}'), maxLines: 2, overflow: TextOverflow.ellipsis),
-            Text(AirwayText.tr('Expected duration: ${offer.expectedDurationMinutes} minutes', 'अनुमानित अवधि: ${offer.expectedDurationMinutes} मिनट'),
-                style: const TextStyle(fontSize: 12)),
-            if (offer.bookingNotes?.trim().isNotEmpty == true)
-              Text(AirwayText.tr('Customer instructions: ${offer.bookingNotes}', 'ग्राहक के निर्देश: ${offer.bookingNotes}'),
-                  style: const TextStyle(fontSize: 12)),
-            if (offer.customerTotal > 0)
-              Text(AirwayText.tr('Customer total: ₹${offer.customerTotal.toStringAsFixed(2)}', 'ग्राहक का कुल: ₹${offer.customerTotal.toStringAsFixed(2)}')),
-            if (offer.advanceReceived > 0)
-              Text(AirwayText.tr('Advance received: ₹${offer.advanceReceived.toStringAsFixed(2)}', 'प्राप्त अग्रिम: ₹${offer.advanceReceived.toStringAsFixed(2)}'),
-                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
-            if (offer.remainingBalance > 0)
-              Text(AirwayText.tr('Customer balance: ₹${offer.remainingBalance.toStringAsFixed(2)}', 'ग्राहक की शेष राशि: ₹${offer.remainingBalance.toStringAsFixed(2)}')),
-            for (final entry in offer.customerAnswers.entries)
-              Text(
-                workerCustomerAnswerLabel(entry.key, entry.value),
-                style: const TextStyle(fontSize: 12),
-              ),
-            for (final answer in offer.formResponses)
-              Text(
-                '${answer['label'] ?? answer['key']}: ${answer['value']}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            if (offer.addons.isNotEmpty)
-              Text(
-                'Add-ons: ${offer.addons.map((addon) => addon['title']).join(', ')}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            Text(AirwayText.tr('Offered: ${_formatDateTime(offer.offeredAt)}', 'ऑफ़र का समय: ${_formatDateTime(offer.offeredAt)}')),
-            if (offer.expiresAt != null && offer.status == WorkerOffer.pending)
-              _buildExpiryCountdown(offer),
-            if (offer.status == WorkerOffer.accepted)
-              Text(AirwayText.tr('Status: Accepted', 'स्थिति: स्वीकृत'), style: TextStyle(color: Colors.green[700])),
-          ],
-        ),
-        trailing: _buildActionButtons(offer, inProgress, isAccepted),
-      ),
+  Widget _infoLine(IconData icon, String value, {int maxLines = 1}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17, color: AirwayColors.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(value, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary, height: 1.35))),
+      ],
     );
   }
 
