@@ -1,5 +1,6 @@
 
 import 'dart:async';
+import 'package:airway/core/localization/airway_text.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -289,7 +290,7 @@ class _AddressSearchScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search location'),
+        title: Text(AirwayText.tr('Search location', 'जगह खोजें')),
       ),
       body: SafeArea(
         child: Column(
@@ -301,7 +302,7 @@ class _AddressSearchScreenState
                 autofocus: true,
                 onChanged: _onQueryChanged,
                 decoration: InputDecoration(
-                  hintText: 'Search area, address or PIN',
+                  hintText: AirwayText.tr('Search area, address or PIN', 'इलाका, पता या PIN खोजें'),
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: IconButton(
                     onPressed: () {
