@@ -709,6 +709,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             const SizedBox(height: 4),
             Text(item['resolution_note'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
           ],
+          for (final event in (item['status_history'] as List? ?? const []).whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${(event['to_status']?.toString() ?? '').replaceAll('_', ' ').toUpperCase()}${(event['note']?.toString() ?? '').isNotEmpty ? ' — ${event['note']}' : ''}',
+                style: const TextStyle(color: sub, fontSize: 11),
+              ),
+            ),
           finalEvidenceCount(item),
           reworkProposalCard(item, row),
           if (items.last != item) const Divider(height: 14, color: line),
