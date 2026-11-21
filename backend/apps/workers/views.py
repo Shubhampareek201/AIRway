@@ -615,6 +615,10 @@ class WorkerJobListView(APIView):
         results = []
         for assign in query:
             booking = assign.booking
+            earning = booking.worker_earnings.filter(
+                worker=profile, extra_work__isnull=True
+            ).first()
+            worker_payout = earning.net_amount if earning and earning.net_amount is not None else None
             payment_label = (
                 "No-charge service recovery"
                 if getattr(booking, "rework_source", None) is not None
@@ -629,7 +633,8 @@ class WorkerJobListView(APIView):
                 "address": booking.address.full_address,
                 "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
-                "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+                "amount": float(worker_payout or 0),
+                "worker_payout": str(worker_payout) if worker_payout is not None else None,
                 "payment_label": payment_label,
                 "recurring_visit": (
                     {
@@ -863,6 +868,10 @@ class WorkerJobDetailView(APIView):
         except BookingAssignment.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         booking = assign.booking
+        earning = booking.worker_earnings.filter(
+            worker=profile, extra_work__isnull=True
+        ).first()
+        worker_payout = earning.net_amount if earning and earning.net_amount is not None else None
         contact_available_at = (
             booking.scheduled_at - timedelta(hours=1)
             if booking.scheduled_at else None
@@ -994,7 +1003,8 @@ class WorkerJobDetailView(APIView):
             "address_longitude": str(booking.address.longitude) if booking.address.longitude is not None else None,
             "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
-            "amount": float(booking.pricing_snapshot.get("total", 0) or 0),
+            "amount": float(worker_payout or 0),
+            "worker_payout": str(worker_payout) if worker_payout is not None else None,
             "payment_label": payment_label,
             "rework_case": rework_case_data,
             "recurring_visit": recurring_visit_data,
