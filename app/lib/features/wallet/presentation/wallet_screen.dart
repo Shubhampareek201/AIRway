@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/wallet/data/wallet_api.dart';
 import 'package:airway/features/wallet/data/wallet_models.dart';
@@ -49,7 +50,7 @@ class _WalletScreenState extends State<WalletScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
-          title: const Text('Add money to wallet'),
+          title: Text(AirwayText.tr('Add money to wallet', 'वॉलेट में पैसे जोड़ें')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -71,7 +72,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
             TextButton(
               onPressed: () async {
                 final amount = selected ?? double.tryParse(customController.text);
@@ -89,7 +90,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   }
                 }
               },
-              child: const Text('Confirm'),
+              child: Text(AirwayText.tr('Confirm', 'पुष्टि करें')),
             ),
           ],
         ),
@@ -100,7 +101,7 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('AIRway Wallet')),
+      appBar: AppBar(title: Text(AirwayText.tr('AIRway Wallet', 'AIRway वॉलेट'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -113,13 +114,13 @@ class _WalletScreenState extends State<WalletScreen> {
                   FilledButton.icon(
                     onPressed: _showTopUpDialog,
                     icon: const Icon(Icons.add_circle_outlined),
-                    label: const Text('Add money'),
+                    label: Text(AirwayText.tr('Add money', 'पैसे जोड़ें')),
                   ),
                   const SizedBox(height: 24),
-                  const Text('Transaction history', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  Text(AirwayText.tr('Transaction history', 'लेन-देन का इतिहास'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   if (_transactions.isEmpty)
-                    const Text('No transactions yet.'),
+                    Text(AirwayText.tr('No transactions yet.', 'अभी कोई लेन-देन नहीं हुआ है।')),
                   for (final t in _transactions) _TransactionTile(tx: t),
                 ],
               ),
@@ -142,7 +143,7 @@ class _BalanceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Available balance', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        Text(AirwayText.tr('Available balance', 'उपलब्ध बैलेंस'), style: TextStyle(color: Colors.white70, fontSize: 13)),
         const SizedBox(height: 6),
         Text('Rs ${balance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900)),
         const SizedBox(height: 12),
