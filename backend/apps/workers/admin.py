@@ -551,6 +551,12 @@ class WorkerRewardWalletAdmin(ModelAdmin):
         "eligible_jobs_count", "created_at", "updated_at",
     )
 
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(WorkerRewardTransaction)
 class WorkerRewardTransactionAdmin(ModelAdmin):
@@ -561,6 +567,12 @@ class WorkerRewardTransactionAdmin(ModelAdmin):
         "wallet", "worker", "booking", "type", "amount", "milestone_jobs",
         "reference_key", "description", "created_at", "updated_at",
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(WorkerRewardWithdrawal)
@@ -628,3 +640,9 @@ class WorkerRewardWithdrawalAdmin(ModelAdmin):
                 obj.processed_at = timezone.now()
 
         super().save_model(request, obj, form, change)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
