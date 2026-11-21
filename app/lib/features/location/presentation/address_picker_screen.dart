@@ -180,7 +180,7 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
             if (_loading) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
             if (_error != null) ListTile(title: Text(_error!), trailing: TextButton(onPressed: _load, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')))),
             if (!_loading && _error == null && _addresses.isEmpty)
-              const Padding(padding: EdgeInsets.all(20), child: Text('No saved addresses yet. Choose a location on the map and save it.')),
+              Padding(padding: const EdgeInsets.all(20), child: Text(AirwayText.tr('No saved addresses yet. Choose a location on the map and save it.', 'अभी कोई पता सेव नहीं है। मैप पर जगह चुनें और उसे सेव करें।'))),
             for (final address in _addresses) Card(
               child: Column(children: [
                 ListTile(
