@@ -175,7 +175,6 @@ class NearbyWorkersAPITest(TestCase):
             user=worker_user,
             status=WorkerProfile.Status.APPROVED,
             is_online=True,
-            commission_rate=Decimal("10.00"),
         )
         WorkerService.objects.create(worker=worker_profile, service=self.service)
         WorkerZone.objects.create(worker=worker_profile, zone=self.zone)
