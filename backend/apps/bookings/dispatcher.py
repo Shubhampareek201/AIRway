@@ -581,7 +581,8 @@ class DispatcherService:
                 commission = (payout_gross * worker.commission_rate / Decimal("100")).quantize(
                     Decimal("0.01"), rounding=ROUND_HALF_UP
                 )
-                worker_payout = str(max(payout_gross - commission, Decimal("0.00")))
+                net_payout = payout_gross - commission
+                worker_payout = str(net_payout) if net_payout > 0 else None
 
             notification_data = {
                 "offer_id": offer.pk,
