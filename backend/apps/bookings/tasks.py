@@ -5,6 +5,7 @@ import logging
 from datetime import timedelta
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 
 from celery import shared_task
 
@@ -22,7 +23,9 @@ def expire_pending_offers():
     now = timezone.now()
     expired_count = WorkerOffer.objects.filter(
         status=WorkerOffer.Status.PENDING,
-        expires_at__lte=now,
+    ).filter(
+        Q(appointment_group__scheduled_at__lte=now)
+        | Q(appointment_group__isnull=True, booking__scheduled_at__lte=now)
     ).update(
         status=WorkerOffer.Status.EXPIRED,
         responded_at=now,
