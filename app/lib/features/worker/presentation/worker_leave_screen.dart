@@ -128,7 +128,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
   Color _statusColor(String status) => switch (status) {
     'approved' => Colors.green,
     'rejected' => AirwayColors.error,
-    'cancelled' => Colors.grey,
+    'cancelled' || 'expired' => Colors.grey,
     _ => Colors.orange,
   };
 
