@@ -3261,7 +3261,7 @@ class DispatcherServiceTest(TestCase):
         self.assertEqual(actual_ratings, expected_order)
 
 
-    def test_dispatcher_prioritizes_dedicated_then_related_then_multi_category_workers(self):
+    def test_dispatcher_offers_all_exactly_eligible_workers_regardless_of_service_breadth(self):
         from apps.bookings.dispatcher import DispatcherService
 
         dedicated = self._create_eligible_worker(rating=3.0, suffix="81")
@@ -3306,21 +3306,18 @@ class DispatcherServiceTest(TestCase):
             booking=booking, customer=booking.customer,
             stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
             status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
-            razorpay_payment_id="test_service_scope_priority", paid_at=timezone.now(),
+            razorpay_payment_id="test_all_qualified_workers", paid_at=timezone.now(),
         )
 
         offers = DispatcherService.dispatch_offers(booking)
-        self.assertEqual([offer.worker_id for offer in offers], [dedicated.pk])
-        offers[0].status = WorkerOffer.Status.DECLINED
-        offers[0].save(update_fields=["status", "updated_at"])
-
-        offers = DispatcherService.dispatch_offers(booking)
-        self.assertEqual([offer.worker_id for offer in offers], [related.pk])
-        offers[0].status = WorkerOffer.Status.EXPIRED
-        offers[0].save(update_fields=["status", "updated_at"])
-
-        offers = DispatcherService.dispatch_offers(booking)
-        self.assertEqual([offer.worker_id for offer in offers], [multi_category.pk])
+        self.assertEqual(
+            {offer.worker_id for offer in offers},
+            {dedicated.pk, related.pk, multi_category.pk},
+        )
+        self.assertEqual(len(offers), 3)
+        self.assertTrue(all(
+            offer.status == WorkerOffer.Status.PENDING for offer in offers
+        ))
 
     def test_dispatcher_never_offers_booking_to_its_own_customer_worker(self):
         """A customer who is also an approved worker must not receive their own job."""
