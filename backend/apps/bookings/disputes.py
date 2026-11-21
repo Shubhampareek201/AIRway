@@ -18,8 +18,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from apps.notifications.models import Notification
 
 from .models import (
-    Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence,
-    BookingReworkProposal, BookingStatusHistory, BookingAddOn, BookingFormResponse,
+    Booking, BookingAssignment, BookingDispute, BookingDisputeHistory,
+    BookingDisputeEvidence, BookingReworkProposal, BookingStatusHistory,
+    BookingAddOn, BookingFormResponse,
 )
 
 
@@ -132,6 +133,13 @@ class BookingDisputeListCreateView(APIView):
                     requested_outcome=outcome,
                     evidence_items=clean_evidence,
                 )
+                BookingDisputeHistory.objects.create(
+                    dispute=dispute,
+                    from_status="",
+                    to_status=BookingDispute.Status.OPEN,
+                    changed_by=request.user,
+                    note=f"Dispute raised by {role}.",
+                )
         except IntegrityError:
             return Response({"detail": "An active dispute already exists for this booking."},
                             status=status.HTTP_409_CONFLICT)
@@ -199,7 +207,15 @@ class BookingDisputeDetailView(APIView):
             if new_status in (BookingDispute.Status.RESOLVED, BookingDispute.Status.REJECTED):
                 dispute.resolved_by = request.user
                 dispute.resolved_at = timezone.now()
+            old_status = dispute.status
             dispute.save(update_fields=["status", "resolution_note", "resolved_by", "resolved_at", "updated_at"])
+            BookingDisputeHistory.objects.create(
+                dispute=dispute,
+                from_status=old_status,
+                to_status=new_status,
+                changed_by=request.user,
+                note=note,
+            )
         dispute = BookingDispute.objects.select_related(
             "booking__service", "booking__customer", "booking__assignment__worker__user"
         ).get(pk=dispute.pk)
