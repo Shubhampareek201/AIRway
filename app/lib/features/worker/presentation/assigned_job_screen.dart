@@ -248,10 +248,12 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
 
   void _scheduleContactUnlock(WorkerAssignmentDetail job) {
     _contactRefreshTimer?.cancel();
-    if (job.customerContactAvailable || job.customerContactAvailableAt == null) return;
+    if (job.customerContactAvailable ||
+        job.customerContactAvailableAt == null ||
+        (job.status != BookingStatus.assigned && job.status != BookingStatus.inProgress)) return;
     final delay = job.customerContactAvailableAt!.difference(DateTime.now());
     _contactRefreshTimer = Timer(
-      delay.isNegative ? Duration.zero : delay,
+      delay.isNegative ? const Duration(minutes: 1) : delay + const Duration(seconds: 3),
       _refreshContactAccess,
     );
   }
