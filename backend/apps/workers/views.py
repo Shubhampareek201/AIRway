@@ -1855,8 +1855,19 @@ class WorkerStatusUpdateView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-        profile.is_online = online
-        profile.save(update_fields=["is_online", "updated_at"])
+        with transaction.atomic():
+            profile.is_online = online
+            profile.save(update_fields=["is_online", "updated_at"])
+            if not online:
+                # Going offline means no more pending requests or repeat alerts.
+                # Accepted assignments are untouched and remain available in Jobs.
+                WorkerOffer.objects.filter(
+                    worker=profile,
+                    status=WorkerOffer.Status.PENDING,
+                ).update(
+                    status=WorkerOffer.Status.WITHDRAWN,
+                    responded_at=timezone.now(),
+                )
         return Response({"is_online": profile.is_online})
 
 
