@@ -1310,9 +1310,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final checkoutExpiryKind = order?['checkout_expiry_kind']?.toString();
     final checkoutRemaining = checkoutExpiry?.difference(DateTime.now());
     final checkoutSeconds = checkoutRemaining?.inSeconds ?? 0;
+    final checkoutHour = checkoutExpiry == null
+        ? 0
+        : (checkoutExpiry.hour % 12 == 0 ? 12 : checkoutExpiry.hour % 12);
+    final checkoutMinute = checkoutExpiry?.minute.toString().padLeft(2, '0') ?? '00';
+    final checkoutPeriod = checkoutExpiry != null && checkoutExpiry.hour >= 12 ? 'PM' : 'AM';
     final checkoutTimeLabel = checkoutExpiry == null
         ? ''
-        : DateFormat('h:mm a').format(checkoutExpiry);
+        : '$checkoutHour:$checkoutMinute $checkoutPeriod';
     final checkoutCountdownLabel = checkoutSeconds <= 0
         ? 'Checkout hold has expired. Refresh the order to see the latest status.'
         : checkoutSeconds >= 3600
