@@ -2598,3 +2598,50 @@ class WorkerLeaveLifecycleAPITest(TestCase):
         self.assertEqual(expire_past_worker_leave_requests(), 0)
         leave.refresh_from_db()
         self.assertEqual(leave.status, WorkerLeave.Status.APPROVED)
+
+
+    def test_worker_cannot_cancel_another_workers_leave(self):
+        start, end = self._period()
+        other_user = User.objects.create_user(
+            phone="+919876543296", password="password123",
+        )
+        other_worker = WorkerProfile.objects.create(
+            user=other_user, status=WorkerProfile.Status.APPROVED,
+        )
+        leave = WorkerLeave.objects.create(
+            worker=other_worker, start_at=start, end_at=end,
+            status=WorkerLeave.Status.PENDING,
+        )
+        response = self.client.delete(f"/api/v1/workers/leaves/{leave.pk}/")
+        self.assertEqual(response.status_code, 404)
+        leave.refresh_from_db()
+        self.assertEqual(leave.status, WorkerLeave.Status.PENDING)
+
+    def test_unapproved_worker_cannot_access_leave_management(self):
+        pending_user = User.objects.create_user(
+            phone="+919876543295", password="password123",
+        )
+        WorkerProfile.objects.create(
+            user=pending_user, status=WorkerProfile.Status.PENDING,
+        )
+        self.client.force_authenticate(user=pending_user)
+        response = self.client.get("/api/v1/workers/leaves/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_worker_can_cancel_future_approved_leave(self):
+        start, end = self._period()
+        leave = WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=end,
+            status=WorkerLeave.Status.APPROVED,
+        )
+        response = self.client.delete(f"/api/v1/workers/leaves/{leave.pk}/")
+        self.assertEqual(response.status_code, 204)
+        leave.refresh_from_db()
+        self.assertEqual(leave.status, WorkerLeave.Status.CANCELLED)
+        self.assertEqual(
+            WorkerLeaveHistory.objects.filter(
+                leave=leave, from_status=WorkerLeave.Status.APPROVED,
+                to_status=WorkerLeave.Status.CANCELLED,
+            ).count(),
+            1,
+        )
