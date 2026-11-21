@@ -1,10 +1,12 @@
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction, connection, close_old_connections
 from datetime import timedelta, time, datetime
 from unittest.mock import patch
+from unittest import skipUnless
+import threading
 import pytz
 import re
 import datetime as dt_module
@@ -5781,3 +5783,73 @@ class UnpaidCheckoutExpiryTaskTest(BookingAPITestMixin, TestCase):
         self.assertEqual(expire_unpaid_checkouts(), 0)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.AWAITING_ASSIGNMENT)
+
+
+@skipUnless(connection.vendor == "postgresql", "Concurrent row-lock test requires PostgreSQL")
+class ConcurrentServiceSlotReservationTest(BookingAPITestMixin, TransactionTestCase):
+    """Two customers racing for one service/time must never both reserve it."""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.first_customer = self._create_user("+919876543711")
+        self.second_customer = self._create_user("+919876543712")
+        category = self._create_category("Concurrency", "concurrency")
+        self.service = self._create_service(category, "Concurrent slot service")
+        self.first_address = self._create_address(self.first_customer, "first")
+        self.second_address = self._create_address(self.second_customer, "second")
+        self.scheduled_at = timezone.now() + timedelta(days=2)
+
+    def test_only_one_customer_can_reserve_the_same_service_slot_concurrently(self):
+        from django.db import close_old_connections
+        from apps.bookings.services import check_slot_availability, SlotConflictError
+
+        start_gate = threading.Barrier(2)
+        service_id = self.service.pk
+        scheduled_at = self.scheduled_at
+        service_duration = self.service.duration_minutes or 60
+        attempts = [
+            (self.first_customer.pk, self.first_address.pk),
+            (self.second_customer.pk, self.second_address.pk),
+        ]
+
+        def reserve(customer_id, address_id):
+            close_old_connections()
+            try:
+                start_gate.wait(timeout=10)
+                with transaction.atomic():
+                    service = Service.objects.get(pk=service_id)
+                    customer = User.objects.get(pk=customer_id)
+                    address = Address.objects.get(pk=address_id)
+                    check_slot_availability(
+                        service=service,
+                        scheduled_at=scheduled_at,
+                        duration_minutes=service_duration,
+                        booking_mode=Booking.BookingMode.SCHEDULED,
+                    )
+                    Booking.objects.create(
+                        customer=customer,
+                        address=address,
+                        service=service,
+                        scheduled_at=scheduled_at,
+                        status=Booking.Status.PENDING,
+                    )
+                return "reserved"
+            except SlotConflictError:
+                return "conflict"
+            finally:
+                close_old_connections()
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda pair: reserve(*pair), attempts))
+
+        self.assertCountEqual(results, ["reserved", "conflict"])
+        self.assertEqual(
+            Booking.objects.filter(
+                service=self.service,
+                scheduled_at=self.scheduled_at,
+                status=Booking.Status.PENDING,
+            ).count(),
+            1,
+        )
