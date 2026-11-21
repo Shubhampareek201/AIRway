@@ -527,38 +527,85 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       );
 
   Widget _buildHomeTab(WorkerProfile profile) {
-    final pendingCount = _offers.where((o) => o.status == WorkerOffer.pending).length;
+    final pendingOffers = _offers.where((o) => o.status == WorkerOffer.pending).toList();
     final activeJobs = _assignedJobs.where((j) {
       final status = j['status']?.toString();
       return status != 'completed' && status != 'cancelled';
-    }).length;
+    }).toList();
 
     return _page([
       _buildWelcomeCard(profile),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
       _buildAvailabilityCard(profile),
-      const SizedBox(height: 16),
+      const SizedBox(height: 22),
       Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(child: _buildMetricCard('New offers', '$pendingCount', Icons.notifications_active_outlined)),
-          const SizedBox(width: 12),
-          Expanded(child: _buildMetricCard('Active jobs', '$activeJobs', Icons.assignment_outlined)),
+          Expanded(
+            child: Text(
+              AirwayText.tr('New service requests', 'नई सर्विस रिक्वेस्ट'),
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+            ),
+          ),
+          if (pendingOffers.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AirwayColors.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${pendingOffers.length} NEW',
+                style: const TextStyle(color: AirwayColors.primary, fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ),
+          TextButton(onPressed: _openOffers, child: Text(AirwayText.tr('See all', 'सभी देखें'))),
         ],
       ),
-      const SizedBox(height: 20),
-      _sectionHeading('Your next steps', action: 'View jobs', onAction: () => setState(() => _selectedTab = 1)),
-      const SizedBox(height: 8),
-      _buildNextJobCard(),
-      const SizedBox(height: 16),
-      _sectionHeading('Recent job offers', action: 'View all', onAction: _openOffers),
-      const SizedBox(height: 8),
+      const SizedBox(height: 4),
       if (_offersError != null)
         _SectionErrorCard(message: _offersError!, onRetry: _refresh)
-      else ...[
-        ..._offers.where((o) => o.status == WorkerOffer.pending).take(3).map(_buildOfferPreview),
-        if (pendingCount == 0)
-          const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'New job offers will appear here.'),
-      ],
+      else if (pendingOffers.isEmpty)
+        const _EmptyCard(
+          icon: Icons.inbox_outlined,
+          title: 'No new service requests',
+          subtitle: 'When a customer books one of your services, the request will appear here. Keep your availability on to receive offers.',
+        )
+      else
+        ...pendingOffers.take(3).map(_buildOfferPreview),
+      const SizedBox(height: 22),
+      Row(
+        children: [
+          Expanded(child: _buildMetricCard('New requests', '${pendingOffers.length}', Icons.notifications_active_outlined)),
+          const SizedBox(width: 10),
+          Expanded(child: _buildMetricCard('Active jobs', '${activeJobs.length}', Icons.assignment_outlined)),
+        ],
+      ),
+      const SizedBox(height: 22),
+      _sectionHeading(
+        AirwayText.tr('Your active work', 'आपका चालू काम'),
+        action: AirwayText.tr('View jobs', 'जॉब देखें'),
+        onAction: _openAssignedJobs,
+      ),
+      const SizedBox(height: 8),
+      if (_jobsError != null)
+        _SectionErrorCard(message: _jobsError!, onRetry: _refresh)
+      else if (activeJobs.isEmpty)
+        const _EmptyCard(
+          icon: Icons.work_outline_rounded,
+          title: 'No active jobs yet',
+          subtitle: 'Once you accept a service request, its details and next steps will appear here.',
+        )
+      else
+        ...activeJobs.take(3).map(_buildJobPreview),
+      const SizedBox(height: 18),
+      _sectionHeading(
+        AirwayText.tr('Your next steps', 'आपके अगले कदम'),
+        action: AirwayText.tr('Open profile', 'प्रोफ़ाइल खोलें'),
+        onAction: () => setState(() => _selectedTab = 3),
+      ),
+      const SizedBox(height: 8),
+      _buildNextJobCard(),
     ]);
   }
 
@@ -568,26 +615,36 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     final pendingOffers = _offers.where((o) => o.status == WorkerOffer.pending).toList();
 
     return _page([
-      _sectionHeading('New job offers', action: 'View all', onAction: _openOffers),
+      Row(
+        children: [
+          Expanded(child: Text(AirwayText.tr('New service requests', 'नई सर्विस रिक्वेस्ट'), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
+          if (pendingOffers.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(20)),
+              child: Text('${pendingOffers.length} NEW', style: const TextStyle(color: AirwayColors.primary, fontSize: 11, fontWeight: FontWeight.w900)),
+            ),
+        ],
+      ),
       const SizedBox(height: 8),
       if (_offersError != null)
         _SectionErrorCard(message: _offersError!, onRetry: _refresh)
       else if (pendingOffers.isEmpty)
-        const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new offers', subtitle: 'Check back when customers request a service.')
+        const _EmptyCard(icon: Icons.inbox_outlined, title: 'No new service requests', subtitle: 'New customer requests for your enrolled services will appear here.')
       else
-        ...pendingOffers.take(4).map(_buildOfferPreview),
-      const SizedBox(height: 20),
-      _sectionHeading('Assigned jobs', action: 'Open jobs', onAction: _openAssignedJobs),
+        ...pendingOffers.map(_buildOfferPreview),
+      const SizedBox(height: 22),
+      _sectionHeading(AirwayText.tr('Assigned work', 'आपको सौंपे गए काम'), action: AirwayText.tr('Open all', 'सभी खोलें'), onAction: _openAssignedJobs),
       const SizedBox(height: 8),
       if (_jobsError != null)
         _SectionErrorCard(message: _jobsError!, onRetry: _refresh)
       else if (active.isEmpty)
-        const _EmptyCard(icon: Icons.work_outline, title: 'No active jobs', subtitle: 'Accepted jobs will appear here.')
+        const _EmptyCard(icon: Icons.work_outline_rounded, title: 'No active jobs', subtitle: 'Jobs you accept will appear here. Open a job to see customer details and update its progress.')
       else
-        ...active.take(5).map(_buildJobPreview),
+        ...active.map(_buildJobPreview),
       if (completed.isNotEmpty) ...[
-        const SizedBox(height: 20),
-        Text(AirwayText.tr('Completed jobs: ${completed.length}', 'पूरे किए गए काम: ${completed.length}'), style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 18),
+        Text(AirwayText.tr('Completed jobs: ${completed.length}', 'पूरे किए गए काम: ${completed.length}'), style: const TextStyle(fontWeight: FontWeight.w700)),
       ],
     ]);
   }
@@ -1014,14 +1071,96 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   }
 
   Widget _buildOfferPreview(WorkerOffer offer) {
-    return Card(
-      child: ListTile(
-        leading: Icon(Icons.notifications_active_outlined, color: AirwayColors.primary),
-        title: Text(AirwayText.tr('Booking #${offer.bookingId}', 'बुकिंग #${offer.bookingId}')),
-        subtitle: Text(AirwayText.tr('Received ${_dateLabel(offer.offeredAt.toIso8601String())}', 'प्राप्त हुआ: ${_dateLabel(offer.offeredAt.toIso8601String())}')),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: _openOffers,
+    final serviceName = offer.serviceTitle?.trim().isNotEmpty == true
+        ? offer.serviceTitle!.trim()
+        : AirwayText.tr('Service request', 'सर्विस रिक्वेस्ट');
+    final when = offer.scheduledAt == null
+        ? AirwayText.tr('Schedule to be confirmed', 'समय की पुष्टि बाकी है')
+        : _dateLabel(offer.scheduledAt);
+    final address = offer.serviceAddress?.trim() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AirwayColors.primary.withValues(alpha: 0.24)),
+        boxShadow: [
+          BoxShadow(color: AirwayColors.primary.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 5)),
+        ],
       ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.home_repair_service_rounded, color: AirwayColors.primary, size: 25),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AirwayColors.text)),
+                      const SizedBox(height: 3),
+                      Text('Booking #${offer.bookingId}', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(color: const Color(0xFFEAF7EF), borderRadius: BorderRadius.circular(20)),
+                  child: Text(AirwayText.tr('NEW', 'नई'), style: const TextStyle(color: Color(0xFF21834A), fontSize: 10, fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            if (offer.variantTitle?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 10),
+              Text(offer.variantTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+            const SizedBox(height: 12),
+            _offerInfoLine(Icons.calendar_month_outlined, when),
+            if (address.isNotEmpty) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.location_on_outlined, address, maxLines: 2),
+            ],
+            const SizedBox(height: 7),
+            _offerInfoLine(Icons.timer_outlined, '${offer.expectedDurationMinutes} min estimated service time'),
+            if (offer.quantity > 1) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.format_list_numbered_rounded, 'Quantity: ${offer.quantity}'),
+            ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _openOffers,
+                icon: const Icon(Icons.visibility_outlined),
+                label: Text(AirwayText.tr('Review request & respond', 'रिक्वेस्ट देखें और जवाब दें')),
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _offerInfoLine(IconData icon, String value, {int maxLines = 1}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17, color: AirwayColors.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(value, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary, height: 1.35))),
+      ],
     );
   }
 
