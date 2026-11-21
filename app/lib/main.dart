@@ -10,6 +10,8 @@ import 'package:airway/firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await AirwayLocale.initialize();
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -31,7 +33,7 @@ class AirwayApp extends StatelessWidget {
         theme: AirwayTheme.light,
         themeMode: ThemeMode.light,
         locale: locale,
-        supportedLocales: const [Locale('hi'), Locale('en')],
+        supportedLocales: const [Locale('en'), Locale('hi')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: const StartupGate(),
       ),
