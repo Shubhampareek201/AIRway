@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/ratings/data/rating_models.dart';
 import 'package:airway/features/ratings/data/rating_api.dart';
@@ -47,7 +48,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Your Ratings')),
+      appBar: AppBar(title: Text(AirwayText.tr('Your Ratings', 'आपकी रेटिंग'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -57,12 +58,12 @@ class _RatingsScreenState extends State<RatingsScreen> {
                   child: ListView(padding: const EdgeInsets.all(16), children: [
                     _buildSummaryCard(),
                     const SizedBox(height: 16),
-                    const Text('Rating History',
+                    Text(AirwayText.tr('Rating History', 'रेटिंग इतिहास'),
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
                     if (_ratings.isEmpty)
-                      const Text('No ratings yet.',
+                      Text(AirwayText.tr('No ratings yet.', 'अभी कोई रेटिंग नहीं है।'),
                           style: TextStyle(color: Colors.grey))
                     else
                       ..._ratings.map((r) => _RatingTile(rating: r)),
@@ -86,7 +87,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-        const Text('Your Rating',
+        Text(AirwayText.tr('Your Rating', 'आपकी रेटिंग'),
             style: TextStyle(color: Colors.white70, fontSize: 13)),
         const SizedBox(height: 6),
         Row(children: [
