@@ -561,80 +561,113 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       final status = j['status']?.toString();
       return status != 'completed' && status != 'cancelled';
     }).toList();
+    final now = DateTime.now();
+    final todayJobs = activeJobs.where((job) {
+      final scheduled = DateTime.tryParse(job['scheduled_at']?.toString() ?? '');
+      if (scheduled == null) return false;
+      final local = scheduled.toLocal();
+      return local.year == now.year && local.month == now.month && local.day == now.day;
+    }).toList();
+    final upcomingJobs = activeJobs.where((job) => !todayJobs.contains(job)).toList();
 
     return _page([
       _buildWelcomeCard(profile),
       const SizedBox(height: 12),
       _buildAvailabilityCard(profile),
-      const SizedBox(height: 22),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Text(
-              AirwayText.tr('New service requests', 'नई सर्विस रिक्वेस्ट'),
-              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+      const SizedBox(height: 14),
+      Card(
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          initiallyExpanded: pendingOffers.isNotEmpty,
+          leading: const Icon(Icons.notifications_active_outlined, color: AirwayColors.primary),
+          title: Text(AirwayText.tr('New service requests', 'नई सर्विस रिक्वेस्ट'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: Text(pendingOffers.isEmpty
+              ? AirwayText.tr('No requests waiting', 'कोई नई रिक्वेस्ट नहीं')
+              : AirwayText.tr('${pendingOffers.length} requests waiting for your response', '${pendingOffers.length} रिक्वेस्ट आपके जवाब का इंतज़ार कर रही हैं')),
+          children: [
+            const Divider(height: 1),
+            if (_offersError != null)
+              _SectionErrorCard(message: _offersError!, onRetry: _refresh)
+            else if (pendingOffers.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: _EmptyCard(
+                  icon: Icons.inbox_outlined,
+                  title: 'No new service requests',
+                  subtitle: 'New requests for your services will appear here. Keep your status online to receive them.',
+                ),
+              )
+            else ...[
+              for (final offer in pendingOffers.take(3)) _buildOfferPreview(offer),
+              if (pendingOffers.length > 3)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(onPressed: _openOffers, child: Text(AirwayText.tr('See all requests', 'सभी रिक्वेस्ट देखें'))),
+                ),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 10),
+      Card(
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          leading: const Icon(Icons.today_outlined, color: AirwayColors.primary),
+          title: Text(AirwayText.tr("Today's work", 'आज का काम'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: Text(AirwayText.tr('${todayJobs.length} jobs scheduled today', 'आज ${todayJobs.length} काम निर्धारित हैं')),
+          children: [
+            const Divider(height: 1),
+            if (_jobsError != null)
+              _SectionErrorCard(message: _jobsError!, onRetry: _refresh)
+            else if (todayJobs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: _EmptyCard(icon: Icons.event_available_outlined, title: 'No work scheduled today', subtitle: 'Your accepted jobs for today will appear here.'),
+              )
+            else
+              for (final job in todayJobs) _buildJobPreview(job),
+          ],
+        ),
+      ),
+      const SizedBox(height: 10),
+      Card(
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          leading: const Icon(Icons.assignment_outlined, color: AirwayColors.primary),
+          title: Text(AirwayText.tr('Accepted & upcoming jobs', 'स्वीकार किए गए और आने वाले काम'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: Text(AirwayText.tr('${upcomingJobs.length} upcoming jobs', '${upcomingJobs.length} आने वाले काम')),
+          children: [
+            const Divider(height: 1),
+            if (_jobsError != null)
+              _SectionErrorCard(message: _jobsError!, onRetry: _refresh)
+            else if (upcomingJobs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: _EmptyCard(icon: Icons.work_outline_rounded, title: 'No upcoming jobs', subtitle: 'Jobs you accept will appear here with their details and next steps.'),
+              )
+            else
+              for (final job in upcomingJobs.take(5)) _buildJobPreview(job),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(onPressed: _openAssignedJobs, child: Text(AirwayText.tr('Open all jobs', 'सभी काम देखें'))),
             ),
-          ),
-          if (pendingOffers.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: AirwayColors.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${pendingOffers.length} NEW',
-                style: const TextStyle(color: AirwayColors.primary, fontSize: 11, fontWeight: FontWeight.w900),
-              ),
-            ),
-          TextButton(onPressed: _openOffers, child: Text(AirwayText.tr('See all', 'सभी देखें'))),
-        ],
+          ],
+        ),
       ),
-      const SizedBox(height: 4),
-      if (_offersError != null)
-        _SectionErrorCard(message: _offersError!, onRetry: _refresh)
-      else if (pendingOffers.isEmpty)
-        const _EmptyCard(
-          icon: Icons.inbox_outlined,
-          title: 'No new service requests',
-          subtitle: 'When a customer books one of your services, the request will appear here. Keep your availability on to receive offers.',
-        )
-      else
-        ...pendingOffers.take(3).map(_buildOfferPreview),
-      const SizedBox(height: 22),
-      Row(
-        children: [
-          Expanded(child: _buildMetricCard('New requests', '${pendingOffers.length}', Icons.notifications_active_outlined)),
-          const SizedBox(width: 10),
-          Expanded(child: _buildMetricCard('Active jobs', '${activeJobs.length}', Icons.assignment_outlined)),
-        ],
+      const SizedBox(height: 10),
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.account_balance_wallet_outlined, color: AirwayColors.primary),
+          title: Text(AirwayText.tr('Earnings & missions', 'कमाई और मिशन'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: Text(AirwayText.tr('Check your earnings and reward progress', 'अपनी कमाई और रिवॉर्ड प्रोग्रेस देखें')),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => setState(() => _selectedTab = 2),
+        ),
       ),
-      const SizedBox(height: 22),
-      _sectionHeading(
-        AirwayText.tr('Your active work', 'आपका चालू काम'),
-        action: AirwayText.tr('View jobs', 'जॉब देखें'),
-        onAction: _openAssignedJobs,
-      ),
-      const SizedBox(height: 8),
-      if (_jobsError != null)
-        _SectionErrorCard(message: _jobsError!, onRetry: _refresh)
-      else if (activeJobs.isEmpty)
-        const _EmptyCard(
-          icon: Icons.work_outline_rounded,
-          title: 'No active jobs yet',
-          subtitle: 'Once you accept a service request, its details and next steps will appear here.',
-        )
-      else
-        ...activeJobs.take(3).map(_buildJobPreview),
-      const SizedBox(height: 18),
-      _sectionHeading(
-        AirwayText.tr('Your next steps', 'आपके अगले कदम'),
-        action: AirwayText.tr('Open profile', 'प्रोफ़ाइल खोलें'),
-        onAction: () => setState(() => _selectedTab = 3),
-      ),
-      const SizedBox(height: 8),
-      _buildNextJobCard(),
     ]);
   }
 
