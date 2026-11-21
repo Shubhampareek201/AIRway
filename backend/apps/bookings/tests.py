@@ -3958,6 +3958,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         worker = WorkerProfile.objects.create(
             user=worker_user,
             status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
             is_online=True,
         )
         WorkerService.objects.create(worker=worker, service=self.service)
@@ -4282,7 +4283,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         )
         worker_user = self._create_user("+919876543285")
         worker = WorkerProfile.objects.create(
-            user=worker_user, status=WorkerProfile.Status.APPROVED, is_online=True
+            user=worker_user, status=WorkerProfile.Status.APPROVED, commission_rate=Decimal("20.00"), is_online=True
         )
         WorkerZone.objects.create(worker=worker, zone=self.address.zone)
         WorkerService.objects.create(worker=worker, service=self.service)
@@ -4402,6 +4403,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
             user = self._create_user(f"+919876549{suffix}")
             worker = WorkerProfile.objects.create(
                 user=user, status=WorkerProfile.Status.APPROVED,
+                commission_rate=Decimal("20.00"),
                 is_online=True, rating_avg=rating,
             )
             WorkerZone.objects.create(worker=worker, zone=self.address.zone)
@@ -4557,7 +4559,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         for phone, service in (("+919876543281", self.service), ("+919876543282", second_service)):
             user = self._create_user(phone)
             worker = WorkerProfile.objects.create(
-                user=user, status=WorkerProfile.Status.APPROVED, is_online=True
+                user=user, status=WorkerProfile.Status.APPROVED, commission_rate=Decimal("20.00"), is_online=True
             )
             WorkerZone.objects.create(worker=worker, zone=self.address.zone)
             WorkerService.objects.create(worker=worker, service=service)
@@ -4611,7 +4613,7 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         for phone, service in (("+919876543283", self.service), ("+919876543284", second_service)):
             user = self._create_user(phone)
             worker = WorkerProfile.objects.create(
-                user=user, status=WorkerProfile.Status.APPROVED, is_online=True
+                user=user, status=WorkerProfile.Status.APPROVED, commission_rate=Decimal("20.00"), is_online=True
             )
             WorkerZone.objects.create(worker=worker, zone=self.address.zone)
             WorkerService.objects.create(worker=worker, service=service)
@@ -5588,6 +5590,7 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         worker = WorkerProfile.objects.create(
             user=worker_user,
             status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
             is_online=True,
             rating_avg=4.8,
         )
