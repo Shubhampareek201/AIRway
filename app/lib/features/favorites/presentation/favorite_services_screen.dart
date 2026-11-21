@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/favorites/data/favorite_api.dart';
 import 'package:airway/features/catalog/presentation/service_detail_screen.dart';
@@ -93,11 +94,11 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Favorite services'),
+        title: Text(AirwayText.tr('Favorite services', 'पसंदीदा सेवाएँ')),
         actions: [
           IconButton(
             onPressed: _loading ? null : _load,
-            tooltip: 'Refresh',
+            tooltip: AirwayText.tr('Refresh', 'रीफ़्रेश करें'),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -118,7 +119,7 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
                         FilledButton.icon(
                           onPressed: _load,
                           icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Retry'),
+                          label: Text(AirwayText.tr('Retry', 'फिर कोशिश करें')),
                         ),
                       ],
                     ),
@@ -134,10 +135,10 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
                           SizedBox(height: 90),
                           Icon(Icons.favorite_border_rounded, size: 58, color: AirwayColors.primary),
                           SizedBox(height: 16),
-                          Text('No favorites yet', textAlign: TextAlign.center,
+                          Text(AirwayText.tr('No favorites yet', 'अभी कोई पसंदीदा सेवा नहीं है'), textAlign: TextAlign.center,
                               style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
                           SizedBox(height: 8),
-                          Text('Save services you may want to book later using the heart button on a service page.',
+                          Text(AirwayText.tr('Save services you may want to book later using the heart button on a service page.', 'जिन सेवाओं को बाद में बुक करना चाहते हैं, उन्हें सेवा पेज पर हार्ट बटन दबाकर सेव करें।'),
                               textAlign: TextAlign.center,
                               style: TextStyle(color: AirwayColors.textSecondary, height: 1.45)),
                         ],
@@ -180,7 +181,7 @@ class _FavoriteServicesScreenState extends State<FavoriteServicesScreen> {
                                 ),
                               ),
                               trailing: IconButton(
-                                tooltip: 'Remove favorite',
+                                tooltip: AirwayText.tr('Remove favorite', 'पसंदीदा से हटाएँ'),
                                 onPressed: _removing.contains(item['id']) ? null : () => _remove(item),
                                 icon: const Icon(Icons.favorite_rounded, color: AirwayColors.error),
                               ),
