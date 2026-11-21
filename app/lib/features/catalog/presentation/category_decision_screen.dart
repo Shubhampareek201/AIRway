@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 
 /// Collects category-level choices before the customer browses individual services.
 /// The fields are configured in Category.flow_steps by the AIRway admin.
@@ -90,7 +91,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
                 backgroundColor: green,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Continue to services'),
+              child: Text(AirwayText.tr('Continue to services', 'सेवाओं की ओर बढ़ें')),
             ),
           ],
         ),
@@ -227,7 +228,7 @@ class _CategoryDecisionScreenState extends State<CategoryDecisionScreen> {
     }).toList();
     if (missing.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please choose or enter: ${missing.first['title'] ?? missing.first['key']}')),
+        SnackBar(content: Text(AirwayText.tr('Please choose or enter: ${missing.first['title'] ?? missing.first['key']}', 'कृपया चुनें या दर्ज करें: ${missing.first['title'] ?? missing.first['key']}'))),
       );
       return;
     }
