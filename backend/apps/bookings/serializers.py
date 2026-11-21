@@ -909,6 +909,21 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     def get_worker_payout(self, obj):
         """Mirror the settled worker-earning calculation for a pre-acceptance estimate."""
         from decimal import Decimal, ROUND_HALF_UP
+        if obj.status == obj.Status.ACCEPTED:
+            from apps.workers.models import WorkerEarning
+            locked = WorkerEarning.objects.filter(
+                worker=obj.worker, extra_work__isnull=True
+            )
+            if obj.appointment_group_id:
+                locked = locked.filter(booking__appointment_group_id=obj.appointment_group_id)
+            elif obj.order_id:
+                locked = locked.filter(booking__order_item__order_id=obj.order_id)
+            else:
+                locked = locked.filter(booking_id=obj.booking_id)
+            locked_rows = list(locked.exclude(net_amount__isnull=True))
+            if locked_rows:
+                locked_total = sum((row.net_amount for row in locked_rows), Decimal("0.00"))
+                return str(locked_total) if locked_total > 0 else None
         rate = obj.worker.commission_rate
         if rate is None:
             return None
