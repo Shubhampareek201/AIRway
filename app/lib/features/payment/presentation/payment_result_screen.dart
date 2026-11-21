@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/payment/data/payment_models.dart';
@@ -130,7 +131,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
     return Scaffold(
       backgroundColor: _Ui.bg,
       appBar: AppBar(
-        title: const Text('Payment Status'),
+        title: Text(AirwayText.tr('Payment Status', 'भुगतान की स्थिति')),
         backgroundColor: _Ui.bg,
         elevation: 0,
         foregroundColor: _Ui.ink,
@@ -348,7 +349,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
           FilledButton.icon(
             onPressed: _navigateToBooking,
             icon: const Icon(Icons.list_alt_rounded),
-            label: const Text('View Booking'),
+            label: Text(AirwayText.tr('View Booking', 'बुकिंग देखें')),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -358,7 +359,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
           OutlinedButton.icon(
             onPressed: _navigateToBooking,
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Refresh Status'),
+            label: Text(AirwayText.tr('Refresh Status', 'स्थिति रीफ़्रेश करें')),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -370,7 +371,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
             Navigator.pop(context);
           },
           icon: const Icon(Icons.arrow_back_rounded),
-          label: const Text('Back'),
+          label: Text(AirwayText.tr('Back', 'वापस')),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -418,7 +419,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AirwayColors.textSecondary)),
               const SizedBox(height: 20),
-              FilledButton(onPressed: _verifyPaymentStatus, child: const Text('Retry')),
+              FilledButton(onPressed: _verifyPaymentStatus, child: Text(AirwayText.tr('Retry', 'फिर कोशिश करें'))),
             ],
           ),
         ),
