@@ -930,6 +930,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             else:
                 snapshot = obj.booking.pricing_snapshot or {}
                 gross = Decimal(str(snapshot.get("subtotal", snapshot.get("total", "0.00"))))
+        if gross <= 0:
+            return None
         commission = (gross * rate / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -1021,6 +1023,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             and obj.worker.status == "approved"
             and obj.worker.is_online
             and obj.worker.commission_rate is not None
+            and self.get_worker_payout(obj) is not None
         )
 
     def get_can_decline(self, obj):
