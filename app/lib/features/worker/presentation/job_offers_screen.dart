@@ -354,8 +354,14 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
             Text(AirwayText.tr('Services in this appointment', 'इस अपॉइंटमेंट की सेवाएँ'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             ...offer.orderServices.map((service) => Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: Text('• ${service['service_title'] ?? 'Service'}${service['variant_title'] == null ? '' : ' — ${service['variant_title']}'}', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('• ${service['service_title'] ?? 'Service'}${service['variant_title'] == null ? '' : ' — ${service['variant_title']}'}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                if (service['service_description']?.toString().trim().isNotEmpty == true)
+                  Padding(padding: const EdgeInsets.only(left: 12, top: 3), child: Text(service['service_description'].toString(), style: TextStyle(fontSize: 11, color: AirwayColors.textSecondary, height: 1.35))),
+                if (service['service_image_url']?.toString().isNotEmpty == true)
+                  Padding(padding: const EdgeInsets.only(left: 12, top: 5), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(service['service_image_url'].toString(), height: 90, width: 140, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()))),
+              ]),
             )),
           ],
           if (offer.bookingNotes?.trim().isNotEmpty == true) ...[
