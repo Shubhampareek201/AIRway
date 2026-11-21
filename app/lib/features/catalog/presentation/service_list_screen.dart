@@ -141,7 +141,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             serviceAudience: service.audience,
           )) return false;
       if (lower.isEmpty) return true;
-      return service.displayTitle.toLowerCase().contains(lower) ||
+      return service.title.toLowerCase().contains(lower) ||
+          service.titleHi?.toLowerCase().contains(lower) == true ||
           service.description?.toLowerCase().contains(lower) == true ||
           service.categoryName.toLowerCase().contains(lower);
     }).toList();
@@ -177,7 +178,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   String _packageDescription(ServiceVariant variant) {
     final description = variant.description?.trim() ?? '';
     if (description.isNotEmpty) return description;
-    final title = variant.displayTitle.toLowerCase();
+    final title = variant.title.toLowerCase();
     if (title.contains('basic') || title.contains('essential')) {
       return 'Essential care for everyday service needs.';
     }
