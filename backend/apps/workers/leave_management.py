@@ -148,7 +148,7 @@ def cancel_worker_leave(*, leave, worker):
         )
         for user in staff_users.iterator():
             _notify(
-                user, Notification.Type.WORKER_LEAVE_REQUEST,
+                user, Notification.Type.WORKER_LEAVE_CANCELLED,
                 "Worker leave request cancelled",
                 f"{worker.user.name or worker.user.phone} cancelled leave request #{locked.pk}.",
                 {"worker_leave_id": locked.pk, "worker_id": worker.pk, "status": WorkerLeave.Status.CANCELLED},
