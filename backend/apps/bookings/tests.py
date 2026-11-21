@@ -19,6 +19,7 @@ from apps.workers.models import (
     WorkerService,
     WorkerZone,
     WorkerSchedule,
+    WorkerLeave,
 )
 from apps.bookings.models import Booking, WorkerOffer, BookingAssignment, BookingCompletionOTP, CustomerCart, CartItem, Order, OrderItem, RecurringWashPlan, RecurringWashVisit
 from django.contrib.auth.hashers import make_password
@@ -3056,6 +3057,54 @@ class DispatcherServiceTest(TestCase):
         # The configured launch policy offers every eligible worker.
         self.assertEqual(len(offers), 10)
         self.assertEqual(WorkerOffer.objects.filter(booking=booking).count(), 10)
+
+    def test_dispatcher_only_blocks_approved_worker_leave(self):
+        """Pending/rejected/cancelled/expired leave must not block dispatch."""
+        from apps.bookings.dispatcher import DispatcherService
+
+        statuses = (
+            WorkerLeave.Status.APPROVED,
+            WorkerLeave.Status.PENDING,
+            WorkerLeave.Status.REJECTED,
+            WorkerLeave.Status.CANCELLED,
+            WorkerLeave.Status.EXPIRED,
+        )
+        workers = {}
+        for index, leave_status in enumerate(statuses):
+            worker = self._create_eligible_worker(suffix=f"70{index}")
+            workers[leave_status] = worker
+            WorkerLeave.objects.create(
+                worker=worker,
+                start_at=self._get_booking_time() - timedelta(hours=1),
+                end_at=self._get_booking_time() + timedelta(hours=1),
+                status=leave_status,
+            )
+
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=self._get_booking_time(),
+            status=Booking.Status.PENDING,
+        )
+        from apps.payments.models import Payment
+        Payment.objects.create(
+            booking=booking, customer=booking.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("1.00"),
+            status=Payment.Status.PAID, method=Payment.Method.RAZORPAY,
+            razorpay_payment_id="test_leave_status_dispatch", paid_at=timezone.now(),
+        )
+
+        offers = DispatcherService.dispatch_offers(booking)
+        offered_worker_ids = {offer.worker_id for offer in offers}
+        self.assertNotIn(workers[WorkerLeave.Status.APPROVED].pk, offered_worker_ids)
+        for leave_status in (
+            WorkerLeave.Status.PENDING,
+            WorkerLeave.Status.REJECTED,
+            WorkerLeave.Status.CANCELLED,
+            WorkerLeave.Status.EXPIRED,
+        ):
+            self.assertIn(workers[leave_status].pk, offered_worker_ids)
 
     def test_dispatcher_limits_to_batch_size(self):
         """DispatcherService should respect batch_size parameter."""
