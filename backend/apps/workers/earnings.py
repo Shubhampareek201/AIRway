@@ -95,6 +95,53 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
     )
 
 
+@transaction.atomic
+def snapshot_worker_earning_for_assignment(booking, worker):
+    """Lock the worker's net service earning when they accept the job."""
+    rate = worker.commission_rate
+    if rate is None:
+        return None
+    order_item = OrderItem.objects.filter(booking=booking).first()
+    if order_item is not None:
+        gross = Decimal(str(order_item.line_subtotal or "0.00"))
+    else:
+        snapshot = booking.pricing_snapshot or {}
+        gross = Decimal(str(snapshot.get("subtotal", snapshot.get("total", "0.00"))))
+    if not gross.is_finite() or gross <= 0:
+        return None
+    commission = (gross * rate / Decimal("100")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    existing = WorkerEarning.objects.select_for_update().filter(
+        booking=booking, extra_work__isnull=True
+    ).first()
+    if existing and existing.status == WorkerEarning.Status.PAID:
+        return existing
+    net = gross - commission + (existing.adjustment_amount if existing else Decimal("0.00"))
+    if net <= 0:
+        return None
+    values = {
+        "worker": worker,
+        "gross_amount": gross,
+        "commission_rate": rate,
+        "commission_amount": commission,
+        "net_amount": net,
+        "status": WorkerEarning.Status.PENDING,
+        "hold_reason": "Worker earning locked at acceptance; pending service completion and final settlement.",
+    }
+    if existing:
+        for field, value in values.items():
+            setattr(existing, field, value)
+        existing.save(update_fields=[*values.keys(), "updated_at"])
+        return existing
+    return WorkerEarning.objects.create(
+        booking=booking,
+        extra_work=None,
+        payment=None,
+        **values,
+    )
+
+
 def _get_paid_base_payment(booking):
     order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
     if order_item:
