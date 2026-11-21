@@ -337,3 +337,124 @@ def dispatch_due_recurring_wash_visits():
             logger.exception("Recurring visit dispatch failed for visit %s", visit.pk)
     logger.info("Dispatched %s offers for recurring visits", dispatched)
     return dispatched
+
+
+# Checkout reservation hold when a customer never starts advance payment.
+UNPAID_CHECKOUT_TIMEOUT_MINUTES = 15
+
+
+@shared_task
+def expire_unpaid_checkouts():
+    """Cancel abandoned, unpaid checkouts so their service slots are released."""
+    from django.conf import settings
+    from apps.bookings.models import (
+        Order, Booking, BookingStatusHistory, WorkerOffer,
+    )
+    from apps.payments.models import Payment
+    from apps.notifications.models import Notification
+
+    timeout_minutes = max(int(getattr(
+        settings, "UNPAID_CHECKOUT_TIMEOUT_MINUTES",
+        UNPAID_CHECKOUT_TIMEOUT_MINUTES,
+    )), 1)
+    cutoff = timezone.now() - timedelta(minutes=timeout_minutes)
+    order_ids = Order.objects.filter(
+        status__in=(Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED),
+        created_at__lte=cutoff,
+    ).order_by("created_at").values_list("pk", flat=True)
+
+    expired_count = 0
+    for order_id in order_ids.iterator():
+        with transaction.atomic():
+            order = Order.objects.select_for_update().filter(
+                pk=order_id,
+                status__in=(Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED),
+                created_at__lte=cutoff,
+            ).first()
+            if order is None:
+                continue
+
+            # A live gateway attempt must be resolved by the payment-timeout
+            # task; a captured payment must never be cancelled by this task.
+            if Payment.objects.filter(
+                order=order,
+                status__in=(Payment.Status.PENDING, Payment.Status.PAID),
+            ).exists():
+                continue
+
+            bookings = list(
+                Booking.objects.select_for_update().filter(
+                    order_item__order=order,
+                ).exclude(status=Booking.Status.CANCELLED).order_by("pk")
+            )
+            # Never tear down work that has progressed beyond an unpaid hold.
+            if any(
+                booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
+                or BookingOfferAssignmentExists(booking)
+                for booking in bookings
+            ):
+                continue
+
+            now = timezone.now()
+            active_offers = WorkerOffer.objects.filter(
+                booking__in=bookings,
+                status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+            ).select_related("worker__user", "booking")
+            for offer in active_offers:
+                offer.status = WorkerOffer.Status.WITHDRAWN
+                offer.responded_at = now
+                offer.save(update_fields=["status", "responded_at", "updated_at"])
+                Notification.objects.create(
+                    user=offer.worker.user,
+                    type=Notification.Type.WORKER_OFFER_WITHDRAWN,
+                    title="Unpaid checkout expired",
+                    body=f"The unpaid AIRway booking #{offer.booking_id} expired and is no longer available.",
+                    channel=Notification.Channel.IN_APP,
+                    data={"booking_id": offer.booking_id, "order_id": order.pk, "offer_id": offer.pk},
+                )
+
+            for booking in bookings:
+                old_status = booking.status
+                booking.status = Booking.Status.CANCELLED
+                booking.cancelled_at = now
+                booking.cancelled_by = None
+                booking.cancellation_reason = "Checkout expired before advance payment was completed."
+                booking.save(update_fields=[
+                    "status", "cancelled_at", "cancelled_by",
+                    "cancellation_reason", "updated_at",
+                ])
+                BookingStatusHistory.objects.create(
+                    booking=booking,
+                    from_status=old_status,
+                    to_status=Booking.Status.CANCELLED,
+                    changed_by=None,
+                    note="Checkout reservation expired because advance payment was not completed within the hold window.",
+                )
+
+            order.status = Order.Status.CANCELLED
+            order.save(update_fields=["status", "updated_at"])
+            Notification.objects.create(
+                user=order.customer,
+                type=Notification.Type.BOOKING_CANCELLED,
+                title="Checkout expired",
+                body=(
+                    f"Your AIRway checkout #{order.pk} expired because payment was not completed "
+                    f"within {timeout_minutes} minutes. The reserved service time has been released. "
+                    "You can create a new booking and choose an available slot."
+                ),
+                channel=Notification.Channel.IN_APP,
+                data={
+                    "order_id": order.pk,
+                    "reason": "unpaid_checkout_expired",
+                    "timeout_minutes": timeout_minutes,
+                },
+            )
+            expired_count += 1
+
+    logger.info("Expired %s unpaid AIRway checkouts", expired_count)
+    return expired_count
+
+
+def BookingOfferAssignmentExists(booking):
+    """Avoid importing assignment relations into the task's query joins."""
+    return hasattr(booking, "assignment")
