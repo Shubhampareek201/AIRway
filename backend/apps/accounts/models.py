@@ -70,7 +70,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     firebase_uid = models.CharField(max_length=128, unique=True, null=True, blank=True)
     gender = models.CharField(max_length=20, choices=Gender.choices, blank=True)
     photo = models.ImageField(upload_to="users/", blank=True)
-    language = models.CharField(max_length=2, choices=Language.choices, default=Language.HINDI)
+    language = models.CharField(max_length=2, choices=Language.choices, default=Language.ENGLISH)
     active_mode = models.CharField(max_length=10, choices=Mode.choices, default=Mode.CUSTOMER)
     referral_code = models.CharField(max_length=12, unique=True, blank=True)
 
