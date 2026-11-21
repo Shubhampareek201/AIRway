@@ -293,6 +293,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             return BookingListSerializer
         return BookingDetailSerializer
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
