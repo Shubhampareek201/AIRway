@@ -25,6 +25,10 @@ app.conf.beat_schedule = {
         'task': 'apps.bookings.tasks.timeout_pending_payments',
         'schedule': 60.0,
     },
+    'expire-unpaid-checkouts-every-minute': {
+        'task': 'apps.bookings.tasks.expire_unpaid_checkouts',
+        'schedule': 60.0,
+    },
     'setup-recurring-wash-visits-every-five-minutes': {
         'task': 'apps.bookings.tasks.setup_recurring_wash_visit_bookings',
         'schedule': 300.0,
