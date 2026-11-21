@@ -290,6 +290,7 @@ class WorkerLeave(TimeStampedModel):
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
         CANCELLED = "cancelled", "Cancelled"
+        EXPIRED = "expired", "Expired"
 
     # Existing admin-created leave rows remain effective after migration.
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.APPROVED, db_index=True)
