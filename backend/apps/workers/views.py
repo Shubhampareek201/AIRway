@@ -2027,11 +2027,13 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_409_CONFLICT,
                         )
 
+            from apps.workers.earnings import snapshot_worker_earning_for_assignment
             assignments = []
             for booking in bookings:
                 assignment = BookingAssignment.objects.create(
                     booking=booking, worker=worker, accepted_at=now,
                 )
+                snapshot_worker_earning_for_assignment(booking, worker)
                 assignments.append(assignment)
                 old_status = booking.status
                 booking.status = Booking.Status.ASSIGNED
