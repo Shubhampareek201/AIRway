@@ -52,6 +52,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   final Set<int> _knownOfferIds = {};
   bool _incomingOfferDialogOpen = false;
   StreamSubscription<RemoteMessage>? _pushOpenSubscription;
+  StreamSubscription<RemoteMessage>? _pushForegroundSubscription;
 
   static const _tabTitles = ['Home', 'Jobs', 'Earnings', 'Profile'];
 
@@ -61,6 +62,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     WidgetsBinding.instance.addObserver(this);
     PushNotificationService.initializeForAuthenticatedUser().catchError((_) {});
     _pushOpenSubscription = FirebaseMessaging.onMessageOpenedApp.listen(_handlePushOpen);
+    _pushForegroundSubscription = FirebaseMessaging.onMessage.listen(_handlePushOpen);
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null) _handlePushOpen(message);
     });
@@ -80,6 +82,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     WidgetsBinding.instance.removeObserver(this);
     _offerPollTimer?.cancel();
     _pushOpenSubscription?.cancel();
+    _pushForegroundSubscription?.cancel();
     super.dispose();
   }
 
@@ -137,7 +140,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     try {
       await showDialog<void>(
         context: context,
-        barrierDismissible: false,
+        barrierDismissible: true,
         builder: (dialogContext) => AlertDialog(
           icon: const Icon(Icons.notifications_active_rounded, size: 34, color: AirwayColors.primary),
           title: Text(AirwayText.tr('New service request', 'नई सेवा रिक्वेस्ट')),
@@ -145,8 +148,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             width: 420,
             child: SingleChildScrollView(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                if (offer.serviceImageUrl?.isNotEmpty == true)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(offer.serviceImageUrl!, height: 120, width: double.infinity, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  ),
                 Text(offer.serviceTitle ?? 'AIRway service', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
                 if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
+                if (offer.customerName?.trim().isNotEmpty == true)
+                  Text(AirwayText.tr('Customer: ${offer.customerName}', 'ग्राहक: ${offer.customerName}')),
+                if (offer.serviceDescription?.trim().isNotEmpty == true)
+                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(offer.serviceDescription!, style: const TextStyle(fontSize: 12, height: 1.4))),
                 if (offer.orderServices.length > 1) ...[
                   const SizedBox(height: 10),
                   Text(AirwayText.tr('Services in this order', 'इस ऑर्डर की सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
@@ -171,17 +184,19 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   Text('${answer['label'] ?? answer['key']}: ${answer['value']}'),
                 if (offer.addons.isNotEmpty)
                   Text(AirwayText.tr('Add-ons: ${offer.addons.map((item) => item['title']).join(', ')}', 'अतिरिक्त सेवाएँ: ${offer.addons.map((item) => item['title']).join(', ')}')),
-                if (offer.expiresAt != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(AirwayText.tr('Respond before ${_dateLabel(offer.expiresAt)}', '${_dateLabel(offer.expiresAt)} से पहले जवाब दें'), style: const TextStyle(color: AirwayColors.error, fontWeight: FontWeight.w700)),
-                  ),
                 const SizedBox(height: 8),
                 Text(AirwayText.tr('Review the details before accepting. AIRway will confirm the assignment with the server.', 'स्वीकार करने से पहले विवरण जाँचें। AIRway सर्वर से असाइनमेंट की पुष्टि करेगा।'), style: TextStyle(fontSize: 12)),
               ]),
             ),
           ),
           actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _openOffers();
+              },
+              child: Text(AirwayText.tr('View later', 'बाद में देखें')),
+            ),
             TextButton(
               onPressed: () async {
                 Navigator.pop(dialogContext);
