@@ -605,7 +605,10 @@ class WorkerJobLifecycleTest(TestCase):
         detail_response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_response.data["customer_name"], "Customer")
-        self.assertNotIn("customer_phone", detail_response.data)
+        self.assertIn("customer_phone", detail_response.data)
+        self.assertIsNone(detail_response.data["customer_phone"])
+        self.assertFalse(detail_response.data["customer_contact_available"])
+        self.assertIsNotNone(detail_response.data["customer_contact_available_at"])
         self.assertNotIn(self.customer_user.phone, str(detail_response.data))
 
 
