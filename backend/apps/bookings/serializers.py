@@ -938,7 +938,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         commission = (gross * rate / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        return str(max(gross - commission, Decimal("0.00")))
+        net_amount = gross - commission
+        return str(net_amount) if net_amount > 0 else None
 
     def get_order_services(self, obj):
         if obj.appointment_group_id:
