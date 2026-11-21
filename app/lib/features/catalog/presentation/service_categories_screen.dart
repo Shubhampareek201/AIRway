@@ -93,7 +93,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       answers['beauty_audience'] = audience;
     }
 
-    final categoryIdentity = '${selectedCategory.slug} ${selectedCategory.title}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    final categoryIdentity = '${selectedCategory.slug} ${selectedCategory.displayTitle}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
     final isCarWashCategory = categoryIdentity.contains('car wash') ||
         categoryIdentity.replaceAll(' ', '').contains('carwash') ||
         selectedCategory.children.any(
@@ -149,7 +149,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => CategoryDecisionScreen(
-            categoryTitle: selectedCategory.title,
+            categoryTitle: selectedCategory.displayTitle,
             steps: selectedCategory.customerFlowSteps,
           ),
         ),
@@ -284,7 +284,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           MaterialPageRoute(
             builder: (_) => ServiceListScreen(
               categoryId: destinationCategory.id,
-              categoryTitle: destinationCategory.title,
+              categoryTitle: destinationCategory.displayTitle,
               addressId: widget.addressId,
               initialAnswers: answers,
             ),
@@ -299,7 +299,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
           builder: (_) => ServiceCategoriesScreen(
             initialCategories: nextCategories,
             addressId: widget.addressId,
-            title: destinationCategory.title,
+            title: destinationCategory.displayTitle,
             initialAnswers: answers,
           ),
         ),
@@ -312,7 +312,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
       MaterialPageRoute(
         builder: (_) => ServiceListScreen(
           categoryId: selectedCategory.id,
-          categoryTitle: selectedCategory.title,
+          categoryTitle: selectedCategory.displayTitle,
           addressId: widget.addressId,
           initialAnswers: answers,
         ),
@@ -323,7 +323,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
   String? _categoryPhoto(Category category) =>
       CatalogCategoryImageResolver.forCategory(
         slug: category.slug,
-        title: category.title,
+        title: category.displayTitle,
       );
 
   IconData _categoryIcon(String name) {
@@ -374,7 +374,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       color: AirwayColors.primarySoft,
                       alignment: Alignment.center,
                       child: Icon(
-                        _categoryIcon(category.title),
+                        _categoryIcon(category.displayTitle),
                         color: AirwayColors.primary,
                         size: 38,
                       ),
@@ -386,7 +386,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                         color: AirwayColors.primarySoft,
                         alignment: Alignment.center,
                         child: Icon(
-                          _categoryIcon(category.title),
+                          _categoryIcon(category.displayTitle),
                           color: AirwayColors.primary,
                           size: 48,
                         ),
@@ -402,7 +402,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          category.title,
+                          category.displayTitle,
                           maxLines: 3,
                           softWrap: true,
                           overflow: TextOverflow.visible,
