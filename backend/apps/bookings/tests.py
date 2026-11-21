@@ -1782,6 +1782,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         self.worker1_profile = WorkerProfile.objects.create(
             user=self.worker1_user,
             status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
             is_online=True,
             rating_avg=4.5,
         )
@@ -1801,6 +1802,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         self.worker2_profile = WorkerProfile.objects.create(
             user=self.worker2_user,
             status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
             is_online=True,
         )
         WorkerService.objects.create(worker=self.worker2_profile, service=self.service)
@@ -1819,6 +1821,7 @@ class CustomerBookingWorkerAssignmentIntegrationTest(BookingAPITestMixin, TestCa
         self.worker3_profile = WorkerProfile.objects.create(
             user=self.worker3_user,
             status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
             is_online=False,
         )
         WorkerService.objects.create(worker=self.worker3_profile, service=self.service)
