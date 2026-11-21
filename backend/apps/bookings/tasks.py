@@ -348,7 +348,7 @@ def expire_unpaid_checkouts():
     """Cancel abandoned, unpaid checkouts so their service slots are released."""
     from django.conf import settings
     from apps.bookings.models import (
-        Order, Booking, BookingStatusHistory, WorkerOffer,
+        Order, Booking, BookingAssignment, BookingStatusHistory, WorkerOffer,
     )
     from apps.payments.models import Payment
     from apps.notifications.models import Notification
@@ -390,7 +390,7 @@ def expire_unpaid_checkouts():
             # Never tear down work that has progressed beyond an unpaid hold.
             if any(
                 booking.status not in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
-                or BookingOfferAssignmentExists(booking)
+                or BookingAssignment.objects.filter(booking_id=booking.pk).exists()
                 for booking in bookings
             ):
                 continue
@@ -454,7 +454,3 @@ def expire_unpaid_checkouts():
     logger.info("Expired %s unpaid AIRway checkouts", expired_count)
     return expired_count
 
-
-def BookingOfferAssignmentExists(booking):
-    """Avoid importing assignment relations into the task's query joins."""
-    return hasattr(booking, "assignment")
