@@ -10,7 +10,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, BookingAssignment, BookingDispute, BookingDisputeEvidence, BookingReworkProposal
+from apps.bookings.models import (
+    Booking, BookingAssignment, BookingDispute, BookingDisputeHistory,
+    BookingDisputeEvidence, BookingReworkProposal,
+)
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.workers.models import WorkerProfile, WorkerSchedule, WorkerService, WorkerZone, WorkerEarning
@@ -93,6 +96,10 @@ class BookingDisputeAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["raised_by_role"], "customer")
+        initial_history = BookingDisputeHistory.objects.get(dispute_id=response.data["id"])
+        self.assertEqual(initial_history.from_status, "")
+        self.assertEqual(initial_history.to_status, BookingDispute.Status.OPEN)
+        self.assertEqual(initial_history.changed_by, self.customer)
         detail = self.worker_client.get(
             f"/api/v1/bookings/disputes/{response.data['id']}/"
         )
@@ -177,6 +184,20 @@ class BookingDisputeAPITests(TestCase):
         )
         self.assertEqual(resolved.status_code, 200, resolved.data)
         self.assertEqual(resolved.data["status"], BookingDispute.Status.RESOLVED)
+        history = list(
+            BookingDisputeHistory.objects.filter(dispute_id=dispute_id)
+            .order_by("created_at", "pk")
+        )
+        self.assertEqual(
+            [(item.from_status, item.to_status) for item in history],
+            [
+                ("", BookingDispute.Status.OPEN),
+                (BookingDispute.Status.OPEN, BookingDispute.Status.IN_REVIEW),
+                (BookingDispute.Status.IN_REVIEW, BookingDispute.Status.RESOLVED),
+            ],
+        )
+        self.assertEqual(history[-1].changed_by, self.staff_user)
+        self.assertEqual(history[-1].note, "A rework visit has been approved.")
 
     def test_non_staff_cannot_change_dispute_status(self):
         dispute = BookingDispute.objects.create(
