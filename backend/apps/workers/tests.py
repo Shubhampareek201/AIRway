@@ -175,6 +175,7 @@ class NearbyWorkersAPITest(TestCase):
             user=worker_user,
             status=WorkerProfile.Status.APPROVED,
             is_online=True,
+            commission_rate=Decimal("10.00"),
         )
         WorkerService.objects.create(worker=worker_profile, service=self.service)
         WorkerZone.objects.create(worker=worker_profile, zone=self.zone)
@@ -248,6 +249,7 @@ class JobOfferAPITest(TestCase):
             user=self.worker_user,
             status=WorkerProfile.Status.APPROVED,
             is_online=True,
+            commission_rate=Decimal("10.00"),
         )
         WorkerService.objects.create(worker=self.worker_profile, service=self.service)
         WorkerZone.objects.create(worker=self.worker_profile, zone=self.zone)
@@ -403,7 +405,7 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
 
-    def test_accept_marks_expired_offer_and_rejects_it(self):
+    def test_accept_does_not_expire_offer_during_launch(self):
         self.client.force_authenticate(user=self.worker_user)
         offer = WorkerOffer.objects.create(
             booking=self.booking,
@@ -413,10 +415,10 @@ class JobOfferAPITest(TestCase):
 
         response = self.client.post(f"/api/v1/workers/offers/{offer.id}/accept/", format="json")
 
-        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.status_code, 200)
         offer.refresh_from_db()
-        self.assertEqual(offer.status, WorkerOffer.Status.EXPIRED)
-        self.assertFalse(BookingAssignment.objects.filter(booking=self.booking).exists())
+        self.assertEqual(offer.status, WorkerOffer.Status.ACCEPTED)
+        self.assertTrue(BookingAssignment.objects.filter(booking=self.booking).exists())
 
     def test_accept_rejects_worker_with_overlapping_active_assignment(self):
         self.client.force_authenticate(user=self.worker_user)
@@ -936,6 +938,7 @@ class JobOfferConcurrencyTest(TestCase):
             user=worker1_user,
             status=WorkerProfile.Status.APPROVED,
             is_online=True,
+            commission_rate=Decimal("10.00"),
         )
         WorkerService.objects.create(worker=worker1_profile, service=self.service)
         WorkerZone.objects.create(worker=worker1_profile, zone=self.zone)
@@ -953,6 +956,7 @@ class JobOfferConcurrencyTest(TestCase):
             user=worker2_user,
             status=WorkerProfile.Status.APPROVED,
             is_online=True,
+            commission_rate=Decimal("10.00"),
         )
         WorkerService.objects.create(worker=worker2_profile, service=self.service)
         WorkerZone.objects.create(worker=worker2_profile, zone=self.zone)
@@ -1557,6 +1561,7 @@ class WorkerAcceptancePaymentTest(TestCase):
             user=self.other_worker_user,
             status=WorkerProfile.Status.APPROVED,
             is_online=True,
+            commission_rate=Decimal("10.00"),
         )
         WorkerService.objects.create(worker=self.other_worker_profile, service=self.service)
         WorkerZone.objects.create(worker=self.other_worker_profile, zone=self.zone)
