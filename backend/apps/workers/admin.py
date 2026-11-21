@@ -18,6 +18,9 @@ from .models import (
     WorkerLeave,
     WorkerLeaveHistory,
     WorkerEarning,
+    WorkerRewardWallet,
+    WorkerRewardTransaction,
+    WorkerRewardWithdrawal,
 )
 
 
@@ -536,4 +539,92 @@ class WorkerEarningAdmin(ModelAdmin):
             obj.hold_reason = previous.hold_reason
         else:
             raise ValidationError("Only available earnings can be paid, or held earnings can be reconciled and released.")
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(WorkerRewardWallet)
+class WorkerRewardWalletAdmin(ModelAdmin):
+    list_display = ("worker", "balance", "total_earned", "total_withdrawn", "eligible_jobs_count", "updated_at")
+    search_fields = ("worker__user__name", "worker__user__phone")
+    readonly_fields = (
+        "worker", "balance", "total_earned", "total_withdrawn",
+        "eligible_jobs_count", "created_at", "updated_at",
+    )
+
+
+@admin.register(WorkerRewardTransaction)
+class WorkerRewardTransactionAdmin(ModelAdmin):
+    list_display = ("worker", "type", "amount", "milestone_jobs", "booking", "created_at")
+    list_filter = ("type", "created_at")
+    search_fields = ("worker__user__phone", "reference_key", "description")
+    readonly_fields = (
+        "wallet", "worker", "booking", "type", "amount", "milestone_jobs",
+        "reference_key", "description", "created_at", "updated_at",
+    )
+
+
+@admin.register(WorkerRewardWithdrawal)
+class WorkerRewardWithdrawalAdmin(ModelAdmin):
+    list_display = ("id", "worker", "amount", "status", "payout_upi_id", "created_at", "processed_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("worker__user__name", "worker__user__phone", "payout_upi_id", "payout_reference")
+    readonly_fields = (
+        "wallet", "worker", "amount", "payout_upi_id", "processed_by",
+        "processed_at", "created_at", "updated_at",
+    )
+    fields = (
+        "wallet", "worker", "amount", "payout_upi_id", "status",
+        "payout_reference", "admin_note", "processed_by", "processed_at",
+        "created_at", "updated_at",
+    )
+
+    def save_model(self, request, obj, form, change):
+        previous_status = None
+        if change:
+            previous_status = WorkerRewardWithdrawal.objects.filter(
+                pk=obj.pk
+            ).values_list("status", flat=True).first()
+
+        if change and previous_status != obj.status:
+            allowed = {
+                WorkerRewardWithdrawal.Status.PENDING: {
+                    WorkerRewardWithdrawal.Status.APPROVED,
+                    WorkerRewardWithdrawal.Status.REJECTED,
+                },
+                WorkerRewardWithdrawal.Status.APPROVED: {
+                    WorkerRewardWithdrawal.Status.PAID,
+                    WorkerRewardWithdrawal.Status.REJECTED,
+                },
+            }
+            if obj.status not in allowed.get(previous_status, set()):
+                raise ValidationError("Invalid withdrawal status transition.")
+            if obj.status == WorkerRewardWithdrawal.Status.PAID and not obj.payout_reference.strip():
+                raise ValidationError("A payout reference is required before marking a withdrawal as paid.")
+
+            with transaction.atomic():
+                locked = WorkerRewardWithdrawal.objects.select_for_update().get(pk=obj.pk)
+                if locked.status != previous_status:
+                    raise ValidationError("This withdrawal was updated by another admin. Reload and try again.")
+                if obj.status == WorkerRewardWithdrawal.Status.REJECTED:
+                    wallet = WorkerRewardWallet.objects.select_for_update().get(pk=locked.wallet_id)
+                    wallet.balance += locked.amount
+                    wallet.save(update_fields=["balance", "updated_at"])
+                    WorkerRewardTransaction.objects.get_or_create(
+                        reference_key=f"mission-withdrawal-refund:{locked.pk}",
+                        defaults={
+                            "wallet": wallet,
+                            "worker": locked.worker,
+                            "type": WorkerRewardTransaction.Type.REFUND,
+                            "amount": locked.amount,
+                            "description": f"Refund for rejected mission withdrawal #{locked.pk}",
+                        },
+                    )
+                elif obj.status == WorkerRewardWithdrawal.Status.PAID:
+                    wallet = WorkerRewardWallet.objects.select_for_update().get(pk=locked.wallet_id)
+                    wallet.total_withdrawn += locked.amount
+                    wallet.save(update_fields=["total_withdrawn", "updated_at"])
+
+                obj.processed_by = request.user
+                obj.processed_at = timezone.now()
+
         super().save_model(request, obj, form, change)
