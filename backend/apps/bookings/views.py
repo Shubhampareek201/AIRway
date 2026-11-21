@@ -2634,9 +2634,15 @@ class BookingIssuePhotoView(APIView):
             Booking.objects.select_related("customer", "assignment__worker"),
             pk=booking_id,
         )
-        allowed = booking.customer_id == request.user.pk or BookingAssignment.objects.filter(
-            booking=booking, worker__user=request.user
-        ).exists()
+        allowed = (
+            booking.customer_id == request.user.pk
+            or BookingAssignment.objects.filter(
+                booking=booking, worker__user=request.user
+            ).exists()
+            or booking.worker_offers.filter(
+                worker__user=request.user, status="pending"
+            ).exists()
+        )
         if not allowed:
             return Response({"detail": "Photo not found."}, status=status.HTTP_404_NOT_FOUND)
 
