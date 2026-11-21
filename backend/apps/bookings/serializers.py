@@ -789,6 +789,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     customer_total = serializers.SerializerMethodField()
     advance_received = serializers.SerializerMethodField()
     remaining_balance = serializers.SerializerMethodField()
+    worker_payout = serializers.SerializerMethodField()
     offered_at = serializers.DateTimeField(read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     can_accept = serializers.SerializerMethodField()
@@ -800,7 +801,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         fields = [
             "id", "booking", "order", "order_id", "order_services",
             "appointment_group_id", "appointment_group_message", "appointment_group_services",
-            "batch_number", "customer_total", "advance_received", "remaining_balance",
+            "batch_number", "customer_total", "advance_received", "remaining_balance", "worker_payout",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
             "worker_phone", "customer_name", "service_title", "service_description", "service_image_url",
@@ -901,6 +902,38 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         total = Decimal(self.get_customer_total(obj))
         advance = Decimal(self.get_advance_received(obj))
         return str(max(total - advance, Decimal("0.00")))
+
+    def get_worker_payout(self, obj):
+        """Mirror the settled worker-earning calculation for a pre-acceptance estimate."""
+        from decimal import Decimal, ROUND_HALF_UP
+        rate = obj.worker.commission_rate
+        if rate is None:
+            return None
+        if obj.appointment_group_id:
+            rows = obj.appointment_group.bookings.exclude(
+                status=Booking.Status.CANCELLED
+            ).select_related("order_item")
+            gross = sum(
+                (Decimal(str(item.order_item.line_subtotal or "0.00"))
+                 for item in rows if hasattr(item, "order_item")),
+                Decimal("0.00"),
+            )
+        elif obj.order_id:
+            gross = sum(
+                (Decimal(str(item.line_subtotal or "0.00")) for item in obj.order.items.all()),
+                Decimal("0.00"),
+            )
+        else:
+            order_item = getattr(obj.booking, "order_item", None)
+            if order_item:
+                gross = Decimal(str(order_item.line_subtotal or "0.00"))
+            else:
+                snapshot = obj.booking.pricing_snapshot or {}
+                gross = Decimal(str(snapshot.get("subtotal", snapshot.get("total", "0.00"))))
+        commission = (gross * rate / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        return str(max(gross - commission, Decimal("0.00")))
 
     def get_order_services(self, obj):
         if obj.appointment_group_id:
