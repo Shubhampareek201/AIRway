@@ -622,7 +622,7 @@ class DispatchConfiguration(TimeStampedModel):
     is_enabled = models.BooleanField(default=True)
     batch_size = models.PositiveSmallIntegerField(default=5)
     max_batches = models.PositiveSmallIntegerField(default=3)
-    offer_expiry_minutes = models.PositiveSmallIntegerField(default=5)
+    offer_expiry_minutes = models.PositiveSmallIntegerField(default=30)
     priority_order = models.CharField(
         max_length=32,
         choices=PRIORITY_CHOICES,
