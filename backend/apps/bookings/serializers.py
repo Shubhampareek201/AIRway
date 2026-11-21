@@ -1017,7 +1017,6 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             booking_eligible = obj.booking.status in ("pending", "confirmed")
         return (
             obj.status == obj.Status.PENDING
-            and (obj.expires_at is None or obj.expires_at > timezone.now())
             and booking_eligible
             and obj.worker.status == "approved"
             and obj.worker.is_online
