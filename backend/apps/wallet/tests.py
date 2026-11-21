@@ -14,6 +14,7 @@ from apps.bookings.models import Booking, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.payments.models import Payment
+from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
 
 User = get_user_model()
 
@@ -508,6 +509,24 @@ class ParentOrderWalletPaymentTest(TestCase):
             line_total=Decimal("1000.00"),
         )
         self.wallet = Wallet.objects.get(user=self.customer)
+
+        worker_user = User.objects.create_user(
+            phone="9876543291", password="test123456"
+        )
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        WorkerService.objects.create(worker=worker, service=service)
+        WorkerZone.objects.create(worker=worker, zone=zone)
+        WorkerSchedule.objects.create(
+            worker=worker,
+            weekday=timezone.localtime(self.booking.scheduled_at).weekday(),
+            is_active=True,
+            start_time="00:00",
+            end_time="23:59",
+        )
 
     @patch("apps.payments.views.client.order.create")
     def test_zero_wallet_amount_preserves_full_razorpay_checkout(self, create_order):
