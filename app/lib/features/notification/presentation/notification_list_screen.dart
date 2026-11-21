@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Notification;
+import 'package:airway/core/localization/airway_text.dart';
 import 'package:intl/intl.dart';
 import 'package:airway/core/theme/airway_colors.dart';
 import 'package:airway/features/notification/data/notification_models.dart';
@@ -235,7 +236,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w800)),
+            Text(AirwayText.tr('Notifications', 'सूचनाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
             Text(
               _unreadCount == 0 ? 'You are all caught up' : '$_unreadCount unread updates',
               style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary, fontWeight: FontWeight.w500),
@@ -248,7 +249,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               onPressed: _markingAll ? null : _markAllRead,
               child: _markingAll
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Mark all read'),
+                  : Text(AirwayText.tr('Mark all read', 'सभी को पढ़ा हुआ करें')),
             ),
           IconButton(
             tooltip: 'Refresh',
@@ -275,7 +276,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           const SizedBox(height: 14),
           Center(child: Text(_error!, textAlign: TextAlign.center)),
           const SizedBox(height: 14),
-          Center(child: FilledButton.icon(onPressed: () => _loadNotifications(), icon: const Icon(Icons.refresh), label: const Text('Try again'))),
+          Center(child: FilledButton.icon(onPressed: () => _loadNotifications(), icon: const Icon(Icons.refresh), label: Text(AirwayText.tr('Try again', 'फिर कोशिश करें')))),
         ],
       );
     }
@@ -297,7 +298,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           const SizedBox(height: 7),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 38),
-            child: Text('Booking updates, payment receipts and important alerts will appear here.', textAlign: TextAlign.center, style: TextStyle(color: AirwayColors.textSecondary, height: 1.45)),
+            child: Text(AirwayText.tr('Booking updates, payment receipts and important alerts will appear here.', 'बुकिंग अपडेट, भुगतान रसीदें और ज़रूरी सूचनाएँ यहाँ दिखाई देंगी।'), textAlign: TextAlign.center, style: TextStyle(color: AirwayColors.textSecondary, height: 1.45)),
           ),
         ],
       );
@@ -408,7 +409,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                         Text(_timeLabel(item.createdAt), style: const TextStyle(fontSize: 10.5, color: AirwayColors.textSecondary)),
                         const Spacer(),
                         if (item.bookingId != null)
-                          const Text('VIEW BOOKING', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .5, color: AirwayColors.primary)),
+                          Text(AirwayText.tr('VIEW BOOKING', 'बुकिंग देखें'), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .5, color: AirwayColors.primary)),
                       ],
                     ),
                   ],
