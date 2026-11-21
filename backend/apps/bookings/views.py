@@ -1269,6 +1269,11 @@ class BookingViewSet(viewsets.ModelViewSet):
                 note="Service completion verified with customer-shared OTP.",
             )
 
+            # Mission rewards are a separate, withdrawable worker balance.
+            # Count only this completed booking's own service-line cost (> ₹300).
+            from apps.workers.missions import award_mission_reward_for_completed_booking
+            award_mission_reward_for_completed_booking(locked_booking)
+
             # Referral reward is earned only on the referred customer's first
             # successfully OTP-verified completed service.
             from apps.accounts.referrals import reward_referral_for_first_completed_booking
