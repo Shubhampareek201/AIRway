@@ -57,7 +57,9 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
       context: context,
       initialDate: initial.isBefore(now) ? now : initial,
       firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 2),
+      lastDate: start
+          ? DateTime(now.year + 2)
+          : (_startAt ?? now).add(const Duration(days: 90)),
     );
     if (date == null || !mounted) return null;
     final oldTime = current ?? DateTime(date.year, date.month, date.day, start ? 9 : 18);
@@ -75,6 +77,12 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
     if (start == null || end == null || !end.isAfter(start)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a valid leave start and end time.')),
+      );
+      return;
+    }
+    if (end.difference(start) > const Duration(days: 90)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A leave request cannot exceed 90 days.')),
       );
       return;
     }
