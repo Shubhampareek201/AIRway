@@ -66,7 +66,10 @@ def request_worker_leave(*, worker, start_at, end_at, reason=""):
 def _assigned_booking_conflicts(worker, start_at, end_at):
     from apps.bookings.dispatcher import DispatcherService
 
-    assignments = BookingAssignment.objects.select_for_update().filter(
+    # Lock only assignment rows. Joining nullable booking relations into
+    # SELECT FOR UPDATE makes PostgreSQL reject the query unless the lock
+    # target is explicitly limited to the non-nullable base table.
+    assignments = BookingAssignment.objects.select_for_update(of=("self",)).filter(
         worker=worker, booking__status__in=ACTIVE_BOOKING_STATUSES,
     ).select_related("booking__service", "booking__variant", "booking__appointment_group")
     conflicts = []
