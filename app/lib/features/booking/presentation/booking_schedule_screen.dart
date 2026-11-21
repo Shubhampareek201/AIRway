@@ -49,6 +49,18 @@ class BookingScheduleScreen extends StatefulWidget {
   State<BookingScheduleScreen> createState() => _BookingScheduleScreenState();
 }
 
+class _ScheduleSlotOption {
+  final TimeOfDay time;
+  final bool available;
+  final String message;
+
+  const _ScheduleSlotOption({
+    required this.time,
+    required this.available,
+    required this.message,
+  });
+}
+
 class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   static const _green = Color(0xFF075B43);
   static const _ink = Color(0xFF1E2923);
@@ -60,6 +72,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   TimeOfDay? _selectedTime;
   TimeOfDay _dropTime = const TimeOfDay(hour: 17, minute: 0);
   List<TimeOfDay> _availableSlots = [];
+  List<_ScheduleSlotOption> _slotOptions = [];
   bool _checking = false;
   String? _slotError;
   bool _femalePreferenceUnavailable = false;
@@ -103,6 +116,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
       _slotError = null;
       _femalePreferenceUnavailable = false;
       _availableSlots = [];
+      _slotOptions = [];
     });
 
     final candidates = <TimeOfDay>[];
@@ -129,11 +143,20 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
         );
       }));
       if (!mounted) return;
-      final available = <TimeOfDay>[
+      final options = <_ScheduleSlotOption>[
         for (var i = 0; i < candidates.length; i++)
-          if (results[i]['available'] == true) candidates[i],
+          _ScheduleSlotOption(
+            time: candidates[i],
+            available: results[i]['available'] == true,
+            message: results[i]['message']?.toString() ?? '',
+          ),
       ];
+      final available = options
+          .where((option) => option.available)
+          .map((option) => option.time)
+          .toList();
       setState(() {
+        _slotOptions = options;
         _availableSlots = available;
         _checking = false;
         if (available.isEmpty) {
@@ -323,7 +346,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                           child: CircularProgressIndicator(color: _green),
                         ),
                       )
-                    else if (_availableSlots.isEmpty)
+                    if (!_checking && _availableSlots.isEmpty)
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -353,12 +376,24 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                             ],
                           ],
                         ),
-                      )
-                    else
+                      ),
+                    if (!_checking && _slotOptions.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          Container(width: 9, height: 9, decoration: const BoxDecoration(color: _green, shape: BoxShape.circle)),
+                          const SizedBox(width: 5),
+                          const Text('Available', style: TextStyle(color: _muted, fontSize: 11)),
+                          const SizedBox(width: 14),
+                          Container(width: 9, height: 9, decoration: const BoxDecoration(color: Color(0xFFD92D35), shape: BoxShape.circle)),
+                          const SizedBox(width: 5),
+                          const Text('Already booked / unavailable', style: TextStyle(color: _muted, fontSize: 11)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _availableSlots.length,
+                        itemCount: _slotOptions.length,
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
@@ -367,37 +402,60 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                           childAspectRatio: 1.9,
                         ),
                         itemBuilder: (context, index) {
-                          final slot = _availableSlots[index];
-                          final selected = _selectedTime?.hour == slot.hour &&
+                          final option = _slotOptions[index];
+                          final slot = option.time;
+                          final selected = option.available &&
+                              _selectedTime?.hour == slot.hour &&
                               _selectedTime?.minute == slot.minute;
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () => setState(() {
-                              _selectedTime = slot;
-                              _slotError = null;
-                            }),
-                            child: Container(
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: selected ? _green : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: selected ? _green : _line,
-                                  width: selected ? 2 : 1,
+                          final unavailable = !option.available;
+                          return Tooltip(
+                            message: unavailable && option.message.isNotEmpty
+                                ? option.message
+                                : unavailable ? 'This time is not available' : 'Available',
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: unavailable ? null : () => setState(() {
+                                _selectedTime = slot;
+                                _slotError = null;
+                              }),
+                              child: Container(
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? _green
+                                      : unavailable ? const Color(0xFFFFF1F1) : Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected
+                                        ? _green
+                                        : unavailable ? const Color(0xFFE7A0A3) : _line,
+                                    width: selected ? 2 : 1,
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                slot.format(context),
-                                style: TextStyle(
-                                  color: selected ? Colors.white : _ink,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Text(
+                                      slot.format(context),
+                                      style: TextStyle(
+                                        color: selected
+                                            ? Colors.white
+                                            : unavailable ? const Color(0xFFB4232C) : _ink,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                        decoration: unavailable ? TextDecoration.lineThrough : null,
+                                        decorationColor: const Color(0xFFD92D35),
+                                        decorationThickness: 2,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           );
                         },
                       ),
+                    ],
                     if (_slotError != null && _availableSlots.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
