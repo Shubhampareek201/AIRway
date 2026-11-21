@@ -1944,6 +1944,33 @@ class CustomerOrderDetailView(APIView):
             appointment_group__isnull=True,
             status=Payment.Status.PAID,
         ).first()
+        pending_advance_payment = order.payments.filter(
+            stage=Payment.Stage.ADVANCE,
+            appointment_group__isnull=True,
+            status=Payment.Status.PENDING,
+        ).order_by("-updated_at").first()
+        checkout_expires_at = None
+        checkout_expiry_kind = None
+        if (
+            not advance_payment
+            and order.status in (
+                Order.Status.AWAITING_ASSIGNMENT,
+                Order.Status.PARTIALLY_CANCELLED,
+            )
+        ):
+            from django.conf import settings
+            if pending_advance_payment:
+                checkout_expires_at = (
+                    pending_advance_payment.updated_at
+                    + timedelta(minutes=getattr(settings, "PAYMENT_TIMEOUT_MINUTES", 5))
+                )
+                checkout_expiry_kind = "payment_attempt"
+            else:
+                checkout_expires_at = (
+                    order.created_at
+                    + timedelta(minutes=getattr(settings, "UNPAID_CHECKOUT_TIMEOUT_MINUTES", 15))
+                )
+                checkout_expiry_kind = "checkout_hold"
         order_level_balance_payment = order.payments.filter(
             stage=Payment.Stage.BALANCE,
             appointment_group__isnull=True,
@@ -2113,6 +2140,8 @@ class CustomerOrderDetailView(APIView):
             "id": order.id,
             "address_id": order.address_id,
             "status": order.status,
+            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+            "checkout_expiry_kind": checkout_expiry_kind,
             "scheduling": (order.metadata or {}).get(
                 "scheduling_v1",
                 {"mode": "separate", "shared_appointment_at": None},
