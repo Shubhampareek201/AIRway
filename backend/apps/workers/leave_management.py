@@ -140,4 +140,14 @@ def cancel_worker_leave(*, leave, worker):
             to_status=WorkerLeave.Status.CANCELLED, changed_by=worker.user,
             note="Cancelled by worker.",
         )
+        staff_users = WorkerProfile._meta.get_field("user").remote_field.model.objects.filter(
+            is_staff=True, is_active=True,
+        )
+        for user in staff_users.iterator():
+            _notify(
+                user, Notification.Type.WORKER_LEAVE_REQUEST,
+                "Worker leave request cancelled",
+                f"{worker.user.name or worker.user.phone} cancelled leave request #{locked.pk}.",
+                {"worker_leave_id": locked.pk, "worker_id": worker.pk, "status": WorkerLeave.Status.CANCELLED},
+            )
         return locked
