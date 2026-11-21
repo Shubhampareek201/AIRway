@@ -11,7 +11,13 @@ from apps.bookings.models import Booking, BookingAssignment, BookingCompletionOT
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
-from apps.workers.models import WorkerProfile
+from apps.workers.models import (
+    WorkerProfile,
+    WorkerRewardWallet,
+    WorkerRewardTransaction,
+    WorkerRewardWithdrawal,
+)
+from apps.workers.missions import award_mission_reward_for_completed_booking
 
 
 class WorkerCompletionOTPTests(TestCase):
@@ -226,3 +232,84 @@ class WorkerCompletionOTPTests(TestCase):
         response = self.client.post(self.url, {}, format="json")
         self.assertEqual(response.status_code, 404)
         self.assertFalse(BookingCompletionOTP.objects.filter(booking=self.booking).exists())
+    def test_mission_rewards_are_cumulative_and_idempotent(self):
+        last_booking = None
+        for index in range(25):
+            booking = Booking.objects.create(
+                customer=self.customer,
+                address=self.booking.address,
+                service=self.booking.service,
+                scheduled_at=timezone.now() + timedelta(days=1),
+                status=Booking.Status.COMPLETED,
+                pricing_snapshot={"subtotal": "301.00", "total": "301.00"},
+            )
+            BookingAssignment.objects.create(
+                booking=booking,
+                worker=self.worker,
+                accepted_at=timezone.now(),
+                completed_at=timezone.now(),
+            )
+            award_mission_reward_for_completed_booking(booking)
+            last_booking = booking
+
+        wallet = WorkerRewardWallet.objects.get(worker=self.worker)
+        self.assertEqual(wallet.eligible_jobs_count, 25)
+        self.assertEqual(wallet.balance, 1900)
+        self.assertEqual(wallet.total_earned, 1900)
+        rewards = {
+            row.milestone_jobs: row.amount
+            for row in WorkerRewardTransaction.objects.filter(
+                worker=self.worker,
+                type=WorkerRewardTransaction.Type.MISSION_REWARD,
+            )
+        }
+        self.assertEqual(rewards, {5: 300, 15: 600, 25: 1000})
+
+        award_mission_reward_for_completed_booking(last_booking)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.eligible_jobs_count, 25)
+        self.assertEqual(wallet.balance, 1900)
+
+    def test_service_cost_must_be_strictly_greater_than_300(self):
+        booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            service=self.booking.service,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"subtotal": "300.00", "total": "300.00"},
+        )
+        BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker,
+            accepted_at=timezone.now(),
+            completed_at=timezone.now(),
+        )
+        award_mission_reward_for_completed_booking(booking)
+        self.assertFalse(WorkerRewardWallet.objects.filter(worker=self.worker).exists())
+
+    def test_mission_wallet_withdrawal_is_separate_and_debits_available_rewards(self):
+        self.worker.upi_id = "worker@upi"
+        self.worker.save(update_fields=["upi_id", "updated_at"])
+        wallet = WorkerRewardWallet.objects.create(
+            worker=self.worker,
+            balance=500,
+            total_earned=500,
+        )
+        response = self.client.post(
+            "/api/v1/workers/mission-wallet/",
+            {"amount": "200.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance, 300)
+        withdrawal = WorkerRewardWithdrawal.objects.get(worker=self.worker)
+        self.assertEqual(withdrawal.amount, 200)
+        self.assertEqual(withdrawal.status, WorkerRewardWithdrawal.Status.PENDING)
+        self.assertTrue(WorkerRewardTransaction.objects.filter(
+            wallet=wallet,
+            reference_key=f"mission-withdrawal:{withdrawal.pk}",
+            type=WorkerRewardTransaction.Type.WITHDRAWAL,
+        ).exists())
+
