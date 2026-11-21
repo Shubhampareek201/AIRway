@@ -1030,6 +1030,27 @@ class BookingAvailabilityTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertFalse(response.data["available"])
 
+    def test_check_availability_rejects_slot_without_an_eligible_worker(self):
+        """A free service slot is not bookable when no worker covers its time."""
+        import pytz
+        local_tz = pytz.timezone("Asia/Kolkata")
+        future_date = (timezone.now().astimezone(local_tz) + timedelta(days=2)).date()
+        future_time = local_tz.localize(datetime.combine(future_date, time(14, 0)))
+        WorkerSchedule.objects.filter(worker=self.worker_profile).update(is_active=False)
+
+        response = self.client.post("/api/v1/bookings/check_availability/", {
+            "service": self.service.id,
+            "scheduled_at": future_time.isoformat(),
+            "variant_id": self.variant.id,
+            "booking_mode": "scheduled",
+            "address_id": self.address.id,
+        }, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["available"])
+        self.assertEqual(response.data["reason"], "no_eligible_professional")
+        self.assertIn("No professional is currently available", response.data["message"])
+
     def test_check_availability_fails_with_past_datetime(self):
         """Should reject availability check with past datetime."""
         past_time = timezone.now() - timezone.timedelta(hours=1)
