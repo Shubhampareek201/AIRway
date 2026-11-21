@@ -53,13 +53,20 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
   Future<DateTime?> _chooseDate(DateTime? current, {required bool start}) async {
     final now = DateTime.now();
     final initial = current ?? now.add(const Duration(days: 1));
+    final firstDate = DateTime(now.year, now.month, now.day);
+    final lastDate = start
+        ? DateTime(now.year + 2)
+        : (_startAt ?? now).add(const Duration(days: 90));
+    final boundedInitial = initial.isBefore(firstDate)
+        ? firstDate
+        : initial.isAfter(lastDate)
+            ? lastDate
+            : initial;
     final date = await showDatePicker(
       context: context,
-      initialDate: initial.isBefore(now) ? now : initial,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: start
-          ? DateTime(now.year + 2)
-          : (_startAt ?? now).add(const Duration(days: 90)),
+      initialDate: boundedInitial,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
     if (date == null || !mounted) return null;
     final oldTime = current ?? DateTime(date.year, date.month, date.day, start ? 9 : 18);
