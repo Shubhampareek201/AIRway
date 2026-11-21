@@ -292,8 +292,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
           if (address.isNotEmpty) ...[
             const SizedBox(height: 8),
             _infoLine(Icons.location_on_outlined, address, maxLines: 3),
-            if (offer.addressLatitude != null && offer.addressLongitude != null)
-              Padding(
+            Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: OutlinedButton.icon(
                   onPressed: () => _openMap(offer),
@@ -429,8 +428,11 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
   Future<void> _openMap(WorkerOffer offer) async {
     final latitude = offer.addressLatitude;
     final longitude = offer.addressLongitude;
-    if (latitude == null || longitude == null) return;
-    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    final query = latitude != null && longitude != null
+        ? '$latitude,$longitude'
+        : (offer.serviceAddress?.trim() ?? '');
+    if (query.isEmpty) return;
+    final uri = Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': query});
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
