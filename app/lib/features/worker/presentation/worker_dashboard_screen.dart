@@ -216,7 +216,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               child: Text(AirwayText.tr('Reject', 'अस्वीकार करें')),
             ),
             FilledButton(
-              onPressed: () async {
+              onPressed: offer.canAccept ? () async {
                 Navigator.pop(dialogContext);
                 try {
                   await WorkerApi.acceptOffer(offer.id);
@@ -230,7 +230,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   await _refresh();
                 }
               },
-              child: Text(AirwayText.tr('Accept service', 'सेवा स्वीकार करें')),
+              child: Text(offer.workerPayout == null
+                  ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
+                  : AirwayText.tr('Accept service', 'सेवा स्वीकार करें')),
             ),
           ],
         ),
