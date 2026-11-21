@@ -1020,6 +1020,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             and booking_eligible
             and obj.worker.status == "approved"
             and obj.worker.is_online
+            and obj.worker.commission_rate is not None
         )
 
     def get_can_decline(self, obj):
