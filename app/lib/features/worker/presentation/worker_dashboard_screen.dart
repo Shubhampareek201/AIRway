@@ -241,7 +241,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request could not be accepted: $e', 'रिक्वेस्ट स्वीकार नहीं हो सकी: $e'))));
                   await _refresh();
                 }
-              },
+              } : null,
               child: Text(offer.workerPayout == null
                   ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
                   : AirwayText.tr('Accept service', 'सेवा स्वीकार करें')),
