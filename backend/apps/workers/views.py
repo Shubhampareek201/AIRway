@@ -1829,6 +1829,11 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
             if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
                 return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
+            if worker.commission_rate is None:
+                return Response(
+                    {"detail": "AIRway has not configured your earning rate yet. Please contact Admin before accepting this job."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             if group_offer:
                 group = AppointmentGroup.objects.select_for_update().get(pk=group.pk)
