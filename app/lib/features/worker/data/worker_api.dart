@@ -332,6 +332,34 @@ class WorkerApi {
         .toList();
   }
 
+  static Future<List<Map<String, dynamic>>> getLeaves() async {
+    final result = await _request('/api/v1/workers/leaves/');
+    if (result is! List) throw const FormatException('Unexpected leave response');
+    return result.whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  static Future<Map<String, dynamic>> requestLeave({
+    required DateTime startAt,
+    required DateTime endAt,
+    String reason = '',
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/leaves/',
+      method: 'POST',
+      data: {
+        'start_at': startAt.toUtc().toIso8601String(),
+        'end_at': endAt.toUtc().toIso8601String(),
+        'reason': reason,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  static Future<void> cancelLeave(int leaveId) async {
+    await _request('/api/v1/workers/leaves/$leaveId/', method: 'DELETE');
+  }
+
   static Future<bool> updateOnlineStatus(bool isOnline) async {
     final result = await _request(
       '/api/v1/workers/status/',
