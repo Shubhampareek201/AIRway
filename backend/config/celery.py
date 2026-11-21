@@ -41,4 +41,8 @@ app.conf.beat_schedule = {
         'task': 'apps.workers.tasks.expire_past_worker_leave_requests',
         'schedule': 3600.0,
     },
+    'expire-past-rework-proposals-every-minute': {
+        'task': 'apps.bookings.tasks.expire_past_rework_proposals',
+        'schedule': 60.0,
+    },
 }
