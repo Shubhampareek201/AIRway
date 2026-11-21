@@ -296,7 +296,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           const SizedBox(height: 18),
           Center(child: Text(AirwayText.tr('Nothing new right now', 'अभी कोई नई सूचना नहीं है'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
           const SizedBox(height: 7),
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 38),
             child: Text(AirwayText.tr('Booking updates, payment receipts and important alerts will appear here.', 'बुकिंग अपडेट, भुगतान रसीदें और ज़रूरी सूचनाएँ यहाँ दिखाई देंगी।'), textAlign: TextAlign.center, style: TextStyle(color: AirwayColors.textSecondary, height: 1.45)),
           ),
