@@ -189,7 +189,7 @@ class _WorkerLeaveScreenState extends State<WorkerLeaveScreen> {
                             controller: _reasonController,
                             maxLines: 2,
                             maxLength: 500,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: AirwayText.tr('Reason (optional)', 'कारण (वैकल्पिक)'),
                               border: OutlineInputBorder(),
                             ),
