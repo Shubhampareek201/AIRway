@@ -210,13 +210,13 @@ class BookingDisputeDetailView(APIView):
             note = str(request.data.get("resolution_note", "")).strip()
             if new_status in (BookingDispute.Status.RESOLVED, BookingDispute.Status.REJECTED) and not note:
                 return Response({"resolution_note": "A resolution note is required."}, status=status.HTTP_400_BAD_REQUEST)
+            old_status = dispute.status
             dispute.status = new_status
             if note:
                 dispute.resolution_note = note[:5000]
             if new_status in (BookingDispute.Status.RESOLVED, BookingDispute.Status.REJECTED):
                 dispute.resolved_by = request.user
                 dispute.resolved_at = timezone.now()
-            old_status = dispute.status
             dispute.save(update_fields=["status", "resolution_note", "resolved_by", "resolved_at", "updated_at"])
             BookingDisputeHistory.objects.create(
                 dispute=dispute,
