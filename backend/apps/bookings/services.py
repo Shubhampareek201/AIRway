@@ -40,6 +40,7 @@ def _intervals_overlap(first, second) -> bool:
     return first[0] < second[1] and second[0] < first[1]
 
 
+@transaction.atomic
 def check_slot_availability(
     service: Service,
     scheduled_at: timezone.datetime,
@@ -57,6 +58,10 @@ def check_slot_availability(
     Both start and end bounds are checked, and each existing booking uses its
     own variant duration plus the service buffer.
     """
+    # Serialize competing reservations for this service. When called inside
+    # a booking/reschedule transaction, this lock remains held through commit.
+    service = Service.objects.select_for_update().get(pk=service.pk)
+
     active_statuses = [
         Booking.Status.PENDING,
         Booking.Status.CONFIRMED,
