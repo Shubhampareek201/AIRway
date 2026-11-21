@@ -208,7 +208,7 @@ class BeautyAudienceScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 13, 16, 15),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
