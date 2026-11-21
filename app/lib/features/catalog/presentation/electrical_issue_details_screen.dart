@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:airway/core/localization/airway_text.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -54,7 +55,7 @@ class _ElectricalIssueDetailsScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not select photo: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not select photo: $e', 'फ़ोटो चुन नहीं सके: $e'))),
         );
       }
     }
@@ -99,7 +100,7 @@ class _ElectricalIssueDetailsScreenState
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not add service: $e')),
+          SnackBar(content: Text(AirwayText.tr('Could not add service: $e', 'सेवा नहीं जोड़ी जा सकी: $e'))),
         );
       }
     }
@@ -113,7 +114,7 @@ class _ElectricalIssueDetailsScreenState
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Describe the issue'),
+        title: Text(AirwayText.tr('Describe the issue', 'समस्या का विवरण दें')),
         backgroundColor: Colors.white,
         actions: [
           CustomerCartBadge(
@@ -167,7 +168,7 @@ class _ElectricalIssueDetailsScreenState
             ),
           ),
           const SizedBox(height: 24),
-          const Text('Add a photo (optional)',
+          Text(AirwayText.tr('Add a photo (optional)', 'फ़ोटो जोड़ें (वैकल्पिक)'),
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: ink)),
           const SizedBox(height: 6),
           const Text('A photo helps the professional understand the problem before visiting.',
@@ -183,7 +184,7 @@ class _ElectricalIssueDetailsScreenState
               child: TextButton.icon(
                 onPressed: _saving ? null : () => setState(() => _photo = null),
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('Remove photo'),
+                label: Text(AirwayText.tr('Remove photo', 'फ़ोटो हटाएँ')),
               ),
             ),
           ] else
@@ -193,7 +194,7 @@ class _ElectricalIssueDetailsScreenState
                   child: OutlinedButton.icon(
                     onPressed: _saving ? null : () => _pickPhoto(ImageSource.camera),
                     icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Camera'),
+                    label: Text(AirwayText.tr('Camera', 'कैमरा')),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -201,13 +202,13 @@ class _ElectricalIssueDetailsScreenState
                   child: OutlinedButton.icon(
                     onPressed: _saving ? null : () => _pickPhoto(ImageSource.gallery),
                     icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Gallery'),
+                    label: Text(AirwayText.tr('Gallery', 'गैलरी')),
                   ),
                 ),
               ],
             ),
           const SizedBox(height: 22),
-          const Text('Describe the problem (optional)',
+          Text(AirwayText.tr('Describe the problem (optional)', 'समस्या बताएँ (वैकल्पिक)'),
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: ink)),
           const SizedBox(height: 10),
           TextField(
@@ -217,7 +218,7 @@ class _ElectricalIssueDetailsScreenState
             maxLength: 1000,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              hintText: 'Example: The ceiling fan is making a noise...',
+              hintText: AirwayText.tr('Example: The ceiling fan is making a noise...', 'उदाहरण: छत का पंखा आवाज़ कर रहा है...'),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -241,7 +242,7 @@ class _ElectricalIssueDetailsScreenState
                       width: 20, height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('ADD TO CART'),
+                  : Text(AirwayText.tr('ADD TO CART', 'कार्ट में जोड़ें')),
             ),
           ),
         ),
