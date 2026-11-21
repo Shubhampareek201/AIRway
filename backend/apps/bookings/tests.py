@@ -3994,6 +3994,8 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.data["next_step"].split(".")[0], "Pay the 30% advance to start worker matching")
 
     def test_advance_payment_is_blocked_when_no_worker_can_cover_the_slot(self):
+        from apps.payments.models import Payment
+
         scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
         checkout = self.client.post(
             "/api/v1/bookings/cart/checkout/",
@@ -4010,12 +4012,10 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
 
         self.assertEqual(payment.status_code, 400, payment.data)
         self.assertIn("No professional is currently available", payment.data["detail"])
-        self.assertFalse(
-            __import__("apps.payments.models", fromlist=["Payment"]).Payment.objects.filter(
-                order_id=checkout.data["order_id"],
-                stage="advance",
-            ).exists()
-        )
+        self.assertFalse(Payment.objects.filter(
+            order_id=checkout.data["order_id"],
+            stage=Payment.Stage.ADVANCE,
+        ).exists())
 
     def test_checkout_creates_one_parent_order_and_booking_line(self):
         scheduled_at = (timezone.now() + timedelta(days=2)).isoformat()
