@@ -18,7 +18,7 @@ def _tomorrow_at_noon():
 
 from apps.accounts.models import User, Address
 from apps.catalog.models import Category, Service, ServiceVariant
-from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule, WorkerDocument
+from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule, WorkerDocument, WorkerLeave, WorkerLeaveHistory
 from apps.core.models import City, Zone
 from apps.bookings.models import Booking, WorkerOffer, BookingAssignment
 
@@ -2458,3 +2458,84 @@ class WorkerCapabilityEligibilityRegressionTests(TestCase):
         self.assertTrue(get_approval_requirements(self.worker)["has_service"])
         self.assertNotIn("has_verified_capabilities", get_approval_requirements(self.worker))
 
+
+
+class WorkerLeaveLifecycleAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.worker_user = User.objects.create_user(
+            phone="+919876543299", name="Leave Worker", password="password123",
+        )
+        self.worker = WorkerProfile.objects.create(
+            user=self.worker_user, status=WorkerProfile.Status.APPROVED,
+        )
+        self.client.force_authenticate(user=self.worker_user)
+
+    def _period(self):
+        start = timezone.now() + timedelta(days=3)
+        return start, start + timedelta(hours=8)
+
+    def test_worker_can_request_and_list_pending_leave(self):
+        start, end = self._period()
+        response = self.client.post(
+            "/api/v1/workers/leaves/",
+            {"start_at": start.isoformat(), "end_at": end.isoformat(), "reason": "Personal work"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["status"], WorkerLeave.Status.PENDING)
+        self.assertEqual(WorkerLeaveHistory.objects.filter(leave_id=response.data["id"]).count(), 1)
+        listed = self.client.get("/api/v1/workers/leaves/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(len(listed.data), 1)
+
+    def test_overlapping_pending_leave_is_rejected(self):
+        start, end = self._period()
+        WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=end,
+            status=WorkerLeave.Status.PENDING,
+        )
+        response = self.client.post(
+            "/api/v1/workers/leaves/",
+            {
+                "start_at": (start + timedelta(hours=1)).isoformat(),
+                "end_at": (end + timedelta(hours=1)).isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_worker_can_cancel_pending_leave_and_history_is_recorded(self):
+        start, end = self._period()
+        leave = WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=end,
+            status=WorkerLeave.Status.PENDING,
+        )
+        response = self.client.delete(f"/api/v1/workers/leaves/{leave.pk}/")
+        self.assertEqual(response.status_code, 204)
+        leave.refresh_from_db()
+        self.assertEqual(leave.status, WorkerLeave.Status.CANCELLED)
+        self.assertEqual(WorkerLeaveHistory.objects.filter(leave=leave).count(), 1)
+
+    def test_admin_approval_records_decision_and_notifies_worker(self):
+        from apps.workers.leave_management import review_worker_leave
+        from apps.notifications.models import Notification
+
+        start, end = self._period()
+        leave = WorkerLeave.objects.create(
+            worker=self.worker, start_at=start, end_at=end,
+            status=WorkerLeave.Status.PENDING,
+        )
+        admin = User.objects.create_superuser(
+            phone="+919876543298", password="password123",
+        )
+        reviewed = review_worker_leave(
+            leave_id=leave.pk, reviewer=admin,
+            decision=WorkerLeave.Status.APPROVED,
+        )
+        self.assertEqual(reviewed.status, WorkerLeave.Status.APPROVED)
+        self.assertEqual(reviewed.reviewed_by_id, admin.pk)
+        self.assertEqual(WorkerLeaveHistory.objects.filter(leave=leave).count(), 1)
+        self.assertTrue(Notification.objects.filter(
+            user=self.worker_user, type=Notification.Type.WORKER_LEAVE_APPROVED,
+        ).exists())
