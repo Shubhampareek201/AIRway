@@ -33,7 +33,7 @@ class AirwayLocale {
     }
     if (saved == 'en' || saved == 'hi') {
       _hasLocalPreference = true;
-      notifier.value = Locale(saved);
+      notifier.value = Locale(saved!);
     } else {
       // A clean installation always starts in English, regardless of the
       // phone's system language.
