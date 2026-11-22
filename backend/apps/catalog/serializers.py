@@ -179,7 +179,7 @@ class ServiceSerializer(serializers.ModelSerializer):
             "category_root_name", "category_root_slug", "title", "title_hi", "description",
             "is_available",
             "image", "booking_mode", "booking_mode_display", "pricing_type", "pricing_type_display",
-            "unit_label", "visit_fee", "duration_minutes", "buffer_minutes",
+            "unit_label", "visit_fee", "tax_rate", "duration_minutes", "buffer_minutes",
             "audience", "audience_display", "requires_female_worker", "supports_professional_preference",
             "is_popular", "sort_order", "is_active",
             "images", "variants", "addons", "form_fields",

@@ -96,6 +96,18 @@ class Service(TimeStampedModel):
     pricing_type = models.CharField(max_length=10, choices=PricingType.choices, default=PricingType.FIXED)
     unit_label = models.CharField(max_length=30, blank=True, help_text="Per unit ho toh: sq ft, room, item")
     visit_fee = models.DecimalField(max_digits=8, decimal_places=2, default=0, help_text="Inspection/visit charge")
+    visit_fee_worker_payout = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Fixed worker payout for an inspection visit; independent of customer visit fee.",
+    )
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=18,
+        help_text="Applicable customer tax percentage. Existing bookings retain their saved tax snapshot.",
+    )
+    material_requirements = models.JSONField(
+        default=list, blank=True,
+        help_text="Admin-managed materials/tools required for this service. Store a list of item descriptions.",
+    )
 
     duration_minutes = models.PositiveIntegerField(default=60)
     buffer_minutes = models.PositiveIntegerField(default=30, help_text="Do kaam ke beech travel/gap")
@@ -155,6 +167,10 @@ class ServiceVariant(PricedItem):
     """Package/size: Basic, Premium, Hatchback, SUV, 1 BHK..."""
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="variants")
     duration_minutes = models.PositiveIntegerField(null=True, blank=True, help_text="Khali = service wala time")
+    worker_payout = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Fixed worker payout for this variant/package, independent of customer selling price. Required before dispatch.",
+    )
     attributes = models.JSONField(default=dict, blank=True, help_text="Conditional package matching, e.g. vehicle_type: Sedan")
     included_tasks = models.JSONField(default=list, blank=True, help_text="Checklist of exact work included in this package; enter a JSON list of task names.")
     history = HistoricalRecords()
@@ -170,6 +186,10 @@ class ServiceVariant(PricedItem):
 
 class AddOn(PricedItem):
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="addons")
+    worker_payout = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Additional fixed worker payout when this add-on is selected.",
+    )
     history = HistoricalRecords()
 
     class Meta(PricedItem.Meta):

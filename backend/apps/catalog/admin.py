@@ -17,14 +17,14 @@ class CategoryAudienceOptionInline(TabularInline):
 class VariantInline(TabularInline):
     model = ServiceVariant
     extra = 0
-    fields = ("title", "title_hi", "description", "included_tasks", "image", "attributes", "mrp", "price", "duration_minutes", "sort_order", "is_active")
+    fields = ("title", "title_hi", "description", "included_tasks", "image", "attributes", "mrp", "price", "worker_payout", "duration_minutes", "sort_order", "is_active")
     show_change_link = True
 
 
 class AddOnInline(TabularInline):
     model = AddOn
     extra = 0
-    fields = ("title", "title_hi", "description", "image", "mrp", "price", "sort_order", "is_active")
+    fields = ("title", "title_hi", "description", "image", "mrp", "price", "worker_payout", "sort_order", "is_active")
     show_change_link = True
 
 
@@ -81,7 +81,8 @@ class ServiceAdmin(ModelAdmin):
     save_on_top = True
     fieldsets = (
         ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
-        ("Booking & pricing", {"fields": ("booking_mode", "pricing_type", "unit_label", "visit_fee", "duration_minutes", "buffer_minutes")}),
+        ("Booking & pricing", {"fields": ("booking_mode", "pricing_type", "unit_label", "visit_fee", "visit_fee_worker_payout", "tax_rate", "duration_minutes", "buffer_minutes")}),
+        ("Materials & tools", {"fields": ("material_requirements",), "description": "List the materials/tools the professional must bring for this service."}),
         ("Customer requirements", {"fields": ("audience", "requires_female_worker")}),
         ("Visibility", {"fields": ("is_popular", "sort_order", "is_active")}),
     )
@@ -89,7 +90,7 @@ class ServiceAdmin(ModelAdmin):
 
 @admin.register(ServiceVariant)
 class RateSheetAdmin(ModelAdmin):
-    list_display = ("service", "title", "mrp", "price", "discount", "is_active")
+    list_display = ("service", "title", "mrp", "price", "worker_payout", "discount", "is_active")
     list_editable = ("mrp", "price", "is_active")
     list_filter = ("service__category", "service", "is_active")
     search_fields = ("title", "service__title")
@@ -102,7 +103,7 @@ class RateSheetAdmin(ModelAdmin):
 
 @admin.register(AddOn)
 class AddOnAdmin(ModelAdmin):
-    list_display = ("service", "title", "mrp", "price", "is_active")
+    list_display = ("service", "title", "mrp", "price", "worker_payout", "is_active")
     list_editable = ("mrp", "price", "is_active")
     list_filter = ("service__category", "service", "is_active")
     search_fields = ("title", "service__title")
