@@ -1,5 +1,12 @@
-from django.contrib import admin
-from django.db import models
+from decimal import Decimal, InvalidOperation
+
+from django import forms
+from django.contrib import admin, messages
+from django.contrib.admin.helpers import ActionForm
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
+from django.forms.models import BaseInlineFormSet
+from simple_history.utils import update_change_reason
 from unfold.admin import ModelAdmin, TabularInline
 
 from .pricing import service_pricing_ready
@@ -7,6 +14,113 @@ from .models import (
     AddOn, Banner, Category, CategoryAudienceOption, CityService, FormField, Service,
     ServiceImage, ServiceVariant, VehicleMake, VehicleModel,
 )
+
+
+class PricingBulkActionForm(ActionForm):
+    pricing_reason = forms.CharField(required=False, label="Reason for price/payout change")
+    new_customer_price = forms.DecimalField(required=False, min_value=0, max_digits=10, decimal_places=2, label="Set customer price")
+    new_worker_payout = forms.DecimalField(required=False, min_value=0, max_digits=10, decimal_places=2, label="Set worker payout")
+
+
+class PricingReasonInlineFormSet(BaseInlineFormSet):
+    def save_existing(self, form, instance, commit=True):
+        obj = super().save_existing(form, instance, commit=commit)
+        reason = str(form.cleaned_data.get("pricing_change_reason", "")).strip()
+        if commit and reason:
+            update_change_reason(obj, reason)
+        return obj
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        for form in self.forms:
+            data = getattr(form, "cleaned_data", {})
+            if not data or data.get("DELETE") or not form.instance.pk:
+                continue
+            original = self.model.objects.filter(pk=form.instance.pk).first()
+            if original is None:
+                continue
+            changed = any(
+                getattr(original, field) != data.get(field, getattr(original, field))
+                for field in ("price", "worker_payout")
+            )
+            if changed and not str(data.get("pricing_change_reason", "")).strip():
+                raise ValidationError(
+                    "A reason is required whenever customer price or worker payout changes."
+                )
+
+
+class PricingAuditAdminMixin:
+    action_form = PricingBulkActionForm
+    actions = ("bulk_update_pricing",)
+
+    def save_model(self, request, obj, form, change):
+        reason = str(getattr(obj, "pricing_change_reason", "") or "").strip()
+        if change:
+            original = self.model.objects.get(pk=obj.pk)
+            changed = (
+                original.price != obj.price
+                or original.worker_payout != obj.worker_payout
+            )
+            if changed and not reason:
+                raise ValidationError(
+                    "Enter a reason for changing the customer price or worker payout."
+                )
+        super().save_model(request, obj, form, change)
+        if change and reason:
+            update_change_reason(obj, reason)
+
+    @admin.action(description="Bulk set customer price and/or worker payout")
+    def bulk_update_pricing(self, request, queryset):
+        reason = str(request.POST.get("pricing_reason", "")).strip()
+        price_raw = request.POST.get("new_customer_price", "")
+        payout_raw = request.POST.get("new_worker_payout", "")
+        if not reason or (price_raw in ("", None) and payout_raw in ("", None)):
+            self.message_user(
+                request,
+                "Provide a reason and at least one new price or worker payout.",
+                level=messages.ERROR,
+            )
+            return
+        try:
+            new_price = Decimal(price_raw) if price_raw not in ("", None) else None
+            new_payout = Decimal(payout_raw) if payout_raw not in ("", None) else None
+        except (InvalidOperation, TypeError, ValueError):
+            self.message_user(request, "Enter valid amounts.", level=messages.ERROR)
+            return
+
+        if (new_price is not None and new_price < 0) or (new_payout is not None and new_payout < 0):
+            self.message_user(request, "Prices and payouts cannot be negative.", level=messages.ERROR)
+            return
+        with transaction.atomic():
+            rows = list(queryset.select_for_update())
+            if new_price is not None and any(new_price > row.mrp for row in rows):
+                self.message_user(
+                    request,
+                    "Bulk customer price cannot exceed the MRP of any selected item.",
+                    level=messages.ERROR,
+                )
+                return
+            updated = 0
+            for obj in rows:
+                changed = False
+                if new_price is not None and obj.price != new_price:
+                    obj.price = new_price
+                    changed = True
+                if new_payout is not None and obj.worker_payout != new_payout:
+                    obj.worker_payout = new_payout
+                    changed = True
+                if changed:
+                    obj.pricing_change_reason = reason
+                    obj.save()
+                    update_change_reason(obj, reason)
+                    updated += 1
+        self.message_user(
+            request,
+            f"Updated pricing for {updated} item(s). The reason and before/after values were recorded.",
+            level=messages.SUCCESS,
+        )
 
 
 class CategoryAudienceOptionInline(TabularInline):
@@ -18,14 +132,16 @@ class CategoryAudienceOptionInline(TabularInline):
 class VariantInline(TabularInline):
     model = ServiceVariant
     extra = 0
-    fields = ("title", "title_hi", "description", "included_tasks", "image", "attributes", "mrp", "price", "worker_payout", "duration_minutes", "sort_order", "is_active")
+    fields = ("title", "title_hi", "description", "included_tasks", "image", "attributes", "mrp", "price", "worker_payout", "pricing_change_reason", "duration_minutes", "sort_order", "is_active")
+    formset = PricingReasonInlineFormSet
     show_change_link = True
 
 
 class AddOnInline(TabularInline):
     model = AddOn
     extra = 0
-    fields = ("title", "title_hi", "description", "image", "mrp", "price", "worker_payout", "sort_order", "is_active")
+    fields = ("title", "title_hi", "description", "image", "mrp", "price", "worker_payout", "pricing_change_reason", "sort_order", "is_active")
+    formset = PricingReasonInlineFormSet
     show_change_link = True
 
 
@@ -70,6 +186,23 @@ class ServiceAdmin(ModelAdmin):
     inlines = [VariantInline, AddOnInline, FormFieldInline, ServiceImageInline]
     list_per_page = 30
 
+    def save_model(self, request, obj, form, change):
+        reason = str(obj.pricing_change_reason or "").strip()
+        financial_fields = (
+            "visit_fee", "visit_fee_worker_payout", "tax_rate",
+            "estimated_gateway_fee_percent", "discount_reserve_percent",
+            "rewards_reserve_percent", "refund_reserve_percent",
+            "rework_reserve_percent", "other_variable_cost_per_booking",
+            "minimum_contribution_floor", "target_contribution_margin_percent",
+        )
+        if change:
+            original = Service.objects.get(pk=obj.pk)
+            if any(getattr(original, field) != getattr(obj, field) for field in financial_fields) and not reason:
+                raise ValidationError("Enter a reason for changing service pricing or financial assumptions.")
+        super().save_model(request, obj, form, change)
+        if change and reason:
+            update_change_reason(obj, reason)
+
     @admin.display(description="Worker payout")
     def worker_payout_status(self, obj):
         variants = obj.variants.filter(is_active=True)
@@ -98,6 +231,7 @@ class ServiceAdmin(ModelAdmin):
         ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
         ("Booking & pricing", {"fields": ("booking_mode", "pricing_type", "unit_label", "visit_fee", "visit_fee_worker_payout", "tax_rate", "duration_minutes", "buffer_minutes")}),
         ("Materials & tools", {"fields": ("material_requirements",), "description": "List the materials/tools the professional must bring for this service."}),
+        ("Pricing change audit", {"fields": ("pricing_change_reason",)}),
         ("Unit economics assumptions", {"fields": (
             "estimated_gateway_fee_percent", "discount_reserve_percent",
             "rewards_reserve_percent", "refund_reserve_percent",
@@ -110,9 +244,9 @@ class ServiceAdmin(ModelAdmin):
 
 
 @admin.register(ServiceVariant)
-class RateSheetAdmin(ModelAdmin):
+class RateSheetAdmin(PricingAuditAdminMixin, ModelAdmin):
     list_display = ("service", "title", "mrp", "price", "worker_payout", "estimated_contribution", "launch_recommendation", "discount", "is_active")
-    list_editable = ("mrp", "price", "worker_payout", "is_active")
+    list_editable = ("is_active",)
     list_filter = ("service__category", "service", "is_active")
     search_fields = ("title", "service__title")
     list_per_page = 50
@@ -142,9 +276,9 @@ class RateSheetAdmin(ModelAdmin):
 
 
 @admin.register(AddOn)
-class AddOnAdmin(ModelAdmin):
+class AddOnAdmin(PricingAuditAdminMixin, ModelAdmin):
     list_display = ("service", "title", "mrp", "price", "worker_payout", "is_active")
-    list_editable = ("mrp", "price", "worker_payout", "is_active")
+    list_editable = ("is_active",)
     list_filter = ("service__category", "service", "is_active")
     search_fields = ("title", "service__title")
     list_per_page = 50

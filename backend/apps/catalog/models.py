@@ -108,6 +108,7 @@ class Service(TimeStampedModel):
         default=list, blank=True,
         help_text="Admin-managed materials/tools required for this service. Store a list of item descriptions.",
     )
+    pricing_change_reason = models.TextField(blank=True, help_text="Reason for the latest service price or financial assumption change.")
     estimated_gateway_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     discount_reserve_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     rewards_reserve_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
@@ -221,6 +222,7 @@ class ServiceVariant(PricedItem):
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="Fixed worker payout for this variant/package, independent of customer selling price. Required before dispatch.",
     )
+    pricing_change_reason = models.TextField(blank=True, help_text="Reason for the latest customer price or worker payout change.")
     attributes = models.JSONField(default=dict, blank=True, help_text="Conditional package matching, e.g. vehicle_type: Sedan")
     included_tasks = models.JSONField(default=list, blank=True, help_text="Checklist of exact work included in this package; enter a JSON list of task names.")
     history = HistoricalRecords()
@@ -244,6 +246,7 @@ class AddOn(PricedItem):
         max_digits=10, decimal_places=2, default=0,
         help_text="Additional fixed worker payout when this add-on is selected.",
     )
+    pricing_change_reason = models.TextField(blank=True, help_text="Reason for the latest customer price or worker payout change.")
     history = HistoricalRecords()
 
     class Meta(PricedItem.Meta):
