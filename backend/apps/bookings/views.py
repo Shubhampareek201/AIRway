@@ -1531,7 +1531,31 @@ class CustomerCheckoutView(APIView):
             visit_fee = Decimal(str(base_snapshot.get("visit_fee", "0")))
             unit_subtotal = variant_base + adjusted_addons_total
             line_subtotal = (unit_subtotal * quantity) + visit_fee
-            line_tax = line_subtotal * Decimal("0.18")
+            from decimal import ROUND_HALF_UP
+            tax_rate = Decimal(str(item.service.tax_rate))
+            line_tax = (line_subtotal * tax_rate / Decimal("100")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            from apps.catalog.finance import calculate_worker_payout
+            payout_addons = [
+                (row.addon, row.quantity)
+                for row in booking.booking_addons.select_related("addon").all()
+            ]
+            worker_payout = calculate_worker_payout(
+                service=item.service,
+                variant=item.variant,
+                addon_rows=payout_addons,
+                quantity=quantity,
+                booking_mode=booking.booking_mode,
+            )
+            booking.worker_payout_snapshot = {
+                "pricing_model": "fixed_service_payout_v1",
+                "total": str(worker_payout) if worker_payout is not None else None,
+                "configured": worker_payout is not None,
+                "materials": item.service.material_requirements or [],
+                "currency": "INR",
+            }
+            booking.save(update_fields=["worker_payout_snapshot", "updated_at"])
             line_total = line_subtotal + line_tax
 
             base_snapshot.update({
@@ -1541,6 +1565,7 @@ class CustomerCheckoutView(APIView):
                 "visit_fee": str(visit_fee),
                 "subtotal": str(line_subtotal),
                 "tax": str(line_tax),
+                "tax_rate": str(tax_rate),
                 "total": str(line_total),
                 "currency": "INR",
             })

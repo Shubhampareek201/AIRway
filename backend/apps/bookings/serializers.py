@@ -766,6 +766,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     service_title = serializers.SerializerMethodField()
     customer_name = serializers.CharField(source="booking.customer.name", read_only=True)
     service_description = serializers.CharField(source="booking.service.description", read_only=True)
+    service_material_requirements = serializers.JSONField(source="booking.service.material_requirements", read_only=True)
     service_image_url = serializers.SerializerMethodField()
     customer_issue_photo_url = serializers.SerializerMethodField()
     address_latitude = serializers.DecimalField(source="booking.address.latitude", max_digits=9, decimal_places=6, read_only=True, allow_null=True)
@@ -804,7 +805,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "batch_number", "customer_total", "advance_received", "remaining_balance", "worker_payout",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
-            "worker_phone", "customer_name", "service_title", "service_description", "service_image_url",
+            "worker_phone", "customer_name", "service_title", "service_description", "service_material_requirements", "service_image_url",
             "customer_issue_photo_url", "address_latitude", "address_longitude",
             "service_unit_label", "variant_title", "scheduled_at",
             "service_address", "booking_notes", "expected_duration_minutes",
@@ -924,6 +925,28 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             if locked_rows:
                 locked_total = sum((row.net_amount for row in locked_rows), Decimal("0.00"))
                 return str(locked_total) if locked_total > 0 else None
+        if obj.appointment_group_id:
+            group_rows = list(obj.appointment_group.bookings.exclude(
+                status=Booking.Status.CANCELLED
+            ).all())
+            snapshots = [row.worker_payout_snapshot or {} for row in group_rows]
+            if snapshots and all(
+                row.get("pricing_model") == "fixed_service_payout_v1"
+                and row.get("total") not in (None, "")
+                for row in snapshots
+            ):
+                return str(sum(
+                    (Decimal(str(row["total"])) for row in snapshots),
+                    Decimal("0.00"),
+                ))
+            if any(row.get("pricing_model") == "fixed_service_payout_v1" for row in snapshots):
+                return None
+        else:
+            payout_snapshot = obj.booking.worker_payout_snapshot or {}
+            if payout_snapshot.get("pricing_model") == "fixed_service_payout_v1":
+                value = payout_snapshot.get("total")
+                return str(Decimal(str(value))) if value not in (None, "") else None
+
         rate = obj.worker.commission_rate
         if rate is None:
             return None
@@ -1047,7 +1070,6 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             and booking_eligible
             and obj.worker.status == "approved"
             and obj.worker.is_online
-            and obj.worker.commission_rate is not None
             and self.get_worker_payout(obj) is not None
         )
 

@@ -1972,11 +1972,6 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 )
             if worker.status != WorkerProfile.Status.APPROVED or not worker.is_online:
                 return Response({"detail": "Only online, approved workers can accept offers."}, status=status.HTTP_409_CONFLICT)
-            if worker.commission_rate is None:
-                return Response(
-                    {"detail": "AIRway has not configured your earning rate yet. Please contact Admin before accepting this job."},
-                    status=status.HTTP_409_CONFLICT,
-                )
             if self.get_serializer(offer).data.get("worker_payout") is None:
                 return Response(
                     {"detail": "AIRway cannot calculate a fixed payout for this request yet. Please contact Admin."},

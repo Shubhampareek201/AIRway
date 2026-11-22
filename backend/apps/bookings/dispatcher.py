@@ -559,7 +559,30 @@ class DispatcherService:
                 else (f"Qty {service_quantity}" if service_quantity > 1 else "")
             )
             worker_payout = None
-            if worker.commission_rate is not None:
+            if appointment_group:
+                from decimal import Decimal
+                group_rows = list(appointment_group.bookings.exclude(status="cancelled").all())
+                payout_values = [
+                    (row.worker_payout_snapshot or {}).get("total")
+                    if (row.worker_payout_snapshot or {}).get("pricing_model") == "fixed_service_payout_v1"
+                    else None
+                    for row in group_rows
+                ]
+                if payout_values and all(value not in (None, "") for value in payout_values):
+                    worker_payout = str(sum((Decimal(str(value)) for value in payout_values), Decimal("0.00")))
+            else:
+                payout_data = booking.worker_payout_snapshot or {}
+                fixed_value = payout_data.get("total") if payout_data.get("pricing_model") == "fixed_service_payout_v1" else None
+                if fixed_value not in (None, ""):
+                    worker_payout = str(Decimal(str(fixed_value)))
+            fixed_pricing_missing = (
+                any(
+                    (row.worker_payout_snapshot or {}).get("pricing_model") == "fixed_service_payout_v1"
+                    for row in (appointment_group.bookings.exclude(status="cancelled").all() if appointment_group else [booking])
+                )
+                and worker_payout is None
+            )
+            if worker_payout is None and not fixed_pricing_missing and worker.commission_rate is not None:
                 from decimal import Decimal, ROUND_HALF_UP
                 if appointment_group:
                     payout_gross = sum(

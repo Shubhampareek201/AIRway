@@ -80,7 +80,12 @@ class Booking(TimeStampedModel):
 
     pricing_snapshot = models.JSONField(
         default=dict,
-        help_text="Snapshot of variant/addon prices at booking time: {variant_price, addon_prices[], total, tax, discount}"
+        help_text="Customer-facing immutable price snapshot: variant/addon prices, subtotal, tax and total.",
+    )
+    worker_payout_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Private immutable worker payout and required-material snapshot; never expose through customer serializers.",
     )
 
     notes = models.TextField(blank=True, help_text="Customer notes")

@@ -40,27 +40,38 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
     )
     refunds_exist = refunds.exists()
 
+    payout_snapshot = booking.worker_payout_snapshot or {}
+    fixed_model = payout_snapshot.get("pricing_model") == "fixed_service_payout_v1"
+    fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
+    fixed_payout = None
+    if fixed_payout_raw not in (None, ""):
+        fixed_payout = Decimal(str(fixed_payout_raw))
+        if not fixed_payout.is_finite() or fixed_payout < 0:
+            fixed_payout = None
+
     rate = (
         existing.commission_rate
         if existing and existing.commission_rate is not None
         else worker.commission_rate
     )
     hold_reason = ""
-    if rate is None:
-        hold_reason = "Commission rate has not been configured by AIRway finance."
+    if fixed_model and fixed_payout is None:
+        hold_reason = "Fixed service payout is not configured by AIRway finance."
+    elif not fixed_model and rate is None:
+        hold_reason = "Worker earning rate has not been configured for this legacy booking."
     elif refunds_exist:
         hold_reason = "A refund is pending or has been processed; finance reconciliation is required."
 
     commission = None
     net = None
-    if (
-        existing
-        and existing.commission_rate is not None
-        and existing.commission_amount is not None
-    ):
+    if fixed_payout is not None:
+        commission = max(gross_amount - fixed_payout, Decimal("0.00"))
+        net = fixed_payout + (existing.adjustment_amount if existing else Decimal("0.00"))
+        rate = None
+    elif not fixed_model and existing and existing.commission_rate is not None and existing.commission_amount is not None:
         commission = existing.commission_amount
         net = gross_amount - commission + existing.adjustment_amount
-    elif rate is not None:
+    elif not fixed_model and rate is not None:
         commission = (gross_amount * rate / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -98,8 +109,12 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
 @transaction.atomic
 def snapshot_worker_earning_for_assignment(booking, worker):
     """Lock the worker's net service earning when they accept the job."""
+    payout_snapshot = booking.worker_payout_snapshot or {}
+    fixed_model = payout_snapshot.get("pricing_model") == "fixed_service_payout_v1"
+    fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
+    fixed_payout = Decimal(str(fixed_payout_raw)) if fixed_payout_raw not in (None, "") else None
     rate = worker.commission_rate
-    if rate is None:
+    if (fixed_model and fixed_payout is None) or (not fixed_model and rate is None):
         return None
     order_item = OrderItem.objects.filter(booking=booking).first()
     if order_item is not None:
@@ -109,15 +124,19 @@ def snapshot_worker_earning_for_assignment(booking, worker):
         gross = Decimal(str(snapshot.get("subtotal", snapshot.get("total", "0.00"))))
     if not gross.is_finite() or gross <= 0:
         return None
-    commission = (gross * rate / Decimal("100")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
+    commission = (
+        max(gross - fixed_payout, Decimal("0.00"))
+        if fixed_payout is not None
+        else (gross * rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     )
     existing = WorkerEarning.objects.select_for_update().filter(
         booking=booking, extra_work__isnull=True
     ).first()
     if existing and existing.status == WorkerEarning.Status.PAID:
         return existing
-    net = gross - commission + (existing.adjustment_amount if existing else Decimal("0.00"))
+    net = (
+        fixed_payout if fixed_payout is not None else gross - commission
+    ) + (existing.adjustment_amount if existing else Decimal("0.00"))
     if net <= 0:
         return None
     values = {
