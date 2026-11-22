@@ -1194,7 +1194,7 @@ class _BookingScheduledScreenState extends State<BookingScheduledScreen> {
     }
 
     _subtotal = total;
-    _estimatedTotal = total * 1.18; // Estimate only; backend confirms final amount
+    _estimatedTotal = total * (1 + service.taxRate / 100); // Estimate only; backend confirms final amount
   }
 
   Future<void> _addToCart() async {

@@ -271,17 +271,27 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
         ],
       );
 
-  Widget _pricingCard(Booking booking) => _card(
-        'Pricing',
-        [
-          _detailRow('Subtotal', '₹${booking.pricingSnapshot['subtotal']?.toStringAsFixed(0) ?? booking.totalAmount.toStringAsFixed(0)}'),
-          if ((booking.pricingSnapshot['discount'] ?? 0) > 0)
-            _detailRow('Discount', '-₹${booking.pricingSnapshot['discount']?.toStringAsFixed(0) ?? '0'}'),
-          if ((booking.pricingSnapshot['tax'] ?? 0) > 0)
-            _detailRow('Tax (18%)', '+₹${booking.pricingSnapshot['tax']?.toStringAsFixed(0) ?? '0'}'),
-          _detailRow('Total', '₹${booking.totalAmount.toStringAsFixed(0)}', isTotal: true),
-        ],
-      );
+  Widget _pricingCard(Booking booking) {
+    final snapshot = booking.pricingSnapshot;
+    double amount(String key) =>
+        double.tryParse(snapshot[key]?.toString() ?? '') ?? 0;
+    final subtotal = amount('subtotal');
+    final discount = amount('discount');
+    final tax = amount('tax');
+    final taxRate = snapshot['tax_rate']?.toString() ?? '18';
+
+    return _card(
+      'Pricing',
+      [
+        _detailRow('Subtotal', '₹${subtotal.toStringAsFixed(0)}'),
+        if (discount > 0)
+          _detailRow('Discount', '-₹${discount.toStringAsFixed(0)}'),
+        if (tax > 0)
+          _detailRow('Tax (${taxRate}%)', '+₹${tax.toStringAsFixed(0)}'),
+        _detailRow('Total', '₹${booking.totalAmount.toStringAsFixed(0)}', isTotal: true),
+      ],
+    );
+  }
 
   Widget _addressCard(Booking booking) => _card(
         'Service Address',

@@ -16,7 +16,7 @@ from .models import (
 )
 from .services import check_slot_availability, check_service_available, create_worker_offers_for_booking, SlotConflictError, ServiceUnavailableError
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
-from apps.catalog.pricing import service_pricing_ready
+from apps.catalog.pricing import service_booking_ready
 from apps.catalog.form_rules import visible_form_fields
 from apps.catalog.audience import validate_beauty_audience
 from apps.accounts.models import Address
@@ -194,7 +194,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                     "variant": "This package does not match the selected service details."
                 })
 
-        if not service_pricing_ready(service):
+        if not service_booking_ready(service):
             raise serializers.ValidationError({
                 "service": "This service is not ready for booking yet. AIRway is confirming its price."
             })
@@ -1014,6 +1014,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 "service_id": item.service_id,
                 "service_title": item.service.title,
                 "service_description": item.service.description,
+                "material_requirements": item.service.material_requirements or [],
                 "service_image_url": self._service_image_url(item.service),
                 "service_unit_label": item.service.unit_label,
                 "variant_title": item.variant.title if item.variant_id else None,
@@ -1028,6 +1029,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 "service_id": obj.booking.service_id,
                 "service_title": obj.booking.service.title,
                 "service_description": obj.booking.service.description,
+                "material_requirements": obj.booking.service.material_requirements or [],
                 "service_image_url": self._service_image_url(obj.booking.service),
                 "service_unit_label": obj.booking.service.unit_label,
                 "variant_title": obj.booking.variant.title if obj.booking.variant_id else None,
@@ -1038,6 +1040,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "service_id": item.booking.service_id,
             "service_title": item.booking.service.title,
             "service_description": item.booking.service.description,
+            "material_requirements": item.booking.service.material_requirements or [],
             "service_image_url": self._service_image_url(item.booking.service),
             "service_unit_label": item.booking.service.unit_label,
             "variant_title": item.booking.variant.title if item.booking.variant_id else None,
@@ -1194,7 +1197,7 @@ class CartItemSerializer(serializers.ModelSerializer):
             })
         if not service.is_active:
             raise serializers.ValidationError({"service": "This service is not available."})
-        if not service_pricing_ready(service):
+        if not service_booking_ready(service):
             raise serializers.ValidationError({
                 "service": "This service is not ready for the cart yet. AIRway is confirming its price."
             })

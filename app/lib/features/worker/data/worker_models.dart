@@ -139,6 +139,7 @@ class WorkerOffer {
   final String? serviceTitle;
   final String? customerName;
   final String? serviceDescription;
+  final List<String> serviceMaterialRequirements;
   final String? serviceImageUrl;
   final String? customerIssuePhotoUrl;
   final double? addressLatitude;
@@ -174,6 +175,7 @@ class WorkerOffer {
     this.serviceTitle,
     this.customerName,
     this.serviceDescription,
+    this.serviceMaterialRequirements = const [],
     this.serviceImageUrl,
     this.customerIssuePhotoUrl,
     this.addressLatitude,
@@ -211,6 +213,8 @@ class WorkerOffer {
       serviceTitle: map['service_title'] as String?,
       customerName: map['customer_name'] as String?,
       serviceDescription: map['service_description'] as String?,
+      serviceMaterialRequirements: (map['service_material_requirements'] as List? ?? [])
+          .map((item) => item.toString()).toList(),
       serviceImageUrl: map['service_image_url'] as String?,
       customerIssuePhotoUrl: map['customer_issue_photo_url'] as String?,
       addressLatitude: double.tryParse(map['address_latitude']?.toString() ?? ''),
@@ -288,6 +292,7 @@ class WorkerAssignmentDetail {
   final String status;
   final String serviceTitle;
   final String customerName;
+  final List<String> requiredMaterials;
   final String? customerPhone;
   final bool customerContactAvailable;
   final DateTime? customerContactAvailableAt;
@@ -325,6 +330,7 @@ class WorkerAssignmentDetail {
     required this.status,
     required this.serviceTitle,
     required this.customerName,
+    this.requiredMaterials = const [],
     this.customerPhone,
     this.customerContactAvailable = false,
     this.customerContactAvailableAt,
@@ -364,6 +370,8 @@ class WorkerAssignmentDetail {
       status: map['status'] ?? '',
       serviceTitle: map['service_title'] ?? '',
       customerName: map['customer_name'] ?? '',
+      requiredMaterials: (map['required_materials'] as List? ?? [])
+          .map((item) => item.toString()).toList(),
       customerPhone: map['customer_phone']?.toString(),
       customerContactAvailable: map['customer_contact_available'] == true,
       customerContactAvailableAt: map['customer_contact_available_at'] != null ? DateTime.parse(map['customer_contact_available_at']) : null,

@@ -58,6 +58,7 @@ class ContributionEstimateTests(SimpleTestCase):
     def setUp(self):
         self.service = SimpleNamespace(
             estimated_gateway_fee_percent=Decimal("2.00"),
+            tax_rate=Decimal("18.00"),
             discount_reserve_percent=Decimal("3.00"),
             rewards_reserve_percent=Decimal("1.00"),
             refund_reserve_percent=Decimal("2.00"),
@@ -73,7 +74,7 @@ class ContributionEstimateTests(SimpleTestCase):
             worker_payout=Decimal("500.00"),
             service=self.service,
         )
-        self.assertEqual(value, Decimal("400.00"))
+        self.assertEqual(value, Decimal("396.40"))
 
     def test_missing_assumption_returns_no_estimate(self):
         self.service.refund_reserve_percent = None

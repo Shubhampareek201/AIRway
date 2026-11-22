@@ -251,7 +251,7 @@ class RateSheetAdmin(PricingAuditAdminMixin, ModelAdmin):
     search_fields = ("title", "service__title")
     list_per_page = 50
 
-    @admin.display(description="Estimated contribution")
+    @admin.display(description="Base estimated contribution")
     def estimated_contribution(self, obj):
         from .finance import calculate_estimated_contribution
         value = calculate_estimated_contribution(
@@ -261,7 +261,7 @@ class RateSheetAdmin(PricingAuditAdminMixin, ModelAdmin):
         )
         return f"₹{value}" if value is not None else "Configure assumptions"
 
-    @admin.display(description="Recommendation")
+    @admin.display(description="Base recommendation")
     def launch_recommendation(self, obj):
         from .finance import contribution_recommendation
         return contribution_recommendation(

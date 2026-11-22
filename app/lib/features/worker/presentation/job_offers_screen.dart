@@ -345,12 +345,22 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
                 const SizedBox(height: 3),
                 Text(offer.workerPayout == null ? AirwayText.tr('Not configured yet', 'अभी तय नहीं है') : '₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF176B3A))),
                 if (offer.workerPayout == null)
-                  Text(AirwayText.tr('AIRway finance must set your commission before a fixed payout can be shown.', 'फिक्स कमाई दिखाने के लिए AIRway finance को आपका कमीशन सेट करना होगा।'), style: const TextStyle(fontSize: 11, color: Color(0xFF5D6F62))),
+                  Text(AirwayText.tr('AIRway finance must configure this service payout before you can accept it.', 'इस सेवा को स्वीकार करने से पहले AIRway finance को आपकी कमाई तय करनी होगी।'), style: const TextStyle(fontSize: 11, color: Color(0xFF5D6F62))),
               ],
             ),
           ),
           const SizedBox(height: 8),
           _infoLine(Icons.timer_outlined, 'Estimated duration: ${offer.expectedDurationMinutes} minutes'),
+          if (offer.serviceMaterialRequirements.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(AirwayText.tr('Materials & tools to bring', 'साथ लाने वाली सामग्री और उपकरण'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            for (final item in offer.serviceMaterialRequirements)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text('• $item', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+              ),
+          ],
           if (offer.quantity > 1) ...[
             const SizedBox(height: 8),
             _infoLine(Icons.format_list_numbered_rounded, 'Quantity: ${offer.quantity}'),
@@ -365,6 +375,14 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
                 Text('• ${service['service_title'] ?? 'Service'}${service['variant_title'] == null ? '' : ' — ${service['variant_title']}'}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                 if (service['service_description']?.toString().trim().isNotEmpty == true)
                   Padding(padding: const EdgeInsets.only(left: 12, top: 3), child: Text(service['service_description'].toString(), style: TextStyle(fontSize: 11, color: AirwayColors.textSecondary, height: 1.35))),
+                if ((service['material_requirements'] as List? ?? []).isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12, top: 4),
+                    child: Text(
+                      'Bring: ${(service['material_requirements'] as List).map((item) => item.toString()).join(', ')}',
+                      style: TextStyle(fontSize: 11, color: AirwayColors.textSecondary),
+                    ),
+                  ),
                 if (service['service_image_url']?.toString().isNotEmpty == true)
                   Padding(padding: const EdgeInsets.only(left: 12, top: 5), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(service['service_image_url'].toString(), height: 90, width: 140, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()))),
               ]),

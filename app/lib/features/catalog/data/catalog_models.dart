@@ -366,6 +366,7 @@ class Service {
   final String pricingTypeDisplay;
   final String unitLabel;
   final double visitFee;
+  final double taxRate;
   final int durationMinutes;
   final int bufferMinutes;
   final String audience;
@@ -400,6 +401,7 @@ class Service {
     required this.pricingTypeDisplay,
     required this.unitLabel,
     required this.visitFee,
+    this.taxRate = 18,
     required this.durationMinutes,
     required this.bufferMinutes,
     required this.audience,
@@ -436,6 +438,7 @@ class Service {
       pricingTypeDisplay: map['pricing_type_display'] ?? '',
       unitLabel: map['unit_label'] ?? '',
       visitFee: double.tryParse(map['visit_fee'].toString()) ?? 0,
+      taxRate: double.tryParse(map['tax_rate']?.toString() ?? '') ?? 18,
       durationMinutes: map['duration_minutes'] ?? 0,
       bufferMinutes: map['buffer_minutes'] ?? 0,
       audience: map['audience'] ?? '',

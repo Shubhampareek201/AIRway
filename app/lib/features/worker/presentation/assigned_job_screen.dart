@@ -1261,6 +1261,16 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                   style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12),
                 ),
             ],
+            if (job.requiredMaterials.isNotEmpty) ...[
+              const Divider(height: 22),
+              Text(AirwayText.tr('Materials & tools to bring', 'साथ लाने वाली सामग्री और उपकरण'), style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              for (final item in job.requiredMaterials)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('• $item', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+                ),
+            ],
             if (job.notes?.isNotEmpty == true) ...[
               const Divider(height: 22),
               Text(AirwayText.tr('Customer note', 'ग्राहक का नोट'), style: TextStyle(fontWeight: FontWeight.w800)),

@@ -61,20 +61,36 @@ def calculate_estimated_contribution(*, customer_price, worker_payout, service):
 
     price = Decimal(str(customer_price))
     payout = Decimal(str(worker_payout))
-    percentages = sum(
-        (Decimal(str(getattr(service, field))) for field in UNIT_ECONOMICS_ASSUMPTION_FIELDS[:5]),
+    gateway_fee_percent = Decimal(str(service.estimated_gateway_fee_percent))
+    reserve_percent = sum(
+        (
+            Decimal(str(getattr(service, field)))
+            for field in (
+                "discount_reserve_percent",
+                "rewards_reserve_percent",
+                "refund_reserve_percent",
+                "rework_reserve_percent",
+            )
+        ),
         Decimal("0.00"),
     )
     other_cost = Decimal(str(service.other_variable_cost_per_booking))
+    tax_rate = Decimal(str(service.tax_rate))
     if not price.is_finite() or price <= 0 or not payout.is_finite() or payout < 0:
         return None
-    if not other_cost.is_finite() or other_cost < 0:
+    if not other_cost.is_finite() or other_cost < 0 or not tax_rate.is_finite():
         return None
 
-    reserve_amount = (price * percentages / Decimal("100")).quantize(
+    # Gateway fee is estimated on the tax-inclusive customer charge; tax itself
+    # is excluded from AIRway contribution as a pass-through amount.
+    gateway_gross = price + (price * tax_rate / Decimal("100"))
+    gateway_fee = (gateway_gross * gateway_fee_percent / Decimal("100")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    return (price - payout - reserve_amount - other_cost).quantize(
+    reserve_amount = (price * reserve_percent / Decimal("100")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    return (price - payout - gateway_fee - reserve_amount - other_cost).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
