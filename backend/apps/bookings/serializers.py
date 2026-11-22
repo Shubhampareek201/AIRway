@@ -479,13 +479,18 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             quantity=quantity,
             booking_mode=booking_mode,
         )
-        worker_payout_snapshot = {
-            "pricing_model": "fixed_service_payout_v1",
-            "total": str(worker_payout) if worker_payout is not None else None,
-            "configured": worker_payout is not None,
-            "materials": service.material_requirements or [],
-            "currency": "INR",
-        }
+        worker_payout_snapshot = (
+            {
+                "pricing_model": "fixed_service_payout_v1",
+                "total": str(worker_payout) if worker_payout is not None else None,
+                "configured": worker_payout is not None,
+                "materials": service.material_requirements or [],
+                "currency": "INR",
+            }
+            if service.pricing_type != Service.PricingType.QUOTE
+            and booking_mode != Booking.BookingMode.INSPECTION
+            else {}
+        )
 
         pricing["quantity"] = quantity
         pricing["unit_subtotal"] = str(unit_subtotal)

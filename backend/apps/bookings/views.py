@@ -1548,13 +1548,18 @@ class CustomerCheckoutView(APIView):
                 quantity=quantity,
                 booking_mode=booking.booking_mode,
             )
-            booking.worker_payout_snapshot = {
-                "pricing_model": "fixed_service_payout_v1",
-                "total": str(worker_payout) if worker_payout is not None else None,
-                "configured": worker_payout is not None,
-                "materials": item.service.material_requirements or [],
-                "currency": "INR",
-            }
+            booking.worker_payout_snapshot = (
+                {
+                    "pricing_model": "fixed_service_payout_v1",
+                    "total": str(worker_payout) if worker_payout is not None else None,
+                    "configured": worker_payout is not None,
+                    "materials": item.service.material_requirements or [],
+                    "currency": "INR",
+                }
+                if item.service.pricing_type != item.service.PricingType.QUOTE
+                and booking.booking_mode != Booking.BookingMode.INSPECTION
+                else {}
+            )
             booking.save(update_fields=["worker_payout_snapshot", "updated_at"])
             line_total = line_subtotal + line_tax
 

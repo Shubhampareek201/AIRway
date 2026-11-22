@@ -37,3 +37,62 @@ def calculate_worker_payout(*, service, variant, addon_rows, quantity, booking_m
     if not payout.is_finite() or payout <= 0:
         return None
     return payout.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+UNIT_ECONOMICS_ASSUMPTION_FIELDS = (
+    "estimated_gateway_fee_percent",
+    "discount_reserve_percent",
+    "rewards_reserve_percent",
+    "refund_reserve_percent",
+    "rework_reserve_percent",
+    "other_variable_cost_per_booking",
+    "minimum_contribution_floor",
+    "target_contribution_margin_percent",
+)
+
+
+def calculate_estimated_contribution(*, customer_price, worker_payout, service):
+    """Return a projected pre-tax contribution only when every cost assumption is configured."""
+    if worker_payout is None:
+        return None
+    values = [getattr(service, field, None) for field in UNIT_ECONOMICS_ASSUMPTION_FIELDS]
+    if any(value is None for value in values):
+        return None
+
+    price = Decimal(str(customer_price))
+    payout = Decimal(str(worker_payout))
+    percentages = sum(
+        (Decimal(str(getattr(service, field))) for field in UNIT_ECONOMICS_ASSUMPTION_FIELDS[:5]),
+        Decimal("0.00"),
+    )
+    other_cost = Decimal(str(service.other_variable_cost_per_booking))
+    if not price.is_finite() or price <= 0 or not payout.is_finite() or payout < 0:
+        return None
+    if not other_cost.is_finite() or other_cost < 0:
+        return None
+
+    reserve_amount = (price * percentages / Decimal("100")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    return (price - payout - reserve_amount - other_cost).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+def contribution_recommendation(*, customer_price, worker_payout, service):
+    contribution = calculate_estimated_contribution(
+        customer_price=customer_price,
+        worker_payout=worker_payout,
+        service=service,
+    )
+    if contribution is None:
+        return "Configure assumptions"
+    if contribution < 0:
+        return "Hold"
+    if contribution < Decimal(str(service.minimum_contribution_floor)):
+        return "Reprice"
+    price = Decimal(str(customer_price))
+    margin = contribution * Decimal("100") / price
+    if margin < Decimal(str(service.target_contribution_margin_percent)):
+        return "Reprice"
+    return "Launch"

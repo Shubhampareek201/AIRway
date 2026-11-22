@@ -108,6 +108,14 @@ class Service(TimeStampedModel):
         default=list, blank=True,
         help_text="Admin-managed materials/tools required for this service. Store a list of item descriptions.",
     )
+    estimated_gateway_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    discount_reserve_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    rewards_reserve_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    refund_reserve_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    rework_reserve_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    other_variable_cost_per_booking = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    minimum_contribution_floor = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    target_contribution_margin_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
     duration_minutes = models.PositiveIntegerField(default=60)
     buffer_minutes = models.PositiveIntegerField(default=30, help_text="Do kaam ke beech travel/gap")
@@ -131,6 +139,38 @@ class Service(TimeStampedModel):
             models.CheckConstraint(
                 condition=Q(visit_fee_worker_payout__gte=0),
                 name="svc_visit_payout_nonneg",
+            ),
+            models.CheckConstraint(
+                condition=Q(estimated_gateway_fee_percent__isnull=True) | (Q(estimated_gateway_fee_percent__gte=0) & Q(estimated_gateway_fee_percent__lte=100)),
+                name="svc_gateway_fee_pct_range",
+            ),
+            models.CheckConstraint(
+                condition=Q(discount_reserve_percent__isnull=True) | (Q(discount_reserve_percent__gte=0) & Q(discount_reserve_percent__lte=100)),
+                name="svc_discount_reserve_range",
+            ),
+            models.CheckConstraint(
+                condition=Q(rewards_reserve_percent__isnull=True) | (Q(rewards_reserve_percent__gte=0) & Q(rewards_reserve_percent__lte=100)),
+                name="svc_rewards_reserve_range",
+            ),
+            models.CheckConstraint(
+                condition=Q(refund_reserve_percent__isnull=True) | (Q(refund_reserve_percent__gte=0) & Q(refund_reserve_percent__lte=100)),
+                name="svc_refund_reserve_range",
+            ),
+            models.CheckConstraint(
+                condition=Q(rework_reserve_percent__isnull=True) | (Q(rework_reserve_percent__gte=0) & Q(rework_reserve_percent__lte=100)),
+                name="svc_rework_reserve_range",
+            ),
+            models.CheckConstraint(
+                condition=Q(other_variable_cost_per_booking__isnull=True) | Q(other_variable_cost_per_booking__gte=0),
+                name="svc_other_cost_nonneg",
+            ),
+            models.CheckConstraint(
+                condition=Q(minimum_contribution_floor__isnull=True) | Q(minimum_contribution_floor__gte=0),
+                name="svc_min_contribution_nonneg",
+            ),
+            models.CheckConstraint(
+                condition=Q(target_contribution_margin_percent__isnull=True) | (Q(target_contribution_margin_percent__gte=0) & Q(target_contribution_margin_percent__lte=100)),
+                name="svc_target_margin_range",
             ),
         ]
 
