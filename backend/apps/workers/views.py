@@ -807,7 +807,10 @@ class WorkerJobQuoteView(APIView):
         subtotal = sum(totals.values(), Decimal("0.00"))
         if subtotal <= 0:
             return Response({"line_items": ["The estimate total must be greater than zero."]}, status=status.HTTP_400_BAD_REQUEST)
-        tax = (subtotal * Decimal("0.18")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        tax_rate = Decimal(str(booking.service.tax_rate))
+        tax = (subtotal * tax_rate / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         total = subtotal + tax
         notes = str(request.data.get("notes", "")).strip()
         if len(notes) > 2000:
@@ -997,6 +1000,7 @@ class WorkerJobDetailView(APIView):
                 ).exists()
             ),
             "service_title": booking.service.title,
+            "required_materials": booking.service.material_requirements or [],
             "customer_name": booking.customer.name or "AIRway Customer",
             "customer_contact_available": customer_contact_available,
             "customer_contact_available_at": contact_available_at.isoformat() if contact_available_at else None,

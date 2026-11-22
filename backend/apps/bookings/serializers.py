@@ -438,9 +438,11 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         # Addon prices
         addon_prices = []
-        addon_total = 0
+        addon_total = Decimal("0.00")
+        selected_addons = []
         for addon_id in addon_ids:
             addon = AddOn.objects.get(pk=addon_id)
+            selected_addons.append(addon)
             addon_prices.append({
                 "id": addon.id,
                 "title": addon.title,
@@ -460,22 +462,43 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         # Package and add-ons scale with quantity; inspection is one visit
         # for the booking and must be charged only once.
-        from decimal import Decimal
+        from decimal import Decimal, ROUND_HALF_UP
         unit_subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total))
         subtotal = (unit_subtotal * quantity) + Decimal(str(visit_fee))
-        tax = subtotal * Decimal("0.18")
+        tax_rate = Decimal(str(service.tax_rate))
+        tax = (subtotal * tax_rate / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         total = subtotal + tax
+
+        from apps.catalog.finance import calculate_worker_payout
+        worker_payout = calculate_worker_payout(
+            service=service,
+            variant=variant,
+            addon_rows=[(addon, 1) for addon in selected_addons],
+            quantity=quantity,
+            booking_mode=booking_mode,
+        )
+        worker_payout_snapshot = {
+            "pricing_model": "fixed_service_payout_v1",
+            "total": str(worker_payout) if worker_payout is not None else None,
+            "configured": worker_payout is not None,
+            "materials": service.material_requirements or [],
+            "currency": "INR",
+        }
 
         pricing["quantity"] = quantity
         pricing["unit_subtotal"] = str(unit_subtotal)
         pricing["subtotal"] = str(subtotal)
         pricing["tax"] = str(tax)
+        pricing["tax_rate"] = str(tax_rate)
         pricing["total"] = str(total)
         pricing["currency"] = "INR"
 
         validated_data["customer"] = user
         validated_data["address"] = address
         validated_data["pricing_snapshot"] = pricing
+        validated_data["worker_payout_snapshot"] = worker_payout_snapshot
         validated_data["customer_answers"] = category_answers
 
         booking = Booking.objects.create(**validated_data)

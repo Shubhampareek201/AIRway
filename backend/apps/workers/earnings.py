@@ -49,7 +49,7 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
         if not fixed_payout.is_finite() or fixed_payout < 0:
             fixed_payout = None
 
-    rate = (
+    rate = None if fixed_model else (
         existing.commission_rate
         if existing and existing.commission_rate is not None
         else worker.commission_rate
@@ -113,7 +113,7 @@ def snapshot_worker_earning_for_assignment(booking, worker):
     fixed_model = payout_snapshot.get("pricing_model") == "fixed_service_payout_v1"
     fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
     fixed_payout = Decimal(str(fixed_payout_raw)) if fixed_payout_raw not in (None, "") else None
-    rate = worker.commission_rate
+    rate = None if fixed_model else worker.commission_rate
     if (fixed_model and fixed_payout is None) or (not fixed_model and rate is None):
         return None
     order_item = OrderItem.objects.filter(booking=booking).first()

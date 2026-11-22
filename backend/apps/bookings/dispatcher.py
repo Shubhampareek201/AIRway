@@ -561,24 +561,27 @@ class DispatcherService:
             worker_payout = None
             if appointment_group:
                 from decimal import Decimal
-                group_rows = list(appointment_group.bookings.exclude(status="cancelled").all())
-                payout_values = [
-                    (row.worker_payout_snapshot or {}).get("total")
-                    if (row.worker_payout_snapshot or {}).get("pricing_model") == "fixed_service_payout_v1"
-                    else None
-                    for row in group_rows
+                payout_bookings = list(appointment_group.bookings.exclude(status="cancelled").all())
+            elif order:
+                from decimal import Decimal
+                payout_bookings = [
+                    item.booking
+                    for item in order.items.exclude(booking__status="cancelled").select_related("booking")
                 ]
-                if payout_values and all(value not in (None, "") for value in payout_values):
-                    worker_payout = str(sum((Decimal(str(value)) for value in payout_values), Decimal("0.00")))
             else:
-                payout_data = booking.worker_payout_snapshot or {}
-                fixed_value = payout_data.get("total") if payout_data.get("pricing_model") == "fixed_service_payout_v1" else None
-                if fixed_value not in (None, ""):
-                    worker_payout = str(Decimal(str(fixed_value)))
+                payout_bookings = [booking]
+            payout_values = [
+                (row.worker_payout_snapshot or {}).get("total")
+                if (row.worker_payout_snapshot or {}).get("pricing_model") == "fixed_service_payout_v1"
+                else None
+                for row in payout_bookings
+            ]
+            if payout_values and all(value not in (None, "") for value in payout_values):
+                worker_payout = str(sum((Decimal(str(value)) for value in payout_values), Decimal("0.00")))
             fixed_pricing_missing = (
                 any(
                     (row.worker_payout_snapshot or {}).get("pricing_model") == "fixed_service_payout_v1"
-                    for row in (appointment_group.bookings.exclude(status="cancelled").all() if appointment_group else [booking])
+                    for row in payout_bookings
                 )
                 and worker_payout is None
             )
