@@ -130,7 +130,7 @@ class Service(TimeStampedModel):
             ),
             models.CheckConstraint(
                 condition=Q(visit_fee_worker_payout__gte=0),
-                name="service_visit_payout_nonnegative",
+                name="svc_visit_payout_nonneg",
             ),
         ]
 
@@ -190,7 +190,7 @@ class ServiceVariant(PricedItem):
             models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="variant_price_lte_mrp"),
             models.CheckConstraint(
                 condition=Q(worker_payout__isnull=True) | Q(worker_payout__gte=0),
-                name="variant_worker_payout_nonnegative",
+                name="var_worker_payout_nonneg",
             ),
         ]
 
@@ -211,7 +211,7 @@ class AddOn(PricedItem):
             models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="addon_price_lte_mrp"),
             models.CheckConstraint(
                 condition=Q(worker_payout__gte=0),
-                name="addon_worker_payout_nonnegative",
+                name="addon_worker_payout_nonneg",
             ),
         ]
 

@@ -19,21 +19,21 @@ class Migration(migrations.Migration):
             model_name="service",
             constraint=models.CheckConstraint(
                 condition=models.Q(("visit_fee_worker_payout__gte", 0)),
-                name="service_visit_payout_nonnegative",
+                name="svc_visit_payout_nonneg",
             ),
         ),
         migrations.AddConstraint(
             model_name="servicevariant",
             constraint=models.CheckConstraint(
                 condition=models.Q(("worker_payout__isnull", True)) | models.Q(("worker_payout__gte", 0)),
-                name="variant_worker_payout_nonnegative",
+                name="var_worker_payout_nonneg",
             ),
         ),
         migrations.AddConstraint(
             model_name="addon",
             constraint=models.CheckConstraint(
                 condition=models.Q(("worker_payout__gte", 0)),
-                name="addon_worker_payout_nonnegative",
+                name="addon_worker_payout_nonneg",
             ),
         ),
     ]
