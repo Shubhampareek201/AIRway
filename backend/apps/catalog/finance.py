@@ -34,6 +34,6 @@ def calculate_worker_payout(*, service, variant, addon_rows, quantity, booking_m
     if booking_mode == "inspection":
         payout += Decimal(str(service.visit_fee_worker_payout))
 
-    if not payout.is_finite() or payout < 0:
+    if not payout.is_finite() or payout <= 0:
         return None
     return payout.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

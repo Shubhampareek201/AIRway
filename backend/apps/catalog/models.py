@@ -123,6 +123,16 @@ class Service(TimeStampedModel):
 
     class Meta:
         ordering = ["sort_order", "title"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(tax_rate__gte=0) & Q(tax_rate__lte=100),
+                name="service_tax_rate_range",
+            ),
+            models.CheckConstraint(
+                condition=Q(visit_fee_worker_payout__gte=0),
+                name="service_visit_payout_nonnegative",
+            ),
+        ]
 
     def __str__(self):
         return self.title
@@ -177,7 +187,11 @@ class ServiceVariant(PricedItem):
 
     class Meta(PricedItem.Meta):
         constraints = [
-            models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="variant_price_lte_mrp")
+            models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="variant_price_lte_mrp"),
+            models.CheckConstraint(
+                condition=Q(worker_payout__isnull=True) | Q(worker_payout__gte=0),
+                name="variant_worker_payout_nonnegative",
+            ),
         ]
 
     def __str__(self):
@@ -194,7 +208,11 @@ class AddOn(PricedItem):
 
     class Meta(PricedItem.Meta):
         constraints = [
-            models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="addon_price_lte_mrp")
+            models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="addon_price_lte_mrp"),
+            models.CheckConstraint(
+                condition=Q(worker_payout__gte=0),
+                name="addon_worker_payout_nonnegative",
+            ),
         ]
 
 

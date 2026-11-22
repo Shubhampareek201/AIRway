@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import models
 from unfold.admin import ModelAdmin, TabularInline
 
 from .pricing import service_pricing_ready
@@ -62,12 +63,26 @@ class CategoryAdmin(ModelAdmin):
 @admin.register(Service)
 class ServiceAdmin(ModelAdmin):
     list_display = ("title", "category", "booking_mode", "pricing_type", "audience",
-                    "pricing_status", "is_popular", "is_active", "updated_at")
+                    "pricing_status", "worker_payout_status", "is_popular", "is_active", "updated_at")
     list_editable = ("is_popular", "is_active")
     list_filter = ("category", "booking_mode", "pricing_type", "audience", "is_active")
     search_fields = ("title", "title_hi", "description", "category__title")
     inlines = [VariantInline, AddOnInline, FormFieldInline, ServiceImageInline]
     list_per_page = 30
+
+    @admin.display(description="Worker payout")
+    def worker_payout_status(self, obj):
+        variants = obj.variants.filter(is_active=True)
+        missing = variants.filter(
+            models.Q(worker_payout__isnull=True) | models.Q(worker_payout__lte=0)
+        ).count()
+        if missing:
+            return f"Configure {missing} active variant payout(s)"
+        if not variants.exists() and obj.booking_mode == Service.BookingMode.INSPECTION:
+            return "Configured" if obj.visit_fee_worker_payout > 0 else "Set inspection payout"
+        if not variants.exists() and obj.pricing_type == Service.PricingType.QUOTE:
+            return "Set quote/inspection payout"
+        return "Configured" if variants.exists() else "No variant payout configured"
 
     @admin.display(description="Customer pricing")
     def pricing_status(self, obj):
