@@ -12,7 +12,7 @@ from unfold.admin import ModelAdmin, TabularInline
 from .pricing import service_pricing_ready
 from .models import (
     AddOn, Banner, Category, CategoryAudienceOption, CityService, FormField, Service,
-    ServiceImage, ServiceVariant, VehicleMake, VehicleModel,
+    ServiceImage, ServiceVariant, ServiceInspectionRate, VehicleMake, VehicleModel,
 )
 
 
@@ -145,6 +145,12 @@ class AddOnInline(TabularInline):
     show_change_link = True
 
 
+class ServiceInspectionRateInline(TabularInline):
+    model = ServiceInspectionRate
+    extra = 0
+    fields = ("title", "code", "description", "rate_type", "customer_price", "worker_payout", "pricing_change_reason", "sort_order", "is_active")
+
+
 class FormFieldInline(TabularInline):
     model = FormField
     extra = 0
@@ -183,7 +189,7 @@ class ServiceAdmin(ModelAdmin):
     list_editable = ("is_popular", "is_active")
     list_filter = ("category", "booking_mode", "pricing_type", "audience", "is_active")
     search_fields = ("title", "title_hi", "description", "category__title")
-    inlines = [VariantInline, AddOnInline, FormFieldInline, ServiceImageInline]
+    inlines = [VariantInline, AddOnInline, ServiceInspectionRateInline, FormFieldInline, ServiceImageInline]
     list_per_page = 30
 
     def save_model(self, request, obj, form, change):
@@ -241,6 +247,22 @@ class ServiceAdmin(ModelAdmin):
         ("Customer requirements", {"fields": ("audience", "requires_female_worker")}),
         ("Visibility", {"fields": ("is_popular", "sort_order", "is_active")}),
     )
+
+
+@admin.register(ServiceInspectionRate)
+class ServiceInspectionRateAdmin(ModelAdmin):
+    list_display = ("service", "title", "rate_type", "customer_price", "worker_payout", "is_active", "updated_at")
+    list_filter = ("service", "rate_type", "is_active")
+    search_fields = ("service__title", "title", "code")
+    fields = ("service", "title", "code", "description", "rate_type", "customer_price", "worker_payout", "pricing_change_reason", "sort_order", "is_active")
+
+    def save_model(self, request, obj, form, change):
+        reason = str(obj.pricing_change_reason or "").strip()
+        if change:
+            previous = ServiceInspectionRate.objects.get(pk=obj.pk)
+            if (previous.customer_price != obj.customer_price or previous.worker_payout != obj.worker_payout) and not reason:
+                raise ValidationError("Enter a reason when changing the inspection customer price or worker payout.")
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(ServiceVariant)
