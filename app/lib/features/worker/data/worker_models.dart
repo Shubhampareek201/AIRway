@@ -316,6 +316,7 @@ class WorkerAssignmentDetail {
   final String bookingMode;
   final String pricingType;
   final Map<String, dynamic>? quote;
+  final List<Map<String, dynamic>> inspectionOptions;
   final bool canSubmitQuote;
   final List<Map<String, dynamic>> extraWorkRequests;
   final List<Map<String, dynamic>> workEvidence;
@@ -354,6 +355,7 @@ class WorkerAssignmentDetail {
     this.bookingMode = 'scheduled',
     this.pricingType = 'fixed',
     this.quote,
+    this.inspectionOptions = const [],
     this.canSubmitQuote = false,
     this.extraWorkRequests = const [],
     this.workEvidence = const [],
@@ -395,6 +397,7 @@ class WorkerAssignmentDetail {
       bookingMode: map['booking_mode']?.toString() ?? 'scheduled',
       pricingType: map['pricing_type']?.toString() ?? 'fixed',
       quote: map['quote'] is Map ? Map<String, dynamic>.from(map['quote']) : null,
+      inspectionOptions: (map['inspection_options'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       canSubmitQuote: map['can_submit_quote'] == true,
       extraWorkRequests: (map['extra_work_requests'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
       workEvidence: (map['work_evidence'] as List? ?? []).whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
