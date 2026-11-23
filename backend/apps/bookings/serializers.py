@@ -691,7 +691,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "other_amount": str(quote.other_amount),
             "tax_amount": str(quote.tax_amount),
             "total_amount": str(quote.total_amount),
-            "inspection_fee_credit": str((obj.pricing_snapshot or {}).get("total", "0")) if (obj.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
+            "inspection_fee_credit": str((obj.pricing_snapshot or {}).get("inspection_visit_paid_amount", (obj.pricing_snapshot or {}).get("total", "0"))) if (obj.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
             "notes": quote.notes,
             "customer_response_note": quote.customer_response_note,
             "expires_at": quote.expires_at,
