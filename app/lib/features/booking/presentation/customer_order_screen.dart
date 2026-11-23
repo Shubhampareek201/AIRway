@@ -2086,6 +2086,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                     : Text(AirwayText.tr('Approve estimate', 'अनुमान स्वीकार करें')),
               )),
             ]),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _quoteResponding ? null : () => respondToQuote(row, 'cancel'),
+                style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+                child: Text(AirwayText.tr('Decline repair', 'मरम्मत नहीं करवानी')),
+              ),
+            ),
           ],
         ],
       ),
@@ -2096,15 +2104,25 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (_quoteResponding) return;
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null) return;
-    if (decision == 'reject') {
+    if (decision == 'reject' || decision == 'cancel') {
+      final isCancel = decision == 'cancel';
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(AirwayText.tr('Request a revised estimate?', 'संशोधित अनुमान माँगें?')),
-          content: Text(AirwayText.tr('The professional will be asked to review your feedback and submit a revised estimate.', 'प्रोफ़ेशनल से आपकी प्रतिक्रिया देखकर नया अनुमान भेजने को कहा जाएगा।')),
+          title: Text(isCancel
+              ? AirwayText.tr('Decline this repair?', 'क्या यह मरम्मत नहीं करवानी है?')
+              : AirwayText.tr('Request a revised estimate?', 'संशोधित अनुमान माँगें?')),
+          content: Text(isCancel
+              ? AirwayText.tr('This repair booking will be closed. Your already-paid inspection visit fee will remain settled; no repair balance will be charged.', 'यह मरम्मत बुकिंग बंद हो जाएगी। पहले से दिया गया निरीक्षण शुल्क समायोजित रहेगा और मरम्मत का बाकी भुगतान नहीं लिया जाएगा।')
+              : AirwayText.tr('The professional will be asked to review your feedback and submit a revised estimate.', 'प्रोफ़ेशनल से आपकी प्रतिक्रिया देखकर नया अनुमान भेजने को कहा जाएगा।')),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(AirwayText.tr('Keep quote', 'अनुमान रहने दें'))),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(AirwayText.tr('Request revision', 'संशोधन माँगें'))),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(AirwayText.tr('Go back', 'वापस जाएँ'))),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(isCancel
+                  ? AirwayText.tr('Close repair booking', 'मरम्मत बुकिंग बंद करें')
+                  : AirwayText.tr('Request revision', 'संशोधन माँगें')),
+            ),
           ],
         ),
       );
