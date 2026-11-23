@@ -818,8 +818,11 @@ class WorkerJobQuoteView(APIView):
 
         with transaction.atomic():
             latest = BookingQuote.objects.select_for_update().filter(booking=booking).order_by("-version").first()
-            if latest and latest.status == BookingQuote.Status.PENDING_CUSTOMER:
-                return Response({"detail": "A quote is already waiting for customer approval."}, status=status.HTTP_409_CONFLICT)
+            if latest and latest.status in (
+                BookingQuote.Status.PENDING_ADMIN,
+                BookingQuote.Status.PENDING_CUSTOMER,
+            ):
+                return Response({"detail": "A quote is already waiting for AIRway or customer approval."}, status=status.HTTP_409_CONFLICT)
             if latest and latest.status == BookingQuote.Status.ACCEPTED:
                 return Response({"detail": "The customer has already accepted a quote for this booking."}, status=status.HTTP_409_CONFLICT)
             quote = BookingQuote.objects.create(
