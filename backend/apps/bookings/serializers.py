@@ -459,6 +459,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         # Visit fee for inspection
         visit_fee = service.visit_fee if booking_mode == Booking.BookingMode.INSPECTION else 0
         pricing["visit_fee"] = str(visit_fee)
+        if booking_mode == Booking.BookingMode.INSPECTION:
+            pricing["inspection_fee_credit_model"] = "visit_fee_credit_v1"
 
         # Package and add-ons scale with quantity; inspection is one visit
         # for the booking and must be charged only once.
@@ -487,8 +489,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 "materials": service.material_requirements or [],
                 "currency": "INR",
             }
-            if service.pricing_type != Service.PricingType.QUOTE
-            and booking_mode != Booking.BookingMode.INSPECTION
+            if booking_mode == Booking.BookingMode.INSPECTION
+            or service.pricing_type != Service.PricingType.QUOTE
             else {}
         )
 
@@ -689,6 +691,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             "other_amount": str(quote.other_amount),
             "tax_amount": str(quote.tax_amount),
             "total_amount": str(quote.total_amount),
+            "inspection_fee_credit": str((obj.pricing_snapshot or {}).get("visit_fee", "0")) if (obj.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
             "notes": quote.notes,
             "customer_response_note": quote.customer_response_note,
             "expires_at": quote.expires_at,
