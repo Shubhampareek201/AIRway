@@ -259,6 +259,36 @@ class AddOn(PricedItem):
         ]
 
 
+class ServiceInspectionRate(TimeStampedModel):
+    """Admin-configured repair choices and independent worker payout rates."""
+    class RateType(models.TextChoices):
+        LABOUR = "labour", "Labour"
+        MATERIAL = "material", "Material / spare part"
+        OTHER = "other", "Other"
+
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="inspection_rates")
+    code = models.SlugField(max_length=80)
+    title = models.CharField(max_length=150)
+    description = models.CharField(max_length=300, blank=True)
+    rate_type = models.CharField(max_length=10, choices=RateType.choices, default=RateType.LABOUR)
+    customer_price = models.DecimalField(max_digits=10, decimal_places=2)
+    worker_payout = models.DecimalField(max_digits=10, decimal_places=2)
+    pricing_change_reason = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "title"]
+        constraints = [
+            models.UniqueConstraint(fields=["service", "code"], name="unique_inspection_rate_code"),
+            models.CheckConstraint(condition=Q(customer_price__gt=0), name="inspection_rate_price_positive"),
+            models.CheckConstraint(condition=Q(worker_payout__gte=0), name="inspection_rate_payout_nonnegative"),
+        ]
+
+    def __str__(self):
+        return f"{self.service.title} - {self.title}"
+
+
 class FormField(TimeStampedModel):
     """Service ke custom sawaal. Naya sawaal = admin mein ek row, code change nahi."""
     class FieldType(models.TextChoices):
