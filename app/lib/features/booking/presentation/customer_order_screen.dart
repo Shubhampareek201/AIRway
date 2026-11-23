@@ -2052,10 +2052,22 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ),
           const Divider(height: 16),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(AirwayText.tr('Estimate including tax', 'टैक्स सहित अनुमान'), style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
+            Text(AirwayText.tr('Repair estimate including tax', 'टैक्स सहित मरम्मत अनुमान'), style: TextStyle(fontWeight: FontWeight.w800, color: ink)),
             Text('₹${amount(quote['total_amount']).toStringAsFixed(2)}',
                 style: const TextStyle(fontWeight: FontWeight.w900, color: violet, fontSize: 16)),
           ]),
+          if (amount(quote['inspection_fee_credit']) > 0) ...[
+            const Divider(height: 16),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Expanded(child: Text(AirwayText.tr('Inspection visit already paid', 'निरीक्षण विज़िट का भुगतान हो चुका है'), style: const TextStyle(color: sub, fontSize: 12))),
+              Text('− ₹${amount(quote['inspection_fee_credit']).toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF2E7D52), fontWeight: FontWeight.w800, fontSize: 12)),
+            ]),
+            const SizedBox(height: 5),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(AirwayText.tr('Remaining repair balance', 'मरम्मत का बाकी भुगतान'), style: const TextStyle(color: ink, fontWeight: FontWeight.w900, fontSize: 13)),
+              Text('₹${(amount(quote['total_amount']) - amount(quote['inspection_fee_credit'])).clamp(0, double.infinity).toStringAsFixed(2)}', style: const TextStyle(color: violet, fontWeight: FontWeight.w900, fontSize: 15)),
+            ]),
+          ],
           if (quote['notes']?.toString().isNotEmpty == true) ...[
             const SizedBox(height: 6),
             Text(quote['notes'].toString(), style: const TextStyle(color: sub, fontSize: 12)),
