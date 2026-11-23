@@ -259,7 +259,11 @@ def create_or_get_order_payment(
             and not (item.booking.booking_mode == Booking.BookingMode.INSPECTION and item.booking.quotes.filter(status="accepted").exists())
         ]
         if unpaid_work:
-            raise ValueError("Accept the inspection estimate before paying its repair balance, or complete all other services before final balance payment.")
+            if appointment_group is not None:
+                raise ValueError("Balance payment requires every active service in the appointment to be completed.")
+            if any(item.booking.booking_mode == Booking.BookingMode.INSPECTION for item in unpaid_work):
+                raise ValueError("Accept the inspection estimate before paying its repair balance, or complete every active service before final balance payment.")
+            raise ValueError("Balance payment is available only after every active service is completed.")
         paid = Payment.objects.filter(
             order=order,
             stage=Payment.Stage.BALANCE,
@@ -375,7 +379,11 @@ def create_or_get_order_payment(
                     and not (item.booking.booking_mode == Booking.BookingMode.INSPECTION and item.booking.quotes.filter(status="accepted").exists())
                 ]
                 if not locked_active_items or unpaid_work:
-                    raise ValueError("Accept the inspection estimate before paying its repair balance, or complete all other services before final balance payment.")
+                    if appointment_group is not None:
+                        raise ValueError("Balance payment requires every active service in the appointment to be completed.")
+                    if any(item.booking.booking_mode == Booking.BookingMode.INSPECTION for item in unpaid_work):
+                        raise ValueError("Accept the inspection estimate before paying its repair balance, or complete every active service before final balance payment.")
+                    raise ValueError("Balance payment is available only after every active service is completed.")
         elif stage == Payment.Stage.LEGACY:
             locked_items = list(locked_order.items.select_related("booking"))
             if locked_order.status != Order.Status.AWAITING_PAYMENT or any(
