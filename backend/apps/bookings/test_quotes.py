@@ -194,6 +194,47 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.assertEqual(Decimal(allocation["balance_total"]), Decimal("472.00"))
         self.assertEqual(Decimal(allocation["balance"][0]["amount"]), Decimal("472.00"))
 
+        order_response = self.customer_client.get(
+            f"/api/v1/bookings/orders/{self.order.id}/"
+        )
+        self.assertEqual(order_response.status_code, 200, order_response.data)
+        order_row = next(
+            row for row in order_response.data["items"]
+            if row["booking_id"] == self.booking.id
+        )
+        self.assertEqual(
+            Decimal(order_row["quote"]["inspection_fee_credit"]),
+            Decimal("118.00"),
+        )
+
+    def test_worker_can_start_repair_only_after_balance_payment_is_confirmed(self):
+        submitted = self._submit_quote()
+        self.assertEqual(submitted.status_code, 201, submitted.data)
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+
+        start_url = f"/api/v1/workers/jobs/{self.assignment.id}/start-repair/"
+        unpaid_attempt = self.worker_client.post(start_url, {}, format="json")
+        self.assertEqual(unpaid_attempt.status_code, 409, unpaid_attempt.data)
+
+        Payment.objects.create(
+            order=self.order,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("472.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="quote_test_balance_paid",
+        )
+        paid_attempt = self.worker_client.post(start_url, {}, format="json")
+        self.assertEqual(paid_attempt.status_code, 200, paid_attempt.data)
+        quote = BookingQuote.objects.get(booking=self.booking)
+        self.assertIsNotNone(quote.repair_started_at)
+
     def test_customer_can_decline_repair_and_settle_paid_inspection_visit(self):
         submitted = self._submit_quote()
         self.assertEqual(submitted.status_code, 201, submitted.data)
