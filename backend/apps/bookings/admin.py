@@ -310,6 +310,15 @@ class BookingQuoteAdminForm(forms.ModelForm):
             payout = cleaned.get("worker_payout_amount")
             if payout is None or payout <= 0:
                 self.add_error("worker_payout_amount", "Enter a worker payout greater than zero.")
+            quote_subtotal = (
+                self.instance.labour_amount
+                + self.instance.material_amount
+                + self.instance.other_amount
+            )
+            if payout is not None and payout > quote_subtotal:
+                self.add_error("worker_payout_amount", "Worker payout cannot exceed the quote subtotal before tax.")
+            if self.instance.expires_at and self.instance.expires_at <= timezone.now():
+                self.add_error("approve_for_customer", "This quote has expired. Ask the worker to submit a revised estimate.")
             if not (cleaned.get("payout_approval_note") or "").strip():
                 self.add_error("payout_approval_note", "An approval note is required.")
             if self.instance.pk and self.instance.payout_approved_at:

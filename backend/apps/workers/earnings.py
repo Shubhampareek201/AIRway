@@ -41,7 +41,10 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
     refunds_exist = refunds.exists()
 
     payout_snapshot = booking.worker_payout_snapshot or {}
-    fixed_model = payout_snapshot.get("pricing_model") == "fixed_service_payout_v1"
+    fixed_model = payout_snapshot.get("pricing_model") in (
+        "fixed_service_payout_v1",
+        "admin_approved_quote_payout_v1",
+    )
     fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
     fixed_payout = None
     if fixed_payout_raw not in (None, ""):
@@ -110,7 +113,10 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
 def snapshot_worker_earning_for_assignment(booking, worker):
     """Lock the worker's net service earning when they accept the job."""
     payout_snapshot = booking.worker_payout_snapshot or {}
-    fixed_model = payout_snapshot.get("pricing_model") == "fixed_service_payout_v1"
+    fixed_model = payout_snapshot.get("pricing_model") in (
+        "fixed_service_payout_v1",
+        "admin_approved_quote_payout_v1",
+    )
     fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
     fixed_payout = Decimal(str(fixed_payout_raw)) if fixed_payout_raw not in (None, "") else None
     rate = None if fixed_model else worker.commission_rate
