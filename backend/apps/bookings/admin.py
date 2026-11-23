@@ -297,75 +297,18 @@ class BookingExtraWorkAdmin(ModelAdmin):
         return False
 
 
-class BookingQuoteAdminForm(forms.ModelForm):
-    approve_for_customer = forms.BooleanField(required=False, label="Approve payout and send quote to customer")
-
-    class Meta:
-        model = BookingQuote
-        fields = ("worker_payout_amount", "payout_approval_note", "approve_for_customer")
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("approve_for_customer"):
-            payout = cleaned.get("worker_payout_amount")
-            if payout is None or payout <= 0:
-                self.add_error("worker_payout_amount", "Enter a worker payout greater than zero.")
-            quote_subtotal = (
-                self.instance.labour_amount
-                + self.instance.material_amount
-                + self.instance.other_amount
-            )
-            if payout is not None and payout > quote_subtotal:
-                self.add_error("worker_payout_amount", "Worker payout cannot exceed the quote subtotal before tax.")
-            if self.instance.expires_at and self.instance.expires_at <= timezone.now():
-                self.add_error("approve_for_customer", "This quote has expired. Ask the worker to submit a revised estimate.")
-            if not (cleaned.get("payout_approval_note") or "").strip():
-                self.add_error("payout_approval_note", "An approval note is required.")
-            if self.instance.pk and self.instance.payout_approved_at:
-                self.add_error("approve_for_customer", "This payout has already been approved.")
-        return cleaned
-
-
 @admin.register(BookingQuote)
 class BookingQuoteAdmin(ModelAdmin):
-    form = BookingQuoteAdminForm
-    list_display = (
-        "id", "booking", "worker", "version", "status",
-        "total_amount", "worker_payout_amount", "expires_at", "responded_at",
-    )
+    list_display = ("id", "booking", "worker", "version", "status", "total_amount", "worker_payout_amount", "expires_at", "responded_at")
     list_filter = ("status", "created_at")
     search_fields = ("booking__id", "booking__customer__phone", "worker__user__phone")
-    readonly_fields = (
-        "booking", "worker", "version", "line_items", "labour_amount",
-        "material_amount", "other_amount", "tax_amount", "total_amount",
-        "notes", "status", "customer_response_note", "expires_at",
-        "responded_at", "payout_approved_by", "payout_approved_at", "created_at", "updated_at",
-    )
-    fields = readonly_fields + ("worker_payout_amount", "payout_approval_note", "approve_for_customer")
-
-    def save_model(self, request, obj, form, change):
-        if form.cleaned_data.get("approve_for_customer"):
-            if obj.status != BookingQuote.Status.PENDING_ADMIN:
-                raise ValidationError("Only quotes awaiting AIRway approval can be released.")
-            obj.payout_approval_note = form.cleaned_data["payout_approval_note"].strip()
-            obj.payout_approved_by = request.user
-            obj.payout_approved_at = timezone.now()
-            obj.status = BookingQuote.Status.PENDING_CUSTOMER
-            super().save_model(request, obj, form, change)
-            Notification.objects.create(user=obj.booking.customer, type=Notification.Type.SYSTEM_ANNOUNCEMENT, title="Inspection estimate ready", body=f"Your {obj.booking.service.title} estimate of ₹{obj.total_amount:.2f} is ready. Review and approve or reject it in AIRway.", channel=Notification.Channel.IN_APP, data={"booking_id": obj.booking_id, "quote_id": obj.pk, "purpose": "booking_quote"})
-            Notification.objects.create(user=obj.worker.user, type=Notification.Type.SYSTEM_ANNOUNCEMENT, title="Your estimate was approved by AIRway", body=f"AIRway approved the worker payout for quote v{obj.version}. The estimate has been sent to the customer.", channel=Notification.Channel.IN_APP, data={"booking_id": obj.booking_id, "quote_id": obj.pk, "purpose": "booking_quote_payout_approved"})
-            return
-        if change and obj.payout_approved_at:
-            previous = BookingQuote.objects.get(pk=obj.pk)
-            if obj.worker_payout_amount != previous.worker_payout_amount or obj.payout_approval_note != previous.payout_approval_note:
-                raise ValidationError("An approved quote payout is immutable. Submit a revised quote instead.")
-        super().save_model(request, obj, form, change)
+    readonly_fields = tuple(field.name for field in BookingQuote._meta.fields)
 
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return request.user.is_staff
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
