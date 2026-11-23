@@ -462,7 +462,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         # Package and add-ons scale with quantity; inspection is one visit
         # for the booking and must be charged only once.
-        from decimal import Decimal, ROUND_HALF_UP
+        from decimal import ROUND_HALF_UP
         unit_subtotal = Decimal(str(variant_price)) + Decimal(str(addon_total))
         subtotal = (unit_subtotal * quantity) + Decimal(str(visit_fee))
         tax_rate = Decimal(str(service.tax_rate))
