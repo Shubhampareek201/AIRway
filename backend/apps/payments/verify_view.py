@@ -161,12 +161,12 @@ def _process_verified_payment(
                 active_balance_items = active_balance_items.filter(
                     booking__appointment_group_id=payment.appointment_group_id
                 )
-            if (
-                not active_balance_items.exists()
-                or active_balance_items.exclude(
-                    booking__status=Booking.Status.COMPLETED
-                ).exists()
-            ):
+            unpaid_balance_items = [
+                item for item in active_balance_items.select_related("booking")
+                if item.booking.status != Booking.Status.COMPLETED
+                and not (item.booking.booking_mode == Booking.BookingMode.INSPECTION and item.booking.quotes.filter(status="accepted").exists())
+            ]
+            if not active_balance_items.exists() or unpaid_balance_items:
                 logger.error("Balance payment %s captured before all bookings were verified complete", payment.pk)
                 try:
                     refund = {"status": "wallet_only"}
@@ -486,13 +486,12 @@ def _process_verified_payment(
                     ]
                     if payment.appointment_group_id else all_active_order_items
                 )
-                if (
-                    not active_order_items
-                    or any(
-                        row.booking.status != Booking.Status.COMPLETED
-                        for row in active_order_items
-                    )
-                ):
+                unpaid_order_items = [
+                    row for row in active_order_items
+                    if row.booking.status != Booking.Status.COMPLETED
+                    and not (row.booking.booking_mode == Booking.BookingMode.INSPECTION and row.booking.quotes.filter(status="accepted").exists())
+                ]
+                if not active_order_items or unpaid_order_items:
                     logger.error("Balance payment %s captured before its active services completed", payment.pk)
                     return Response({"detail": "Captured payment requires reconciliation: the services for this payment must be complete.", "payment_id": payment.pk}, status=status.HTTP_409_CONFLICT)
 
