@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Address, User
 from apps.bookings.models import (
     Booking, BookingAssignment, BookingQuote, BookingStatusHistory,
-    Order, OrderItem,
+    AppointmentGroup, Order, OrderItem,
 )
 from apps.catalog.models import Category, Service, ServiceInspectionRate
 from apps.core.models import City, Zone
@@ -92,6 +92,13 @@ class InspectionQuoteLifecycleTests(TestCase):
                 }
             },
         )
+        self.appointment_group = AppointmentGroup.objects.create(
+            order=self.order,
+            group_number=1,
+            scheduled_at=self.booking.scheduled_at,
+        )
+        self.booking.appointment_group = self.appointment_group
+        self.booking.save(update_fields=["appointment_group", "updated_at"])
         self.order_item = OrderItem.objects.create(
             order=self.order,
             booking=self.booking,
@@ -206,6 +213,11 @@ class InspectionQuoteLifecycleTests(TestCase):
             Decimal(order_row["quote"]["inspection_fee_credit"]),
             Decimal("118.00"),
         )
+        self.assertTrue(order_response.data["ready_for_balance"])
+        group_row = order_response.data["appointment_groups"][0]
+        self.assertEqual(group_row["id"], self.appointment_group.id)
+        self.assertTrue(group_row["ready_for_balance"])
+        self.assertEqual(Decimal(group_row["balance_due"]), Decimal("472.00"))
 
     def test_worker_can_start_repair_only_after_balance_payment_is_confirmed(self):
         submitted = self._submit_quote()
