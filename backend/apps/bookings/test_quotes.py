@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -115,6 +116,12 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.worker_client.force_authenticate(self.worker_user)
         self.customer_client = APIClient()
         self.customer_client.force_authenticate(self.customer)
+        self.admin_user = User.objects.create_user(
+            phone="+919876543804", password="password123",
+            name="AIRway Admin", is_staff=True, is_superuser=True,
+        )
+        self.admin_client = APIClient()
+        self.admin_client.force_login(self.admin_user)
 
     def _submit_quote(self):
         return self.worker_client.post(
@@ -129,19 +136,45 @@ class InspectionQuoteLifecycleTests(TestCase):
             format="json",
         )
 
-    def test_worker_can_submit_a_versioned_inspection_quote(self):
+    def _approve_quote_for_customer(self, quote_id, payout="350.00"):
+        response = self.admin_client.post(
+            reverse("admin:bookings_bookingquote_change", args=[quote_id]),
+            {
+                "worker_payout_amount": payout,
+                "payout_approval_note": "Reviewed quote and approved fixed worker payout.",
+                "approve_for_customer": "on",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302, getattr(response, "context", None))
+        quote = BookingQuote.objects.get(pk=quote_id)
+        self.assertEqual(quote.status, BookingQuote.Status.PENDING_CUSTOMER)
+        self.assertEqual(quote.worker_payout_amount, Decimal(payout))
+        self.assertEqual(quote.payout_approved_by, self.admin_user)
+        self.assertTrue(quote.payout_approved_at)
+        return quote
+
+    def test_worker_quote_waits_for_admin_payout_approval(self):
         response = self._submit_quote()
         self.assertEqual(response.status_code, 201, response.data)
         quote = BookingQuote.objects.get(pk=response.data["id"])
-        self.assertEqual(quote.status, BookingQuote.Status.PENDING_CUSTOMER)
-        self.assertEqual(quote.labour_amount, Decimal("200.00"))
-        self.assertEqual(quote.material_amount, Decimal("300.00"))
-        self.assertEqual(quote.tax_amount, Decimal("90.00"))
-        self.assertEqual(quote.total_amount, Decimal("590.00"))
+        self.assertEqual(quote.status, BookingQuote.Status.PENDING_ADMIN)
+        self.assertIsNone(quote.worker_payout_amount)
+
+        customer_response = self.customer_client.post(
+            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(customer_response.status_code, 404, customer_response.data)
+
+        approved = self._approve_quote_for_customer(quote.id)
+        self.assertEqual(approved.status, BookingQuote.Status.PENDING_CUSTOMER)
 
     def test_customer_acceptance_updates_booking_order_and_remaining_balance(self):
         submitted = self._submit_quote()
         self.assertEqual(submitted.status_code, 201, submitted.data)
+        self._approve_quote_for_customer(submitted.data["id"])
 
         response = self.customer_client.post(
             f"/api/v1/bookings/{self.booking.id}/quote/respond/",
@@ -156,6 +189,9 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.order.refresh_from_db()
         self.order_item.refresh_from_db()
         self.assertEqual(Decimal(self.booking.pricing_snapshot["total"]), Decimal("708.00"))
+        self.assertEqual(self.booking.worker_payout_snapshot["pricing_model"], "admin_approved_quote_payout_v1")
+        self.assertEqual(Decimal(self.booking.worker_payout_snapshot["total"]), Decimal("350.00"))
+        self.assertEqual(self.booking.worker_payout_snapshot["approved_by_id"], self.admin_user.id)
         self.assertEqual(self.order_item.line_subtotal, Decimal("600.00"))
         self.assertEqual(self.order_item.tax_amount, Decimal("108.00"))
         self.assertEqual(self.order_item.line_total, Decimal("708.00"))
@@ -169,6 +205,7 @@ class InspectionQuoteLifecycleTests(TestCase):
     def test_customer_can_reject_quote_and_worker_can_submit_a_revision(self):
         first = self._submit_quote()
         self.assertEqual(first.status_code, 201, first.data)
+        self._approve_quote_for_customer(first.data["id"])
         rejected = self.customer_client.post(
             f"/api/v1/bookings/{self.booking.id}/quote/respond/",
             {"decision": "reject", "note": "Please explain the material cost."},
