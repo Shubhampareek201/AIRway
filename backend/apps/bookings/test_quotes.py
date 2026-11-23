@@ -11,7 +11,7 @@ from apps.bookings.models import (
     Booking, BookingAssignment, BookingQuote, BookingStatusHistory,
     Order, OrderItem,
 )
-from apps.catalog.models import Category, Service
+from apps.catalog.models import Category, Service, ServiceInspectionRate
 from apps.core.models import City, Zone
 from apps.payments.models import Payment
 from apps.workers.models import WorkerProfile
@@ -48,8 +48,11 @@ class InspectionQuoteLifecycleTests(TestCase):
             booking_mode=Service.BookingMode.INSPECTION,
             pricing_type=Service.PricingType.QUOTE,
             visit_fee=Decimal("100.00"),
+            visit_fee_worker_payout=Decimal("60.00"),
             is_active=True,
         )
+        self.labour_rate = ServiceInspectionRate.objects.create(service=self.service, code="fan-labour", title="Fan repair labour", rate_type="labour", customer_price=Decimal("200.00"), worker_payout=Decimal("100.00"))
+        self.material_rate = ServiceInspectionRate.objects.create(service=self.service, code="capacitor", title="Capacitor and wiring", rate_type="material", customer_price=Decimal("300.00"), worker_payout=Decimal("150.00"))
         self.booking = Booking.objects.create(
             customer=self.customer,
             address=self.address,
@@ -62,6 +65,7 @@ class InspectionQuoteLifecycleTests(TestCase):
                 "subtotal": "100.00",
                 "tax": "18.00",
                 "total": "118.00",
+                "inspection_fee_credit_model": "visit_fee_credit_v1",
                 "currency": "INR",
             },
         )
@@ -81,10 +85,10 @@ class InspectionQuoteLifecycleTests(TestCase):
             metadata={
                 "payment_allocation_v1": {
                     "percentage": "30",
-                    "advance_total": "35.40",
-                    "balance_total": "82.60",
-                    "advance": [{"order_item_id": 1, "booking_id": self.booking.id, "amount": "35.40"}],
-                    "balance": [{"order_item_id": 1, "booking_id": self.booking.id, "amount": "82.60"}],
+                    "advance_total": "118.00",
+                    "balance_total": "0.00",
+                    "advance": [{"order_item_id": 1, "booking_id": self.booking.id, "amount": "118.00"}],
+                    "balance": [{"order_item_id": 1, "booking_id": self.booking.id, "amount": "0.00"}],
                 }
             },
         )
@@ -107,7 +111,7 @@ class InspectionQuoteLifecycleTests(TestCase):
             order=self.order,
             customer=self.customer,
             stage=Payment.Stage.ADVANCE,
-            amount=Decimal("35.40"),
+            amount=Decimal("118.00"),
             method=Payment.Method.RAZORPAY,
             status=Payment.Status.PAID,
             razorpay_payment_id="quote_test_advance_paid",
@@ -127,9 +131,9 @@ class InspectionQuoteLifecycleTests(TestCase):
         return self.worker_client.post(
             f"/api/v1/workers/jobs/{self.assignment.id}/quote/",
             {
-                "line_items": [
-                    {"type": "labour", "description": "Fan repair labour", "quantity": "2", "unit_price": "100.00"},
-                    {"type": "material", "description": "Capacitor and wiring", "quantity": "1", "unit_price": "300.00"},
+                "items": [
+                    {"rate_id": self.labour_rate.id, "quantity": 1},
+                    {"rate_id": self.material_rate.id, "quantity": 1},
                 ],
                 "notes": "Includes labour and required replacement parts.",
             },
@@ -154,28 +158,17 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.assertTrue(quote.payout_approved_at)
         return quote
 
-    def test_worker_quote_waits_for_admin_payout_approval(self):
+    def test_worker_quote_is_sent_directly_to_customer_with_configured_payout(self):
         response = self._submit_quote()
         self.assertEqual(response.status_code, 201, response.data)
         quote = BookingQuote.objects.get(pk=response.data["id"])
-        self.assertEqual(quote.status, BookingQuote.Status.PENDING_ADMIN)
-        self.assertIsNone(quote.worker_payout_amount)
-
-        customer_response = self.customer_client.post(
-            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
-            {"decision": "accept"},
-            format="json",
-        )
-        self.assertEqual(customer_response.status_code, 404, customer_response.data)
-
-        approved = self._approve_quote_for_customer(quote.id)
-        self.assertEqual(approved.status, BookingQuote.Status.PENDING_CUSTOMER)
+        self.assertEqual(quote.status, BookingQuote.Status.PENDING_CUSTOMER)
+        self.assertEqual(quote.worker_payout_amount, Decimal("250.00"))
+        self.assertTrue(all("rate_id" in row for row in quote.line_items))
 
     def test_customer_acceptance_updates_booking_order_and_remaining_balance(self):
         submitted = self._submit_quote()
         self.assertEqual(submitted.status_code, 201, submitted.data)
-        self._approve_quote_for_customer(submitted.data["id"])
-
         response = self.customer_client.post(
             f"/api/v1/bookings/{self.booking.id}/quote/respond/",
             {"decision": "accept"},
@@ -188,24 +181,22 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.booking.refresh_from_db()
         self.order.refresh_from_db()
         self.order_item.refresh_from_db()
-        self.assertEqual(Decimal(self.booking.pricing_snapshot["total"]), Decimal("708.00"))
-        self.assertEqual(self.booking.worker_payout_snapshot["pricing_model"], "admin_approved_quote_payout_v1")
-        self.assertEqual(Decimal(self.booking.worker_payout_snapshot["total"]), Decimal("350.00"))
-        self.assertEqual(self.booking.worker_payout_snapshot["approved_by_id"], self.admin_user.id)
-        self.assertEqual(self.order_item.line_subtotal, Decimal("600.00"))
-        self.assertEqual(self.order_item.tax_amount, Decimal("108.00"))
-        self.assertEqual(self.order_item.line_total, Decimal("708.00"))
-        self.assertEqual(self.order.total_amount, Decimal("708.00"))
+        self.assertEqual(Decimal(self.booking.pricing_snapshot["total"]), Decimal("590.00"))
+        self.assertEqual(self.booking.worker_payout_snapshot["pricing_model"], "fixed_service_payout_v1")
+        self.assertEqual(Decimal(self.booking.worker_payout_snapshot["total"]), Decimal("310.00"))
+        self.assertEqual(self.order_item.line_subtotal, Decimal("500.00"))
+        self.assertEqual(self.order_item.tax_amount, Decimal("90.00"))
+        self.assertEqual(self.order_item.line_total, Decimal("590.00"))
+        self.assertEqual(self.order.total_amount, Decimal("590.00"))
         allocation = self.order.metadata["payment_allocation_v1"]
-        self.assertEqual(Decimal(allocation["advance_total"]), Decimal("35.40"))
-        self.assertEqual(Decimal(allocation["percentage"]), Decimal("5.00"))
-        self.assertEqual(Decimal(allocation["balance_total"]), Decimal("672.60"))
-        self.assertEqual(Decimal(allocation["balance"][0]["amount"]), Decimal("672.60"))
+        self.assertEqual(Decimal(allocation["advance_total"]), Decimal("118.00"))
+        self.assertEqual(Decimal(allocation["percentage"]), Decimal("20.00"))
+        self.assertEqual(Decimal(allocation["balance_total"]), Decimal("472.00"))
+        self.assertEqual(Decimal(allocation["balance"][0]["amount"]), Decimal("472.00"))
 
     def test_customer_can_reject_quote_and_worker_can_submit_a_revision(self):
         first = self._submit_quote()
         self.assertEqual(first.status_code, 201, first.data)
-        self._approve_quote_for_customer(first.data["id"])
         rejected = self.customer_client.post(
             f"/api/v1/bookings/{self.booking.id}/quote/respond/",
             {"decision": "reject", "note": "Please explain the material cost."},
@@ -241,7 +232,7 @@ class InspectionQuoteLifecycleTests(TestCase):
     def test_quote_rejects_negative_or_malformed_prices(self):
         response = self.worker_client.post(
             f"/api/v1/workers/jobs/{self.assignment.id}/quote/",
-            {"line_items": [{"type": "material", "description": "Unsafe amount", "quantity": 1, "unit_price": -10}]},
+            {"items": [{"rate_id": 999999, "quantity": 1}]},
             format="json",
         )
         self.assertEqual(response.status_code, 400)
