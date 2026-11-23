@@ -310,13 +310,22 @@ class WorkerApi {
 
   static Future<Map<String, dynamic>> submitInspectionQuote(
     int assignmentId, {
-    required List<Map<String, dynamic>> lineItems,
+    required List<Map<String, dynamic>> items,
     String notes = '',
   }) async {
     final result = await _request(
       '/api/v1/workers/jobs/$assignmentId/quote/',
       method: 'POST',
-      data: {'line_items': lineItems, 'notes': notes},
+      data: {'items': items, 'notes': notes},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  static Future<Map<String, dynamic>> startRepair(int assignmentId) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/start-repair/',
+      method: 'POST',
+      data: const {},
     );
     return Map<String, dynamic>.from(result as Map);
   }
