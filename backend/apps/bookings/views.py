@@ -751,6 +751,9 @@ class BookingViewSet(viewsets.ModelViewSet):
         visit_fee = Decimal(str(snapshot.get("visit_fee", "0") or "0"))
         visit_tax = Decimal(str(snapshot.get("tax", "0") or "0"))
         fee_credit_model = snapshot.get("inspection_fee_credit_model") == "visit_fee_credit_v1"
+        inspection_visit_paid_amount = Decimal(str(
+            snapshot.get("inspection_visit_paid_amount", snapshot.get("total", visit_fee + visit_tax))
+        )) if fee_credit_model else Decimal("0.00")
         updated_subtotal = quote_subtotal if fee_credit_model else visit_fee + quote_subtotal
         updated_tax = quote.tax_amount if fee_credit_model else visit_tax + quote.tax_amount
         updated_total = updated_subtotal + updated_tax
@@ -762,6 +765,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "inspection_quote_total": str(quote_total),
             "inspection_quote_items": quote.line_items,
             "inspection_quote_notes": quote.notes,
+            "inspection_visit_paid_amount": str(inspection_visit_paid_amount) if fee_credit_model else snapshot.get("inspection_visit_paid_amount", "0.00"),
             "subtotal": str(updated_subtotal),
             "tax": str(updated_tax),
             "total": str(updated_total),
@@ -1883,7 +1887,7 @@ class CustomerOrderDetailView(APIView):
                     "other_amount": str(latest_quote.other_amount),
                     "tax_amount": str(latest_quote.tax_amount),
                     "total_amount": str(latest_quote.total_amount),
-                    "inspection_fee_credit": str((booking.pricing_snapshot or {}).get("total", "0")) if (booking.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
+                    "inspection_fee_credit": str((booking.pricing_snapshot or {}).get("inspection_visit_paid_amount", (booking.pricing_snapshot or {}).get("total", "0"))) if (booking.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
                     "notes": latest_quote.notes,
                     "customer_response_note": latest_quote.customer_response_note,
                     "expires_at": latest_quote.expires_at.isoformat() if latest_quote.expires_at else None,
