@@ -85,13 +85,18 @@ class StagedOrderPaymentServiceTests(TestCase):
         )
         WorkerService.objects.create(worker=worker, service=self.service)
         WorkerZone.objects.create(worker=worker, zone=zone)
-        WorkerSchedule.objects.create(
-            worker=worker,
-            weekday=timezone.localtime(self.booking.scheduled_at).weekday(),
-            is_active=True,
-            start_time="00:00",
-            end_time="23:59",
-        )
+        # This shared fixture covers bookings on any weekday; each test can
+        # still verify slot availability without depending on the calendar day.
+        WorkerSchedule.objects.bulk_create([
+            WorkerSchedule(
+                worker=worker,
+                weekday=weekday,
+                is_active=True,
+                start_time="00:00",
+                end_time="23:59",
+            )
+            for weekday in range(7)
+        ])
 
     @patch("apps.payments.views.client.order.create")
     def test_advance_is_30_percent_and_balance_is_locked_until_advance_and_completion(self, create_gateway_order):
