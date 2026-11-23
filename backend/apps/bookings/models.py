@@ -266,10 +266,11 @@ class BookingQuote(TimeStampedModel):
     payout_approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_booking_quote_payouts")
     payout_approved_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
-    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING_ADMIN, db_index=True)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING_CUSTOMER, db_index=True)
     customer_response_note = models.TextField(blank=True)
     responded_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
+    repair_started_at = models.DateTimeField(null=True, blank=True, help_text="Set only after the customer has paid the accepted inspection estimate.")
 
     class Meta:
         ordering = ["-version", "-created_at"]
