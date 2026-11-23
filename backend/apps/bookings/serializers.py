@@ -194,7 +194,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                     "variant": "This package does not match the selected service details."
                 })
 
-        if not service_booking_ready(service):
+        if not service_booking_ready(service, variant):
             raise serializers.ValidationError({
                 "service": "This service is not ready for booking yet. AIRway is confirming its price."
             })
@@ -1197,7 +1197,7 @@ class CartItemSerializer(serializers.ModelSerializer):
             })
         if not service.is_active:
             raise serializers.ValidationError({"service": "This service is not available."})
-        if not service_booking_ready(service):
+        if not service_booking_ready(service, variant):
             raise serializers.ValidationError({
                 "service": "This service is not ready for the cart yet. AIRway is confirming its price."
             })

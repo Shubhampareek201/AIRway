@@ -149,7 +149,8 @@ class DynamicServicePhotoUploadTests(TestCase):
         self.photo_field.save(update_fields=["visibility_rules", "updated_at"])
 
         variant = ServiceVariant.objects.create(
-            service=self.service, title="Standard", mrp="100.00", price="100.00"
+            service=self.service, title="Standard", mrp="100.00", price="100.00",
+            worker_payout="60.00",
         )
         with TemporaryDirectory() as private_root, override_settings(PRIVATE_UPLOAD_ROOT=private_root):
             storage = FileSystemStorage(location=private_root)

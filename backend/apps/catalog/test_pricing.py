@@ -85,7 +85,14 @@ class ServicePricingReadinessTests(TestCase):
         variant = self.fixed_priced.variants.get()
         variant.worker_payout = Decimal("120.00")
         variant.save(update_fields=["worker_payout", "updated_at"])
-        self.assertTrue(service_booking_ready(self.fixed_priced))
+        self.assertTrue(service_booking_ready(self.fixed_priced, variant))
+        unconfigured_variant = ServiceVariant.objects.create(
+            service=self.fixed_priced,
+            title="Not yet configured",
+            mrp=Decimal("300.00"),
+            price=Decimal("250.00"),
+        )
+        self.assertFalse(service_booking_ready(self.fixed_priced, unconfigured_variant))
 
     def test_customer_service_api_hides_unpriced_and_unsupported_services(self):
         response = APIClient().get("/api/v1/catalog/services/?launch_only=true&for_worker=true&priced_only=true")

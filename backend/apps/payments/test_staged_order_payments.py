@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Address, User
 from apps.bookings.models import AppointmentGroup, Booking, Order, OrderItem
-from apps.catalog.models import Category, Service
+from apps.catalog.models import Category, Service, ServiceVariant
 from apps.core.models import City, Zone
 from apps.workers.models import WorkerProfile, WorkerService, WorkerZone, WorkerSchedule
 from apps.payments.models import Payment
@@ -42,13 +42,22 @@ class StagedOrderPaymentServiceTests(TestCase):
             pricing_type=Service.PricingType.FIXED,
             is_active=True,
         )
+        self.variant = ServiceVariant.objects.create(
+            service=self.service,
+            title="Standard",
+            mrp=Decimal("1000.00"),
+            price=Decimal("1000.00"),
+            worker_payout=Decimal("200.00"),
+        )
         self.booking = Booking.objects.create(
             customer=self.customer,
             address=self.address,
             service=self.service,
+            variant=self.variant,
             scheduled_at=timezone.now() + timedelta(days=1),
             status=Booking.Status.PENDING,
             pricing_snapshot={"total": "1000.00"},
+            worker_payout_snapshot=Decimal("200.00"),
         )
         self.order = Order.objects.create(
             customer=self.customer,

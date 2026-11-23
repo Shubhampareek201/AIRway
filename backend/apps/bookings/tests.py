@@ -2407,6 +2407,7 @@ class OfferExpiryTaskTest(TestCase):
             price=500,
             mrp=600,
             duration_minutes=60,
+            worker_payout=300,
         )
         address = Address.objects.create(
             user=self.customer,
@@ -2473,6 +2474,7 @@ class OfferExpiryTaskTest(TestCase):
             price=500,
             mrp=600,
             duration_minutes=60,
+            worker_payout=300,
         )
         address = Address.objects.create(
             user=customer,
@@ -2597,6 +2599,7 @@ class FailedDispatchRetryTaskTest(TestCase):
             price=500,
             mrp=600,
             duration_minutes=60,
+            worker_payout=300,
         )
         self.address = Address.objects.create(
             user=self.customer,

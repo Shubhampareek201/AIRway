@@ -1,7 +1,5 @@
 from decimal import Decimal
 
-from django.db.models import Q
-
 
 def service_pricing_ready(service):
     """Only expose services with an honest, calculable customer price."""
@@ -16,17 +14,20 @@ def service_pricing_ready(service):
     return False
 
 
-def service_booking_ready(service):
-    """Require a real worker payout for fixed-price jobs before customer checkout."""
+def service_booking_ready(service, variant=None):
+    """Check payout readiness for the exact package selected for this booking."""
     if not service_pricing_ready(service):
         return False
     # Quote/inspection jobs still use the existing quote/commission workflow.
     if service.pricing_type == "quote" or service.booking_mode == "inspection":
         return True
-    variants = service.variants.filter(is_active=True)
-    return variants.exists() and not variants.filter(
-        Q(worker_payout__isnull=True) | Q(worker_payout__lte=Decimal("0.00"))
-    ).exists()
+    if variant is None or variant.service_id != service.id or not variant.is_active:
+        return False
+    return (
+        variant.price > Decimal("0.00")
+        and variant.worker_payout is not None
+        and variant.worker_payout > Decimal("0.00")
+    )
 
 
 def priced_service_ids(queryset):
