@@ -757,15 +757,15 @@ class WorkerJobQuoteView(APIView):
         now = timezone.now()
         BookingQuote.objects.filter(
             booking=booking,
-            status=BookingQuote.Status.PENDING_CUSTOMER,
+            status__in=(BookingQuote.Status.PENDING_ADMIN, BookingQuote.Status.PENDING_CUSTOMER),
             expires_at__lte=now,
         ).update(
             status=BookingQuote.Status.REJECTED,
             customer_response_note="Quote expired before customer response.",
             responded_at=now,
         )
-        if BookingQuote.objects.filter(booking=booking, status=BookingQuote.Status.PENDING_CUSTOMER).exists():
-            return Response({"detail": "A quote is already waiting for customer approval."}, status=status.HTTP_409_CONFLICT)
+        if BookingQuote.objects.filter(booking=booking, status__in=(BookingQuote.Status.PENDING_ADMIN, BookingQuote.Status.PENDING_CUSTOMER)).exists():
+            return Response({"detail": "A quote is already waiting for AIRway or customer approval."}, status=status.HTTP_409_CONFLICT)
 
         rows = request.data.get("line_items")
         if not isinstance(rows, list) or not rows or len(rows) > 50:
@@ -834,14 +834,6 @@ class WorkerJobQuoteView(APIView):
                 total_amount=total,
                 notes=notes,
                 expires_at=timezone.now() + timedelta(hours=24),
-            )
-            Notification.objects.create(
-                user=booking.customer,
-                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                title="Inspection estimate ready",
-                body=f"Your {booking.service.title} estimate of ₹{total:.2f} is ready. Review and approve or reject it in AIRway.",
-                channel=Notification.Channel.IN_APP,
-                data={"booking_id": booking.id, "quote_id": quote.id, "purpose": "booking_quote"},
             )
 
         return Response({

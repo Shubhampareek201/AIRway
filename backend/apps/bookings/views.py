@@ -717,6 +717,8 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        if quote.worker_payout_amount is None or quote.payout_approved_at is None:
+            return Response({"detail": "AIRway must approve the worker payout before this estimate can be accepted."}, status=status.HTTP_409_CONFLICT)
         quote_subtotal = (
             quote.labour_amount + quote.material_amount + quote.other_amount
         )
@@ -740,7 +742,8 @@ class BookingViewSet(viewsets.ModelViewSet):
             "total": str(updated_total),
         })
         booking.pricing_snapshot = snapshot
-        booking.save(update_fields=["pricing_snapshot", "updated_at"])
+        booking.worker_payout_snapshot = {"pricing_model": "admin_approved_quote_payout_v1", "quote_id": quote.pk, "quote_version": quote.version, "total": str(quote.worker_payout_amount), "configured": True, "approved_by_id": quote.payout_approved_by_id, "approved_at": quote.payout_approved_at.isoformat(), "currency": "INR"}
+        booking.save(update_fields=["pricing_snapshot", "worker_payout_snapshot", "updated_at"])
 
         if order_item:
             order = Order.objects.select_for_update().get(pk=order_item.order_id)

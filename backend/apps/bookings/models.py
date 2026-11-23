@@ -239,6 +239,7 @@ class BookingQuote(TimeStampedModel):
     """Worker-submitted inspection estimate requiring explicit customer approval."""
 
     class Status(models.TextChoices):
+        PENDING_ADMIN = "pending_admin", "Awaiting AIRway payout approval"
         PENDING_CUSTOMER = "pending_customer", "Awaiting customer approval"
         ACCEPTED = "accepted", "Accepted"
         REJECTED = "rejected", "Rejected"
@@ -260,11 +261,12 @@ class BookingQuote(TimeStampedModel):
     other_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    worker_payout_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    payout_approval_note = models.TextField(blank=True)
+    payout_approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_booking_quote_payouts")
+    payout_approved_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
-    status = models.CharField(
-        max_length=24, choices=Status.choices,
-        default=Status.PENDING_CUSTOMER, db_index=True,
-    )
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING_ADMIN, db_index=True)
     customer_response_note = models.TextField(blank=True)
     responded_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
