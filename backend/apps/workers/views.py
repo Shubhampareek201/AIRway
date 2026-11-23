@@ -779,7 +779,7 @@ class WorkerJobQuoteView(APIView):
             quantities[rate_id] = quantity
         rates = list(ServiceInspectionRate.objects.filter(pk__in=rate_ids, service=booking.service, is_active=True))
         if len(rates) != len(rate_ids):
-            return Response({"items": ["A selected repair rate is unavailable. Refresh and try again."]}, status=status.HTTP_409_CONFLICT)
+            return Response({"items": ["One or more selected repair items are invalid. Refresh the inspection options and try again."]}, status=status.HTTP_400_BAD_REQUEST)
         totals = {"labour": Decimal("0.00"), "material": Decimal("0.00"), "other": Decimal("0.00")}
         payout_total = Decimal("0.00")
         clean_rows = []
