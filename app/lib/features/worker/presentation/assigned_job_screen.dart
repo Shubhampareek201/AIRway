@@ -1519,6 +1519,29 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                 Text(AirwayText.tr('Waiting for the customer to approve or request a revision.', 'ग्राहक की स्वीकृति या संशोधन अनुरोध की प्रतीक्षा है।'),
                     style: TextStyle(color: AirwayColors.primary, fontWeight: FontWeight.w700, fontSize: 12)),
               ],
+              if (quote?['worker_payout_amount'] != null) ...[
+                const SizedBox(height: 6),
+                Text('Your configured earning: ₹${quote!['worker_payout_amount']}',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+              ],
+              if (quoteStatus == 'accepted' && quote?['repair_payment_status'] != 'paid') ...[
+                const SizedBox(height: 8),
+                Text(AirwayText.tr('Waiting for the customer’s remaining payment. Do not begin repair yet.', 'ग्राहक के बाकी भुगतान की प्रतीक्षा करें। अभी मरम्मत शुरू न करें।'),
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w700, fontSize: 12)),
+              ],
+              if (quoteStatus == 'accepted' && quote?['repair_payment_status'] == 'paid' && quote?['repair_started_at'] == null) ...[
+                const SizedBox(height: 10),
+                SizedBox(width: double.infinity, child: FilledButton.icon(
+                  onPressed: _isActionInProgress ? null : () => _startApprovedRepair(job),
+                  icon: const Icon(Icons.build_circle_outlined),
+                  label: Text(AirwayText.tr('Start repair', 'मरम्मत शुरू करें')),
+                )),
+              ],
+              if (quoteStatus == 'accepted' && quote?['repair_started_at'] != null) ...[
+                const SizedBox(height: 8),
+                Text(AirwayText.tr('Repair started after payment confirmation.', 'भुगतान की पुष्टि के बाद मरम्मत शुरू हो गई है।'),
+                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 12)),
+              ],
               if (quoteStatus == 'rejected' && quote?['customer_response_note']?.toString().isNotEmpty == true) ...[
                 const SizedBox(height: 8),
                 Text('Customer feedback: ${quote!['customer_response_note']}',
@@ -1547,102 +1570,132 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   }
 
   Future<void> _submitInspectionQuote(WorkerAssignmentDetail job) async {
-    final labourController = TextEditingController();
-    final materialController = TextEditingController();
-    final otherController = TextEditingController();
-    final labourDescriptionController = TextEditingController(text: 'Labour and repair work');
-    final materialDescriptionController = TextEditingController(text: 'Required materials and spare parts');
-    final otherDescriptionController = TextEditingController(text: 'Additional charges');
-    final notesController = TextEditingController();
-
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(AirwayText.tr('Prepare inspection estimate', 'निरीक्षण का अनुमान तैयार करें')),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Align(alignment: Alignment.centerLeft, child: Text(AirwayText.tr('Labour', 'मज़दूरी'))),
-              TextField(controller: labourDescriptionController, decoration: InputDecoration(labelText: AirwayText.tr('Work description', 'काम का विवरण'))),
-              TextField(controller: labourController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: AirwayText.tr('Labour amount (₹)', 'मज़दूरी की राशि (₹)'))),
-              const SizedBox(height: 10),
-              Align(alignment: Alignment.centerLeft, child: Text(AirwayText.tr('Materials', 'सामग्री'))),
-              TextField(controller: materialDescriptionController, decoration: InputDecoration(labelText: AirwayText.tr('Material description', 'सामग्री का विवरण'))),
-              TextField(controller: materialController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: AirwayText.tr('Material amount (₹)', 'सामग्री की राशि (₹)'))),
-              const SizedBox(height: 10),
-              Align(alignment: Alignment.centerLeft, child: Text(AirwayText.tr('Other', 'अन्य'))),
-              TextField(controller: otherDescriptionController, decoration: InputDecoration(labelText: AirwayText.tr('Other work / charge', 'अन्य काम / शुल्क'))),
-              TextField(controller: otherController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: AirwayText.tr('Other amount (₹)', 'अन्य राशि (₹)'))),
-              const SizedBox(height: 10),
-              TextField(controller: notesController, maxLines: 3, maxLength: 500, decoration: InputDecoration(labelText: AirwayText.tr('Notes for customer', 'ग्राहक के लिए नोट'))),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, {
-              'labour': labourController.text.trim(),
-              'labour_description': labourDescriptionController.text.trim(),
-              'material': materialController.text.trim(),
-              'material_description': materialDescriptionController.text.trim(),
-              'other': otherController.text.trim(),
-              'other_description': otherDescriptionController.text.trim(),
-              'notes': notesController.text.trim(),
-            }),
-            child: Text(AirwayText.tr('Review estimate', 'अनुमान की समीक्षा करें')),
-          ),
-        ],
-      ),
-    );
-    labourController.dispose();
-    materialController.dispose();
-    otherController.dispose();
-    labourDescriptionController.dispose();
-    materialDescriptionController.dispose();
-    otherDescriptionController.dispose();
-    notesController.dispose();
-    if (result == null || !mounted) return;
-
-    final lineItems = <Map<String, dynamic>>[];
-    void addLine(String type, String amountText, String description) {
-      final value = double.tryParse(amountText);
-      if (value != null && value > 0) {
-        lineItems.add({
-          'type': type,
-          'description': description.isEmpty ? type : description,
-          'quantity': '1',
-          'unit_price': value.toStringAsFixed(2),
-        });
-      }
-    }
-    addLine('labour', result['labour'] ?? '', result['labour_description'] ?? '');
-    addLine('material', result['material'] ?? '', result['material_description'] ?? '');
-    addLine('other', result['other'] ?? '', result['other_description'] ?? '');
-    if (lineItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Enter at least one positive estimate amount.', 'कम से कम एक सकारात्मक अनुमान राशि दर्ज करें।'))));
+    final options = job.inspectionOptions;
+    if (options.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AirwayText.tr(
+          'No repair rates are configured for this service yet. Contact AIRway support.',
+          'इस सेवा के लिए मरम्मत की दरें अभी कॉन्फ़िगर नहीं हैं। AIRway सहायता से संपर्क करें।',
+        )),
+      ));
       return;
     }
+
+    final selected = <int, int>{};
+    final result = await showDialog<Map<int, int>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(AirwayText.tr('Select inspection findings', 'निरीक्षण में मिली समस्याएँ चुनें')),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 440,
+            child: ListView(
+              children: [
+                Text(AirwayText.tr(
+                  'Select the work and parts actually required. AIRway prices are fixed; you can only set quantities.',
+                  'वास्तव में आवश्यक काम और पार्ट चुनें। AIRway की कीमत तय है; आप केवल मात्रा चुन सकते हैं।',
+                ), style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 10),
+                for (final option in options) ...[
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: selected.containsKey(option['id'] as int),
+                    onChanged: (checked) => setDialogState(() {
+                      final id = option['id'] as int;
+                      if (checked == true) {
+                        selected[id] = 1;
+                      } else {
+                        selected.remove(id);
+                      }
+                    }),
+                    title: Text(option['title']?.toString() ?? ''),
+                    subtitle: Text(
+                      '${option['type']} • ₹${option['customer_price']}${(option['description']?.toString().isNotEmpty ?? false) ? ' • ${option['description']}' : ''}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  if (selected.containsKey(option['id'] as int))
+                    Padding(
+                      padding: const EdgeInsets.only(left: 42, bottom: 8),
+                      child: Row(children: [
+                        Text(AirwayText.tr('Quantity', 'मात्रा')),
+                        const SizedBox(width: 12),
+                        DropdownButton<int>(
+                          value: selected[option['id'] as int],
+                          items: List.generate(10, (index) => DropdownMenuItem(
+                            value: index + 1,
+                            child: Text('${index + 1}'),
+                          )),
+                          onChanged: (value) => setDialogState(() {
+                            if (value != null) selected[option['id'] as int] = value;
+                          }),
+                        ),
+                      ]),
+                    ),
+                  const Divider(height: 8),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(AirwayText.tr('Cancel', 'रद्द करें'))),
+            FilledButton(
+              onPressed: selected.isEmpty ? null : () => Navigator.pop(dialogContext, Map<int, int>.from(selected)),
+              child: Text(AirwayText.tr('Send estimate', 'अनुमान भेजें')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
 
     setState(() => _isActionInProgress = true);
     try {
       await WorkerApi.submitInspectionQuote(
         job.assignmentId,
-        lineItems: lineItems,
-        notes: result['notes'] ?? '',
+        items: result.entries.map((entry) => {
+          'rate_id': entry.key,
+          'quantity': entry.value,
+        }).toList(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Estimate sent to customer for approval.', 'अनुमान ग्राहक की स्वीकृति के लिए भेज दिया गया है।'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AirwayText.tr('Configured estimate sent directly to the customer.', 'कॉन्फ़िगर किया गया अनुमान सीधे ग्राहक को भेज दिया गया है।')),
+      ));
       await _loadAssignedJob();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not submit estimate: $e', 'अनुमान भेजा नहीं जा सका: $e'))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AirwayText.tr('Could not submit estimate: $e', 'अनुमान भेजा नहीं जा सका: $e')),
+        ));
       }
     } finally {
       if (mounted) setState(() => _isActionInProgress = false);
     }
   }
+
+  Future<void> _startApprovedRepair(WorkerAssignmentDetail job) async {
+    if (_isActionInProgress) return;
+    setState(() => _isActionInProgress = true);
+    try {
+      await WorkerApi.startRepair(job.assignmentId);
+      await _loadAssignedJob();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AirwayText.tr('Payment verified. You can start the repair.', 'भुगतान सत्यापित हो गया। अब मरम्मत शुरू कर सकते हैं।')),
+      ));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AirwayText.tr('Repair cannot start yet: $e', 'मरम्मत अभी शुरू नहीं हो सकती: $e')),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
 
   Widget _buildEvidenceCard(WorkerAssignmentDetail job) {
     if (job.workEvidence.isEmpty && job.status != BookingStatus.inProgress) {
