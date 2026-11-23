@@ -6,7 +6,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.catalog.models import Category, FormField, Service, ServiceVariant
-from apps.catalog.pricing import service_pricing_ready
+from apps.catalog.pricing import service_booking_ready, service_pricing_ready
 from apps.catalog.management.commands.configure_launch_catalogue import _package_price, _service_base_price
 
 
@@ -78,6 +78,14 @@ class ServicePricingReadinessTests(TestCase):
             mrp=Decimal("18.00"), price=Decimal("15.00"),
         )
         self.assertTrue(service_pricing_ready(self.per_unit))
+
+    def test_catalogue_price_readiness_is_separate_from_worker_payout_readiness(self):
+        self.assertTrue(service_pricing_ready(self.fixed_priced))
+        self.assertFalse(service_booking_ready(self.fixed_priced))
+        variant = self.fixed_priced.variants.get()
+        variant.worker_payout = Decimal("120.00")
+        variant.save(update_fields=["worker_payout", "updated_at"])
+        self.assertTrue(service_booking_ready(self.fixed_priced))
 
     def test_customer_service_api_hides_unpriced_and_unsupported_services(self):
         response = APIClient().get("/api/v1/catalog/services/?launch_only=true&for_worker=true&priced_only=true")

@@ -58,7 +58,7 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
     if fixed_model and fixed_payout is None:
         hold_reason = "Fixed service payout is not configured by AIRway finance."
     elif not fixed_model and rate is None:
-        hold_reason = "Worker earning rate has not been configured for this legacy booking."
+        hold_reason = "Commission rate / worker earning rate has not been configured for this legacy booking."
     elif refunds_exist:
         hold_reason = "A refund is pending or has been processed; finance reconciliation is required."
 

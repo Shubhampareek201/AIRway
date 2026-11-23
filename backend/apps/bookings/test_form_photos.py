@@ -93,7 +93,8 @@ class DynamicServicePhotoUploadTests(TestCase):
         from django.core.files.storage import FileSystemStorage
 
         variant = ServiceVariant.objects.create(
-            service=self.service, title="Standard", mrp="100.00", price="100.00"
+            service=self.service, title="Standard", mrp="100.00", price="100.00",
+            worker_payout="60.00",
         )
         self.item.variant = variant
         self.item.save(update_fields=["variant", "updated_at"])

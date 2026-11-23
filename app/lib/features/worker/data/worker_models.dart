@@ -213,7 +213,7 @@ class WorkerOffer {
       serviceTitle: map['service_title'] as String?,
       customerName: map['customer_name'] as String?,
       serviceDescription: map['service_description'] as String?,
-      serviceMaterialRequirements: (map['service_material_requirements'] as List? ?? [])
+      serviceMaterialRequirements: ((map['service_material_requirements'] ?? map['material_requirements'] ?? map['required_materials']) as List? ?? [])
           .map((item) => item.toString()).toList(),
       serviceImageUrl: map['service_image_url'] as String?,
       customerIssuePhotoUrl: map['customer_issue_photo_url'] as String?,
@@ -370,7 +370,7 @@ class WorkerAssignmentDetail {
       status: map['status'] ?? '',
       serviceTitle: map['service_title'] ?? '',
       customerName: map['customer_name'] ?? '',
-      requiredMaterials: (map['required_materials'] as List? ?? [])
+      requiredMaterials: ((map['required_materials'] ?? map['material_requirements'] ?? map['service_material_requirements']) as List? ?? [])
           .map((item) => item.toString()).toList(),
       customerPhone: map['customer_phone']?.toString(),
       customerContactAvailable: map['customer_contact_available'] == true,

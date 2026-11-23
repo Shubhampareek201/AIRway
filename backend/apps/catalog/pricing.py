@@ -30,8 +30,13 @@ def service_booking_ready(service):
 
 
 def priced_service_ids(queryset):
-    """Return IDs of services that have both a customer price and dispatchable payout."""
+    """Return services with a customer-facing price, independent of worker payout setup.
+
+    Catalogue visibility must not depend on dispatch readiness. Checkout applies
+    service_booking_ready() separately so a service without a configured fixed
+    payout can be browsed but cannot be booked.
+    """
     return {
         service.id for service in queryset.prefetch_related("variants")
-        if service_booking_ready(service)
+        if service_pricing_ready(service)
     }

@@ -84,6 +84,7 @@ class BookingAPITestMixin:
             price=price,
             mrp=mrp,
             duration_minutes=duration_minutes,
+            worker_payout=(Decimal(str(price)) * Decimal("0.60")).quantize(Decimal("0.01")),
         )
 
     def _create_address(self, user, label="home"):
@@ -707,6 +708,7 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
             title="Basic",
             price=300,
             mrp=400,
+            worker_payout=180,
         )
 
         future_time = timezone.now() + timezone.timedelta(hours=1)
@@ -1320,6 +1322,7 @@ class WorkerOfferModelTest(TestCase):
             price=500,
             mrp=600,
             duration_minutes=60,
+            worker_payout=300,
         )
         city, _ = City.objects.get_or_create(name="Mumbai", defaults={"state": "Maharashtra"})
         zone, _ = Zone.objects.get_or_create(name="Dadar", defaults={"city": city, "is_active": True})
