@@ -1883,7 +1883,7 @@ class CustomerOrderDetailView(APIView):
                     "other_amount": str(latest_quote.other_amount),
                     "tax_amount": str(latest_quote.tax_amount),
                     "total_amount": str(latest_quote.total_amount),
-                    "inspection_fee_credit": str((booking.pricing_snapshot or {}).get("visit_fee", "0")) if (booking.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
+                    "inspection_fee_credit": str((booking.pricing_snapshot or {}).get("total", "0")) if (booking.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
                     "notes": latest_quote.notes,
                     "customer_response_note": latest_quote.customer_response_note,
                     "expires_at": latest_quote.expires_at.isoformat() if latest_quote.expires_at else None,
