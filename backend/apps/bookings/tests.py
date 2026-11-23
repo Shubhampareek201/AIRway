@@ -372,7 +372,7 @@ class BookingCreateTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["pricing_snapshot"]["quantity"], 2)
         self.assertEqual(response.data["pricing_snapshot"]["subtotal"], "1000.00")
-        self.assertEqual(response.data["pricing_snapshot"]["total"], "1180.0000")
+        self.assertEqual(response.data["pricing_snapshot"]["total"], "1180.00")
 
     def test_create_booking_with_addons(self):
         """Should create booking with add-ons and calculate pricing."""
