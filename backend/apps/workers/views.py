@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.catalog.models import Service
+from apps.catalog.models import Service, ServiceInspectionRate
 from apps.core.models import Zone
 from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
 from apps.bookings.extra_work import WorkerExtraWorkProposalView
@@ -735,8 +735,7 @@ class WorkerJobEvidenceView(APIView):
 
 
 class WorkerJobQuoteView(APIView):
-    """Create a versioned inspection quote for the worker's own active job."""
-
+    """Create a customer quote exclusively from AIRway-configured inspection rates."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, job_id):
@@ -744,114 +743,125 @@ class WorkerJobQuoteView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
-
         assignment, booking = _get_assignment_and_booking(job_id, profile)
         if booking is None:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
         if booking.booking_mode != Booking.BookingMode.INSPECTION and booking.service.pricing_type != Service.PricingType.QUOTE:
             return Response({"detail": "A quote is available only for inspection/quote-based services."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.IN_PROGRESS:
-            return Response({"detail": "Start the assigned inspection job before submitting its estimate."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Start the assigned inspection job before preparing its estimate."}, status=status.HTTP_400_BAD_REQUEST)
         if BookingQuote.objects.filter(booking=booking, status=BookingQuote.Status.ACCEPTED).exists():
-            return Response({"detail": "The customer has already accepted a quote for this booking."}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": "The customer has already accepted an estimate."}, status=status.HTTP_409_CONFLICT)
         now = timezone.now()
         BookingQuote.objects.filter(
-            booking=booking,
-            status__in=(BookingQuote.Status.PENDING_ADMIN, BookingQuote.Status.PENDING_CUSTOMER),
+            booking=booking, status__in=(BookingQuote.Status.PENDING_ADMIN, BookingQuote.Status.PENDING_CUSTOMER),
             expires_at__lte=now,
-        ).update(
-            status=BookingQuote.Status.REJECTED,
-            customer_response_note="Quote expired before customer response.",
-            responded_at=now,
-        )
+        ).update(status=BookingQuote.Status.REJECTED, customer_response_note="Quote expired before customer response.", responded_at=now)
         if BookingQuote.objects.filter(booking=booking, status__in=(BookingQuote.Status.PENDING_ADMIN, BookingQuote.Status.PENDING_CUSTOMER)).exists():
-            return Response({"detail": "A quote is already waiting for AIRway or customer approval."}, status=status.HTTP_409_CONFLICT)
-
-        rows = request.data.get("line_items")
+            return Response({"detail": "An estimate is already waiting for the customer."}, status=status.HTTP_409_CONFLICT)
+        rows = request.data.get("items")
         if not isinstance(rows, list) or not rows or len(rows) > 50:
-            return Response({"line_items": ["Add between 1 and 50 estimate items."]}, status=status.HTTP_400_BAD_REQUEST)
-
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-        totals = {
-            "labour": Decimal("0.00"),
-            "material": Decimal("0.00"),
-            "other": Decimal("0.00"),
-        }
-        clean_rows = []
+            return Response({"items": ["Select between 1 and 50 configured repair items."]}, status=status.HTTP_400_BAD_REQUEST)
+        from decimal import Decimal, ROUND_HALF_UP
+        rate_ids, quantities = [], {}
         for index, row in enumerate(rows):
             if not isinstance(row, dict):
-                return Response({"line_items": [f"Item {index + 1} must be an object."]}, status=status.HTTP_400_BAD_REQUEST)
-            kind = str(row.get("type", "")).strip().lower()
-            description = str(row.get("description", "")).strip()
-            if kind not in totals or not description or len(description) > 200:
-                return Response({"line_items": [f"Item {index + 1} needs a valid type and description (max 200 characters)."]}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"items": [f"Item {index + 1} must be an object."]}, status=status.HTTP_400_BAD_REQUEST)
             try:
-                quantity = Decimal(str(row.get("quantity", "1")))
-                unit_price = Decimal(str(row.get("unit_price", "0")))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response({"line_items": [f"Item {index + 1} has an invalid quantity or price."]}, status=status.HTTP_400_BAD_REQUEST)
-            if not quantity.is_finite() or quantity <= 0 or quantity > 1000 or quantity.as_tuple().exponent < -2:
-                return Response({"line_items": [f"Item {index + 1} quantity must be between 0 and 1000 with at most 2 decimals."]}, status=status.HTTP_400_BAD_REQUEST)
-            if not unit_price.is_finite() or unit_price < 0 or unit_price > Decimal("1000000") or unit_price.as_tuple().exponent < -2:
-                return Response({"line_items": [f"Item {index + 1} unit price must be between 0 and 1000000 with at most 2 decimals."]}, status=status.HTTP_400_BAD_REQUEST)
-            line_total = (quantity * unit_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            totals[kind] += line_total
+                rate_id, quantity = int(row.get("rate_id")), int(row.get("quantity", 1))
+            except (TypeError, ValueError):
+                return Response({"items": [f"Item {index + 1} needs a valid configured rate and quantity."]}, status=status.HTTP_400_BAD_REQUEST)
+            if rate_id <= 0 or quantity < 1 or quantity > 100:
+                return Response({"items": [f"Item {index + 1} has an invalid rate or quantity."]}, status=status.HTTP_400_BAD_REQUEST)
+            if rate_id in quantities:
+                return Response({"items": ["Select each repair item once and change its quantity."]}, status=status.HTTP_400_BAD_REQUEST)
+            rate_ids.append(rate_id)
+            quantities[rate_id] = quantity
+        rates = list(ServiceInspectionRate.objects.filter(pk__in=rate_ids, service=booking.service, is_active=True))
+        if len(rates) != len(rate_ids):
+            return Response({"items": ["A selected repair rate is unavailable. Refresh and try again."]}, status=status.HTTP_409_CONFLICT)
+        totals = {"labour": Decimal("0.00"), "material": Decimal("0.00"), "other": Decimal("0.00")}
+        payout_total = Decimal("0.00")
+        clean_rows = []
+        for rate in sorted(rates, key=lambda item: (item.sort_order, item.pk)):
+            quantity = quantities[rate.pk]
+            line_total = (rate.customer_price * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            line_payout = (rate.worker_payout * quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            totals[rate.rate_type] += line_total
+            payout_total += line_payout
             clean_rows.append({
-                "type": kind,
-                "description": description,
-                "quantity": str(quantity),
-                "unit_price": str(unit_price),
-                "line_total": str(line_total),
+                "rate_id": rate.pk, "type": rate.rate_type, "description": rate.title,
+                "detail": rate.description, "quantity": str(quantity),
+                "unit_price": str(rate.customer_price), "line_total": str(line_total),
+                "worker_payout": str(rate.worker_payout), "worker_payout_total": str(line_payout),
             })
-
         subtotal = sum(totals.values(), Decimal("0.00"))
         if subtotal <= 0:
-            return Response({"line_items": ["The estimate total must be greater than zero."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"items": ["The estimate total must be greater than zero."]}, status=status.HTTP_400_BAD_REQUEST)
         tax_rate = Decimal(str(booking.service.tax_rate))
-        tax = (subtotal * tax_rate / Decimal("100")).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        tax = (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total = subtotal + tax
         notes = str(request.data.get("notes", "")).strip()
         if len(notes) > 2000:
             return Response({"notes": ["Notes must not exceed 2000 characters."]}, status=status.HTTP_400_BAD_REQUEST)
-
         with transaction.atomic():
-            latest = BookingQuote.objects.select_for_update().filter(booking=booking).order_by("-version").first()
-            if latest and latest.status in (
-                BookingQuote.Status.PENDING_ADMIN,
-                BookingQuote.Status.PENDING_CUSTOMER,
-            ):
-                return Response({"detail": "A quote is already waiting for AIRway or customer approval."}, status=status.HTTP_409_CONFLICT)
+            locked_booking = Booking.objects.select_for_update().get(pk=booking.pk)
+            latest = BookingQuote.objects.select_for_update().filter(booking=locked_booking).order_by("-version").first()
+            if latest and latest.status in (BookingQuote.Status.PENDING_ADMIN, BookingQuote.Status.PENDING_CUSTOMER):
+                return Response({"detail": "An estimate is already waiting for the customer."}, status=status.HTTP_409_CONFLICT)
             if latest and latest.status == BookingQuote.Status.ACCEPTED:
-                return Response({"detail": "The customer has already accepted a quote for this booking."}, status=status.HTTP_409_CONFLICT)
+                return Response({"detail": "The customer has already accepted an estimate."}, status=status.HTTP_409_CONFLICT)
             quote = BookingQuote.objects.create(
-                booking=booking,
-                worker=profile,
-                version=(latest.version + 1) if latest else 1,
-                line_items=clean_rows,
-                labour_amount=totals["labour"],
-                material_amount=totals["material"],
-                other_amount=totals["other"],
-                tax_amount=tax,
-                total_amount=total,
-                notes=notes,
+                booking=locked_booking, worker=profile, version=(latest.version + 1) if latest else 1,
+                line_items=clean_rows, labour_amount=totals["labour"], material_amount=totals["material"],
+                other_amount=totals["other"], tax_amount=tax, total_amount=total,
+                worker_payout_amount=payout_total, notes=notes,
+                status=BookingQuote.Status.PENDING_CUSTOMER,
                 expires_at=timezone.now() + timedelta(hours=24),
             )
-
+            Notification.objects.create(
+                user=locked_booking.customer, type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Inspection estimate ready",
+                body=f"Your {locked_booking.service.title} estimate of ₹{total:.2f} is ready. Review it in AIRway.",
+                channel=Notification.Channel.IN_APP,
+                data={"booking_id": locked_booking.pk, "quote_id": quote.pk, "purpose": "booking_quote"},
+            )
         return Response({
-            "id": quote.id,
-            "version": quote.version,
-            "status": quote.status,
-            "line_items": quote.line_items,
-            "labour_amount": str(quote.labour_amount),
-            "material_amount": str(quote.material_amount),
-            "other_amount": str(quote.other_amount),
-            "tax_amount": str(quote.tax_amount),
-            "total_amount": str(quote.total_amount),
-            "notes": quote.notes,
+            "id": quote.id, "version": quote.version, "status": quote.status,
+            "line_items": quote.line_items, "labour_amount": str(quote.labour_amount),
+            "material_amount": str(quote.material_amount), "other_amount": str(quote.other_amount),
+            "tax_amount": str(quote.tax_amount), "total_amount": str(quote.total_amount),
+            "worker_payout_amount": str(quote.worker_payout_amount), "notes": quote.notes,
             "expires_at": quote.expires_at.isoformat(),
         }, status=status.HTTP_201_CREATED)
+
+
+class WorkerJobStartRepairView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        quote = BookingQuote.objects.select_for_update().filter(booking=booking, status=BookingQuote.Status.ACCEPTED).order_by("-version").first()
+        if quote is None:
+            return Response({"detail": "The customer must accept the repair estimate first."}, status=status.HTTP_409_CONFLICT)
+        order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+        if order_item is None:
+            return Response({"detail": "This repair is not linked to a staged payment order."}, status=status.HTTP_409_CONFLICT)
+        from apps.payments.models import Payment
+        paid = Payment.objects.filter(order=order_item.order, appointment_group_id=booking.appointment_group_id, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).exists()
+        if not paid:
+            return Response({"detail": "Wait until the customer's remaining repair payment is confirmed."}, status=status.HTTP_409_CONFLICT)
+        if quote.repair_started_at is None:
+            quote.repair_started_at = timezone.now()
+            quote.save(update_fields=["repair_started_at", "updated_at"])
+        return Response({"detail": "Payment confirmed. You can proceed with the approved repair.", "repair_started_at": quote.repair_started_at.isoformat()})
 
 
 class WorkerJobDetailView(APIView):
@@ -939,8 +949,15 @@ class WorkerJobDetailView(APIView):
             for proposal in booking.extra_work_requests.order_by("-created_at")
         ]
         latest_quote = booking.quotes.select_related("worker__user").order_by("-version").first()
+        inspection_options = [
+            {"id": rate.pk, "code": rate.code, "title": rate.title, "description": rate.description, "type": rate.rate_type, "customer_price": str(rate.customer_price)}
+            for rate in booking.service.inspection_rates.filter(is_active=True).order_by("sort_order", "title")
+        ]
         quote_data = None
         if latest_quote:
+            from apps.payments.models import Payment
+            quote_order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+            quote_payment_paid = bool(quote_order_item and Payment.objects.filter(order=quote_order_item.order, appointment_group_id=booking.appointment_group_id, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).exists())
             quote_data = {
                 "id": latest_quote.id,
                 "version": latest_quote.version,
@@ -951,6 +968,9 @@ class WorkerJobDetailView(APIView):
                     else latest_quote.status
                 ),
                 "line_items": latest_quote.line_items,
+                "worker_payout_amount": str(latest_quote.worker_payout_amount) if latest_quote.worker_payout_amount is not None else None,
+                "repair_started_at": latest_quote.repair_started_at.isoformat() if latest_quote.repair_started_at else None,
+                "repair_payment_status": "paid" if quote_payment_paid else "pending",
                 "labour_amount": str(latest_quote.labour_amount),
                 "material_amount": str(latest_quote.material_amount),
                 "other_amount": str(latest_quote.other_amount),
@@ -984,6 +1004,7 @@ class WorkerJobDetailView(APIView):
             "booking_mode": booking.booking_mode,
             "pricing_type": booking.service.pricing_type,
             "quote": quote_data,
+            "inspection_options": inspection_options,
             "extra_work_requests": extra_work_data,
             "can_submit_quote": (
                 booking.status == Booking.Status.IN_PROGRESS
