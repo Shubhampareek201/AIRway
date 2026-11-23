@@ -674,8 +674,8 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking = self.get_object()
         decision = str(request.data.get("decision", "")).strip().lower()
         note = str(request.data.get("note", "")).strip()
-        if decision not in ("accept", "reject"):
-            return Response({"decision": "Choose accept or reject."}, status=status.HTTP_400_BAD_REQUEST)
+        if decision not in ("accept", "reject", "cancel"):
+            return Response({"decision": "Choose accept, request revision or cancel the repair."}, status=status.HTTP_400_BAD_REQUEST)
         if len(note) > 1000:
             return Response({"note": "Note must not exceed 1000 characters."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.IN_PROGRESS:
@@ -707,6 +707,30 @@ class BookingViewSet(viewsets.ModelViewSet):
                 data={"booking_id": booking.id, "quote_id": quote.id, "purpose": "booking_quote_rejected"},
             )
             return Response({"detail": "Quote declined. The worker can review your note and submit a revised estimate.", "quote_status": quote.status})
+        if decision == "cancel":
+            quote.status = BookingQuote.Status.REJECTED
+            quote.save(update_fields=["status", "customer_response_note", "responded_at", "updated_at"])
+            old_status = booking.status
+            booking.status = Booking.Status.CANCELLED
+            booking.cancelled_at = timezone.now()
+            booking.cancelled_by = request.user
+            booking.cancellation_reason = "Customer declined the repair after inspection."
+            booking.save(update_fields=["status", "cancelled_at", "cancelled_by", "cancellation_reason", "updated_at"])
+            BookingStatusHistory.objects.create(booking=booking, from_status=old_status, to_status=Booking.Status.CANCELLED, changed_by=request.user, note="Customer chose not to proceed after inspection; the paid visit fee is retained.")
+            order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+            if order_item:
+                from apps.payments.models import Payment
+                from apps.workers.earnings import _upsert_worker_earning
+                visit_payment = Payment.objects.filter(order=order_item.order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID).first()
+                if visit_payment and hasattr(booking, "assignment"):
+                    visit_payout = Decimal(str(booking.service.visit_fee_worker_payout))
+                    gross_visit = Decimal(str((booking.pricing_snapshot or {}).get("visit_fee", "0")))
+                    if visit_payout > 0:
+                        booking.worker_payout_snapshot = {"pricing_model": "fixed_service_payout_v1", "total": str(visit_payout), "configured": True, "currency": "INR"}
+                        booking.save(update_fields=["worker_payout_snapshot", "updated_at"])
+                        _upsert_worker_earning(booking, booking.assignment.worker, visit_payment, gross_visit)
+            Notification.objects.create(user=quote.worker.user, type=Notification.Type.SYSTEM_ANNOUNCEMENT, title="Customer will not proceed with repair", body=f"The customer closed booking #{booking.id} after inspection. The visit fee remains settled.", channel=Notification.Channel.IN_APP, data={"booking_id": booking.id, "quote_id": quote.id, "purpose": "inspection_repair_declined"})
+            return Response({"detail": "Repair declined. The inspection visit is closed.", "quote_status": quote.status, "booking_status": booking.status})
 
         order_item = OrderItem.objects.select_for_update().filter(
             booking=booking
@@ -717,8 +741,8 @@ class BookingViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        if quote.worker_payout_amount is None or quote.payout_approved_at is None:
-            return Response({"detail": "AIRway must approve the worker payout before this estimate can be accepted."}, status=status.HTTP_409_CONFLICT)
+        if quote.worker_payout_amount is None:
+            return Response({"detail": "This estimate has no configured worker payout. Ask the professional to refresh and submit it again."}, status=status.HTTP_409_CONFLICT)
         quote_subtotal = (
             quote.labour_amount + quote.material_amount + quote.other_amount
         )
@@ -726,8 +750,9 @@ class BookingViewSet(viewsets.ModelViewSet):
         snapshot = dict(booking.pricing_snapshot or {})
         visit_fee = Decimal(str(snapshot.get("visit_fee", "0") or "0"))
         visit_tax = Decimal(str(snapshot.get("tax", "0") or "0"))
-        updated_subtotal = visit_fee + quote_subtotal
-        updated_tax = visit_tax + quote.tax_amount
+        fee_credit_model = snapshot.get("inspection_fee_credit_model") == "visit_fee_credit_v1"
+        updated_subtotal = quote_subtotal if fee_credit_model else visit_fee + quote_subtotal
+        updated_tax = quote.tax_amount if fee_credit_model else visit_tax + quote.tax_amount
         updated_total = updated_subtotal + updated_tax
         snapshot.update({
             "inspection_quote_id": quote.id,
@@ -742,7 +767,9 @@ class BookingViewSet(viewsets.ModelViewSet):
             "total": str(updated_total),
         })
         booking.pricing_snapshot = snapshot
-        booking.worker_payout_snapshot = {"pricing_model": "admin_approved_quote_payout_v1", "quote_id": quote.pk, "quote_version": quote.version, "total": str(quote.worker_payout_amount), "configured": True, "approved_by_id": quote.payout_approved_by_id, "approved_at": quote.payout_approved_at.isoformat(), "currency": "INR"}
+        visit_payout = Decimal(str(booking.service.visit_fee_worker_payout))
+        total_worker_payout = visit_payout + Decimal(str(quote.worker_payout_amount))
+        booking.worker_payout_snapshot = {"pricing_model": "fixed_service_payout_v1", "quote_pricing_model": "catalog_inspection_rates_v1", "quote_id": quote.pk, "quote_version": quote.version, "visit_payout": str(visit_payout), "repair_payout": str(quote.worker_payout_amount), "total": str(total_worker_payout), "configured": True, "materials": booking.service.material_requirements or [], "currency": "INR"}
         booking.save(update_fields=["pricing_snapshot", "worker_payout_snapshot", "updated_at"])
 
         if order_item:
@@ -766,24 +793,17 @@ class BookingViewSet(viewsets.ModelViewSet):
             allocation = metadata.get("payment_allocation_v1")
             if isinstance(allocation, dict):
                 balance_rows = list(allocation.get("balance", []))
-                balance_row = next(
-                    (row for row in balance_rows if row.get("order_item_id") == order_item.id),
-                    None,
-                )
+                balance_row = next((row for row in balance_rows if row.get("order_item_id") == order_item.id), None)
+                advance_rows = allocation.get("advance", [])
+                advance_paid_for_item = Decimal(str(next((row.get("amount", "0") for row in advance_rows if row.get("order_item_id") == order_item.id), "0")))
+                revised_balance = max(Decimal("0.00"), quote_total - advance_paid_for_item) if fee_credit_model else (Decimal(str(balance_row.get("amount", "0"))) + quote_total if balance_row else quote_total)
                 if balance_row is None:
-                    balance_rows.append({
-                        "order_item_id": order_item.id,
-                        "booking_id": booking.id,
-                        "amount": str(quote_total),
-                    })
+                    balance_rows.append({"order_item_id": order_item.id, "booking_id": booking.id, "amount": str(revised_balance)})
                 else:
-                    balance_row["amount"] = str(
-                        Decimal(str(balance_row.get("amount", "0"))) + quote_total
-                    )
+                    balance_row["amount"] = str(revised_balance)
                 allocation["balance"] = balance_rows
-                allocation["balance_total"] = str(
-                    Decimal(str(allocation.get("balance_total", "0"))) + quote_total
-                )
+                allocation["balance_total"] = str(sum((Decimal(str(row.get("amount", "0"))) for row in balance_rows), Decimal("0.00")))
+                allocation["percentage"] = str((Decimal(str(allocation.get("advance_total", "0"))) * Decimal("100") / order.total_amount).quantize(Decimal("0.01")) if order.total_amount > 0 else Decimal("0.00"))
                 advance_total = Decimal(str(allocation.get("advance_total", "0")))
                 allocation["percentage"] = str(
                     (advance_total * Decimal("100") / order.total_amount).quantize(Decimal("0.01"))
@@ -814,12 +834,12 @@ class BookingViewSet(viewsets.ModelViewSet):
             user=quote.worker.user,
             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
             title="Customer approved the estimate",
-            body=f"The customer approved quote v{quote.version} for booking #{booking.id}. You can proceed with the work.",
+            body=f"The customer approved quote v{quote.version} for booking #{booking.id}. The customer must pay the remaining balance before repair begins.",
             channel=Notification.Channel.IN_APP,
             data={"booking_id": booking.id, "quote_id": quote.id, "purpose": "booking_quote_accepted"},
         )
         return Response({
-            "detail": "Estimate approved. The final payable amount has been updated.",
+            "detail": "Estimate approved. Pay the remaining balance before repair begins.",
             "quote_status": quote.status,
             "pricing_snapshot": snapshot,
             "order_total": str(order_item.order.total_amount) if order_item else str(updated_total),
@@ -1133,9 +1153,15 @@ class BookingViewSet(viewsets.ModelViewSet):
             accepted_quote = booking.quotes.filter(status=BookingQuote.Status.ACCEPTED).exists()
             if not accepted_quote:
                 return Response(
-                    {"detail": "The customer must approve the inspection estimate before the job can be completed."},
+                    {"detail": "The customer must approve the inspection estimate before repair can be completed."},
                     status=status.HTTP_409_CONFLICT,
                 )
+            accepted = booking.quotes.filter(status=BookingQuote.Status.ACCEPTED).order_by("-version").first()
+            order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+            from apps.payments.models import Payment
+            balance_paid = bool(order_item and Payment.objects.filter(order=order_item.order, appointment_group_id=booking.appointment_group_id, stage=Payment.Stage.BALANCE, status=Payment.Status.PAID).exists())
+            if not balance_paid or accepted.repair_started_at is None:
+                return Response({"detail": "The customer must pay the remaining repair amount and the worker must start repair before completion."}, status=status.HTTP_409_CONFLICT)
 
         supplied_code = str(request.data.get("otp", "")).strip()
         with transaction.atomic():
@@ -1857,6 +1883,7 @@ class CustomerOrderDetailView(APIView):
                     "other_amount": str(latest_quote.other_amount),
                     "tax_amount": str(latest_quote.tax_amount),
                     "total_amount": str(latest_quote.total_amount),
+                    "inspection_fee_credit": str((booking.pricing_snapshot or {}).get("visit_fee", "0")) if (booking.pricing_snapshot or {}).get("inspection_fee_credit_model") == "visit_fee_credit_v1" else "0.00",
                     "notes": latest_quote.notes,
                     "customer_response_note": latest_quote.customer_response_note,
                     "expires_at": latest_quote.expires_at.isoformat() if latest_quote.expires_at else None,
@@ -2104,14 +2131,13 @@ class CustomerOrderDetailView(APIView):
             row["completion_verified"] for row in active_rows
         )
         ready_for_balance = bool(
-            advance_payment
-            and not order_level_balance_payment
-            and any(
+            advance_payment and not order_level_balance_payment and any(
                 group.bookings.exclude(status=Booking.Status.CANCELLED).exists()
-                and not group.bookings.exclude(
-                    status__in=(Booking.Status.CANCELLED, Booking.Status.COMPLETED)
-                ).exists()
                 and group.pk not in paid_group_ids
+                and (
+                    not group.bookings.exclude(status__in=(Booking.Status.CANCELLED, Booking.Status.COMPLETED)).exists()
+                    or group.bookings.filter(status=Booking.Status.IN_PROGRESS, booking_mode=Booking.BookingMode.INSPECTION, quotes__status=BookingQuote.Status.ACCEPTED).exists()
+                )
                 for group in order.appointment_groups.all()
             )
         )
@@ -2178,7 +2204,7 @@ class CustomerOrderDetailView(APIView):
                 "balance_paid": bool(group_balance_payment),
                 "ready_for_balance": bool(
                     advance_payment
-                    and group_status == "completed"
+                    and (group_status == "completed" or group.bookings.filter(status=Booking.Status.IN_PROGRESS, booking_mode=Booking.BookingMode.INSPECTION, quotes__status=BookingQuote.Status.ACCEPTED).exists())
                     and group_balance_due > 0
                     and not group_balance_payment
                 ),
