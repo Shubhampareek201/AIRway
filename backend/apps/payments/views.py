@@ -150,21 +150,19 @@ def create_or_get_order_payment(
     if stage != Payment.Stage.LEGACY and not allocation:
         from decimal import ROUND_HALF_UP
         advance_percentage = Decimal(str(getattr(settings, "ORDER_ADVANCE_PERCENTAGE", 30)))
-        advance_total = (order.total_amount * advance_percentage / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        balance_total = order.total_amount - advance_total
         advance_rows, balance_rows = [], []
-        allocated_advance = Decimal("0.00")
-        allocated_balance = Decimal("0.00")
-        for index, item in enumerate(items):
-            if index == len(items) - 1:
-                advance_line = advance_total - allocated_advance
-                balance_line = balance_total - allocated_balance
+        advance_total = Decimal("0.00")
+        balance_total = Decimal("0.00")
+        for item in items:
+            # Inspection visit fee is collected in full before dispatch and credited
+            # against the repair estimate later. Other service types keep normal advance.
+            if item.booking.booking_mode == Booking.BookingMode.INSPECTION:
+                advance_line = item.line_total
             else:
-                ratio = item.line_total / order.total_amount if order.total_amount else Decimal("0")
-                advance_line = (advance_total * ratio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                balance_line = item.line_total - advance_line
-                allocated_advance += advance_line
-                allocated_balance += balance_line
+                advance_line = (item.line_total * advance_percentage / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            balance_line = item.line_total - advance_line
+            advance_total += advance_line
+            balance_total += balance_line
             advance_rows.append({"order_item_id": item.id, "booking_id": item.booking_id, "amount": str(advance_line)})
             balance_rows.append({"order_item_id": item.id, "booking_id": item.booking_id, "amount": str(balance_line)})
         allocation = {
@@ -255,12 +253,13 @@ def create_or_get_order_payment(
             status=Payment.Status.PAID,
         ).exists():
             raise ValueError("The advance payment must be completed first.")
-        if any(item.booking.status != Booking.Status.COMPLETED for item in active_items):
-            raise ValueError(
-                "This appointment's balance is available only after every active service in the appointment is completed and verified."
-                if appointment_group else
-                "Final balance is available only after every active service is completed and verified."
-            )
+        unpaid_work = [
+            item for item in active_items
+            if item.booking.status != Booking.Status.COMPLETED
+            and not (item.booking.booking_mode == Booking.BookingMode.INSPECTION and item.booking.quotes.filter(status="accepted").exists())
+        ]
+        if unpaid_work:
+            raise ValueError("Accept the inspection estimate before paying its repair balance, or complete all other services before final balance payment.")
         paid = Payment.objects.filter(
             order=order,
             stage=Payment.Stage.BALANCE,
@@ -369,15 +368,14 @@ def create_or_get_order_payment(
                             f"No professional is currently available for {booking.service.title} "
                             "at the selected date and time. Choose another slot before paying."
                         )
-            if stage == Payment.Stage.BALANCE and (
-                not locked_active_items
-                or any(item.booking.status != Booking.Status.COMPLETED for item in locked_active_items)
-            ):
-                raise ValueError(
-                    "This appointment's balance is available only after every active service in the appointment is completed and verified."
-                    if appointment_group else
-                    "Final balance is available only after every active service is completed and verified."
-                )
+            if stage == Payment.Stage.BALANCE:
+                unpaid_work = [
+                    item for item in locked_active_items
+                    if item.booking.status != Booking.Status.COMPLETED
+                    and not (item.booking.booking_mode == Booking.BookingMode.INSPECTION and item.booking.quotes.filter(status="accepted").exists())
+                ]
+                if not locked_active_items or unpaid_work:
+                    raise ValueError("Accept the inspection estimate before paying its repair balance, or complete all other services before final balance payment.")
         elif stage == Payment.Stage.LEGACY:
             locked_items = list(locked_order.items.select_related("booking"))
             if locked_order.status != Order.Status.AWAITING_PAYMENT or any(
