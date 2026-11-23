@@ -14,7 +14,7 @@ from apps.bookings.models import (
 from apps.catalog.models import Category, Service, ServiceInspectionRate
 from apps.core.models import City, Zone
 from apps.payments.models import Payment
-from apps.workers.models import WorkerProfile
+from apps.workers.models import WorkerEarning, WorkerProfile
 
 
 class InspectionQuoteLifecycleTests(TestCase):
@@ -193,6 +193,25 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.assertEqual(Decimal(allocation["percentage"]), Decimal("20.00"))
         self.assertEqual(Decimal(allocation["balance_total"]), Decimal("472.00"))
         self.assertEqual(Decimal(allocation["balance"][0]["amount"]), Decimal("472.00"))
+
+    def test_customer_can_decline_repair_and_settle_paid_inspection_visit(self):
+        submitted = self._submit_quote()
+        self.assertEqual(submitted.status_code, 201, submitted.data)
+
+        response = self.customer_client.post(
+            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
+            {"decision": "cancel"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(self.booking.worker_payout_snapshot["total"], "60.00")
+        earning = WorkerEarning.objects.get(booking=self.booking)
+        self.assertEqual(earning.gross_amount, Decimal("100.00"))
+        self.assertEqual(earning.net_amount, Decimal("60.00"))
+        self.assertEqual(earning.status, WorkerEarning.Status.AVAILABLE)
 
     def test_customer_can_reject_quote_and_worker_can_submit_a_revision(self):
         first = self._submit_quote()
