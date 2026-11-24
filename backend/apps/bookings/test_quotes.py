@@ -235,6 +235,7 @@ class InspectionQuoteLifecycleTests(TestCase):
 
         Payment.objects.create(
             order=self.order,
+            appointment_group=self.appointment_group,
             customer=self.customer,
             stage=Payment.Stage.BALANCE,
             amount=Decimal("472.00"),
