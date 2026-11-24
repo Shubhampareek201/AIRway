@@ -309,3 +309,72 @@ class InspectionQuoteLifecycleTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+    @patch("apps.payments.views.client.order.create")
+    def test_customer_balance_checkout_api_creates_appointment_scoped_payment_idempotently(self, create_gateway_order):
+        submitted = self._submit_quote()
+        self.assertEqual(submitted.status_code, 201, submitted.data)
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+        create_gateway_order.return_value = {"id": "order_quote_balance_api"}
+
+        payload = {
+            "order_id": self.order.id,
+            "stage": Payment.Stage.BALANCE,
+            "appointment_group_id": self.appointment_group.id,
+        }
+        first = self.customer_client.post(
+            "/api/v1/payments/create-order/", payload, format="json"
+        )
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["payment_stage"], Payment.Stage.BALANCE)
+        self.assertEqual(first.data["appointment_group_id"], self.appointment_group.id)
+        self.assertEqual(Decimal(first.data["stage_amount"]), Decimal("472.00"))
+        payment = Payment.objects.get(pk=first.data["payment_id"])
+        self.assertEqual(payment.amount, Decimal("472.00"))
+        self.assertEqual(payment.appointment_group_id, self.appointment_group.id)
+        create_gateway_order.assert_called_once()
+
+        retry = self.customer_client.post(
+            "/api/v1/payments/create-order/", payload, format="json"
+        )
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual(retry.data["payment_id"], payment.id)
+        self.assertTrue(retry.data["payment_exists"])
+        create_gateway_order.assert_called_once()
+
+    def test_customer_cannot_create_balance_payment_for_another_orders_appointment(self):
+        other_order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            subtotal=Decimal("100.00"),
+            total_amount=Decimal("100.00"),
+        )
+        foreign_group = AppointmentGroup.objects.create(
+            order=other_order,
+            group_number=1,
+            scheduled_at=timezone.now() + timedelta(days=2),
+        )
+        response = self.customer_client.post(
+            "/api/v1/payments/create-order/",
+            {
+                "order_id": self.order.id,
+                "stage": Payment.Stage.BALANCE,
+                "appointment_group_id": foreign_group.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404, response.data)
+        self.assertFalse(
+            Payment.objects.filter(
+                order=self.order,
+                stage=Payment.Stage.BALANCE,
+                appointment_group=foreign_group,
+            ).exists()
+        )
+
