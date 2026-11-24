@@ -266,7 +266,7 @@ class InspectionQuoteLifecycleTests(TestCase):
             stage=Payment.Stage.BALANCE,
             amount=Decimal("472.00"),
             method=Payment.Method.RAZORPAY,
-            status=Payment.Status.CREATED,
+            status=Payment.Status.PENDING,
         )
         from apps.payments.verify_view import _process_verified_payment
 
