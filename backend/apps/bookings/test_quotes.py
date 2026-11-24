@@ -249,6 +249,45 @@ class InspectionQuoteLifecycleTests(TestCase):
         quote = BookingQuote.objects.get(booking=self.booking)
         self.assertIsNotNone(quote.repair_started_at)
 
+    def test_verified_appointment_balance_payment_unlocks_inspection_repair(self):
+        submitted = self._submit_quote()
+        self.assertEqual(submitted.status_code, 201, submitted.data)
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+
+        payment = Payment.objects.create(
+            order=self.order,
+            appointment_group=self.appointment_group,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("472.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.CREATED,
+        )
+        from apps.payments.verify_view import _process_verified_payment
+
+        verified = _process_verified_payment(
+            payment,
+            "quote_test_balance_verified",
+            "quote_test_balance_order",
+            self.customer,
+            "test",
+        )
+        self.assertEqual(verified.status_code, 200, verified.data)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.appointment_group_id, self.appointment_group.id)
+
+        start_url = f"/api/v1/workers/jobs/{self.assignment.id}/start-repair/"
+        started = self.worker_client.post(start_url, {}, format="json")
+        self.assertEqual(started.status_code, 200, started.data)
+        quote = BookingQuote.objects.get(booking=self.booking)
+        self.assertIsNotNone(quote.repair_started_at)
+
     def test_customer_can_decline_repair_and_settle_paid_inspection_visit(self):
         submitted = self._submit_quote()
         self.assertEqual(submitted.status_code, 201, submitted.data)
