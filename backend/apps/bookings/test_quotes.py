@@ -17,6 +17,7 @@ from apps.bookings.models import (
 from apps.catalog.models import Category, Service, ServiceInspectionRate
 from apps.core.models import City, Zone
 from apps.payments.models import Payment
+from apps.notifications.models import Notification
 from apps.workers.models import WorkerEarning, WorkerProfile
 
 
@@ -315,6 +316,21 @@ class InspectionQuoteLifecycleTests(TestCase):
         )
         self.assertEqual(completion.status_code, 200, completion.data)
         self.assertTrue(completion.data["otp_required"])
+
+        customer_notice = Notification.objects.filter(
+            user=self.customer,
+            data__purpose="service_completion_otp",
+            data__booking_id=self.booking.id,
+        ).latest("created_at")
+        completion_code = customer_notice.data["completion_code"]
+        completed = self.worker_client.post(
+            f"/api/v1/workers/jobs/{self.assignment.id}/complete/",
+            {"otp": completion_code},
+            format="json",
+        )
+        self.assertEqual(completed.status_code, 200, completed.data)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.COMPLETED)
 
     def test_verified_appointment_balance_payment_unlocks_inspection_repair(self):
         submitted = self._submit_quote()
