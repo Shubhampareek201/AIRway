@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -248,6 +250,71 @@ class InspectionQuoteLifecycleTests(TestCase):
         self.assertEqual(paid_attempt.status_code, 200, paid_attempt.data)
         quote = BookingQuote.objects.get(booking=self.booking)
         self.assertIsNotNone(quote.repair_started_at)
+
+    def test_checkout_verification_api_unlocks_inspection_repair_and_completion(self):
+        submitted = self._submit_quote()
+        self.assertEqual(submitted.status_code, 201, submitted.data)
+        accepted = self.customer_client.post(
+            f"/api/v1/bookings/{self.booking.id}/quote/respond/",
+            {"decision": "accept"},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.data)
+
+        razorpay_order_id = "order_quote_balance_checkout"
+        razorpay_payment_id = "pay_quote_balance_checkout"
+        payment = Payment.objects.create(
+            order=self.order,
+            appointment_group=self.appointment_group,
+            customer=self.customer,
+            stage=Payment.Stage.BALANCE,
+            amount=Decimal("472.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PENDING,
+            razorpay_order_id=razorpay_order_id,
+        )
+        signature = hmac.new(
+            b"dummy_secret",
+            f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        with patch("razorpay.Client") as gateway_client:
+            gateway_client.return_value.payment.fetch.return_value = {
+                "id": razorpay_payment_id,
+                "order_id": razorpay_order_id,
+                "amount": 47200,
+                "currency": "INR",
+                "status": "captured",
+                "amount_refunded": 0,
+            }
+            verified = self.customer_client.post(
+                "/api/v1/payments/verify/",
+                {
+                    "razorpay_order_id": razorpay_order_id,
+                    "razorpay_payment_id": razorpay_payment_id,
+                    "razorpay_signature": signature,
+                },
+                format="json",
+            )
+
+        self.assertEqual(verified.status_code, 200, verified.data)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.razorpay_payment_id, razorpay_payment_id)
+
+        start_url = f"/api/v1/workers/jobs/{self.assignment.id}/start-repair/"
+        started = self.worker_client.post(start_url, {}, format="json")
+        self.assertEqual(started.status_code, 200, started.data)
+        quote = BookingQuote.objects.get(booking=self.booking)
+        self.assertIsNotNone(quote.repair_started_at)
+
+        completion = self.worker_client.post(
+            f"/api/v1/workers/jobs/{self.assignment.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(completion.status_code, 200, completion.data)
+        self.assertTrue(completion.data["otp_required"])
 
     def test_verified_appointment_balance_payment_unlocks_inspection_repair(self):
         submitted = self._submit_quote()
