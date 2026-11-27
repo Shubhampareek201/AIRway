@@ -38,6 +38,22 @@ def _booking_payment_allocation(payment, booking):
         gateway += row_gateway
     return gross, gateway, True
 
+def _booking_other_variable_cost_total(booking):
+    from apps.bookings.models import BookingVariableCost
+    values = BookingVariableCost.objects.filter(booking=booking).values_list("amount", flat=True)
+    return sum((_decimal(value) or ZERO for value in values), ZERO)
+
+
+def _booking_other_costs_reviewed(booking):
+    from apps.bookings.models import BookingFinanceReconciliation
+    reconciliation = BookingFinanceReconciliation.objects.filter(booking=booking).first()
+    return bool(
+        reconciliation is not None
+        and reconciliation.other_costs_reviewed
+        and reconciliation.reviewed_at is not None
+    )
+
+
 def calculate_booking_actual_finance(booking):
     from apps.bookings.models import OrderItem
     from apps.accounts.models import Referral
@@ -142,13 +158,8 @@ def calculate_booking_actual_finance(booking):
     unallocated_cashback = WalletTransaction.objects.filter(wallet__user=booking.customer, type=WalletTransaction.Type.CASHBACK, status=WalletTransaction.Status.COMPLETED).exclude(reference_id__startswith='referral:').exists()
     if unallocated_cashback:
         reasons.append('Non-referral customer wallet rewards are not attributed to a booking')
-    from apps.bookings.models import BookingVariableCost, BookingFinanceReconciliation
-    other_variable_costs = sum(
-        (_decimal(value) or ZERO for value in BookingVariableCost.objects.filter(booking=booking).values_list('amount', flat=True)),
-        ZERO,
-    )
-    reconciliation = BookingFinanceReconciliation.objects.filter(booking=booking).first()
-    if reconciliation is None or not reconciliation.other_costs_reviewed or reconciliation.reviewed_at is None:
+    other_variable_costs = _booking_other_variable_cost_total(booking)
+    if not _booking_other_costs_reviewed(booking):
         reasons.append('Other variable operating expenses have not been reviewed by Finance')
     if not gateway_fee_known:
         gateway_fee = None

@@ -1,7 +1,13 @@
 from decimal import Decimal
 from types import SimpleNamespace
 from django.test import SimpleTestCase
-from apps.catalog.actual_finance import _booking_payment_allocation, _money
+from unittest.mock import patch
+from apps.catalog.actual_finance import (
+    _booking_payment_allocation,
+    _booking_other_variable_cost_total,
+    _booking_other_costs_reviewed,
+    _money,
+)
 
 class BookingActualFinanceAllocationTests(SimpleTestCase):
     def test_legacy_booking_payment_allocation_uses_captured_tender(self):
@@ -18,3 +24,27 @@ class BookingActualFinanceAllocationTests(SimpleTestCase):
 
     def test_money_rounds_to_currency_precision(self):
         self.assertEqual(_money(Decimal('1.005')), Decimal('1.01'))
+
+
+class BookingVariableCostReconciliationUnitTests(SimpleTestCase):
+    @patch("apps.bookings.models.BookingVariableCost.objects.filter")
+    def test_variable_costs_are_summed_without_rounding_away_cents(self, filter_mock):
+        filter_mock.return_value.values_list.return_value = [
+            Decimal("12.35"), Decimal("7.65"), Decimal("0.01"),
+        ]
+        total = _booking_other_variable_cost_total(SimpleNamespace(pk=17))
+        self.assertEqual(total, Decimal("20.01"))
+        filter_mock.assert_called_once_with(booking=SimpleNamespace(pk=17))
+
+    @patch("apps.bookings.models.BookingFinanceReconciliation.objects.filter")
+    def test_unreviewed_expenses_keep_finance_incomplete(self, filter_mock):
+        filter_mock.return_value.first.return_value = None
+        self.assertFalse(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
+
+    @patch("apps.bookings.models.BookingFinanceReconciliation.objects.filter")
+    def test_review_requires_flag_and_review_timestamp(self, filter_mock):
+        reconciliation = SimpleNamespace(other_costs_reviewed=True, reviewed_at=None)
+        filter_mock.return_value.first.return_value = reconciliation
+        self.assertFalse(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
+        reconciliation.reviewed_at = object()
+        self.assertTrue(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
