@@ -126,14 +126,14 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
 
         first = {
             "booking_count": 2, "actual_complete_count": 1, "actual_incomplete_count": 1,
-            "estimated_count": 1, "actual_contribution_total": Decimal("100.00"),
+            "estimated_count": 1, "comparable_count": 1, "actual_contribution_total": Decimal("100.00"),
             "estimated_contribution_total": Decimal("80.00"),
             "comparable_actual_total": Decimal("100.00"),
             "comparable_estimated_total": Decimal("80.00"),
         }
         second = {
             "booking_count": 1, "actual_complete_count": 1, "actual_incomplete_count": 0,
-            "estimated_count": 1, "actual_contribution_total": Decimal("50.00"),
+            "estimated_count": 1, "comparable_count": 1, "actual_contribution_total": Decimal("50.00"),
             "estimated_contribution_total": Decimal("40.00"),
             "comparable_actual_total": Decimal("50.00"),
             "comparable_estimated_total": Decimal("40.00"),
@@ -179,6 +179,30 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["estimated_contribution_total"], Decimal("270.00"))
         self.assertEqual(report["estimated_average"], Decimal("135.00"))
         self.assertEqual(report["variance"], Decimal("30.00"))
+        self.assertEqual(report["profitability_status"], "Insufficient data")
+
+    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
+    @patch("apps.catalog.finance.calculate_estimated_contribution")
+    def test_variance_is_unknown_when_no_actual_booking_is_comparable(
+        self, estimate_mock, actual_mock
+    ):
+        from apps.catalog.actual_finance import summarize_service_profitability
+
+        booking = SimpleNamespace(
+            pricing_snapshot={"subtotal": "400.00"},
+            worker_payout_snapshot={"total": "200.00"},
+        )
+        actual_mock.return_value = {
+            "status": "incomplete",
+            "partial_contribution": Decimal("0.00"),
+        }
+        estimate_mock.return_value = Decimal("120.00")
+
+        report = summarize_service_profitability([booking], SimpleNamespace())
+
+        self.assertEqual(report["estimated_count"], 1)
+        self.assertEqual(report["comparable_count"], 0)
+        self.assertIsNone(report["variance"])
         self.assertEqual(report["profitability_status"], "Insufficient data")
 
 

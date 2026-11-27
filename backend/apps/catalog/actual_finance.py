@@ -186,6 +186,7 @@ def _finalize_profitability_summary(result):
         result["estimated_average"] = _money(
             result["estimated_contribution_total"] / result["estimated_count"]
         )
+    if result["comparable_count"]:
         result["variance"] = _money(
             result["comparable_actual_total"] - result["comparable_estimated_total"]
         )
@@ -217,6 +218,7 @@ def summarize_service_profitability(bookings, service=None):
         "actual_complete_count": 0,
         "actual_incomplete_count": 0,
         "estimated_count": 0,
+        "comparable_count": 0,
         "actual_contribution_total": ZERO,
         "estimated_contribution_total": ZERO,
         "comparable_actual_total": ZERO,
@@ -249,6 +251,7 @@ def summarize_service_profitability(bookings, service=None):
         result["estimated_count"] += 1
         result["estimated_contribution_total"] += estimated
         if is_actual_complete:
+            result["comparable_count"] += 1
             result["comparable_actual_total"] += actual["partial_contribution"]
             result["comparable_estimated_total"] += estimated
 
@@ -272,7 +275,7 @@ def combine_profitability_summaries(summaries):
     for summary in summaries:
         for key in (
             "booking_count", "actual_complete_count", "actual_incomplete_count",
-            "estimated_count", "actual_contribution_total", "estimated_contribution_total",
+            "estimated_count", "comparable_count", "actual_contribution_total", "estimated_contribution_total",
             "comparable_actual_total", "comparable_estimated_total",
         ):
             combined[key] += summary[key]
