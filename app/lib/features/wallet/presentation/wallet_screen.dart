@@ -110,6 +110,17 @@ class _WalletScreenState extends State<WalletScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _BalanceCard(balance: _wallet?.balance ?? 0, pending: _wallet?.pendingBalance ?? 0),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      AirwayText.tr(
+                        'Promotional credits can be used only for future AIRway bookings. They cannot be withdrawn or transferred.',
+                        'प्रमोशनल क्रेडिट केवल भविष्य की AIRway बुकिंग में इस्तेमाल हो सकता है। इसे निकाला या ट्रांसफर नहीं किया जा सकता।',
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: _showTopUpDialog,
@@ -159,7 +170,7 @@ class _TransactionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCredit = tx.type == 'credit' || tx.type == 'refund' || tx.type == 'cashback';
+    final isCredit = tx.type == 'credit' || tx.type == 'refund' || tx.type == 'cashback' || tx.type == 'promotional_credit';
     final sign = isCredit ? '+' : '-';
     final color = isCredit ? AirwayColors.success : AirwayColors.error;
     return Card(

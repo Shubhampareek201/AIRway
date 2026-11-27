@@ -63,8 +63,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(AirwayText.tr(
-              'Referral code applied. Your ₹100 reward is pending until your first service is completed.',
-              'रेफ़रल कोड लागू हो गया। आपकी ₹100 राशि पहली सेवा पूरी होने तक लंबित है।',
+              'Referral code applied. Your ₹100 promotional credit is pending until your first completed booking has an original service charge over ₹500.',
+              'रेफ़रल कोड लागू हो गया। आपका ₹100 प्रमोशनल क्रेडिट पहली ऐसी पूरी बुकिंग के बाद मिलेगा जिसका मूल सर्विस चार्ज ₹500 से अधिक हो।',
             )),
           ),
         );
@@ -87,8 +87,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
       'AIRway से जुड़ें! पहली बुकिंग से पहले मेरा रेफ़रल कोड $code इस्तेमाल करें।',
     );
     final second = AirwayText.tr(
-      'After your first AIRway service is completed, you get ₹100 in your wallet and I get ₹200.',
-      'आपकी पहली AIRway सेवा पूरी होने पर आपको वॉलेट में ₹100 और मुझे ₹200 मिलेंगे।',
+      'After your first completed AIRway booking with an original service charge over ₹500, you get ₹100 promotional credit and I get ₹200.',
+      '₹500 से अधिक मूल सर्विस चार्ज वाली पहली बुकिंग पूरी होने पर आपको ₹100 और मुझे ₹200 प्रमोशनल क्रेडिट मिलेगा।',
     );
     await SharePlus.instance.share(
       ShareParams(
@@ -156,8 +156,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(t(
-                              'Your friend gets ₹100 and you get ₹200 after their first service is successfully completed.',
-                              'आपके दोस्त की पहली सेवा सफलतापूर्वक पूरी होने पर उन्हें ₹100 और आपको ₹200 मिलेंगे।',
+                              'Your friend gets ₹100 and you get ₹200 in promotional credit after their first completed booking with an original service charge over ₹500.',
+                              '₹500 से अधिक मूल सर्विस चार्ज वाली पहली बुकिंग पूरी होने पर आपके दोस्त को ₹100 और आपको ₹200 प्रमोशनल क्रेडिट मिलेगा।',
                             )),
                             const SizedBox(height: 18),
                             Row(
@@ -207,7 +207,7 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
-                      _StepLine(number: '3', text: t('After their first service is completed and verified, ₹200 and ₹100 are credited to your respective wallets.', 'उनकी पहली सेवा पूरी और सत्यापित होने पर आपके और उनके वॉलेट में क्रमशः ₹200 और ₹100 जमा होंगे।')),
+                      _StepLine(number: '3', text: t('After their first eligible booking is completed and verified, ₹200 and ₹100 promotional credits are added to your respective AIRway wallets. The original service charge must be over ₹500, before tax and offers.', 'पहली योग्य बुकिंग पूरी और सत्यापित होने पर आपके AIRway वॉलेट में ₹200 और उनके वॉलेट में ₹100 प्रमोशनल क्रेडिट जुड़ेंगे। टैक्स और ऑफर से पहले मूल सर्विस चार्ज ₹500 से अधिक होना चाहिए।')),
                       const SizedBox(height: 24),
                       Text(t('Have a referral code?', 'क्या आपके पास रेफ़रल कोड है?'), style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
@@ -220,8 +220,8 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                             'लागू कोड: ${applied['code'] ?? 'रेफ़रल'}',
                           )),
                           subtitle: Text(applied['rewarded'] == true
-                              ? t('Your ₹100 welcome reward has been credited.', 'आपका ₹100 स्वागत पुरस्कार वॉलेट में जमा हो गया है।')
-                              : t('Your ₹100 welcome reward is pending your first completed service.', 'आपका ₹100 स्वागत पुरस्कार पहली सेवा पूरी होने तक लंबित है।')),
+                              ? t('Your ₹100 promotional credit has been credited.', 'आपका ₹100 प्रमोशनल क्रेडिट जमा हो गया है।')
+                              : t('Your ₹100 promotional credit is pending. Complete your first booking with an original service charge over ₹500.', 'आपका ₹100 प्रमोशनल क्रेडिट लंबित है। ₹500 से अधिक मूल सर्विस चार्ज वाली पहली बुकिंग पूरी करें।')),
                         )
                       else
                         Column(
@@ -257,9 +257,9 @@ class _AccountReferralsScreenState extends State<AccountReferralsScreen> {
                               contentPadding: EdgeInsets.zero,
                               leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                               title: Text(row['name']?.toString() ?? t('AIRway customer', 'AIRway ग्राहक')),
-                              subtitle: Text(row['status'] == 'rewarded'
-                                  ? t('Reward credited', 'पुरस्कार जमा हो गया')
-                                  : t('Waiting for first completed service', 'पहली सेवा पूरी होने की प्रतीक्षा')),
+                              subtitle: Text(row['rewarded'] == true
+                                  ? t('₹200 promotional credit issued • original service charge ₹${row['original_service_charge'] ?? '—'}', '₹200 प्रमोशनल क्रेडिट जारी • मूल सर्विस चार्ज ₹${row['original_service_charge'] ?? '—'}')
+                                  : t('Pending: first completed booking must have an original service charge over ₹500.', 'लंबित: पहली पूरी बुकिंग का मूल सर्विस चार्ज ₹500 से अधिक होना चाहिए.')),
                               trailing: row['status'] == 'rewarded'
                                   ? const Icon(Icons.check_circle, color: Colors.green)
                                   : const Icon(Icons.schedule),
