@@ -541,12 +541,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
   }
 
 
-  Future<void> raiseDispute(Map<String, dynamic> row) async {
+  Future<void> raiseDispute(Map<String, dynamic> row, {bool isNoShow = false}) async {
     final bookingId = int.tryParse(row['booking_id']?.toString() ?? '');
     if (bookingId == null) return;
-    final descriptionController = TextEditingController();
-    var category = 'service_quality';
-    var outcome = 'refund_review';
+    final descriptionController = TextEditingController(
+      text: isNoShow ? 'The assigned professional did not arrive for the scheduled appointment.' : '',
+    );
+    var category = isNoShow ? 'worker_conduct' : 'service_quality';
+    var outcome = isNoShow ? 'investigation' : 'refund_review';
     File? evidencePhoto;
     final payload = await showDialog<Map<String, String>>(
       context: context,
@@ -2081,12 +2083,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
             ),
           )),
         ],
-        if (status == 'in_progress' || status == 'completed') ...[
+        if (status == 'in_progress' || status == 'completed' || row['can_report_no_show'] == true) ...[
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: OutlinedButton.icon(
-            onPressed: () => raiseDispute(row),
+            onPressed: () => raiseDispute(
+              row,
+              isNoShow: status == 'assigned' && row['can_report_no_show'] == true,
+            ),
             icon: const Icon(Icons.support_agent_rounded, size: 18),
-            label: const Text('Report a problem'),
+            label: Text(
+              status == 'assigned'
+                  ? 'Report worker no-show'
+                  : 'Report a problem',
+            ),
           )),
         ],
         if (status == 'completed' && worker != null) ...[
