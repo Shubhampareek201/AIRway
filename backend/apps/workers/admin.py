@@ -529,9 +529,10 @@ class WorkerEarningAdmin(ModelAdmin):
                 raise ValidationError("Configure the worker commission rate before releasing this earning.")
             if not str(obj.adjustment_note or "").strip():
                 raise ValidationError("A reconciliation note is required to release an earning hold.")
-            adjusted_net = previous.gross_amount - previous.commission_amount + obj.adjustment_amount
-            if adjusted_net < 0:
-                raise ValidationError("The adjustment cannot make the worker earning negative.")
+            from .earnings import calculate_worker_earning_net
+            adjusted_net = calculate_worker_earning_net(obj)
+            if adjusted_net is None or adjusted_net < 0:
+                raise ValidationError("The earning cannot be released until its payout calculation is valid and non-negative.")
             obj.net_amount = adjusted_net
             obj.adjustment_note = obj.adjustment_note.strip()
             obj.adjusted_by = request.user

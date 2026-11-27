@@ -9,9 +9,48 @@ from apps.accounts.models import Address, User
 from apps.catalog.models import Category, Service
 from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork, Order, OrderItem
 from apps.payments.models import Payment, PaymentRefund
-from apps.workers.earnings import sync_worker_earning
+from apps.workers.earnings import calculate_worker_earning_net, sync_worker_earning
 from apps.workers.models import WorkerEarning, WorkerProfile
 from apps.wallet.models import Wallet, WalletTransaction
+
+
+class WorkerEarningNetCalculationTests(TestCase):
+    def test_fixed_payout_above_customer_gross_is_preserved_on_release(self):
+        earning = type("Earning", (), {
+            "booking": type("BookingSnapshot", (), {
+                "worker_payout_snapshot": {
+                    "pricing_model": "fixed_service_payout_v1",
+                    "total": "120.00",
+                }
+            })(),
+            "adjustment_amount": Decimal("0.00"),
+            "gross_amount": Decimal("100.00"),
+            "commission_amount": Decimal("0.00"),
+        })()
+        self.assertEqual(calculate_worker_earning_net(earning), Decimal("120.00"))
+
+    def test_fixed_payout_release_keeps_audited_adjustment(self):
+        earning = type("Earning", (), {
+            "booking": type("BookingSnapshot", (), {
+                "worker_payout_snapshot": {
+                    "pricing_model": "admin_approved_quote_payout_v1",
+                    "total": "120.00",
+                }
+            })(),
+            "adjustment_amount": Decimal("-10.00"),
+            "gross_amount": Decimal("100.00"),
+            "commission_amount": Decimal("0.00"),
+        })()
+        self.assertEqual(calculate_worker_earning_net(earning), Decimal("110.00"))
+
+    def test_legacy_commission_earning_keeps_existing_calculation(self):
+        earning = type("Earning", (), {
+            "booking": type("BookingSnapshot", (), {"worker_payout_snapshot": {}})(),
+            "adjustment_amount": Decimal("-5.00"),
+            "gross_amount": Decimal("100.00"),
+            "commission_amount": Decimal("20.00"),
+        })()
+        self.assertEqual(calculate_worker_earning_net(earning), Decimal("75.00"))
 
 
 class WorkerEarningLedgerTests(TestCase):

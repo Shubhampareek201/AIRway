@@ -109,6 +109,25 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
     )
 
 
+def calculate_worker_earning_net(earning):
+    """Rebuild a held earning without replacing fixed catalogue payouts with commission math."""
+    payout_snapshot = earning.booking.worker_payout_snapshot or {}
+    if payout_snapshot.get("pricing_model") in (
+        "fixed_service_payout_v1",
+        "admin_approved_quote_payout_v1",
+    ):
+        raw_payout = payout_snapshot.get("total")
+        if raw_payout in (None, ""):
+            return None
+        payout = Decimal(str(raw_payout))
+        if not payout.is_finite() or payout < 0:
+            return None
+        return payout + earning.adjustment_amount
+    if earning.commission_amount is None:
+        return None
+    return earning.gross_amount - earning.commission_amount + earning.adjustment_amount
+
+
 @transaction.atomic
 def snapshot_worker_earning_for_assignment(booking, worker):
     """Lock the worker's net service earning when they accept the job."""
