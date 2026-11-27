@@ -173,9 +173,9 @@ class WorkerEarningLedgerTests(TestCase):
         worker_client.force_authenticate(user=self.worker_user)
         response = worker_client.get("/api/v1/workers/earnings/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data[0]["settlement_batch_id"], batch.pk)
+        self.assertEqual(response.data["results"][0]["settlement_batch_id"], batch.pk)
         self.assertEqual(
-            response.data[0]["settlement_period_start"],
+            response.data["results"][0]["settlement_period_start"],
             batch.period_start.isoformat(),
         )
 
@@ -527,4 +527,4 @@ class WorkerEarningLedgerTests(TestCase):
         response = client.get("/api/v1/workers/earnings/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, [])
+        self.assertEqual(response.data["results"], [])
