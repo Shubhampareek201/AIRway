@@ -1747,7 +1747,7 @@ class WorkerMissionWalletView(APIView):
                 worker=profile,
                 type=WorkerRewardTransaction.Type.WITHDRAWAL,
                 amount=amount,
-                reference_key=f"worker-reward-withdrawal:{withdrawal.request_key}",
+                reference_key=f"mission-withdrawal:{withdrawal.pk}",
                 description=f"Mission reward withdrawal request #{withdrawal.pk}",
             )
 
