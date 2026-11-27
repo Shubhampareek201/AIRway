@@ -195,6 +195,7 @@ class ServiceAdmin(ModelAdmin):
     search_fields = ("title", "title_hi", "description", "category__title")
     inlines = [VariantInline, AddOnInline, ServiceInspectionRateInline, FormFieldInline, ServiceImageInline]
     readonly_fields = ("profitability_report",)
+    change_list_template = "admin/catalog/service/change_list.html"
     list_per_page = 30
 
     def get_urls(self):
@@ -297,7 +298,10 @@ class ServiceAdmin(ModelAdmin):
         for variant in obj.variants.all().order_by("sort_order", "title"):
             rows.append((variant.title, build_service_profitability_report(obj, variant=variant)))
         if not rows[0][1]["booking_count"]:
-            return "No completed bookings yet."
+            return format_html(
+                'No completed bookings yet. <a href="{}">Open date-range/category report</a>',
+                reverse("admin:catalog_service_profitability_report"),
+            )
         visible = []
         for label, report in rows:
             if not report["booking_count"]:
