@@ -251,7 +251,12 @@ class GatewayFeeSnapshotTests(TestCase):
         self.assertTrue(_record_gateway_fee_snapshot(payment, 590, 106))
         self.assertEqual(payment.gateway_fee_amount, Decimal("5.90"))
         self.assertEqual(payment.gateway_fee_tax_amount, Decimal("1.06"))
-        self.assertIsNotNone(payment.gateway_fee_recorded_at)
+        recorded_at = payment.gateway_fee_recorded_at
+        self.assertIsNotNone(recorded_at)
+        self.assertFalse(_record_gateway_fee_snapshot(payment, 999, 999))
+        self.assertEqual(payment.gateway_fee_amount, Decimal("5.90"))
+        self.assertEqual(payment.gateway_fee_tax_amount, Decimal("1.06"))
+        self.assertEqual(payment.gateway_fee_recorded_at, recorded_at)
 
     def test_missing_gateway_fee_is_not_misreported_as_zero(self):
         from types import SimpleNamespace

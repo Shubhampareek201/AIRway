@@ -1055,13 +1055,21 @@ class PaymentWebhookView(APIView):
                 logger.warning(f"Payment not found for webhook: payment_id={payment_id}, order_id={order_id}")
                 return Response({"status": "ok"})  # Idempotent: don't fail on unknown payment
 
-            # Idempotency: if already processed, skip
+            # Extract payment entity before the idempotency check so a later
+            # captured webhook can fill fee data that Razorpay omitted initially.
+            payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
             if payment.status == Payment.Status.PAID:
+                if _record_gateway_fee_snapshot(
+                    payment, payment_entity.get("fee"), payment_entity.get("tax")
+                ):
+                    payment.save(update_fields=[
+                        "gateway_fee_amount", "gateway_fee_tax_amount",
+                        "gateway_fee_recorded_at", "updated_at",
+                    ])
                 logger.info(f"Webhook: payment {payment.id} already processed (PAID)")
                 return Response({"status": "ok"})
 
             # Extract payment entity for amount/currency validation
-            payment_entity = payload.get('payload', {}).get('payment', {}).get('entity', {})
             razorpay_amount = payment_entity.get('amount')  # in paise
             razorpay_currency = payment_entity.get('currency', '').upper()
 
