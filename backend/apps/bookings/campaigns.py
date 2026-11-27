@@ -1,5 +1,5 @@
 """Read-only customer campaign eligibility and discount calculation."""
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 
 from django.db.models import Count, Q
 from django.utils import timezone
