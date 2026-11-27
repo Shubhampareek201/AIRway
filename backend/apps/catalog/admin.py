@@ -190,7 +190,41 @@ class ServiceAdmin(ModelAdmin):
     list_filter = ("category", "booking_mode", "pricing_type", "audience", "is_active")
     search_fields = ("title", "title_hi", "description", "category__title")
     inlines = [VariantInline, AddOnInline, ServiceInspectionRateInline, FormFieldInline, ServiceImageInline]
+    readonly_fields = ("profitability_report",)
     list_per_page = 30
+
+    @admin.display(description="Completed booking profitability")
+    def profitability_report(self, obj):
+        from .actual_finance import build_service_profitability_report
+        from django.utils.html import format_html, format_html_join
+
+        def money(value):
+            return "—" if value is None else f"₹{value:,.2f}"
+
+        rows = [("All variants / service total", build_service_profitability_report(obj))]
+        for variant in obj.variants.all().order_by("sort_order", "title"):
+            rows.append((variant.title, build_service_profitability_report(obj, variant=variant)))
+        if not rows[0][1]["booking_count"]:
+            return "No completed bookings yet."
+        visible = []
+        for label, report in rows:
+            if not report["booking_count"]:
+                continue
+            visible.append((
+                label, report["booking_count"], report["actual_complete_count"],
+                report["actual_incomplete_count"], money(report["actual_contribution_total"]),
+                money(report["estimated_contribution_total"]), money(report["variance"]),
+            ))
+        body = format_html_join(
+            "",
+            "<tr><th>{}</th><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            visible,
+        )
+        return format_html(
+            "<p>All-time completed bookings. Estimates use saved booking subtotal/payout snapshots and the service's current cost assumptions. Incomplete actuals are excluded from profit/loss comparison.</p>"
+            "<table><thead><tr><th>Service / variant</th><th>Completed</th><th>Finance complete</th><th>Finance incomplete</th><th>Actual contribution</th><th>Estimated contribution</th><th>Variance (comparable)</th></tr></thead><tbody>{}</tbody></table>",
+            body,
+        )
 
     def save_model(self, request, obj, form, change):
         reason = str(obj.pricing_change_reason or "").strip()
@@ -234,7 +268,8 @@ class ServiceAdmin(ModelAdmin):
         return "Add a priced active package"
     save_on_top = True
     fieldsets = (
-        ("Profitability report", {"fields": ("profitability_report",)}),\n        ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
+        ("Profitability report", {"fields": ("profitability_report",)}),
+        ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
         ("Booking & pricing", {"fields": ("booking_mode", "pricing_type", "unit_label", "visit_fee", "visit_fee_worker_payout", "tax_rate", "duration_minutes", "buffer_minutes")}),
         ("Materials & tools", {"fields": ("material_requirements",), "description": "List the materials/tools the professional must bring for this service."}),
         ("Pricing change audit", {"fields": ("pricing_change_reason",)}),

@@ -48,3 +48,52 @@ class BookingVariableCostReconciliationUnitTests(SimpleTestCase):
         self.assertFalse(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
         reconciliation.reviewed_at = object()
         self.assertTrue(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
+
+
+class ServiceProfitabilitySummaryTests(SimpleTestCase):
+    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
+    @patch("apps.catalog.finance.calculate_estimated_contribution")
+    def test_compares_only_complete_actuals_with_known_estimates(self, estimate_mock, actual_mock):
+        from apps.catalog.actual_finance import summarize_service_profitability
+
+        complete = SimpleNamespace(
+            pricing_snapshot={"subtotal": "500.00"},
+            worker_payout_snapshot={"total": "250.00"},
+        )
+        incomplete = SimpleNamespace(
+            pricing_snapshot={"subtotal": "400.00"},
+            worker_payout_snapshot={"total": "200.00"},
+        )
+        actual_mock.side_effect = [
+            {"status": "complete", "partial_contribution": Decimal("180.00")},
+            {"status": "incomplete", "partial_contribution": Decimal("0.00")},
+        ]
+        estimate_mock.return_value = Decimal("150.00")
+
+        report = summarize_service_profitability([complete, incomplete], SimpleNamespace())
+
+        self.assertEqual(report["booking_count"], 2)
+        self.assertEqual(report["actual_complete_count"], 1)
+        self.assertEqual(report["actual_incomplete_count"], 1)
+        self.assertEqual(report["estimated_count"], 1)
+        self.assertEqual(report["actual_contribution_total"], Decimal("180.00"))
+        self.assertEqual(report["estimated_contribution_total"], Decimal("150.00"))
+        self.assertEqual(report["variance"], Decimal("30.00"))
+        self.assertEqual(estimate_mock.call_count, 1)
+
+    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
+    def test_missing_historical_price_or_payout_does_not_invent_estimate(self, actual_mock):
+        from apps.catalog.actual_finance import summarize_service_profitability
+
+        booking = SimpleNamespace(
+            pricing_snapshot={"subtotal": "500.00"},
+            worker_payout_snapshot={},
+        )
+        actual_mock.return_value = {
+            "status": "complete",
+            "partial_contribution": Decimal("100.00"),
+        }
+        report = summarize_service_profitability([booking], SimpleNamespace())
+        self.assertEqual(report["actual_complete_count"], 1)
+        self.assertEqual(report["estimated_count"], 0)
+        self.assertIsNone(report["variance"])
