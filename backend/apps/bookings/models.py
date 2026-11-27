@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator
 from django.db import models
 from django.db.models import F, Q, Sum
 import uuid
@@ -729,6 +730,7 @@ class DispatchConfiguration(TimeStampedModel):
     )
     late_cancellation_fee_percent = models.PositiveSmallIntegerField(
         default=30,
+        validators=[MaxValueValidator(100)],
         help_text="Percentage retained from the captured advance payment for late customer cancellations.",
     )
     priority_order = models.CharField(
