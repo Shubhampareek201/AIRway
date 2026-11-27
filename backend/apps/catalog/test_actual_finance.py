@@ -306,4 +306,6 @@ class ServiceProfitabilityAdminReportIntegrationTests(TestCase):
         self.assertIsNone(reconciliation.reviewed_at)
 
         change_url = reverse("admin:bookings_bookingvariablecost_change", args=[cost.pk])
-        self.assertEqual(self.client.get(change_url).status_code, 403)
+        change_response = self.client.get(change_url)
+        self.assertEqual(change_response.status_code, 200)
+        self.assertNotContains(change_response, 'name="amount"')
