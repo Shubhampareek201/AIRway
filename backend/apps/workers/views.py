@@ -63,6 +63,7 @@ from .serializers import (
     WorkerDocumentSerializer,
     WorkerServiceSerializer,
     WorkerZoneSerializer,
+    WorkerZoneChangeRequestSerializer,
     WorkerScheduleSerializer,
     WorkerLeaveSerializer,
     WorkerLeaveRequestSerializer,

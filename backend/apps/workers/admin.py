@@ -14,6 +14,7 @@ from .models import (
     WorkerDocument,
     WorkerService,
     WorkerZone,
+    WorkerZoneChangeRequest,
     WorkerSchedule,
     WorkerLeave,
     WorkerLeaveHistory,
