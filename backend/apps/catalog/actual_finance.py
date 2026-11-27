@@ -177,3 +177,76 @@ def calculate_booking_actual_finance(booking):
         'mission_rewards': _money(mission_rewards), 'rework_payout': _money(rework_payout), 'customer_reward_cost': _money(customer_reward_cost), 'other_variable_costs': _money(other_variable_costs), 'partial_contribution': _money(partial),
         'reasons': list(dict.fromkeys(reasons)),
     }
+
+def summarize_service_profitability(bookings, service):
+    """Summarize completed bookings; compare actuals only where both sides are known.
+
+    Estimated contribution uses each booking's immutable subtotal and worker payout
+    snapshot, with the service's currently configured cost assumptions.
+    """
+    from apps.catalog.finance import calculate_estimated_contribution
+
+    result = {
+        "booking_count": 0,
+        "actual_complete_count": 0,
+        "actual_incomplete_count": 0,
+        "estimated_count": 0,
+        "actual_contribution_total": ZERO,
+        "estimated_contribution_total": ZERO,
+        "comparable_actual_total": ZERO,
+        "comparable_estimated_total": ZERO,
+        "variance": None,
+        "actual_average": None,
+        "estimated_average": None,
+    }
+    for booking in bookings:
+        result["booking_count"] += 1
+        actual = calculate_booking_actual_finance(booking)
+        if actual["status"] != "complete":
+            result["actual_incomplete_count"] += 1
+            continue
+        result["actual_complete_count"] += 1
+        result["actual_contribution_total"] += actual["partial_contribution"]
+
+        pricing = booking.pricing_snapshot or {}
+        payout_snapshot = booking.worker_payout_snapshot or {}
+        estimated = calculate_estimated_contribution(
+            customer_price=pricing.get("subtotal"),
+            worker_payout=payout_snapshot.get("total"),
+            service=service,
+        ) if pricing.get("subtotal") is not None and payout_snapshot.get("total") is not None else None
+        if estimated is None:
+            continue
+        result["estimated_count"] += 1
+        result["estimated_contribution_total"] += estimated
+        result["comparable_actual_total"] += actual["partial_contribution"]
+        result["comparable_estimated_total"] += estimated
+
+    for key in ("actual_contribution_total", "estimated_contribution_total",
+                "comparable_actual_total", "comparable_estimated_total"):
+        result[key] = _money(result[key])
+    if result["estimated_count"]:
+        result["estimated_average"] = _money(
+            result["estimated_contribution_total"] / result["estimated_count"]
+        )
+    if result["actual_complete_count"]:
+        result["actual_average"] = _money(
+            result["actual_contribution_total"] / result["actual_complete_count"]
+        )
+    if result["estimated_count"]:
+        result["variance"] = _money(
+            result["comparable_actual_total"] - result["comparable_estimated_total"]
+        )
+    return result
+
+
+def build_service_profitability_report(service, variant=None):
+    """Return all-time profitability for completed bookings of a service/package."""
+    from apps.bookings.models import Booking
+
+    bookings = Booking.objects.filter(
+        service=service, status=Booking.Status.COMPLETED
+    ).select_related("service", "variant").order_by("pk")
+    if variant is not None:
+        bookings = bookings.filter(variant=variant)
+    return summarize_service_profitability(bookings, service)

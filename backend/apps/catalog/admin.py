@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django import forms
-from django.contrib import admin, messages
+from django.contrib import admin, messages\nfrom django.utils.html import format_html
 from django.contrib.admin.helpers import ActionForm
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
@@ -234,7 +234,7 @@ class ServiceAdmin(ModelAdmin):
         return "Add a priced active package"
     save_on_top = True
     fieldsets = (
-        ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
+        ("Profitability report", {"fields": ("profitability_report",)}),\n        ("Service details", {"fields": ("category", "title", "title_hi", "description", "image")}),
         ("Booking & pricing", {"fields": ("booking_mode", "pricing_type", "unit_label", "visit_fee", "visit_fee_worker_payout", "tax_rate", "duration_minutes", "buffer_minutes")}),
         ("Materials & tools", {"fields": ("material_requirements",), "description": "List the materials/tools the professional must bring for this service."}),
         ("Pricing change audit", {"fields": ("pricing_change_reason",)}),
