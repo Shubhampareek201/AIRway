@@ -138,7 +138,6 @@ class StagedOrderPaymentServiceTests(TestCase):
         self.assertEqual(balance.amount, Decimal("700.00"))
 
     @patch("apps.payments.views.client.order.create")
-    @patch("apps.payments.views.client.order.create")
     @patch("razorpay.Client")
     @patch("apps.bookings.dispatcher.DispatcherService.dispatch_order")
     @override_settings(RAZORPAY_KEY_ID="rzp_test_airway", RAZORPAY_KEY_SECRET="test_payment_secret")
@@ -242,6 +241,7 @@ class StagedOrderPaymentServiceTests(TestCase):
         self.assertEqual(redemption.status, CampaignRedemption.Status.REDEEMED)
         dispatch_order.assert_called_once()
 
+    @patch("apps.payments.views.client.order.create")
     @patch("apps.bookings.dispatcher.DispatcherService.dispatch_order")
     def test_advance_payment_redeems_campaign_reservation(self, dispatch_order, create_gateway_order):
         from apps.bookings.models import CustomerCampaign, CampaignRedemption
