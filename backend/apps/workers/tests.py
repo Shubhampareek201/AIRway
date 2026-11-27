@@ -2468,6 +2468,21 @@ class WorkerAvailabilityPrerequisiteTests(TestCase):
         self.assertTrue(self.profile.is_online)
 
 
+    def test_worker_can_replace_weekly_schedule(self):
+        response = self.client.put("/api/v1/workers/schedules/", {"schedules": [
+            {"weekday": 1, "start_time": "09:00", "end_time": "13:00", "is_active": True},
+            {"weekday": 3, "start_time": "10:00", "end_time": "17:00", "is_active": True},
+        ]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.profile.schedules.count(), 2)
+
+    def test_worker_cannot_save_overlapping_working_windows(self):
+        response = self.client.put("/api/v1/workers/schedules/", {"schedules": [
+            {"weekday": 1, "start_time": "09:00", "end_time": "13:00", "is_active": True},
+            {"weekday": 1, "start_time": "12:00", "end_time": "17:00", "is_active": True},
+        ]}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.profile.schedules.count(), 0)
 class WorkerCapabilityEligibilityRegressionTests(TestCase):
     def setUp(self):
         self.city = City.objects.create(name="Capability City", state="Rajasthan")
