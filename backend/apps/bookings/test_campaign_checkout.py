@@ -33,12 +33,21 @@ class CustomerCampaignCheckoutTests(TestCase):
             name="Campaign Checkout Zone",
             city=self.city,
             is_active=True,
+            coverage_polygon={
+                "type": "Polygon",
+                "coordinates": [[
+                    [72.80, 19.00], [72.95, 19.00], [72.95, 19.20],
+                    [72.80, 19.20], [72.80, 19.00],
+                ]],
+            },
         )
         self.address = Address.objects.create(
             user=self.customer,
             house_details="House 1",
             landmark="Near market",
             full_address="Campaign Checkout Address",
+            latitude=19.0760,
+            longitude=72.8777,
             zone=self.zone,
         )
         self.category = Category.objects.create(
