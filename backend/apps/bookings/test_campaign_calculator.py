@@ -164,12 +164,12 @@ class CustomerCampaignCalculatorTests(TestCase):
 
     def test_campaign_budget_limits_discount(self):
         self.make_campaign(
-            budget_amount=Decimal("1000.00"),
+            budget_amount=Decimal("100.00"),
             budget_reserved=Decimal("20.00"),
-            budget_spent=Decimal("40.00"),
+            budget_spent=Decimal("60.00"),
         )
 
-        self.assertEqual(self.evaluate()["discount_amount"], Decimal("50.00"))
+        self.assertEqual(self.evaluate()["discount_amount"], Decimal("20.00"))
 
     def test_exhausted_campaign_budget_prevents_discount(self):
         self.make_campaign(
