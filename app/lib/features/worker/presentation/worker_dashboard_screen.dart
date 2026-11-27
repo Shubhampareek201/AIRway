@@ -775,6 +775,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     final jobs = int.tryParse('${data['eligible_jobs_count'] ?? 0}') ?? 0;
     final balance = double.tryParse('${data['balance'] ?? 0}') ?? 0;
     final totalEarned = double.tryParse('${data['total_earned'] ?? 0}') ?? 0;
+    final totalWithdrawn = double.tryParse('${data['total_withdrawn'] ?? 0}') ?? 0;
     final milestones = (data['milestones'] as List? ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
@@ -815,6 +816,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               Text('₹${balance.toStringAsFixed(2)}',
                   style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900, color: Color(0xFF5637C8))),
               Text(AirwayText.tr('Total rewards earned: ₹${totalEarned.toStringAsFixed(2)}', 'कुल रिवॉर्ड कमाई: ₹${totalEarned.toStringAsFixed(2)}'),
+                  style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+              Text(AirwayText.tr('Total withdrawn: ₹${totalWithdrawn.toStringAsFixed(2)}', 'कुल निकासी: ₹${totalWithdrawn.toStringAsFixed(2)}'),
                   style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
             ]),
           ),
@@ -876,7 +879,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: (double.tryParse('${item['amount'] ?? '0'}') ?? 0) > 0
-                    ? Text('₹${item['amount']}')
+                    ? Text(
+                        '${item['type'] == 'withdrawal' ? '-' : '+'}₹${double.tryParse('${item['amount']}')?.toStringAsFixed(2) ?? item['amount']}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      )
                     : null,
               ),
           ],

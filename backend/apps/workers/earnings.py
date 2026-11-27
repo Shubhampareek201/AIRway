@@ -232,7 +232,7 @@ def create_weekly_worker_settlements(earning_ids, created_by=None):
     )
     groups = {}
     for earning in earnings:
-        settlement_date = (
+        settlement_date = timezone.localtime(
             earning.available_at or earning.updated_at or earning.created_at
         ).date()
         period_start = settlement_date - timedelta(days=settlement_date.weekday())
