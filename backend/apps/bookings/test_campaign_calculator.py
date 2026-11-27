@@ -151,6 +151,15 @@ class CustomerCampaignCalculatorTests(TestCase):
 
         self.assertEqual(self.evaluate(now=now)["discount_amount"], Decimal("0.00"))
 
+    def test_campaign_requires_order_subtotal_strictly_above_two_hundred(self):
+        self.make_campaign(minimum_subtotal=Decimal("0.00"))
+
+        at_threshold = self.evaluate(subtotal="200.00")
+        above_threshold = self.evaluate(subtotal="200.01")
+
+        self.assertEqual(at_threshold["discount_amount"], Decimal("0.00"))
+        self.assertEqual(above_threshold["discount_amount"], Decimal("50.00"))
+
     def test_campaign_respects_minimum_order_subtotal(self):
         self.make_campaign(minimum_subtotal=Decimal("1001.00"))
 

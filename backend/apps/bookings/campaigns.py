@@ -11,6 +11,7 @@ from apps.payments.models import Payment
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
+MINIMUM_CAMPAIGN_SUBTOTAL = Decimal("200.00")
 COUNTED_REDEMPTION_STATUSES = (
     CampaignRedemption.Status.RESERVED,
     CampaignRedemption.Status.REDEEMED,
@@ -162,7 +163,10 @@ def evaluate_customer_campaigns(*, customer, zone, lines, now=None):
             >= campaign.max_total_redemptions
         ):
             continue
-        if campaign.remaining_budget <= ZERO or order_subtotal < campaign.minimum_subtotal:
+        minimum_subtotal = max(
+            MINIMUM_CAMPAIGN_SUBTOTAL, Decimal(str(campaign.minimum_subtotal))
+        )
+        if campaign.remaining_budget <= ZERO or order_subtotal <= minimum_subtotal:
             continue
         if applied and (
             not campaign.allow_stacking
