@@ -86,6 +86,9 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
             razorpayOrderId: response.orderId,
             razorpayPaymentId: response.paymentId,
             razorpaySignature: response.signature,
+            paymentAmount: double.tryParse(
+              _paymentOrder?['stage_amount']?.toString() ?? '',
+            ),
             verificationResult: result,
           ),
         ),
@@ -107,6 +110,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => PaymentResultScreen(
             bookingId: widget.bookingId,
+            paymentAmount: double.tryParse(order['stage_amount']?.toString() ?? ''),
             verificationResult: {
               ...order,
               'amount': order['stage_amount'] ?? order['amount'] ?? 0,

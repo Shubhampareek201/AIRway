@@ -10,6 +10,7 @@ class PaymentResultScreen extends StatefulWidget {
   final String? razorpayOrderId;
   final String? razorpayPaymentId;
   final String? razorpaySignature;
+  final double? paymentAmount;
   final String? initialStatus;
   final Map<String, dynamic>? verificationResult;
 
@@ -19,6 +20,7 @@ class PaymentResultScreen extends StatefulWidget {
     this.razorpayOrderId,
     this.razorpayPaymentId,
     this.razorpaySignature,
+    this.paymentAmount,
     this.initialStatus,
     this.verificationResult,
   });
@@ -54,7 +56,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
         final verification = widget.verificationResult!;
         result = PaymentResult.fromMap({
           'booking_id': widget.bookingId,
-          'amount': verification['amount'] ?? 0,
+          'amount': verification['amount'] ?? widget.paymentAmount ?? 0,
           'status': verification['status'] ?? 'pending',
           'razorpay_order_id': widget.razorpayOrderId,
           'razorpay_payment_id': widget.razorpayPaymentId,
