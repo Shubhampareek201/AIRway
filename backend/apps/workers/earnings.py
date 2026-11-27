@@ -125,6 +125,15 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
 
 def calculate_worker_earning_net(earning):
     """Rebuild a held earning without replacing fixed catalogue payouts with commission math."""
+    if (
+        earning.extra_work_id
+        and earning.extra_work.worker_payout_amount is not None
+    ):
+        payout = Decimal(str(earning.extra_work.worker_payout_amount))
+        if not payout.is_finite() or payout < 0:
+            return None
+        return payout + earning.adjustment_amount
+
     payout_snapshot = earning.booking.worker_payout_snapshot or {}
     if payout_snapshot.get("pricing_model") in (
         "fixed_service_payout_v1",
