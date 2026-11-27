@@ -122,6 +122,24 @@ class CustomerCampaignCheckoutTests(TestCase):
             format="json",
         )
 
+    def test_cart_preview_shows_discount_tax_total_and_advance_without_reserving_budget(self):
+        campaign = self.create_campaign()
+
+        response = self.client.get("/api/v1/bookings/cart/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        preview = response.data["campaign_preview"]
+        campaign.refresh_from_db()
+        self.assertEqual(preview["subtotal"], "1000.00")
+        self.assertEqual(preview["discount_amount"], "50.00")
+        self.assertEqual(preview["tax_amount"], "171.00")
+        self.assertEqual(preview["total_amount"], "1121.00")
+        self.assertEqual(preview["advance_amount"], "336.30")
+        self.assertEqual(preview["balance_amount"], "784.70")
+        self.assertEqual(preview["applied_campaigns"][0]["name"], campaign.name)
+        self.assertEqual(campaign.budget_reserved, Decimal("0.00"))
+        self.assertFalse(CampaignRedemption.objects.filter(campaign=campaign).exists())
+
     def test_campaign_is_reserved_and_discount_applies_before_tax_and_advance(self):
         campaign = self.create_campaign()
 

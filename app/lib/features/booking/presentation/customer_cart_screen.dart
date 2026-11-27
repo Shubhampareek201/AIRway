@@ -697,6 +697,13 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
 
   Widget cartBody() {
     final subtotal = number(cart?['subtotal']);
+    final preview = Map<String, dynamic>.from(cart?['campaign_preview'] as Map? ?? const {});
+    final previewSubtotal = number(preview['subtotal']);
+    final discount = number(preview['discount_amount']);
+    final tax = number(preview['tax_amount']);
+    final total = number(preview['total_amount']);
+    final advance = number(preview['advance_amount']);
+    final balance = number(preview['balance_amount']);
     final scheduledCount = _slotConfirmed.where((id) => items.any((item) => item['id'] == id)).length;
     return Column(children: [
       Expanded(
@@ -757,12 +764,26 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
                   Text(airway_localization.AirwayText.tr('Price summary', 'कीमत का सारांश'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: ink)),
                 ]),
                 const SizedBox(height: 16),
-                priceRow(airway_localization.AirwayText.tr('Service subtotal', 'सेवा उप-योग'), '₹' + subtotal.toStringAsFixed(0)),
-                priceRow(airway_localization.AirwayText.tr('Taxes & applicable charges', 'टैक्स और लागू शुल्क'), airway_localization.AirwayText.tr('Calculated at checkout', 'चेकआउट पर गणना होगी')),
+                priceRow(airway_localization.AirwayText.tr('Service subtotal', 'सेवा उप-योग'), '₹' + previewSubtotal.toStringAsFixed(2)),
+                if (discount > 0) ...[
+                  priceRow(airway_localization.AirwayText.tr('Campaign savings', 'ऑफ़र की बचत'), '−₹' + discount.toStringAsFixed(2)),
+                  for (final campaign in (preview['applied_campaigns'] as List? ?? const []))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(
+                        campaign is Map ? (campaign['name']?.toString() ?? 'Offer applied') : 'Offer applied',
+                        style: const TextStyle(color: AirwayColors.success, fontSize: 10, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                ],
+                priceRow(airway_localization.AirwayText.tr('Taxes', 'टैक्स'), '₹' + tax.toStringAsFixed(2)),
                 const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(color: line)),
-                Text(airway_localization.AirwayText.tr('Payment is split for your convenience', 'आपकी सुविधा के लिए भुगतान दो हिस्सों में है'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: ink)),
+                priceRow(airway_localization.AirwayText.tr('Total after offer', 'ऑफ़र के बाद कुल'), '₹' + total.toStringAsFixed(2)),
+                const SizedBox(height: 8),
+                priceRow(airway_localization.AirwayText.tr('Pay now · 30% advance', 'अभी भुगतान · 30% अग्रिम'), '₹' + advance.toStringAsFixed(2)),
+                priceRow(airway_localization.AirwayText.tr('Remaining · 70%', 'बाकी · 70%'), '₹' + balance.toStringAsFixed(2)),
                 const SizedBox(height: 5),
-                Text(airway_localization.AirwayText.tr('30% advance to begin worker matching · 70% after every service is completed and verified.', 'वर्कर मिलान शुरू करने के लिए 30% अग्रिम · सभी सेवाएँ पूरी और वेरिफ़ाई होने पर 70% शेष।'), style: TextStyle(fontSize: 11, height: 1.4, color: sub)),
+                Text(airway_localization.AirwayText.tr('Offer is an estimate until checkout. Final pricing is revalidated before payment.', 'ऑफ़र चेकआउट तक अनुमानित है। भुगतान से पहले अंतिम कीमत दोबारा जाँची जाएगी।'), style: const TextStyle(fontSize: 10, height: 1.35, color: sub)),
               ]),
             ),
           ],
@@ -779,7 +800,7 @@ class _CustomerCartScreenState extends State<CustomerCartScreen> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text(airway_localization.AirwayText.tr('TOTAL AMOUNT', 'कुल राशि'), style: TextStyle(color: sub, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
             const SizedBox(height: 2),
-            Text('₹' + subtotal.toStringAsFixed(0), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: ink)),
+            Text('₹' + total.toStringAsFixed(2), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: ink)),
           ])),
           const SizedBox(width: 12),
           Expanded(flex: 2, child: SizedBox(

@@ -1402,10 +1402,11 @@ class CustomerCartSerializer(serializers.ModelSerializer):
     items = CartItemSerializer(many=True, read_only=True)
     subtotal = serializers.SerializerMethodField()
     item_count = serializers.SerializerMethodField()
+    campaign_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomerCart
-        fields = ["id", "address", "schedule_mode", "items", "item_count", "subtotal", "updated_at"]
+        fields = ["id", "address", "schedule_mode", "items", "item_count", "subtotal", "campaign_preview", "updated_at"]
         read_only_fields = fields
 
     def get_subtotal(self, obj):
@@ -1413,3 +1414,8 @@ class CustomerCartSerializer(serializers.ModelSerializer):
 
     def get_item_count(self, obj):
         return sum(item.quantity for item in obj.items.all())
+
+    def get_campaign_preview(self, obj):
+        from apps.bookings.campaigns import build_customer_cart_campaign_preview
+        return build_customer_cart_campaign_preview(cart=obj)
+

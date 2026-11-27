@@ -335,3 +335,103 @@ def release_unpaid_customer_campaigns_for_order(*, order, reason, now=None):
         reason=reason,
         now=now,
     )
+
+
+
+def build_customer_cart_campaign_preview(*, cart):
+    """Return a read-only price and campaign estimate using checkout pricing rules."""
+    from django.conf import settings
+    from apps.catalog.models import AddOn
+    from apps.catalog.finance import calculate_worker_payout
+
+    items = list(cart.items.select_related("service", "variant").order_by("id"))
+    if not items:
+        return {
+            "subtotal": "0.00", "discount_amount": "0.00",
+            "tax_amount": "0.00", "total_amount": "0.00",
+            "advance_amount": "0.00", "balance_amount": "0.00",
+            "applied_campaigns": [],
+        }
+
+    addon_ids = {
+        row.get("id")
+        for item in items
+        for row in (item.addon_selections or [])
+        if isinstance(row, dict) and row.get("id") is not None
+    }
+    addon_map = {
+        addon.pk: addon
+        for addon in AddOn.objects.filter(pk__in=addon_ids, is_active=True)
+    }
+    lines = []
+    line_data = []
+    subtotal = ZERO
+    for item in items:
+        quantity = item.quantity
+        snapshot = item.pricing_snapshot or {}
+        variant_price = (
+            Decimal(str(item.variant.price)) if item.variant_id else ZERO
+        )
+        visit_fee = (
+            Decimal(str(item.service.visit_fee))
+            if item.service.booking_mode == "inspection" else ZERO
+        )
+        addon_rows = []
+        addon_total = ZERO
+        for row in (item.addon_selections or []):
+            if not isinstance(row, dict):
+                continue
+            addon = addon_map.get(row.get("id"))
+            if addon is None:
+                continue
+            addon_quantity = int(row.get("quantity", 1))
+            addon_rows.append((addon, addon_quantity))
+            addon_total += Decimal(str(addon.price)) * addon_quantity
+        line_subtotal = (variant_price + addon_total) * quantity + visit_fee
+        payout = calculate_worker_payout(
+            service=item.service,
+            variant=item.variant,
+            addon_rows=addon_rows,
+            quantity=quantity,
+            booking_mode=item.service.booking_mode,
+        )
+        lines.append({
+            "key": str(item.pk),
+            "service": item.service,
+            "subtotal": line_subtotal,
+            "worker_payout": payout,
+        })
+        line_data.append((item, line_subtotal))
+        subtotal += line_subtotal
+
+    campaign_result = evaluate_customer_campaigns(
+        customer=cart.customer,
+        zone=getattr(cart.address, "zone", None),
+        lines=lines,
+    )
+    discount_amount = campaign_result["discount_amount"]
+    tax_amount = ZERO
+    for item, line_subtotal in line_data:
+        line_discount = campaign_result["line_discounts"].get(str(item.pk), ZERO)
+        discounted_subtotal = max(line_subtotal - line_discount, ZERO)
+        tax_amount += (discounted_subtotal * Decimal(str(item.service.tax_rate)) / Decimal("100")).quantize(
+            CENT, rounding=ROUND_HALF_UP
+        )
+
+    total_amount = subtotal - discount_amount + tax_amount
+    advance_percentage = Decimal(str(getattr(settings, "ORDER_ADVANCE_PERCENTAGE", 30)))
+    advance_amount = (total_amount * advance_percentage / Decimal("100")).quantize(
+        CENT, rounding=ROUND_HALF_UP
+    )
+    return {
+        "subtotal": str(subtotal.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "discount_amount": str(discount_amount),
+        "tax_amount": str(tax_amount),
+        "total_amount": str(total_amount.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "advance_amount": str(advance_amount),
+        "balance_amount": str((total_amount - advance_amount).quantize(CENT, rounding=ROUND_HALF_UP)),
+        "applied_campaigns": [
+            {"id": row["campaign_id"], "name": row["name"], "discount_amount": str(row["discount_amount"])}
+            for row in campaign_result["applied_campaigns"]
+        ],
+    }
