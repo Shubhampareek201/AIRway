@@ -76,6 +76,8 @@ def calculate_booking_actual_finance(booking):
             continue
         if gross_allocation <= 0:
             continue
+        if gateway_allocation <= 0 or payment.method != Payment.Method.RAZORPAY:
+            continue
         if payment.gateway_fee_amount is None or payment.gateway_fee_tax_amount is None:
             if gateway_allocation > 0:
                 gateway_fee_known = False
