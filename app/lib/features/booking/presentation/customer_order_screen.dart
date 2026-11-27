@@ -1300,6 +1300,29 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     );
   }
 
+  Widget _orderPriceRow(String label, double value, {bool isTotal = false, Color? valueColor}) {
+    final formatted = (value < 0 ? '-₹' : '₹') + value.abs().toStringAsFixed(2);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: TextStyle(
+              color: isTotal ? ink : sub,
+              fontWeight: isTotal ? FontWeight.w900 : FontWeight.w500,
+              fontSize: isTotal ? 14 : 12,
+            )),
+          ),
+          Text(formatted, style: TextStyle(
+            color: valueColor ?? (isTotal ? violet : ink),
+            fontWeight: isTotal ? FontWeight.w900 : FontWeight.w700,
+            fontSize: isTotal ? 16 : 12,
+          )),
+        ],
+      ),
+    );
+  }
+
   Widget orderBody() {
     final rows = (order?['items'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     final serviceInProgress = rows.any((row) => row['booking_status'] == 'in_progress');
@@ -1314,6 +1337,15 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final advancePaid = order?['advance_paid'] == true;
     final paid = order?['balance_paid'] == true || order?['legacy_paid'] == true || order?['status'] == 'paid';
     final total = amount(order?['total_amount']);
+    final orderSubtotal = amount(order?['subtotal']);
+    final orderDiscount = amount(order?['discount_amount']);
+    final orderTax = amount(order?['tax_amount']);
+    final advanceTotal = amount(order?['advance_total']);
+    final balanceTotal = amount(order?['balance_total']);
+    final campaignRows = (order?['campaigns'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
     final checkoutExpiry = DateTime.tryParse(order?['checkout_expires_at']?.toString() ?? '')?.toLocal();
     final checkoutExpiryKind = order?['checkout_expiry_kind']?.toString();
     final checkoutRemaining = checkoutExpiry?.difference(DateTime.now());
@@ -1376,6 +1408,48 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               Text(AirwayText.tr('Order total ₹${total.toStringAsFixed(0)}', 'ऑर्डर कुल ₹${total.toStringAsFixed(0)}'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: violet)),
             ]),
           ),
+          if (orderSubtotal > 0 || orderDiscount > 0 || orderTax > 0) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Order price breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: ink)),
+                  const SizedBox(height: 10),
+                  _orderPriceRow('Service subtotal', orderSubtotal),
+                  if (orderDiscount > 0) ...[
+                    _orderPriceRow('Campaign savings', -orderDiscount, valueColor: const Color(0xFF2E7D52)),
+                    for (final campaign in campaignRows)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          campaign['name']?.toString() ?? 'Applied offer',
+                          style: const TextStyle(color: sub, fontSize: 11),
+                        ),
+                      ),
+                  ],
+                  _orderPriceRow('Taxes', orderTax),
+                  const Divider(height: 20),
+                  _orderPriceRow('Total after offer', total, isTotal: true),
+                  if (order?['is_staged_payment'] == true) ...[
+                    const SizedBox(height: 8),
+                    _orderPriceRow(
+                      advancePaid ? 'Advance received' : (acceptedInspectionQuote ? 'Initial payment' : '$advancePercentLabel% advance'),
+                      advanceTotal,
+                    ),
+                    _orderPriceRow('Remaining balance', balanceTotal),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (advanceReady && checkoutExpiry != null) ...[
             const SizedBox(height: 10),
             Container(

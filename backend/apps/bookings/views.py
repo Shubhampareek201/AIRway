@@ -2314,7 +2314,15 @@ class CustomerOrderDetailView(APIView):
             "appointment_groups": appointment_groups,
             "currency": order.currency,
             "subtotal": str(order.subtotal),
+            "discount_amount": str(order.discount_amount),
             "tax_amount": str(order.tax_amount),
+            "campaigns": [
+                {
+                    "name": redemption.campaign.name,
+                    "discount_amount": str(redemption.discount_amount),
+                }
+                for redemption in order.campaign_redemptions.select_related("campaign").exclude(status="released")
+            ],
             "total_amount": str(order.total_amount),
             "is_staged_payment": is_staged_payment,
             "advance_percentage": float(allocation.get("percentage", 30)),
