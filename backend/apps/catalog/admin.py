@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django import forms
-from django.contrib import admin, messages\nfrom django.utils.html import format_html
+from django.contrib import admin, messages
 from django.contrib.admin.helpers import ActionForm
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
