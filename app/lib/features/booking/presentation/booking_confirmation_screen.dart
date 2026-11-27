@@ -6,10 +6,6 @@ import 'package:airway/features/booking/data/booking_models.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
 import 'package:airway/features/payment/presentation/payment_result_screen.dart';
 
-class _Payment {
-  static const keyId = 'rzp_test_airway';
-}
-
 class _Ui {
   static const violet = Color(0xFF6F4EF6);
   static const ink = Color(0xFF201A33);
@@ -111,7 +107,11 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => PaymentResultScreen(
             bookingId: widget.bookingId,
-            verificationResult: order,
+            verificationResult: {
+              ...order,
+              'amount': order['stage_amount'] ?? order['amount'] ?? 0,
+              'status': order['payment_status'] ?? 'paid',
+            },
           ),
         ));
         return;
@@ -300,7 +300,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
     final isInspection = booking.bookingMode == 'inspection';
     final previewAdvance = double.tryParse(
           snapshot['advance_amount']?.toString() ?? '',
-        ) ?? (isInspection ? total : (total * 30).roundToDouble() / 100);
+        ) ?? (isInspection ? total : (total * 0.30 * 100).roundToDouble() / 100);
     final serverStageAmount = double.tryParse(
       _paymentOrder?['stage_amount']?.toString() ?? '',
     );
