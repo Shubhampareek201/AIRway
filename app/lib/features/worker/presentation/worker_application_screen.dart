@@ -46,6 +46,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _landmarkController = TextEditingController();
   final TextEditingController _upiController = TextEditingController();
+  final TextEditingController _workerReferralCodeController = TextEditingController();
   String? _selectedGender;
   final Map<int, Map<String, String>> _weeklySchedule = {};
 
@@ -82,6 +83,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
     _addressController.dispose();
     _landmarkController.dispose();
     _upiController.dispose();
+    _workerReferralCodeController.dispose();
     _serviceSearchController.dispose();
     super.dispose();
   }
@@ -449,6 +451,7 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         upiId: _upiController.text,
         schedule: _weeklySchedule,
         profilePhoto: _profilePhoto,
+        referralCode: _workerReferralCodeController.text,
       );
 
       if (!mounted) return;
@@ -1157,6 +1160,18 @@ class _WorkerApplicationScreenState extends State<WorkerApplicationScreen> {
         _buildReviewItem('Equipment / products', _equipmentController.text.trim().isNotEmpty, _equipmentController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
         const Divider(),
         _buildReviewItem('Bio', _bioController.text.trim().isNotEmpty, _bioController.text.trim().isNotEmpty ? 'Added' : 'Optional'),
+        const SizedBox(height: 18),
+        Text(AirwayText.tr('Worker referral code (optional)', 'वर्कर रेफरल कोड (वैकल्पिक)'), style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _workerReferralCodeController,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            hintText: 'Enter an approved AIRway worker code',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            helperText: 'Referral is attached only after the application is submitted successfully.',
+          ),
+        ),
         const SizedBox(height: 24),
         Card(
           color: Colors.amber,
