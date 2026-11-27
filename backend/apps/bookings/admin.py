@@ -400,7 +400,7 @@ class DispatchConfigurationAdmin(ModelAdmin):
     fieldsets = (
         ("Dispatch control", {"fields": ("is_enabled",)}),
         ("Simultaneous worker offers", {"fields": ("offer_expiry_minutes", "priority_order")}),
-        ("Customer cancellation policy", {"fields": ("late_cancellation_window_hours", "late_cancellation_fee_percent")}),
+        ("Customer cancellation and no-show policy", {"fields": ("late_cancellation_window_hours", "late_cancellation_fee_percent", "no_show_grace_minutes")}),
         ("Audit", {"fields": ("created_at", "updated_at")}),
     )
     readonly_fields = ("created_at", "updated_at")
