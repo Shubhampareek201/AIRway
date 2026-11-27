@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Address, User
 from apps.bookings.models import (
     Booking, BookingAssignment, BookingDispute, BookingDisputeHistory,
-    BookingDisputeEvidence, BookingReworkProposal,
+    BookingDisputeEvidence, BookingReworkProposal, DispatchConfiguration,
 )
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
@@ -105,6 +105,44 @@ class BookingDisputeAPITests(TestCase):
         )
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.data["booking_id"], self.booking.pk)
+
+
+    def test_customer_can_report_worker_no_show_after_configured_grace_period(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.scheduled_at = timezone.now() - timedelta(minutes=31)
+        self.booking.save(update_fields=["status", "scheduled_at"])
+        DispatchConfiguration.objects.create(no_show_grace_minutes=30)
+        payload = self._payload()
+        payload.update({
+            "category": BookingDispute.Category.WORKER_CONDUCT,
+            "requested_outcome": BookingDispute.RequestedOutcome.INVESTIGATION,
+            "description": "The assigned professional did not arrive.",
+        })
+
+        response = self.customer_client.post(
+            "/api/v1/bookings/disputes/", payload, format="json"
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        history = BookingDisputeHistory.objects.get(dispute_id=response.data["id"])
+        self.assertIn("worker no-show", history.note.lower())
+
+    def test_customer_cannot_report_worker_no_show_before_grace_period(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.scheduled_at = timezone.now() - timedelta(minutes=29)
+        self.booking.save(update_fields=["status", "scheduled_at"])
+        DispatchConfiguration.objects.create(no_show_grace_minutes=30)
+        payload = self._payload()
+        payload.update({
+            "category": BookingDispute.Category.WORKER_CONDUCT,
+            "requested_outcome": BookingDispute.RequestedOutcome.INVESTIGATION,
+        })
+
+        response = self.customer_client.post(
+            "/api/v1/bookings/disputes/", payload, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_assigned_worker_can_raise_dispute(self):
         response = self.worker_client.post(
