@@ -112,6 +112,7 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(first.commission_amount, Decimal("20.00"))
         self.assertEqual(first.net_amount, Decimal("80.00"))
         self.assertEqual(first.status, WorkerEarning.Status.AVAILABLE)
+        self.assertIsNotNone(first.available_at)
 
 
     def test_weekly_settlement_groups_earnings_and_pays_them_once(self):

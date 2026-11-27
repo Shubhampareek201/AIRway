@@ -1533,7 +1533,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     final net = double.tryParse('${item['net_amount']}') ?? 0;
     final status = item['status']?.toString() ?? 'pending';
     final statusLabel = switch (status) {
-      'available' => 'Available',
+      'available' => item['settlement_batch_id'] != null ? 'In weekly settlement' : 'Available',
       'paid' => 'Paid',
       'on_hold' => 'On hold',
       _ => 'Pending settlement',
@@ -1568,6 +1568,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           'Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}',
           style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
         ),
+        if (item['settlement_batch_id'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Weekly settlement #${item['settlement_batch_id']} • ${item['settlement_period_start']} to ${item['settlement_period_end']}',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+            ),
+          ),
         const Divider(height: 18),
         _earningAmountLine(
           item['extra_work_id'] != null ? 'Approved extra-work amount' : 'Service amount',

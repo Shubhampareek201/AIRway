@@ -1598,6 +1598,7 @@ class WorkerEarningsView(APIView):
                     earning.settlement_batch.status
                     if earning.settlement_batch_id else None
                 ),
+                "available_at": earning.available_at.isoformat() if earning.available_at else None,
                 "gross_amount": str(earning.gross_amount),
                 "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
                 "commission_amount": str(earning.commission_amount) if earning.commission_amount is not None else None,

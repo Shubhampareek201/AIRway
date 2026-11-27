@@ -107,6 +107,10 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
         "status": state,
         "hold_reason": hold_reason,
     }
+    if state == WorkerEarning.Status.AVAILABLE and (
+        existing is None or existing.status != WorkerEarning.Status.AVAILABLE
+    ):
+        values["available_at"] = timezone.now()
     if existing:
         for field, value in values.items():
             setattr(existing, field, value)
@@ -217,8 +221,10 @@ def create_weekly_worker_settlements(earning_ids, created_by=None):
     )
     groups = {}
     for earning in earnings:
-        day = earning.created_at.date()
-        period_start = day - timedelta(days=day.weekday())
+        settlement_date = (
+            earning.available_at or earning.updated_at or earning.created_at
+        ).date()
+        period_start = settlement_date - timedelta(days=settlement_date.weekday())
         period_end = period_start + timedelta(days=6)
         groups.setdefault((earning.worker_id, period_start, period_end), []).append(earning)
 

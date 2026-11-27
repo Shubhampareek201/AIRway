@@ -360,6 +360,10 @@ class WorkerEarning(TimeStampedModel):
         blank=True,
         related_name="earnings",
     )
+    available_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the earning became eligible for settlement after final payment.",
+    )
     payment = models.ForeignKey("payments.Payment", on_delete=models.PROTECT, null=True, blank=True, related_name="worker_earnings")
     gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
