@@ -1637,6 +1637,16 @@ class WorkerJobStartView(APIView):
                 row.arrival_verified_at = now
                 row.save(update_fields=["arrival_verified_at", "updated_at"])
 
+
+        first_start = not any(row.started_at for row in group_assignments)
+        if first_start:
+            from .delay_conflicts import notify_upcoming_booking_conflicts
+            notify_upcoming_booking_conflicts(
+                worker=profile,
+                current_booking=booking,
+                now=now,
+            )
+
         for row in group_assignments:
             row.started_at = row.started_at or now
             row.save(update_fields=["started_at", "updated_at"])
