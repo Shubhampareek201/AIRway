@@ -841,7 +841,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               );
             }),
           const SizedBox(height: 5),
-          Text(AirwayText.tr('Only each service costing more than ₹300 counts. These rewards are separate from customer discount credits.', 'सिर्फ ₹300 से ज़्यादा कीमत वाली हर सेवा गिनी जाएगी। ये रिवॉर्ड कस्टमर डिस्काउंट क्रेडिट से अलग हैं।'),
+          Text(AirwayText.tr('Services above ₹300 count toward missions. Mission and worker-referral rewards are withdrawable here; job earnings and customer wallet credits stay separate.', '₹300 से अधिक कीमत वाली सेवाएँ मिशन में गिनी जाती हैं। मिशन और वर्कर रेफरल रिवॉर्ड यहाँ से निकाले जा सकते हैं; जॉब कमाई और कस्टमर वॉलेट अलग हैं।'),
               style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, height: 1.4)),
           const SizedBox(height: 12),
           if (!hasUpi)
@@ -1599,6 +1599,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           const SizedBox(height: 8),
           Text(item['hold_reason'].toString(), style: const TextStyle(color: Color(0xFFB45309), fontSize: 12)),
         ],
+        if ((item['earning_reference']?.toString() ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('Earning reference: ${item['earning_reference']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+          ),
+        if ((item['payment_reference']?.toString() ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('Payment reference: ${item['payment_reference']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+          ),
         if ((item['payout_reference']?.toString() ?? '').isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 5),
