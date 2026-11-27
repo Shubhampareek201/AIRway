@@ -962,3 +962,43 @@ class BookingReworkProposal(TimeStampedModel):
     def __str__(self):
         return f"Rework proposal for dispute #{self.dispute_id} ({self.status})"
 
+
+
+class BookingVariableCost(TimeStampedModel):
+    """Append-only, booking-attributed variable operating expense."""
+    class Category(models.TextChoices):
+        TRAVEL = "travel", "Travel"
+        MATERIALS = "materials", "Materials"
+        PAYMENT = "payment", "Payment processing"
+        SUPPORT = "support", "Customer support"
+        REWORK = "rework", "Rework / service recovery"
+        OTHER = "other", "Other"
+
+    booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name="variable_costs")
+    category = models.CharField(max_length=20, choices=Category.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.CharField(max_length=500)
+    reference = models.CharField(max_length=120, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="recorded_booking_variable_costs")
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [models.CheckConstraint(condition=Q(amount__gt=0), name="booking_variable_cost_positive")]
+
+    def __str__(self):
+        return f"{self.get_category_display()} ₹{self.amount} for booking #{self.booking_id}"
+
+
+class BookingFinanceReconciliation(TimeStampedModel):
+    """Finance review confirming that all other variable costs were considered."""
+    booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name="finance_reconciliation")
+    other_costs_reviewed = models.BooleanField(default=False)
+    review_note = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="booking_finance_reviews")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Finance reconciliation for booking #{self.booking_id}"

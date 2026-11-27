@@ -32,6 +32,8 @@ from .models import (
     BookingDisputeHistory,
     BookingReworkProposal,
     BookingDisputeEvidence,
+    BookingVariableCost,
+    BookingFinanceReconciliation,
 )
 
 
@@ -242,13 +244,24 @@ def _issue_platform_refund(booking_id):
         )
 
 
+class BookingVariableCostInline(TabularInline):
+    model = BookingVariableCost
+    extra = 0
+    can_delete = False
+    readonly_fields = ("category", "amount", "description", "reference", "created_by", "created_at", "updated_at")
+    fields = readonly_fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
     list_display = ("id", "customer", "service", "variant", "booking_mode", "status", "actual_contribution_status", "actual_contribution", "scheduled_at", "created_at")
     list_filter = ("status", "booking_mode", "service")
     search_fields = ("customer__phone", "customer__name", "service__title")
     readonly_fields = ("created_at", "updated_at", "pricing_snapshot", "actual_finance_details")
-    inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline]
+    inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline, BookingVariableCostInline]
     actions = [mark_unfulfillable_and_refund]
 
     def _actual_finance_report(self, obj):
@@ -773,3 +786,55 @@ class BookingDisputeAdmin(ModelAdmin):
         return False
 
 
+
+
+@admin.register(BookingVariableCost)
+class BookingVariableCostAdmin(ModelAdmin):
+    list_display = ("id", "booking", "category", "amount", "description", "created_by", "created_at")
+    list_filter = ("category", "created_at")
+    search_fields = ("booking__id", "description", "reference")
+    readonly_fields = tuple(field.name for field in BookingVariableCost._meta.fields)
+
+    def has_add_permission(self, request):
+        return request.user.is_staff
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            raise ValidationError("Variable cost entries are append-only. Add a correcting entry instead.")
+        obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+        BookingFinanceReconciliation.objects.filter(booking=obj.booking).update(
+            other_costs_reviewed=False, reviewed_by=None, reviewed_at=None,
+        )
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_staff and obj is None
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(BookingFinanceReconciliation)
+class BookingFinanceReconciliationAdmin(ModelAdmin):
+    list_display = ("booking", "other_costs_reviewed", "reviewed_by", "reviewed_at", "updated_at")
+    list_filter = ("other_costs_reviewed", "reviewed_at")
+    search_fields = ("booking__id", "booking__customer__phone")
+    readonly_fields = ("reviewed_by", "reviewed_at", "created_at", "updated_at")
+    fields = ("booking", "other_costs_reviewed", "review_note") + readonly_fields
+
+    def save_model(self, request, obj, form, change):
+        if obj.other_costs_reviewed and not obj.review_note.strip():
+            raise ValidationError("A review note is required to confirm reconciliation.")
+        if obj.other_costs_reviewed:
+            obj.reviewed_by = request.user
+            obj.reviewed_at = timezone.now()
+        else:
+            obj.reviewed_by = None
+            obj.reviewed_at = None
+        super().save_model(request, obj, form, change)
+
+    def has_add_permission(self, request):
+        return request.user.is_staff
+
+    def has_delete_permission(self, request, obj=None):
+        return False

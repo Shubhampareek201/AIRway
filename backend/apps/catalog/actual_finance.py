@@ -142,11 +142,18 @@ def calculate_booking_actual_finance(booking):
     unallocated_cashback = WalletTransaction.objects.filter(wallet__user=booking.customer, type=WalletTransaction.Type.CASHBACK, status=WalletTransaction.Status.COMPLETED).exclude(reference_id__startswith='referral:').exists()
     if unallocated_cashback:
         reasons.append('Non-referral customer wallet rewards are not attributed to a booking')
-    reasons.append('Other variable operating expenses need finance reconciliation')
+    from apps.bookings.models import BookingVariableCost, BookingFinanceReconciliation
+    other_variable_costs = sum(
+        (_decimal(value) or ZERO for value in BookingVariableCost.objects.filter(booking=booking).values_list('amount', flat=True)),
+        ZERO,
+    )
+    reconciliation = BookingFinanceReconciliation.objects.filter(booking=booking).first()
+    if reconciliation is None or not reconciliation.other_costs_reviewed or reconciliation.reviewed_at is None:
+        reasons.append('Other variable operating expenses have not been reviewed by Finance')
     if not gateway_fee_known:
         gateway_fee = None
         gateway_fee_tax = None
-    partial = subtotal - discount - refunded_service_revenue - worker_payout - mission_rewards - rework_payout - customer_reward_cost
+    partial = subtotal - discount - refunded_service_revenue - worker_payout - mission_rewards - rework_payout - customer_reward_cost - other_variable_costs
     if gateway_fee is not None and gateway_fee_tax is not None:
         partial -= gateway_fee + gateway_fee_tax
     return {
@@ -156,6 +163,6 @@ def calculate_booking_actual_finance(booking):
         'worker_payout': _money(worker_payout),
         'gateway_fee': _money(gateway_fee) if gateway_fee is not None else None,
         'gateway_fee_tax': _money(gateway_fee_tax) if gateway_fee_tax is not None else None,
-        'mission_rewards': _money(mission_rewards), 'rework_payout': _money(rework_payout), 'customer_reward_cost': _money(customer_reward_cost), 'partial_contribution': _money(partial),
+        'mission_rewards': _money(mission_rewards), 'rework_payout': _money(rework_payout), 'customer_reward_cost': _money(customer_reward_cost), 'other_variable_costs': _money(other_variable_costs), 'partial_contribution': _money(partial),
         'reasons': list(dict.fromkeys(reasons)),
     }
