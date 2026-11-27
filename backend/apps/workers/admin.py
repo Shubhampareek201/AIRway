@@ -391,6 +391,57 @@ class WorkerZoneAdmin(ModelAdmin):
     search_fields = ("worker__user__phone", "zone__name")
 
 
+@admin.register(WorkerZoneChangeRequest)
+class WorkerZoneChangeRequestAdmin(ModelAdmin):
+    list_display = ("worker", "zone", "action", "status", "requested_at", "reviewed_by", "reviewed_at")
+    list_filter = ("status", "action", "requested_at")
+    search_fields = ("worker__user__phone", "worker__user__name", "zone__name")
+    readonly_fields = ("worker", "zone", "action", "worker_note", "status", "requested_at", "reviewed_by", "reviewed_at")
+    fields = ("worker", "zone", "action", "worker_note", "status", "admin_note", "requested_at", "reviewed_by", "reviewed_at")
+    actions = ("approve_zone_requests", "reject_zone_requests")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.action(description="Approve selected pending worker zone requests")
+    def approve_zone_requests(self, request, queryset):
+        from .zone_changes import review_worker_zone_change
+        approved = skipped = 0
+        for request_id in queryset.values_list("pk", flat=True):
+            try:
+                review_worker_zone_change(request_id=request_id, reviewer=request.user, decision=WorkerZoneChangeRequest.Status.APPROVED)
+                approved += 1
+            except Exception as exc:
+                skipped += 1
+                self.message_user(request, f"Zone request #{request_id} was not approved: {exc}", messages.WARNING)
+        if approved:
+            self.message_user(request, f"{approved} worker zone request(s) approved.", messages.SUCCESS)
+        if skipped:
+            self.message_user(request, f"{skipped} request(s) need attention.", messages.WARNING)
+
+    @admin.action(description="Reject selected pending worker zone requests (add admin note first)")
+    def reject_zone_requests(self, request, queryset):
+        from .zone_changes import review_worker_zone_change
+        rejected = skipped = 0
+        for item in queryset:
+            try:
+                review_worker_zone_change(
+                    request_id=item.pk, reviewer=request.user,
+                    decision=WorkerZoneChangeRequest.Status.REJECTED, note=item.admin_note,
+                )
+                rejected += 1
+            except Exception as exc:
+                skipped += 1
+                self.message_user(request, f"Zone request #{item.pk} was not rejected: {exc}", messages.WARNING)
+        if rejected:
+            self.message_user(request, f"{rejected} worker zone request(s) rejected.", messages.SUCCESS)
+        if skipped:
+            self.message_user(request, f"{skipped} request(s) skipped. Add a rejection note first.", messages.WARNING)
+
+
 @admin.register(WorkerSchedule)
 class WorkerScheduleAdmin(ModelAdmin):
     list_display = ("worker", "weekday", "start_time", "end_time", "is_active")

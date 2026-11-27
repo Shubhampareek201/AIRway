@@ -2746,3 +2746,73 @@ class WorkerLeaveLifecycleAPITest(TestCase):
             ).count(),
             1,
         )
+
+
+
+class WorkerZoneChangeRequestAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.city = City.objects.create(name="Jaipur", state="Rajasthan")
+        self.zone = Zone.objects.create(name="Vaishali Nagar", city=self.city, is_active=True)
+        self.user = User.objects.create_user(phone="+919876543299", password="password123")
+        self.worker = WorkerProfile.objects.create(user=self.user, status=WorkerProfile.Status.APPROVED)
+        self.client.force_authenticate(user=self.user)
+
+    def test_worker_zone_add_is_pending_until_admin_approval(self):
+        response = self.client.post("/api/v1/workers/zones/", {"zone": self.zone.pk}, format="json")
+        self.assertEqual(response.status_code, 202, response.data)
+        self.assertEqual(response.data["status"], "pending")
+        self.assertFalse(WorkerZone.objects.filter(worker=self.worker, zone=self.zone).exists())
+        self.assertEqual(self.client.get("/api/v1/workers/zones/").data, [])
+
+    def test_worker_can_list_zone_change_requests(self):
+        response = self.client.post("/api/v1/workers/zones/", {"zone": self.zone.pk}, format="json")
+        self.assertEqual(response.status_code, 202)
+        listed = self.client.get("/api/v1/workers/zone-requests/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(len(listed.data), 1)
+        self.assertEqual(listed.data[0]["zone"], self.zone.pk)
+
+    def test_duplicate_pending_zone_request_is_rejected(self):
+        first = self.client.post("/api/v1/workers/zones/", {"zone": self.zone.pk}, format="json")
+        second = self.client.post("/api/v1/workers/zones/", {"zone": self.zone.pk}, format="json")
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 409)
+
+    def test_zone_removal_requires_admin_approval(self):
+        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
+        response = self.client.delete(f"/api/v1/workers/zones/{self.zone.pk}/")
+        self.assertEqual(response.status_code, 202, response.data)
+        self.assertTrue(WorkerZone.objects.filter(worker=self.worker, zone=self.zone).exists())
+        self.assertEqual(response.data["action"], "remove")
+
+    def test_admin_review_applies_zone_change_and_is_audited(self):
+        from .models import WorkerZoneChangeRequest
+        from .zone_changes import review_worker_zone_change
+        from django.utils import timezone
+        admin_user = User.objects.create_superuser(phone="+919876543298", password="adminpass")
+        change = WorkerZoneChangeRequest.objects.create(
+            worker=self.worker, zone=self.zone, action=WorkerZoneChangeRequest.Action.ADD,
+        )
+        reviewed = review_worker_zone_change(
+            request_id=change.pk, reviewer=admin_user,
+            decision=WorkerZoneChangeRequest.Status.APPROVED,
+        )
+        self.assertEqual(reviewed.status, WorkerZoneChangeRequest.Status.APPROVED)
+        self.assertEqual(reviewed.reviewed_by, admin_user)
+        self.assertIsNotNone(reviewed.reviewed_at)
+        self.assertTrue(WorkerZone.objects.filter(worker=self.worker, zone=self.zone).exists())
+
+    def test_rejection_requires_a_reason(self):
+        from .models import WorkerZoneChangeRequest
+        from .zone_changes import review_worker_zone_change
+        from django.core.exceptions import ValidationError
+        admin_user = User.objects.create_superuser(phone="+919876543297", password="adminpass")
+        change = WorkerZoneChangeRequest.objects.create(
+            worker=self.worker, zone=self.zone, action=WorkerZoneChangeRequest.Action.ADD,
+        )
+        with self.assertRaises(ValidationError):
+            review_worker_zone_change(
+                request_id=change.pk, reviewer=admin_user,
+                decision=WorkerZoneChangeRequest.Status.REJECTED,
+            )

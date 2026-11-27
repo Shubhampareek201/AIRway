@@ -132,6 +132,17 @@ class WorkerZoneSerializer(serializers.ModelSerializer):
         fields = ["id", "zone", "zone_name"]
 
 
+class WorkerZoneChangeRequestSerializer(serializers.ModelSerializer):
+    zone_name = serializers.CharField(source="zone.name", read_only=True)
+    status = serializers.CharField(read_only=True)
+    action = serializers.ChoiceField(choices=WorkerZoneChangeRequest.Action.choices)
+
+    class Meta:
+        model = WorkerZoneChangeRequest
+        fields = ["id", "zone", "zone_name", "action", "status", "worker_note", "admin_note", "requested_at", "reviewed_at"]
+        read_only_fields = ["id", "zone_name", "status", "admin_note", "requested_at", "reviewed_at"]
+
+
 class WorkerScheduleSerializer(serializers.ModelSerializer):
     weekday_display = serializers.CharField(source="get_weekday_display", read_only=True)
 

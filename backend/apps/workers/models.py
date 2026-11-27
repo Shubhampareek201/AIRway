@@ -223,6 +223,36 @@ class WorkerZone(TimeStampedModel):
         return f"{self.worker.user.phone} - {self.zone}"
 
 
+class WorkerZoneChangeRequest(TimeStampedModel):
+    class Action(models.TextChoices):
+        ADD = "add", "Add zone"
+        REMOVE = "remove", "Remove zone"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    worker = models.ForeignKey(WorkerProfile, on_delete=models.CASCADE, related_name="zone_change_requests")
+    zone = models.ForeignKey(Zone, on_delete=models.PROTECT, related_name="worker_change_requests")
+    action = models.CharField(max_length=8, choices=Action.choices)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    worker_note = models.TextField(blank=True)
+    admin_note = models.TextField(blank=True)
+    requested_at = models.DateTimeField(default=timezone.now)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_worker_zone_requests")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-requested_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=("worker", "zone"), condition=Q(status="pending"), name="unique_pending_worker_zone_change"),
+        ]
+
+    def __str__(self):
+        return f"{self.worker.user.phone} - {self.action} {self.zone} ({self.status})"
+
+
 class WorkerSchedule(TimeStampedModel):
 
     class Weekday(models.IntegerChoices):

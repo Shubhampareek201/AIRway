@@ -46,6 +46,7 @@ from .models import (
     WorkerProfile,
     WorkerService,
     WorkerZone,
+    WorkerZoneChangeRequest,
     WorkerSchedule,
     WorkerLeave,
     WorkerDocument,
@@ -266,30 +267,54 @@ class WorkerServiceDetailView(APIView):
 class WorkerZoneListView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _worker(self, request):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return None
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return None
+        return profile
+
+    def get(self, request):
+        profile = self._worker(request)
+        if profile is None:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
+        zones = WorkerZone.objects.filter(worker=profile).select_related("zone", "zone__city")
+        return Response(WorkerZoneSerializer(zones, many=True).data)
+
+    def post(self, request):
+        """Request an additional zone; active coverage changes only after admin approval."""
+        profile = self._worker(request)
+        if profile is None:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            zone = Zone.objects.get(pk=int(request.data.get("zone")), is_active=True)
+        except (Zone.DoesNotExist, ValueError, TypeError):
+            return Response({"zone": ["Select a valid active zone."]}, status=status.HTTP_400_BAD_REQUEST)
+        if WorkerZone.objects.filter(worker=profile, zone=zone).exists():
+            return Response({"detail": "This zone is already approved for your profile."}, status=status.HTTP_409_CONFLICT)
+        if WorkerZoneChangeRequest.objects.filter(worker=profile, zone=zone, status=WorkerZoneChangeRequest.Status.PENDING).exists():
+            return Response({"detail": "A request for this zone is already awaiting review."}, status=status.HTTP_409_CONFLICT)
+        serializer = WorkerZoneChangeRequestSerializer(data={
+            "zone": zone.pk, "action": WorkerZoneChangeRequest.Action.ADD,
+            "worker_note": str(request.data.get("worker_note", "")).strip(),
+        })
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save(worker=profile)
+        return Response(WorkerZoneChangeRequestSerializer(obj).data, status=status.HTTP_202_ACCEPTED)
+
+
+class WorkerZoneChangeRequestListView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         try:
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
-        zones = WorkerZone.objects.filter(worker=profile).select_related("zone", "zone__city")
-        serializer = WorkerZoneSerializer(zones, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        try:
-            profile = request.user.worker_profile
-        except WorkerProfile.DoesNotExist:
-            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
-        zone_id = request.data.get("zone")
-        if not zone_id:
-            return Response({"zone": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            zone = Zone.objects.get(pk=int(zone_id), is_active=True)
-        except (Zone.DoesNotExist, ValueError, TypeError):
-            return Response({"zone": ["Invalid zone."]}, status=status.HTTP_400_BAD_REQUEST)
-        obj, created = WorkerZone.objects.get_or_create(worker=profile, zone=zone)
-        serializer = WorkerZoneSerializer(obj)
-        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        requests = WorkerZoneChangeRequest.objects.filter(worker=profile).select_related("zone", "reviewed_by")
+        return Response(WorkerZoneChangeRequestSerializer(requests, many=True).data)
 
 
 class WorkerZoneDetailView(APIView):
@@ -300,12 +325,15 @@ class WorkerZoneDetailView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            obj = WorkerZone.objects.get(worker=profile, zone_id=zone_id)
-        except WorkerZone.DoesNotExist:
-            return Response({"detail": "Zone link not found."}, status=status.HTTP_404_NOT_FOUND)
-        obj.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        zone_link = WorkerZone.objects.filter(worker=profile, zone_id=zone_id).select_related("zone").first()
+        if zone_link is None:
+            return Response({"detail": "Approved zone not found."}, status=status.HTTP_404_NOT_FOUND)
+        if WorkerZoneChangeRequest.objects.filter(worker=profile, zone_id=zone_id, status=WorkerZoneChangeRequest.Status.PENDING).exists():
+            return Response({"detail": "A change request for this zone is already awaiting review."}, status=status.HTTP_409_CONFLICT)
+        obj = WorkerZoneChangeRequest.objects.create(
+            worker=profile, zone=zone_link.zone, action=WorkerZoneChangeRequest.Action.REMOVE,
+        )
+        return Response(WorkerZoneChangeRequestSerializer(obj).data, status=status.HTTP_202_ACCEPTED)
 
 
 class WorkerScheduleListView(APIView):
