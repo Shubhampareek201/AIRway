@@ -51,6 +51,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   String? _earningsError;
   String? _missionWalletError;
   bool _missionWithdrawalSaving = false;
+  bool _missionHistoryLoadingMore = false;
   String? _missionWithdrawalRequestKey;
   String? _missionWithdrawalAmount;
   int _selectedTab = 0;
@@ -727,6 +728,58 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     ]);
   }
 
+  Future<void> _loadMoreMissionHistory() async {
+    if (_missionHistoryLoadingMore || _missionWallet == null) return;
+    final current = _missionWallet!;
+    final transactionOffset = int.tryParse(
+      '${current['transactions_next_offset'] ?? ''}',
+    );
+    final withdrawalOffset = int.tryParse(
+      '${current['withdrawals_next_offset'] ?? ''}',
+    );
+    if (transactionOffset == null && withdrawalOffset == null) return;
+
+    setState(() => _missionHistoryLoadingMore = true);
+    try {
+      final next = await WorkerApi.getMissionWallet(
+        transactionOffset: transactionOffset ?? 0,
+        withdrawalOffset: withdrawalOffset ?? 0,
+      );
+      if (!mounted) return;
+      final oldTransactions = (current['transactions'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      final newTransactions = (next['transactions'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      final oldWithdrawals = (current['withdrawals'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      final newWithdrawals = (next['withdrawals'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      setState(() {
+        _missionWallet = {
+          ...next,
+          'transactions': [...oldTransactions, ...newTransactions],
+          'withdrawals': [...oldWithdrawals, ...newWithdrawals],
+        };
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load older reward history: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _missionHistoryLoadingMore = false);
+    }
+  }
+
   Future<void> _withdrawMissionRewards() async {
     if (_missionWithdrawalSaving || _missionWallet == null) return;
     final balance = double.tryParse('${_missionWallet!['balance'] ?? '0'}') ?? 0;
@@ -868,7 +921,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             const Divider(height: 22),
             Text(AirwayText.tr('Reward transaction history', 'रिवॉर्ड लेन-देन का इतिहास'),
                 style: const TextStyle(fontWeight: FontWeight.w800)),
-            for (final item in transactions.take(10))
+            for (final item in transactions)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -890,7 +943,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             const Divider(height: 22),
             Text(AirwayText.tr('Withdrawal requests', 'निकासी अनुरोध'),
                 style: const TextStyle(fontWeight: FontWeight.w800)),
-            for (final withdrawal in withdrawals.take(3))
+            for (final withdrawal in withdrawals)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -899,6 +952,23 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 trailing: Text(withdrawal['status']?.toString().toUpperCase() ?? 'PENDING',
                     style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
               ),
+          ],
+          if (data['transactions_next_offset'] != null ||
+              data['withdrawals_next_offset'] != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _missionHistoryLoadingMore ? null : _loadMoreMissionHistory,
+                child: _missionHistoryLoadingMore
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(AirwayText.tr('Load older history', 'पुराना इतिहास देखें')),
+              ),
+            ),
           ],
         ]),
       ),

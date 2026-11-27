@@ -1654,8 +1654,33 @@ class WorkerMissionWalletView(APIView):
             (item for item in milestones if item["jobs"] > wallet.eligible_jobs_count),
             None,
         )
-        transactions = wallet.transactions.all()[:50]
-        withdrawals = wallet.withdrawals.all()[:20]
+        try:
+            transaction_offset = int(request.query_params.get("transaction_offset", "0"))
+            withdrawal_offset = int(request.query_params.get("withdrawal_offset", "0"))
+            if transaction_offset < 0 or withdrawal_offset < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "History offsets must be non-negative whole numbers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        transaction_limit = 50
+        withdrawal_limit = 20
+        transaction_rows = list(
+            wallet.transactions.order_by("-created_at", "-pk")[
+                transaction_offset:transaction_offset + transaction_limit + 1
+            ]
+        )
+        withdrawal_rows = list(
+            wallet.withdrawals.order_by("-created_at", "-pk")[
+                withdrawal_offset:withdrawal_offset + withdrawal_limit + 1
+            ]
+        )
+        has_more_transactions = len(transaction_rows) > transaction_limit
+        has_more_withdrawals = len(withdrawal_rows) > withdrawal_limit
+        transactions = transaction_rows[:transaction_limit]
+        withdrawals = withdrawal_rows[:withdrawal_limit]
         return Response({
             "eligible_jobs_count": wallet.eligible_jobs_count,
             "balance": str(wallet.balance),
@@ -1667,6 +1692,12 @@ class WorkerMissionWalletView(APIView):
                 if next_milestone else 0
             ),
             "milestones": milestones,
+            "transactions_next_offset": (
+                transaction_offset + transaction_limit if has_more_transactions else None
+            ),
+            "withdrawals_next_offset": (
+                withdrawal_offset + withdrawal_limit if has_more_withdrawals else None
+            ),
             "transactions": [{
                 "id": row.pk,
                 "type": row.type,

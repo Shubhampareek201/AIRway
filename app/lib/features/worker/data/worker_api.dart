@@ -341,8 +341,15 @@ class WorkerApi {
         .toList();
   }
 
-  static Future<Map<String, dynamic>> getMissionWallet() async {
-    final result = await _request('/api/v1/workers/reward-wallet/');
+  static Future<Map<String, dynamic>> getMissionWallet({
+    int transactionOffset = 0,
+    int withdrawalOffset = 0,
+  }) async {
+    final query = Uri(queryParameters: {
+      'transaction_offset': transactionOffset.toString(),
+      'withdrawal_offset': withdrawalOffset.toString(),
+    }).query;
+    final result = await _request('/api/v1/workers/reward-wallet/?$query');
     if (result is! Map) {
       throw const FormatException('Unexpected mission wallet response');
     }

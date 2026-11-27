@@ -130,3 +130,40 @@ class WorkerRewardLedgerTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["transactions"][0]["reference_key"], "mission-reward:worker:5")
         self.assertEqual(response.data["transactions"][0]["type_display"], "Mission reward")
+        self.assertIsNone(response.data["transactions_next_offset"])
+        self.assertIsNone(response.data["withdrawals_next_offset"])
+
+    def test_reward_wallet_history_paginates_without_skipping_or_repeating_rows(self):
+        wallet = WorkerRewardWallet.objects.create(worker=self.referred)
+        for index in range(55):
+            WorkerRewardTransaction.objects.create(
+                wallet=wallet,
+                worker=self.referred,
+                type=WorkerRewardTransaction.Type.MISSION_REWARD,
+                amount=Decimal("10.00"),
+                reference_key=f"history-mission:{index}",
+                description=f"Mission reward {index}",
+            )
+
+        client = APIClient()
+        client.force_authenticate(user=self.referred_user)
+        first = client.get("/api/v1/workers/reward-wallet/")
+        second = client.get("/api/v1/workers/reward-wallet/?transaction_offset=50")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(len(first.data["transactions"]), 50)
+        self.assertEqual(first.data["transactions_next_offset"], 50)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(len(second.data["transactions"]), 5)
+        self.assertIsNone(second.data["transactions_next_offset"])
+        first_ids = {row["id"] for row in first.data["transactions"]}
+        second_ids = {row["id"] for row in second.data["transactions"]}
+        self.assertFalse(first_ids & second_ids)
+        self.assertEqual(len(first_ids | second_ids), 55)
+        self.assertTrue(all(row["reference_key"] for row in first.data["transactions"] + second.data["transactions"]))
+
+    def test_reward_wallet_rejects_negative_history_offsets(self):
+        client = APIClient()
+        client.force_authenticate(user=self.referred_user)
+        response = client.get("/api/v1/workers/reward-wallet/?transaction_offset=-1")
+        self.assertEqual(response.status_code, 400)
