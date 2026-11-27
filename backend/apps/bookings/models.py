@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.db import models
 from django.db.models import F, Q, Sum
+from django.utils import timezone
 import uuid
 from simple_history.models import HistoricalRecords
 
@@ -131,7 +132,10 @@ class Booking(TimeStampedModel):
             RecurringWashPlan.Status.PAUSED,
         ):
             return False
-        return self.status in [self.Status.PENDING, self.Status.CONFIRMED, self.Status.ASSIGNED]
+        return (
+            self.status in [self.Status.PENDING, self.Status.CONFIRMED, self.Status.ASSIGNED]
+            and self.scheduled_at > timezone.now()
+        )
 
 
 class BookingWorkEvidence(TimeStampedModel):
