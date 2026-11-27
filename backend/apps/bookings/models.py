@@ -734,7 +734,7 @@ class DispatchConfiguration(TimeStampedModel):
     )
     late_cancellation_fee_percent = models.PositiveSmallIntegerField(
         default=30,
-        validators=[MaxValueValidator(100)],
+        validators=[MaxValueValidator(99)],
         help_text="Percentage retained from the captured advance payment for late customer cancellations.",
     )
     no_show_grace_minutes = models.PositiveSmallIntegerField(
