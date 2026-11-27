@@ -2010,6 +2010,12 @@ class CustomerOrderDetailView(APIView):
                     ),
                     "fee_basis": "captured_advance_only",
                 },
+                "can_report_no_show": bool(
+                    booking.status == Booking.Status.ASSIGNED
+                    and booking.scheduled_at + timedelta(
+                        minutes=cancellation_policy.no_show_grace_minutes if cancellation_policy else 30
+                    ) <= timezone.now()
+                ),
                 "can_reschedule": (
                     shared_reschedule_eligible
                     and booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
