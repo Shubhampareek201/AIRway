@@ -23,6 +23,7 @@ from .models import (
     WorkerRewardTransaction,
     WorkerRewardWithdrawal,
     WorkerMonthlyMissionProgress,
+    WorkerReferralSettings,
 )
 
 
@@ -768,6 +769,19 @@ class WorkerRewardWithdrawalAdmin(ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(WorkerReferralSettings)
+class WorkerReferralSettingsAdmin(ModelAdmin):
+    list_display = ("reward_amount", "is_active", "updated_at")
+    fields = ("reward_amount", "is_active", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return not WorkerReferralSettings.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False
