@@ -528,7 +528,7 @@ class WorkerEarningAdmin(ModelAdmin):
         elif obj.settlement_batch_id:
             fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
         elif obj.status == WorkerEarning.Status.AVAILABLE:
-            fields.extend(["adjustment_amount", "adjustment_note"])
+            fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
         elif obj.status == WorkerEarning.Status.ON_HOLD:
             fields.append("payout_reference")
         else:
