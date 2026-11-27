@@ -396,7 +396,7 @@ class BookingAssignmentAdmin(ModelAdmin):
 
 @admin.register(DispatchConfiguration)
 class DispatchConfigurationAdmin(ModelAdmin):
-    list_display = ("is_enabled", "offer_expiry_minutes", "priority_order")
+    list_display = ("is_enabled", "offer_expiry_minutes", "priority_order", "late_cancellation_window_hours", "late_cancellation_fee_percent")
     fieldsets = (
         ("Dispatch control", {"fields": ("is_enabled",)}),
         ("Simultaneous worker offers", {"fields": ("offer_expiry_minutes", "priority_order")}),
