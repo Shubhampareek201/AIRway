@@ -8,7 +8,7 @@ from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, BookingDispute, BookingExtraWork, Order, OrderItem
+from apps.bookings.models import Booking, BookingDispute, BookingExtraWork, DispatchConfiguration, Order, OrderItem
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
@@ -479,3 +479,50 @@ class RefundRetrySafetyTests(TestCase):
             ).count(),
             1,
         )
+
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_late_cancellation_retains_30_percent_of_advance_only(self, process_refund):
+        payment = self.refund.payment
+        self.refund.delete()
+        payment.stage = Payment.Stage.ADVANCE
+        payment.amount = Decimal("270.00")
+        payment.wallet_amount = Decimal("30.00")
+        payment.save(update_fields=["stage", "amount", "wallet_amount"])
+        self.booking.scheduled_at = timezone.now() + timedelta(hours=1)
+        self.booking.save(update_fields=["scheduled_at"])
+        DispatchConfiguration.objects.create(
+            late_cancellation_window_hours=2,
+            late_cancellation_fee_percent=30,
+        )
+
+        refunds = request_booking_refunds(self.booking)
+
+        refund = refunds.get(payment=payment)
+        self.assertEqual(refund.amount, Decimal("210.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("21.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("189.00"))
+        process_refund.assert_called_once_with(refund.pk)
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_cancellation_outside_configured_window_refunds_full_advance(self, process_refund):
+        payment = self.refund.payment
+        self.refund.delete()
+        payment.stage = Payment.Stage.ADVANCE
+        payment.amount = Decimal("270.00")
+        payment.wallet_amount = Decimal("30.00")
+        payment.save(update_fields=["stage", "amount", "wallet_amount"])
+        self.booking.scheduled_at = timezone.now() + timedelta(hours=3)
+        self.booking.save(update_fields=["scheduled_at"])
+        DispatchConfiguration.objects.create(
+            late_cancellation_window_hours=2,
+            late_cancellation_fee_percent=30,
+        )
+
+        refunds = request_booking_refunds(self.booking)
+
+        refund = refunds.get(payment=payment)
+        self.assertEqual(refund.amount, Decimal("300.00"))
+        self.assertEqual(refund.wallet_amount, Decimal("30.00"))
+        self.assertEqual(refund.gateway_amount, Decimal("270.00"))
+        process_refund.assert_called_once_with(refund.pk)
