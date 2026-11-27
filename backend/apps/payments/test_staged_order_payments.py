@@ -295,11 +295,14 @@ class StagedOrderPaymentServiceTests(TestCase):
             {"id": "order_group_a_balance"},
             {"id": "order_group_b_balance"},
         ]
+        second_scheduled_at = timezone.localtime(
+            timezone.now() + timedelta(days=2)
+        ).replace(hour=12, minute=0, second=0, microsecond=0)
         second_booking = Booking.objects.create(
             customer=self.customer,
             address=self.address,
             service=self.service,
-            scheduled_at=timezone.now() + timedelta(days=2),
+            scheduled_at=second_scheduled_at,
             status=Booking.Status.PENDING,
             pricing_snapshot={"total": "1000.00"},
         )
