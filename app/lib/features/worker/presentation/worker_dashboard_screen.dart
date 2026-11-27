@@ -1589,7 +1589,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ),
         if (item['commission_amount'] != null)
           _earningAmountLine(
-            'AIRway commission (${item['commission_rate'] ?? '—'}%)',
+            item['commission_rate'] == null
+                ? 'AIRway price–payout difference'
+                : 'AIRway commission (${item['commission_rate']}%)',
             -commission,
           ),
         if ((double.tryParse('${item['adjustment_amount'] ?? '0'}') ?? 0) != 0)
