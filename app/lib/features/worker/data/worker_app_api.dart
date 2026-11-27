@@ -148,6 +148,7 @@ class WorkerAppApi {
     String? upiId,
     required Map<int, Map<String, String>> schedule,
     File? profilePhoto,
+    String? referralCode,
   }) async {
     final data = <String, dynamic>{
       'services': serviceIds,
@@ -157,6 +158,7 @@ class WorkerAppApi {
       'name': name,
       'email': email,
       'gender': gender,
+      if (referralCode != null && referralCode.trim().isNotEmpty) 'referral_code': referralCode.trim().toUpperCase(),
       'residential_address': residentialAddress,
       if (latitude != null && longitude != null) 'latitude': latitude,
       if (latitude != null && longitude != null) 'longitude': longitude,
