@@ -695,14 +695,28 @@ class WorkerRewardWithdrawalAdmin(ModelAdmin):
         "created_at", "updated_at",
     )
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.status == WorkerRewardWithdrawal.Status.PAID:
+            fields.extend(["status", "payout_reference", "admin_note"])
+        return tuple(dict.fromkeys(fields))
+
     def save_model(self, request, obj, form, change):
         if not change:
             super().save_model(request, obj, form, change)
             return
 
-        previous_status = WorkerRewardWithdrawal.objects.filter(
-            pk=obj.pk
-        ).values_list("status", flat=True).first()
+        previous = WorkerRewardWithdrawal.objects.get(pk=obj.pk)
+        if previous.status == WorkerRewardWithdrawal.Status.PAID:
+            if (
+                obj.status != previous.status
+                or obj.payout_reference != previous.payout_reference
+                or obj.admin_note != previous.admin_note
+            ):
+                raise ValidationError("A paid reward withdrawal is immutable.")
+            return
+
+        previous_status = previous.status
         if previous_status == obj.status:
             super().save_model(request, obj, form, change)
             return

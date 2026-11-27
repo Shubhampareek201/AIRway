@@ -115,6 +115,26 @@ class WorkerRewardLedgerTests(TestCase):
             type=WorkerRewardTransaction.Type.WITHDRAWAL,
         ).count(), 1)
 
+    def test_reward_withdrawal_requires_idempotency_key(self):
+        wallet = WorkerRewardWallet.objects.create(
+            worker=self.referred, balance=Decimal("100.00"),
+            total_earned=Decimal("100.00"),
+        )
+        self.referred.upi_id = "worker@upi"
+        self.referred.save(update_fields=["upi_id", "updated_at"])
+        client = APIClient()
+        client.force_authenticate(user=self.referred_user)
+
+        response = client.post(
+            "/api/v1/workers/mission-wallet/",
+            {"amount": "50.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(wallet.__class__.objects.get(pk=wallet.pk).balance, Decimal("100.00"))
+        self.assertFalse(WorkerRewardWithdrawal.objects.filter(worker=self.referred).exists())
+
     def test_reward_wallet_api_returns_auditable_transaction_references(self):
         wallet = WorkerRewardWallet.objects.create(worker=self.referred, balance=Decimal("150.00"))
         WorkerRewardTransaction.objects.create(

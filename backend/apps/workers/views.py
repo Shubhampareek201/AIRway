@@ -1764,7 +1764,12 @@ class WorkerMissionWalletView(APIView):
             or ""
         )
         raw_idempotency_key = str(raw_idempotency_key).strip()
-        if raw_idempotency_key and (
+        if not raw_idempotency_key:
+            return Response(
+                {"detail": "Idempotency-Key is required for reward withdrawal requests."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if (
             len(raw_idempotency_key) > 80
             or any(character.isspace() for character in raw_idempotency_key)
         ):
@@ -1772,7 +1777,7 @@ class WorkerMissionWalletView(APIView):
                 {"detail": "Idempotency-Key must be 1–80 characters without spaces."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        request_key = f"{profile.pk}:{raw_idempotency_key or uuid.uuid4()}"
+        request_key = f"{profile.pk}:{raw_idempotency_key}"
 
         with transaction.atomic():
             wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=profile)
