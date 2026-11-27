@@ -155,7 +155,7 @@ class CustomerCampaignCalculatorTests(TestCase):
         self.make_campaign(minimum_subtotal=Decimal("0.00"))
 
         at_threshold = self.evaluate(subtotal="200.00")
-        above_threshold = self.evaluate(subtotal="200.01")
+        above_threshold = self.evaluate(subtotal="200.01", payout="0.00")
 
         self.assertEqual(at_threshold["discount_amount"], Decimal("0.00"))
         self.assertEqual(above_threshold["discount_amount"], Decimal("50.00"))
