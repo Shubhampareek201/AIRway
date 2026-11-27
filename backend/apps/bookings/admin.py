@@ -308,14 +308,14 @@ class BookingWorkEvidenceAdmin(ModelAdmin):
 class BookingExtraWorkAdmin(ModelAdmin):
     list_display = (
         "id", "booking", "appointment_group", "worker", "total_amount",
-        "status", "payment_choice", "payment_status", "created_at",
+        "worker_payout_amount", "status", "payment_choice", "payment_status", "created_at",
     )
     list_filter = ("status", "payment_choice", "created_at")
     search_fields = ("booking__id", "booking__customer__phone", "worker__user__phone")
     readonly_fields = (
         "request_key", "booking", "appointment_group", "worker", "reason",
-        "line_items", "subtotal", "tax_amount", "total_amount",
-        "additional_duration_minutes", "status", "payment_choice", "payment_status",
+        "line_items", "subtotal", "worker_payout_amount", "worker_payout_snapshot",
+        "tax_amount", "total_amount", "additional_duration_minutes", "status", "payment_choice", "payment_status",
         "customer_response_note", "expires_at", "responded_at",
         "approved_at", "created_at", "updated_at",
     )
