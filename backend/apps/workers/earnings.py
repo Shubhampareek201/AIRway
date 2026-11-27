@@ -49,9 +49,15 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
         "admin_approved_quote_payout_v1",
     )
     fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
-    if extra_work is not None and extra_work.worker_payout_amount is not None:
-        fixed_model = True
-        fixed_payout_raw = extra_work.worker_payout_amount
+    if extra_work is not None:
+        if extra_work.worker_payout_amount is not None:
+            fixed_model = True
+            fixed_payout_raw = extra_work.worker_payout_amount
+        elif fixed_model:
+            # Do not reuse the base-job payout for a legacy extra-work proposal.
+            if existing is not None and not refunds_exist:
+                return existing
+            fixed_payout_raw = None
     fixed_payout = None
     if fixed_payout_raw not in (None, ""):
         fixed_payout = Decimal(str(fixed_payout_raw))
@@ -126,17 +132,20 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
 def calculate_worker_earning_net(earning):
     """Rebuild a held earning without replacing fixed catalogue payouts with commission math."""
     extra_work = getattr(earning, "extra_work", None)
-    if (
-        getattr(earning, "extra_work_id", None)
-        and extra_work is not None
-        and extra_work.worker_payout_amount is not None
-    ):
-        payout = Decimal(str(extra_work.worker_payout_amount))
-        if not payout.is_finite() or payout < 0:
+    if getattr(earning, "extra_work_id", None):
+        if extra_work is not None and extra_work.worker_payout_amount is not None:
+            payout = Decimal(str(extra_work.worker_payout_amount))
+            if not payout.is_finite() or payout < 0:
+                return None
+            return payout + earning.adjustment_amount
+        payout_snapshot = earning.booking.worker_payout_snapshot or {}
+        if payout_snapshot.get("pricing_model") in (
+            "fixed_service_payout_v1",
+            "admin_approved_quote_payout_v1",
+        ):
             return None
-        return payout + earning.adjustment_amount
-
-    payout_snapshot = earning.booking.worker_payout_snapshot or {}
+    else:
+        payout_snapshot = earning.booking.worker_payout_snapshot or {}
     if payout_snapshot.get("pricing_model") in (
         "fixed_service_payout_v1",
         "admin_approved_quote_payout_v1",
