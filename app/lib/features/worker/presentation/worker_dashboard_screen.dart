@@ -861,7 +861,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     if (data == null) {
       return const _EmptyCard(icon: Icons.emoji_events_outlined, title: 'Mission rewards are loading', subtitle: 'Refresh to see your reward progress.');
     }
-    final jobs = int.tryParse('${data['eligible_jobs_count'] ?? 0}') ?? 0;
+    final jobs = int.tryParse('${data['monthly_eligible_jobs_count'] ?? 0}') ?? 0;
     final balance = double.tryParse('${data['balance'] ?? 0}') ?? 0;
     final totalEarned = double.tryParse('${data['total_earned'] ?? 0}') ?? 0;
     final totalWithdrawn = double.tryParse('${data['total_withdrawn'] ?? 0}') ?? 0;
@@ -911,14 +911,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             ]),
           ),
           const SizedBox(height: 10),
-          Text(AirwayText.tr('${jobs} eligible services completed', '${jobs} योग्य सेवाएँ पूरी कीं'),
+          Text(AirwayText.tr('${data['mission_month'] ?? ''} · ${jobs} eligible services completed', '${data['mission_month'] ?? ''} · ${jobs} योग्य सेवाएँ पूरी कीं'),
               style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 5),
           for (final milestone in milestones)
             Builder(builder: (_) {
               final threshold = int.tryParse('${milestone['jobs']}') ?? 0;
               final reward = double.tryParse('${milestone['reward']}') ?? 0;
-              final reached = threshold > 0 && jobs >= threshold;
+              final reached = milestone['achieved'] == true;
               return ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -933,7 +933,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
               );
             }),
           const SizedBox(height: 5),
-          Text(AirwayText.tr('Services above ₹300 count toward missions. Mission and worker-referral rewards are withdrawable here; job earnings and customer wallet credits stay separate.', '₹300 से अधिक कीमत वाली सेवाएँ मिशन में गिनी जाती हैं। मिशन और वर्कर रेफरल रिवॉर्ड यहाँ से निकाले जा सकते हैं; जॉब कमाई और कस्टमर वॉलेट अलग हैं।'),
+          Text(AirwayText.tr('Only completed and OTP-verified services with an original service charge above ₹500 count. Discounts do not affect eligibility; cancelled, disputed or refunded bookings are excluded. Progress resets monthly; history stays available.', 'सिर्फ OTP से सत्यापित पूरी सेवाएँ जिनका मूल सर्विस चार्ज ₹500 से अधिक है, गिनी जाएँगी। डिस्काउंट से पात्रता नहीं बदलेगी; रद्द, विवादित या रिफंड बुकिंग शामिल नहीं होंगी। प्रगति हर महीने रीसेट होगी; इतिहास सुरक्षित रहेगा।'),
               style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, height: 1.4)),
           const SizedBox(height: 12),
           if (!hasUpi)

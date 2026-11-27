@@ -22,6 +22,7 @@ from .models import (
     WorkerRewardWallet,
     WorkerRewardTransaction,
     WorkerRewardWithdrawal,
+    WorkerMonthlyMissionProgress,
 )
 
 
@@ -764,6 +765,25 @@ class WorkerRewardWithdrawalAdmin(ModelAdmin):
             obj.processed_by = request.user
             obj.processed_at = timezone.now()
             super().save_model(request, obj, form, change)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(WorkerMonthlyMissionProgress)
+class WorkerMonthlyMissionProgressAdmin(ModelAdmin):
+    list_display = ("worker", "month_start", "eligible_jobs_count", "achieved_milestones", "updated_at")
+    list_filter = ("month_start",)
+    search_fields = ("worker__user__name", "worker__user__phone")
+    readonly_fields = ("worker", "month_start", "eligible_jobs_count", "created_at", "updated_at")
+
+    @admin.display(description="Achieved milestones")
+    def achieved_milestones(self, obj):
+        reached = [str(value) for value in (5, 15, 25) if obj.eligible_jobs_count >= value]
+        return ", ".join(reached) if reached else "None"
 
     def has_add_permission(self, request):
         return False

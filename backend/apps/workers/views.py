@@ -38,6 +38,7 @@ from .models import (
     WorkerRewardWallet,
     WorkerRewardTransaction,
     WorkerRewardWithdrawal,
+    WorkerMonthlyMissionProgress,
 )
 from .serializers import (
     WorkerProfileSerializer,
@@ -1647,8 +1648,7 @@ class WorkerStreaksView(APIView):
 
 
 class WorkerMissionWalletView(APIView):
-    """Worker-only withdrawable mission/referral reward wallet; separate from job earnings and customer Wallet."""
-
+    """Worker-only withdrawable mission/referral reward wallet."""
     permission_classes = [IsAuthenticated]
 
     def _profile(self, request):
@@ -1661,84 +1661,51 @@ class WorkerMissionWalletView(APIView):
         profile = self._profile(request)
         if profile is None:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
-
         wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=profile)
-        milestones = [
-            {"jobs": 5, "reward": "300.00"},
-            {"jobs": 15, "reward": "600.00"},
-            {"jobs": 25, "reward": "1000.00"},
-        ]
-        next_milestone = next(
-            (item for item in milestones if item["jobs"] > wallet.eligible_jobs_count),
-            None,
-        )
+        month_start = timezone.localdate().replace(day=1)
+        progress = WorkerMonthlyMissionProgress.objects.filter(worker=profile, month_start=month_start).first()
+        monthly_jobs = progress.eligible_jobs_count if progress else 0
+        milestones = [{
+            "jobs": jobs, "reward": str(reward), "achieved": monthly_jobs >= jobs,
+            "reference_key": f"monthly-mission-reward:{profile.pk}:{month_start:%Y-%m}:{jobs}" if monthly_jobs >= jobs else None,
+        } for jobs, reward in MISSION_REWARDS.items()]
+        next_milestone = next((item for item in milestones if not item["achieved"]), None)
         try:
             transaction_offset = int(request.query_params.get("transaction_offset", "0"))
             withdrawal_offset = int(request.query_params.get("withdrawal_offset", "0"))
             if transaction_offset < 0 or withdrawal_offset < 0:
                 raise ValueError
         except (TypeError, ValueError):
-            return Response(
-                {"detail": "History offsets must be non-negative whole numbers."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        transaction_limit = 50
-        withdrawal_limit = 20
-        transaction_rows = list(
-            wallet.transactions.order_by("-created_at", "-pk")[
-                transaction_offset:transaction_offset + transaction_limit + 1
-            ]
-        )
-        withdrawal_rows = list(
-            wallet.withdrawals.order_by("-created_at", "-pk")[
-                withdrawal_offset:withdrawal_offset + withdrawal_limit + 1
-            ]
-        )
-        has_more_transactions = len(transaction_rows) > transaction_limit
-        has_more_withdrawals = len(withdrawal_rows) > withdrawal_limit
-        transactions = transaction_rows[:transaction_limit]
-        withdrawals = withdrawal_rows[:withdrawal_limit]
+            return Response({"detail": "History offsets must be non-negative whole numbers."}, status=status.HTTP_400_BAD_REQUEST)
+        transaction_limit, withdrawal_limit = 50, 20
+        tx_rows = list(wallet.transactions.order_by("-created_at", "-pk")[transaction_offset:transaction_offset + transaction_limit + 1])
+        wd_rows = list(wallet.withdrawals.order_by("-created_at", "-pk")[withdrawal_offset:withdrawal_offset + withdrawal_limit + 1])
         return Response({
             "eligible_jobs_count": wallet.eligible_jobs_count,
-            "balance": str(wallet.balance),
-            "total_earned": str(wallet.total_earned),
-            "total_withdrawn": str(wallet.total_withdrawn),
-            "next_milestone": next_milestone,
-            "jobs_to_next_milestone": (
-                next_milestone["jobs"] - wallet.eligible_jobs_count
-                if next_milestone else 0
-            ),
+            "monthly_eligible_jobs_count": monthly_jobs,
+            "mission_month": month_start.strftime("%Y-%m"),
+            "minimum_original_service_charge": "500.00",
+            "eligibility_rule": "Original service charge strictly greater than ₹500, before discounts and tax.",
+            "balance": str(wallet.balance), "total_earned": str(wallet.total_earned),
+            "total_withdrawn": str(wallet.total_withdrawn), "next_milestone": next_milestone,
+            "jobs_to_next_milestone": next_milestone["jobs"] - monthly_jobs if next_milestone else 0,
             "milestones": milestones,
-            "transactions_next_offset": (
-                transaction_offset + transaction_limit if has_more_transactions else None
-            ),
-            "withdrawals_next_offset": (
-                withdrawal_offset + withdrawal_limit if has_more_withdrawals else None
-            ),
+            "transactions_next_offset": transaction_offset + transaction_limit if len(tx_rows) > transaction_limit else None,
+            "withdrawals_next_offset": withdrawal_offset + withdrawal_limit if len(wd_rows) > withdrawal_limit else None,
             "transactions": [{
-                "id": row.pk,
-                "type": row.type,
-                "amount": str(row.amount),
-                "milestone_jobs": row.milestone_jobs,
-                "booking_id": row.booking_id,
-                "referral_id": row.referral_id,
-                "reference_key": row.reference_key,
-                "type_display": row.get_type_display(),
-                "description": row.description,
+                "id": row.pk, "type": row.type, "amount": str(row.amount),
+                "milestone_jobs": row.milestone_jobs, "booking_id": row.booking_id,
+                "referral_id": row.referral_id, "reference_key": row.reference_key,
+                "type_display": row.get_type_display(), "description": row.description,
                 "created_at": row.created_at.isoformat(),
-            } for row in transactions],
+            } for row in tx_rows[:transaction_limit]],
             "withdrawals": [{
-                "id": row.pk,
-                "request_key": row.request_key,
-                "amount": str(row.amount),
-                "status": row.status,
-                "payout_upi_id": row.payout_upi_id,
-                "payout_reference": row.payout_reference,
-                "admin_note": row.admin_note,
+                "id": row.pk, "request_key": row.request_key, "amount": str(row.amount),
+                "status": row.status, "payout_upi_id": row.payout_upi_id,
+                "payout_reference": row.payout_reference, "admin_note": row.admin_note,
                 "created_at": row.created_at.isoformat(),
                 "processed_at": row.processed_at.isoformat() if row.processed_at else None,
-            } for row in withdrawals],
+            } for row in wd_rows[:withdrawal_limit]],
         })
 
     def post(self, request):
@@ -1747,7 +1714,6 @@ class WorkerMissionWalletView(APIView):
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
         if profile.status != WorkerProfile.Status.APPROVED:
             return Response({"detail": "Only approved workers can request mission reward withdrawals."}, status=status.HTTP_403_FORBIDDEN)
-
         upi_id = (profile.upi_id or "").strip()
         if not upi_id or "@" not in upi_id:
             return Response({"detail": "Add a valid UPI ID in your worker profile before requesting a withdrawal."}, status=status.HTTP_409_CONFLICT)
@@ -1757,75 +1723,27 @@ class WorkerMissionWalletView(APIView):
                 raise ValueError
         except Exception:
             return Response({"amount": ["Enter a valid positive amount with up to two decimal places."]}, status=status.HTTP_400_BAD_REQUEST)
-
-        raw_idempotency_key = (
-            request.headers.get("Idempotency-Key")
-            or request.data.get("idempotency_key")
-            or ""
-        )
-        raw_idempotency_key = str(raw_idempotency_key).strip()
-        if not raw_idempotency_key:
-            return Response(
-                {"detail": "Idempotency-Key is required for reward withdrawal requests."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if (
-            len(raw_idempotency_key) > 80
-            or any(character.isspace() for character in raw_idempotency_key)
-        ):
-            return Response(
-                {"detail": "Idempotency-Key must be 1–80 characters without spaces."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        request_key = f"{profile.pk}:{raw_idempotency_key}"
-
+        raw_key = str(request.headers.get("Idempotency-Key") or request.data.get("idempotency_key") or "").strip()
+        if not raw_key:
+            return Response({"detail": "Idempotency-Key is required for reward withdrawal requests."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(raw_key) > 80 or any(character.isspace() for character in raw_key):
+            return Response({"detail": "Idempotency-Key must be 1–80 characters without spaces."}, status=status.HTTP_400_BAD_REQUEST)
+        request_key = f"{profile.pk}:{raw_key}"
         with transaction.atomic():
             wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=profile)
             wallet = WorkerRewardWallet.objects.select_for_update().get(pk=wallet.pk)
-            existing = WorkerRewardWithdrawal.objects.filter(
-                worker=profile, request_key=request_key
-            ).first()
+            existing = WorkerRewardWithdrawal.objects.filter(worker=profile, request_key=request_key).first()
             if existing is not None:
                 if existing.amount != amount:
-                    return Response(
-                        {"detail": "This idempotency key was already used for a different withdrawal amount."},
-                        status=status.HTTP_409_CONFLICT,
-                    )
-                return Response({
-                    "id": existing.pk,
-                    "request_key": existing.request_key,
-                    "amount": str(existing.amount),
-                    "status": existing.status,
-                    "message": "This withdrawal request was already received.",
-                }, status=status.HTTP_200_OK)
+                    return Response({"detail": "This idempotency key was already used for a different withdrawal amount."}, status=status.HTTP_409_CONFLICT)
+                return Response({"id": existing.pk, "request_key": existing.request_key, "amount": str(existing.amount), "status": existing.status, "message": "This withdrawal request was already received."}, status=status.HTTP_200_OK)
             if amount > wallet.balance:
                 return Response({"detail": "Withdrawal amount exceeds your available mission reward balance."}, status=status.HTTP_400_BAD_REQUEST)
-
-            withdrawal = WorkerRewardWithdrawal.objects.create(
-                wallet=wallet,
-                worker=profile,
-                amount=amount,
-                request_key=request_key,
-                payout_upi_id=upi_id,
-            )
+            withdrawal = WorkerRewardWithdrawal.objects.create(wallet=wallet, worker=profile, amount=amount, request_key=request_key, payout_upi_id=upi_id)
             wallet.balance -= amount
             wallet.save(update_fields=["balance", "updated_at"])
-            WorkerRewardTransaction.objects.create(
-                wallet=wallet,
-                worker=profile,
-                type=WorkerRewardTransaction.Type.WITHDRAWAL,
-                amount=amount,
-                reference_key=f"mission-withdrawal:{withdrawal.pk}",
-                description=f"Mission reward withdrawal request #{withdrawal.pk}",
-            )
-
-        return Response({
-            "id": withdrawal.pk,
-            "request_key": withdrawal.request_key,
-            "amount": str(withdrawal.amount),
-            "status": withdrawal.status,
-            "message": "Withdrawal request submitted for AIRway review.",
-        }, status=status.HTTP_201_CREATED)
+            WorkerRewardTransaction.objects.create(wallet=wallet, worker=profile, type=WorkerRewardTransaction.Type.WITHDRAWAL, amount=amount, reference_key=f"mission-withdrawal:{withdrawal.pk}", description=f"Mission reward withdrawal request #{withdrawal.pk}")
+        return Response({"id": withdrawal.pk, "request_key": withdrawal.request_key, "amount": str(withdrawal.amount), "status": withdrawal.status, "message": "Withdrawal request submitted for AIRway review."}, status=status.HTTP_201_CREATED)
 
 
 class WorkerDocumentUploadView(APIView):

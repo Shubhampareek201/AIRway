@@ -612,3 +612,18 @@ class WorkerRewardWithdrawal(TimeStampedModel):
 
     def __str__(self):
         return f"Worker reward withdrawal #{self.pk} · ₹{self.amount} · {self.status}"
+
+
+class WorkerMonthlyMissionProgress(TimeStampedModel):
+    """One independent, permanent counter per worker and calendar month."""
+    worker = models.ForeignKey(WorkerProfile, on_delete=models.PROTECT, related_name="monthly_mission_progress")
+    month_start = models.DateField(db_index=True, help_text="First calendar day of the mission month.")
+    eligible_jobs_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-month_start", "worker_id"]
+        constraints = [models.UniqueConstraint(fields=("worker", "month_start"), name="unique_worker_monthly_mission")]
+        indexes = [models.Index(fields=("month_start", "eligible_jobs_count"), name="worker_month_mission_idx")]
+
+    def __str__(self):
+        return f"Worker #{self.worker_id} · {self.month_start:%Y-%m} · {self.eligible_jobs_count} jobs"

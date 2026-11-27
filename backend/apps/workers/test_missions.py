@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, Referral, User
-from apps.bookings.models import Booking, BookingAssignment
+from apps.bookings.models import Booking, BookingAssignment, BookingCompletionOTP
 from apps.catalog.models import Category, Service
 from apps.workers.missions import award_mission_reward_for_completed_booking
 from apps.workers.models import (
@@ -14,6 +14,7 @@ from apps.workers.models import (
     WorkerRewardTransaction,
     WorkerRewardWallet,
     WorkerRewardWithdrawal,
+    WorkerMonthlyMissionProgress,
 )
 
 
@@ -39,20 +40,23 @@ class WorkerRewardLedgerTests(TestCase):
             landmark="Near test park", full_address="Reward test address",
         )
 
-    def _completed_eligible_booking(self, index):
+    def _completed_eligible_booking(self, index, *, amount="501.00", completed_at=None, status=None, verified=True):
+        completed_at = completed_at or timezone.now()
         booking = Booking.objects.create(
-            customer=self.referred_user,
-            address=self.address,
-            service=self.service,
+            customer=self.referred_user, address=self.address, service=self.service,
             booking_mode=Booking.BookingMode.SCHEDULED,
-            scheduled_at=timezone.now() - timedelta(hours=1),
-            status=Booking.Status.COMPLETED,
-            pricing_snapshot={"subtotal": "400.00"},
-            completed_at=timezone.now(),
+            scheduled_at=completed_at - timedelta(hours=1),
+            status=status or Booking.Status.COMPLETED,
+            pricing_snapshot={"subtotal": amount, "discount": "250.00", "total": "251.00"},
+            completed_at=completed_at,
         )
-        BookingAssignment.objects.create(
-            booking=booking, worker=self.referred, completed_at=timezone.now(),
-        )
+        BookingAssignment.objects.create(booking=booking, worker=self.referred, completed_at=completed_at)
+        if verified:
+            BookingCompletionOTP.objects.create(
+                booking=booking, code_hash="verified-test-code",
+                expires_at=completed_at + timedelta(hours=1),
+                last_sent_at=completed_at, verified_at=completed_at,
+            )
         return booking
 
     def test_mission_and_worker_referral_rewards_are_separate_and_idempotent(self):
@@ -82,6 +86,58 @@ class WorkerRewardLedgerTests(TestCase):
         self.referral.refresh_from_db()
         self.assertTrue(self.referral.worker_rewarded)
         self.assertIsNotNone(self.referral.worker_rewarded_at)
+
+    def test_monthly_mission_uses_original_charge_and_requires_strictly_more_than_500(self):
+        exactly_500 = self._completed_eligible_booking(1, amount="500.00")
+        over_500 = self._completed_eligible_booking(2, amount="500.01")
+        award_mission_reward_for_completed_booking(exactly_500)
+        award_mission_reward_for_completed_booking(over_500)
+        progress = WorkerMonthlyMissionProgress.objects.get(worker=self.referred)
+        self.assertEqual(progress.eligible_jobs_count, 1)
+
+    def test_monthly_milestones_are_repeatable_and_history_is_preserved(self):
+        now = timezone.now()
+        bookings = [self._completed_eligible_booking(i, completed_at=now) for i in range(25)]
+        for booking in bookings:
+            award_mission_reward_for_completed_booking(booking)
+        month_start = timezone.localdate(now).replace(day=1)
+        current = WorkerMonthlyMissionProgress.objects.get(worker=self.referred, month_start=month_start)
+        self.assertEqual(current.eligible_jobs_count, 25)
+        rewards = {
+            row.milestone_jobs: row.amount
+            for row in WorkerRewardTransaction.objects.filter(
+                worker=self.referred, type=WorkerRewardTransaction.Type.MISSION_REWARD,
+                reference_key__startswith=f"monthly-mission-reward:{self.referred.pk}:",
+            )
+        }
+        self.assertEqual(rewards, {5: Decimal("300.00"), 15: Decimal("600.00"), 25: Decimal("1000.00")})
+        self.assertEqual(sum(rewards.values()), Decimal("1900.00"))
+        next_month_at = (now + timedelta(days=35)).replace(day=1)
+        next_booking = self._completed_eligible_booking(26, completed_at=next_month_at)
+        award_mission_reward_for_completed_booking(next_booking)
+        next_month = WorkerMonthlyMissionProgress.objects.get(worker=self.referred, month_start=next_month_at.date().replace(day=1))
+        current.refresh_from_db()
+        self.assertEqual(current.eligible_jobs_count, 25)
+        self.assertEqual(next_month.eligible_jobs_count, 1)
+        self.assertEqual(WorkerRewardTransaction.objects.filter(worker=self.referred, type=WorkerRewardTransaction.Type.MISSION_REWARD).count(), 3)
+
+    def test_unverified_cancelled_or_refunded_bookings_do_not_count(self):
+        unverified = self._completed_eligible_booking(1, verified=False)
+        cancelled = self._completed_eligible_booking(2, status=Booking.Status.CANCELLED)
+        refunded = self._completed_eligible_booking(3)
+        from apps.payments.models import Payment, PaymentRefund
+        payment = Payment.objects.create(
+            booking=refunded, customer=self.referred_user,
+            amount=Decimal("501.00"), status=Payment.Status.PAID,
+        )
+        PaymentRefund.objects.create(
+            payment=payment, booking=refunded, amount=Decimal("501.00"),
+            reason=PaymentRefund.Reason.CUSTOMER_CANCELLATION,
+            status=PaymentRefund.Status.PROCESSING,
+        )
+        for booking in (unverified, cancelled, refunded):
+            award_mission_reward_for_completed_booking(booking)
+        self.assertFalse(WorkerMonthlyMissionProgress.objects.filter(worker=self.referred).exists())
 
     def test_reward_wallet_withdrawal_retries_are_idempotent(self):
         wallet = WorkerRewardWallet.objects.create(

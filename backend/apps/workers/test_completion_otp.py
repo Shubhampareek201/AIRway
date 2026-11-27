@@ -16,6 +16,7 @@ from apps.workers.models import (
     WorkerRewardWallet,
     WorkerRewardTransaction,
     WorkerRewardWithdrawal,
+    WorkerMonthlyMissionProgress,
 )
 from apps.workers.missions import award_mission_reward_for_completed_booking
 
@@ -241,7 +242,8 @@ class WorkerCompletionOTPTests(TestCase):
                 service=self.booking.service,
                 scheduled_at=timezone.now() + timedelta(days=1),
                 status=Booking.Status.COMPLETED,
-                pricing_snapshot={"subtotal": "301.00", "total": "301.00"},
+                pricing_snapshot={"subtotal": "501.00", "total": "501.00"},
+                completed_at=timezone.now(),
             )
             BookingAssignment.objects.create(
                 booking=booking,
@@ -249,11 +251,18 @@ class WorkerCompletionOTPTests(TestCase):
                 accepted_at=timezone.now(),
                 completed_at=timezone.now(),
             )
+            BookingCompletionOTP.objects.create(
+                booking=booking, code_hash="verified-test-code",
+                expires_at=timezone.now() + timedelta(hours=1),
+                last_sent_at=timezone.now(), verified_at=timezone.now(),
+            )
             award_mission_reward_for_completed_booking(booking)
             last_booking = booking
 
         wallet = WorkerRewardWallet.objects.get(worker=self.worker)
         self.assertEqual(wallet.eligible_jobs_count, 25)
+        progress = WorkerMonthlyMissionProgress.objects.get(worker=self.worker, month_start=timezone.localdate().replace(day=1))
+        self.assertEqual(progress.eligible_jobs_count, 25)
         self.assertEqual(wallet.balance, 1900)
         self.assertEqual(wallet.total_earned, 1900)
         rewards = {
@@ -270,14 +279,15 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertEqual(wallet.eligible_jobs_count, 25)
         self.assertEqual(wallet.balance, 1900)
 
-    def test_service_cost_must_be_strictly_greater_than_300(self):
+    def test_service_cost_of_500_or_less_is_not_eligible(self):
         booking = Booking.objects.create(
             customer=self.customer,
             address=self.booking.address,
             service=self.booking.service,
             scheduled_at=timezone.now() + timedelta(days=1),
             status=Booking.Status.COMPLETED,
-            pricing_snapshot={"subtotal": "300.00", "total": "300.00"},
+            pricing_snapshot={"subtotal": "500.00", "total": "500.00"},
+            completed_at=timezone.now(),
         )
         BookingAssignment.objects.create(
             booking=booking,
@@ -285,7 +295,13 @@ class WorkerCompletionOTPTests(TestCase):
             accepted_at=timezone.now(),
             completed_at=timezone.now(),
         )
+        BookingCompletionOTP.objects.create(
+            booking=booking, code_hash="verified-test-code",
+            expires_at=timezone.now() + timedelta(hours=1),
+            last_sent_at=timezone.now(), verified_at=timezone.now(),
+        )
         award_mission_reward_for_completed_booking(booking)
+        self.assertFalse(WorkerMonthlyMissionProgress.objects.filter(worker=self.worker).exists())
         self.assertFalse(WorkerRewardWallet.objects.filter(worker=self.worker).exists())
 
     def test_mission_wallet_withdrawal_is_separate_and_debits_available_rewards(self):
