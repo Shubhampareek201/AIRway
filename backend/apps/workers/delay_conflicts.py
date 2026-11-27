@@ -1,6 +1,5 @@
 """Customer alerts when a late job is likely to overlap a worker's next booking."""
 
-from django.db.models import Q
 from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingAssignment
@@ -39,7 +38,7 @@ def notify_upcoming_booking_conflicts(*, worker, current_booking, now=None):
         worker=worker,
         accepted_at__isnull=False,
         booking__status__in=ACTIVE_BOOKING_STATUSES,
-        booking__scheduled_at__gt=planned_start,
+        booking__scheduled_at__gt=now,
     ).select_related("booking", "booking__customer", "booking__appointment_group")
 
     current_group_id = current_booking.appointment_group_id
