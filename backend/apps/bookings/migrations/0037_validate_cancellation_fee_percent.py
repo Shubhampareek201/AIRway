@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             field=models.PositiveSmallIntegerField(
                 default=30,
                 help_text="Percentage retained from the captured advance payment for late customer cancellations.",
-                validators=[django.core.validators.MaxValueValidator(100)],
+                validators=[django.core.validators.MaxValueValidator(99)],
             ),
         ),
     ]
