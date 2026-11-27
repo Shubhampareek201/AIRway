@@ -217,12 +217,17 @@ class ServiceAdmin(ModelAdmin):
         if not self.has_view_or_change_permission(request):
             raise PermissionDenied
 
-        start_date = parse_date(request.GET.get("start_date", ""))
-        end_date = parse_date(request.GET.get("end_date", ""))
+        raw_start_date = request.GET.get("start_date", "")
+        raw_end_date = request.GET.get("end_date", "")
+        start_date = parse_date(raw_start_date)
+        end_date = parse_date(raw_end_date)
         category_id = request.GET.get("category") or ""
         service_id = request.GET.get("service") or ""
         date_error = ""
-        if start_date and end_date and start_date > end_date:
+        if (raw_start_date and start_date is None) or (raw_end_date and end_date is None):
+            date_error = "Enter valid dates in YYYY-MM-DD format."
+            start_date = end_date = None
+        elif start_date and end_date and start_date > end_date:
             date_error = "Start date must be on or before end date."
             start_date = end_date = None
 
@@ -244,8 +249,8 @@ class ServiceAdmin(ModelAdmin):
         category_summaries = {}
         categories = {}
         for service in Service.objects.filter(
-            bookings__in=bookings
-        ).select_related("category").distinct().order_by("category__title", "title"):
+            pk__in=bookings.values("service_id")
+        ).select_related("category").order_by("category__title", "title"):
             service_bookings = list(bookings.filter(service=service))
             summary = summarize_service_profitability(service_bookings, service=service)
             service_rows.append({"service": service, "summary": summary})
