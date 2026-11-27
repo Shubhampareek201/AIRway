@@ -18,8 +18,33 @@ from .models import Payment
 logger = logging.getLogger(__name__)
 
 
+def _record_gateway_fee_snapshot(payment, fee_paise=None, tax_paise=None):
+    """Store Razorpay's confirmed fee and fee-GST once; unknown is never treated as zero."""
+    if payment.gateway_fee_recorded_at is not None:
+        return False
+    if payment.amount == 0:
+        payment.gateway_fee_amount = Decimal("0.00")
+        payment.gateway_fee_tax_amount = Decimal("0.00")
+        payment.gateway_fee_recorded_at = timezone.now()
+        return True
+    if fee_paise is None or tax_paise is None:
+        return False
+    try:
+        fee = int(fee_paise)
+        tax = int(tax_paise)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if fee < 0 or tax < 0:
+        return False
+    payment.gateway_fee_amount = (Decimal(fee) / Decimal("100")).quantize(Decimal("0.01"))
+    payment.gateway_fee_tax_amount = (Decimal(tax) / Decimal("100")).quantize(Decimal("0.01"))
+    payment.gateway_fee_recorded_at = timezone.now()
+    return True
+
+
 def _process_verified_payment(
-    payment, razorpay_payment_id, razorpay_order_id, customer, source
+    payment, razorpay_payment_id, razorpay_order_id, customer, source,
+    gateway_fee_paise=None, gateway_tax_paise=None,
 ):
     """
     Process a verified payment. Called by both checkout verification
@@ -27,6 +52,11 @@ def _process_verified_payment(
     """
     # Idempotency check: skip if already processed
     if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
+        if _record_gateway_fee_snapshot(payment, gateway_fee_paise, gateway_tax_paise):
+            payment.save(update_fields=[
+                "gateway_fee_amount", "gateway_fee_tax_amount",
+                "gateway_fee_recorded_at", "updated_at",
+            ])
         logger.info(
             "Payment %s already settled with status %s; skipping re-process",
             payment.id, payment.status,
@@ -40,6 +70,11 @@ def _process_verified_payment(
     with transaction.atomic():
         payment = Payment.objects.select_for_update().get(pk=payment.pk)
         if payment.status in [Payment.Status.PAID, Payment.Status.REFUNDED]:
+            if _record_gateway_fee_snapshot(payment, gateway_fee_paise, gateway_tax_paise):
+                payment.save(update_fields=[
+                    "gateway_fee_amount", "gateway_fee_tax_amount",
+                    "gateway_fee_recorded_at", "updated_at",
+                ])
             return Response({
                 "detail": "Payment already settled.",
                 "status": payment.status,
@@ -400,6 +435,7 @@ def _process_verified_payment(
                     status=status.HTTP_200_OK,
                 )
 
+        _record_gateway_fee_snapshot(payment, gateway_fee_paise, gateway_tax_paise)
         payment.status = Payment.Status.PAID
         payment.razorpay_payment_id = razorpay_payment_id
         payment.razorpay_signature = "verified"
@@ -878,7 +914,9 @@ class VerifyPaymentView(APIView):
             razorpay_payment_id=razorpay_payment_id,
             razorpay_order_id=razorpay_order_id,
             customer=request.user,
-            source="checkout"
+            source="checkout",
+            gateway_fee_paise=gateway_payment.get("fee") if payment.amount > 0 else None,
+            gateway_tax_paise=gateway_payment.get("tax") if payment.amount > 0 else None,
         )
 
 
@@ -1106,7 +1144,9 @@ class PaymentWebhookView(APIView):
                 razorpay_payment_id=payment_id,
                 razorpay_order_id=payment.razorpay_order_id,
                 customer=payment.customer,
-                source="webhook"
+                source="webhook",
+                gateway_fee_paise=payment_entity.get("fee"),
+                gateway_tax_paise=payment_entity.get("tax"),
             )
 
         elif event_type in ("refund.processed", "refund.failed"):

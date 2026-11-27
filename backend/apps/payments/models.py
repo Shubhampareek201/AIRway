@@ -69,6 +69,15 @@ class Payment(TimeStampedModel):
         default=0,
         help_text="Amount reserved from the customer wallet for this order payment.",
     )
+    gateway_fee_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Actual Razorpay processing fee, excluding GST; null until confirmed by Razorpay.",
+    )
+    gateway_fee_tax_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="GST charged by Razorpay on its processing fee; null until confirmed by Razorpay.",
+    )
+    gateway_fee_recorded_at = models.DateTimeField(null=True, blank=True)
     method = models.CharField(max_length=20, choices=Method.choices, default=Method.COD)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
 

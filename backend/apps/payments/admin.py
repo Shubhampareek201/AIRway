@@ -19,7 +19,8 @@ from .refunds import (
 class PaymentAdmin(ModelAdmin):
     list_display = (
         "id", "order", "appointment_group", "extra_work", "customer",
-        "stage", "amount", "status", "created_at",
+        "stage", "amount", "gateway_fee_amount", "gateway_fee_tax_amount",
+        "gateway_fee_recorded_at", "status", "created_at",
     )
     list_filter = ("stage", "status", "created_at")
     search_fields = ("id", "order__id", "appointment_group__id", "extra_work__id", "customer__phone")

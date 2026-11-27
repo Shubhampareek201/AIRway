@@ -237,3 +237,42 @@ class StagedOrderPaymentServiceTests(TestCase):
                 self.customer,
                 stage=Payment.Stage.BALANCE,
             )
+
+
+class GatewayFeeSnapshotTests(TestCase):
+    def test_records_confirmed_gateway_fee_and_fee_gst_in_rupees(self):
+        from types import SimpleNamespace
+        from apps.payments.verify_view import _record_gateway_fee_snapshot
+
+        payment = SimpleNamespace(
+            amount=Decimal("300.00"), gateway_fee_amount=None,
+            gateway_fee_tax_amount=None, gateway_fee_recorded_at=None,
+        )
+        self.assertTrue(_record_gateway_fee_snapshot(payment, 590, 106))
+        self.assertEqual(payment.gateway_fee_amount, Decimal("5.90"))
+        self.assertEqual(payment.gateway_fee_tax_amount, Decimal("1.06"))
+        self.assertIsNotNone(payment.gateway_fee_recorded_at)
+
+    def test_missing_gateway_fee_is_not_misreported_as_zero(self):
+        from types import SimpleNamespace
+        from apps.payments.verify_view import _record_gateway_fee_snapshot
+
+        payment = SimpleNamespace(
+            amount=Decimal("300.00"), gateway_fee_amount=None,
+            gateway_fee_tax_amount=None, gateway_fee_recorded_at=None,
+        )
+        self.assertFalse(_record_gateway_fee_snapshot(payment, None, None))
+        self.assertIsNone(payment.gateway_fee_amount)
+        self.assertIsNone(payment.gateway_fee_tax_amount)
+
+    def test_wallet_only_payment_records_zero_gateway_cost(self):
+        from types import SimpleNamespace
+        from apps.payments.verify_view import _record_gateway_fee_snapshot
+
+        payment = SimpleNamespace(
+            amount=Decimal("0.00"), gateway_fee_amount=None,
+            gateway_fee_tax_amount=None, gateway_fee_recorded_at=None,
+        )
+        self.assertTrue(_record_gateway_fee_snapshot(payment))
+        self.assertEqual(payment.gateway_fee_amount, Decimal("0.00"))
+        self.assertEqual(payment.gateway_fee_tax_amount, Decimal("0.00"))
