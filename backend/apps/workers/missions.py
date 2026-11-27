@@ -65,7 +65,9 @@ def award_worker_referral_reward_for_worker(worker, eligible_jobs_count, *, book
     referrer_worker = WorkerProfile.objects.filter(user_id=referral.referrer_id).first()
     if referrer_worker is None or referrer_worker.status != WorkerProfile.Status.APPROVED:
         return False
-    settings_row = WorkerReferralSettings.objects.filter(pk=1, is_active=True).first()
+    settings_row = WorkerReferralSettings.objects.filter(pk=1).first()
+    if settings_row is not None and not settings_row.is_active:
+        return False
     reward_amount = settings_row.reward_amount if settings_row else WORKER_REFERRAL_REWARD
     wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=referrer_worker)
     wallet = WorkerRewardWallet.objects.select_for_update().get(pk=wallet.pk)
