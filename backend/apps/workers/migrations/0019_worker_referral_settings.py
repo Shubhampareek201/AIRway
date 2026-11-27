@@ -3,7 +3,7 @@ from django.db.models import Q
 
 
 class Migration(migrations.Migration):
-    dependencies = [("workers", "0018_worker_monthly_mission_progress")]
+    dependencies = [("workers", "0019_merge_20261127_1518"), ("accounts", "0014_merge_referral_type_and_customer_eligibility")]
 
     operations = [
         migrations.CreateModel(
