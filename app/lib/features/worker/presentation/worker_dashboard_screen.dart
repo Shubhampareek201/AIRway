@@ -964,8 +964,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             ]),
           ),
           const SizedBox(height: 5),
-          Text('Reward per successful referral: ₹${referralReward.toStringAsFixed(0)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF5637C8))),
+          Text(
+            data['worker_referral_active'] == false
+                ? 'Worker referral rewards are temporarily paused.'
+                : 'Reward per successful referral: ₹${referralReward.toStringAsFixed(0)}',
+            style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF5637C8)),
+          ),
           if (workerReferrals.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -983,7 +987,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                     ? 'Reward credited · ₹${referral['reward_amount'] ?? referralReward}'
                     : referral['status'] == 'awaiting_approval'
                         ? 'Waiting for admin approval'
-                        : '${referral['eligible_jobs_count'] ?? 0}/5 eligible services completed',
+                        : referral['status'] == 'application_not_submitted'
+                            ? 'Worker has not submitted an application'
+                            : referral['status'] == 'not_eligible'
+                                ? 'Worker is not currently approved'
+                                : '${referral['eligible_jobs_count'] ?? 0}/5 eligible services completed',
               ),
               trailing: referral['rewarded'] == true
                   ? const Icon(Icons.check_circle, color: AirwayColors.success)
