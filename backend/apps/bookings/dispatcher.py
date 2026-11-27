@@ -864,8 +864,12 @@ class DispatcherService:
             Booking.Status.CONFIRMED,
             Booking.Status.IN_PROGRESS,
         ]
+        from apps.workers.eligibility import worker_is_within_working_hours
+
         eligible_ids = []
         for worker in eligible_workers:
+            if not worker_is_within_working_hours(worker):
+                continue
             schedule_ok = True
             for visit_start, visit_end in visit_windows:
                 local_start = timezone.localtime(visit_start)

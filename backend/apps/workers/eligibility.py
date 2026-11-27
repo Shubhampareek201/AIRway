@@ -5,7 +5,15 @@ This module deliberately contains only the stable, location-independent
 eligibility gates. Booking-time checks (weekday hours, leave, blocked slots,
 and overlapping assignments) remain in the dispatcher.
 """
+from django.utils import timezone
+
 from apps.workers.models import WorkerProfile
+
+
+def worker_is_within_working_hours(worker, at=None):
+    """True only while the worker's local weekly schedule is active."""
+    local = timezone.localtime(at or timezone.now())
+    return worker.schedules.filter(weekday=local.weekday(), is_active=True, start_time__lte=local.time(), end_time__gt=local.time()).exists()
 
 
 def required_worker_gender_for_booking(service, category_answers=None):
