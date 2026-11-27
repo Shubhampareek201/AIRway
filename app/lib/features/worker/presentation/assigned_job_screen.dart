@@ -969,6 +969,50 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     );
   }
 
+  Future<void> _recordCashReceived(WorkerAssignmentDetail job) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AirwayText.tr('Confirm cash received', 'नकद भुगतान की पुष्टि करें')),
+        content: Text(AirwayText.tr(
+          'Confirm only if the customer has handed you the remaining balance in cash. The customer completion OTP has already been verified.',
+          'केवल तभी पुष्टि करें जब ग्राहक ने बाकी राशि नकद दे दी हो। ग्राहक का पूरा करने वाला OTP पहले ही वेरिफ़ाई हो चुका है।',
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(AirwayText.tr('Cash received', 'नकद मिल गया')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isActionInProgress = true);
+    try {
+      final result = await WorkerApi.recordCashReceived(job.assignmentId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['detail']?.toString() ??
+              AirwayText.tr('Cash balance recorded.', 'नकद बकाया दर्ज हो गया।')),
+        ),
+      );
+      await _loadAssignedJob();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not record cash: $e', 'नकद भुगतान दर्ज नहीं हो सका: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
   Future<void> _completeJob() async {
     if (!mounted || _jobDetail == null) return;
     setState(() => _isActionInProgress = true);
@@ -1469,13 +1513,37 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         (isCompleted ? 'Service completion verified.' : 'Payment status unavailable.');
     final statusLabel = isCompleted ? 'Completion verified' : 'Advance / payment';
     return Card(
-      child: ListTile(
-        leading: const Icon(Icons.payment),
-        title: Text(AirwayText.tr('Payment', 'भुगतान')),
-        subtitle: Text(paymentLabel),
-        trailing: Chip(
-          label: Text(statusLabel),
-          backgroundColor: isCompleted ? Colors.green.shade100 : Colors.orange.shade100,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.payment),
+              title: Text(AirwayText.tr('Payment', 'भुगतान')),
+              subtitle: Text(paymentLabel),
+              trailing: Chip(
+                label: Text(statusLabel),
+                backgroundColor: isCompleted ? Colors.green.shade100 : Colors.orange.shade100,
+              ),
+            ),
+            if (isCompleted) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _isActionInProgress ? null : () => _recordCashReceived(job),
+                icon: const Icon(Icons.payments_outlined),
+                label: Text(AirwayText.tr('Cash received', 'नकद मिल गया')),
+              ),
+              Text(
+                AirwayText.tr(
+                  'Use only after receiving the balance in cash. Online-paid or multi-worker appointments cannot be settled here.',
+                  'केवल बाकी राशि नकद मिलने के बाद उपयोग करें। ऑनलाइन भुगतान या कई वर्कर वाले अपॉइंटमेंट यहाँ से सेटल नहीं होंगे।',
+                ),
+                style: const TextStyle(fontSize: 11, color: AirwayColors.textSecondary),
+              ),
+            ],
+          ],
         ),
       ),
     );

@@ -196,6 +196,15 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
+  static Future<Map<String, dynamic>> recordCashReceived(int assignmentId) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/cash-received/',
+      method: 'POST',
+      data: const {},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<List<Map<String, dynamic>>> getAssignedJobs() async {
     final result = await _request('/api/v1/workers/jobs/');
     final list = result as List;
