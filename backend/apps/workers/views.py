@@ -17,7 +17,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
 from django.utils import timezone
 
-from apps.accounts.models import Address, User
+from apps.accounts.models import Address, Referral, User
 from apps.catalog.models import Service, ServiceInspectionRate
 from apps.core.models import Zone
 from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
@@ -501,6 +501,27 @@ class WorkerOnboardingView(APIView):
         # The worker explicitly selects one or more service zones above. Never
         # replace that selection with a single nearest zone derived from home GPS.
 
+        referral_code = str(data.get("referral_code") or "").strip().upper()
+        referral_referrer = None
+        if referral_code:
+            if Referral.objects.filter(referred=request.user).exists():
+                return Response({"referral_code": ["A referral is already attached to this account."]}, status=400)
+            if request.user.referral_code.upper() == referral_code:
+                return Response({"referral_code": ["You cannot use your own referral code."]}, status=400)
+            referral_referrer = User.objects.filter(
+                referral_code__iexact=referral_code, is_active=True,
+                worker_profile__status=WorkerProfile.Status.APPROVED,
+            ).first()
+            if referral_referrer is None:
+                return Response({"referral_code": ["Enter a valid referral code from an approved AIRway worker."]}, status=400)
+            same_identity = (
+                bool(request.user.phone and referral_referrer.phone and request.user.phone == referral_referrer.phone)
+                or bool(request.user.email and referral_referrer.email and request.user.email.strip().casefold() == referral_referrer.email.strip().casefold())
+                or bool(request.user.firebase_uid and referral_referrer.firebase_uid and request.user.firebase_uid == referral_referrer.firebase_uid)
+            )
+            if same_identity:
+                return Response({"referral_code": ["This referral cannot be applied between matching account identities."]}, status=400)
+
         profile = WorkerProfile.objects.create(
             user=request.user,
             gender=gender,
@@ -545,6 +566,13 @@ class WorkerOnboardingView(APIView):
             file=profile_photo,
             status=WorkerDocument.Status.PENDING,
         )
+        if referral_referrer is not None:
+            Referral.objects.create(
+                referral_type=Referral.ReferralType.WORKER,
+                referrer=referral_referrer,
+                referred=request.user,
+                applied_ip=request.META.get("REMOTE_ADDR") or None,
+            )
 
         return Response({
             "message": "Worker application submitted. Awaiting admin verification.",
