@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.campaigns import evaluate_customer_campaigns, reserve_customer_campaigns
+from apps.bookings.campaigns import (\n    evaluate_customer_campaigns, reserve_customer_campaigns,\n    redeem_customer_campaigns_for_order, release_customer_campaigns_for_order,\n)
 from apps.bookings.models import CampaignRedemption, CustomerCampaign, Order
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
@@ -208,6 +208,58 @@ class CustomerCampaignCalculatorTests(TestCase):
         )
 
 
+
+    def test_advance_payment_redeems_campaign_and_moves_budget_to_spent(self):
+        campaign = self.make_campaign(budget_amount=Decimal("100.00"))
+        campaign.budget_reserved = Decimal("50.00")
+        campaign.save(update_fields=["budget_reserved", "updated_at"])
+        redemption = CampaignRedemption.objects.create(
+            campaign=campaign,
+            customer=self.customer,
+            order=self.order,
+            discount_amount=Decimal("50.00"),
+            status=CampaignRedemption.Status.RESERVED,
+        )
+
+        self.assertEqual(redeem_customer_campaigns_for_order(order=self.order), 1)
+        self.assertEqual(redeem_customer_campaigns_for_order(order=self.order), 0)
+
+        campaign.refresh_from_db()
+        redemption.refresh_from_db()
+        self.assertEqual(campaign.budget_reserved, Decimal("0.00"))
+        self.assertEqual(campaign.budget_spent, Decimal("50.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.REDEEMED)
+        self.assertIsNotNone(redemption.redeemed_at)
+
+    def test_cancelled_unpaid_order_releases_reserved_campaign_budget_once(self):
+        campaign = self.make_campaign(budget_amount=Decimal("100.00"))
+        campaign.budget_reserved = Decimal("50.00")
+        campaign.save(update_fields=["budget_reserved", "updated_at"])
+        redemption = CampaignRedemption.objects.create(
+            campaign=campaign,
+            customer=self.customer,
+            order=self.order,
+            discount_amount=Decimal("50.00"),
+            status=CampaignRedemption.Status.RESERVED,
+        )
+
+        self.assertEqual(
+            release_customer_campaigns_for_order(
+                order=self.order, reason="Order cancelled before advance."
+            ),
+            1,
+        )
+        self.assertEqual(
+            release_customer_campaigns_for_order(order=self.order, reason="duplicate"),
+            0,
+        )
+
+        campaign.refresh_from_db()
+        redemption.refresh_from_db()
+        self.assertEqual(campaign.budget_reserved, Decimal("0.00"))
+        self.assertEqual(campaign.budget_spent, Decimal("0.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.RELEASED)
+        self.assertEqual(redemption.release_reason, "Order cancelled before advance.")
 
     def test_checkout_reservation_increments_budget_and_creates_redemption(self):
         campaign = self.make_campaign()

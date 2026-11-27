@@ -255,3 +255,65 @@ def reserve_customer_campaigns(*, customer, order, zone, lines, now=None):
             status=CampaignRedemption.Status.RESERVED,
         )
     return result
+
+
+
+def redeem_customer_campaigns_for_order(*, order, now=None):
+    """Convert reserved campaign budget to spent after a verified advance payment."""
+    from django.db import transaction
+
+    now = now or timezone.now()
+    transitioned = 0
+    with transaction.atomic():
+        redemptions = list(
+            CampaignRedemption.objects.select_for_update()
+            .filter(order=order, status=CampaignRedemption.Status.RESERVED)
+            .order_by("campaign_id", "pk")
+        )
+        for redemption in redemptions:
+            campaign = CustomerCampaign.objects.select_for_update().get(
+                pk=redemption.campaign_id
+            )
+            amount = redemption.discount_amount
+            if campaign.budget_reserved < amount:
+                raise RuntimeError("Campaign reserved budget is inconsistent with its redemption.")
+            campaign.budget_reserved -= amount
+            campaign.budget_spent += amount
+            campaign.save(update_fields=["budget_reserved", "budget_spent", "updated_at"])
+            redemption.status = CampaignRedemption.Status.REDEEMED
+            redemption.redeemed_at = now
+            redemption.save(update_fields=["status", "redeemed_at", "updated_at"])
+            transitioned += 1
+    return transitioned
+
+
+def release_customer_campaigns_for_order(*, order, reason, now=None):
+    """Release reserved campaign budget when an order is cancelled before advance capture."""
+    from django.db import transaction
+
+    now = now or timezone.now()
+    reason = str(reason or "Order cancelled before advance payment.")[:160]
+    transitioned = 0
+    with transaction.atomic():
+        redemptions = list(
+            CampaignRedemption.objects.select_for_update()
+            .filter(order=order, status=CampaignRedemption.Status.RESERVED)
+            .order_by("campaign_id", "pk")
+        )
+        for redemption in redemptions:
+            campaign = CustomerCampaign.objects.select_for_update().get(
+                pk=redemption.campaign_id
+            )
+            amount = redemption.discount_amount
+            if campaign.budget_reserved < amount:
+                raise RuntimeError("Campaign reserved budget is inconsistent with its redemption.")
+            campaign.budget_reserved -= amount
+            campaign.save(update_fields=["budget_reserved", "updated_at"])
+            redemption.status = CampaignRedemption.Status.RELEASED
+            redemption.released_at = now
+            redemption.release_reason = reason
+            redemption.save(update_fields=[
+                "status", "released_at", "release_reason", "updated_at"
+            ])
+            transitioned += 1
+    return transitioned
