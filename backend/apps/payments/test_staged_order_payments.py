@@ -138,6 +138,109 @@ class StagedOrderPaymentServiceTests(TestCase):
         self.assertEqual(balance.amount, Decimal("700.00"))
 
     @patch("apps.payments.views.client.order.create")
+    @patch("apps.payments.views.client.order.create")
+    @patch("razorpay.Client")
+    @patch("apps.bookings.dispatcher.DispatcherService.dispatch_order")
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_airway", RAZORPAY_KEY_SECRET="test_payment_secret")
+    def test_checkout_advance_amount_matches_discounted_order_through_verified_capture(
+        self, dispatch_order, razorpay_client, create_gateway_order
+    ):
+        import hashlib
+        import hmac
+        from rest_framework.test import APIClient
+        from apps.bookings.models import CustomerCampaign, CampaignRedemption
+
+        # Checkout applies the campaign before calculating the staged payment:
+        # ₹1,000 subtotal - ₹50 offer = ₹950 payable total.
+        self.order.discount_amount = Decimal("50.00")
+        self.order.total_amount = Decimal("950.00")
+        self.item.line_total = Decimal("950.00")
+        self.item.save(update_fields=["line_total", "updated_at"])
+        self.order.save(update_fields=["discount_amount", "total_amount", "updated_at"])
+
+        campaign = CustomerCampaign.objects.create(
+            name="End-to-end checkout offer",
+            is_active=True,
+            booking_sequence=CustomerCampaign.BookingSequence.FIRST,
+            discount_type=CustomerCampaign.DiscountType.FIXED,
+            discount_value=Decimal("50.00"),
+            minimum_subtotal=Decimal("0.00"),
+            budget_amount=Decimal("100.00"),
+            budget_reserved=Decimal("50.00"),
+            max_redemptions_per_customer=1,
+        )
+        redemption = CampaignRedemption.objects.create(
+            campaign=campaign,
+            customer=self.customer,
+            order=self.order,
+            discount_amount=Decimal("50.00"),
+            status=CampaignRedemption.Status.RESERVED,
+        )
+
+        create_gateway_order.return_value = {"id": "order_checkout_advance_950"}
+        api_client = APIClient()
+        api_client.force_authenticate(user=self.customer)
+        create_response = api_client.post(
+            "/api/v1/payments/create-order/",
+            {"order_id": self.order.pk},
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 200, create_response.data)
+        self.assertEqual(create_response.data["payment_stage"], Payment.Stage.ADVANCE)
+        self.assertEqual(create_response.data["total_amount"], "950.00")
+        self.assertEqual(create_response.data["stage_amount"], "285.00")
+        self.assertEqual(create_response.data["amount"], 28500)
+        self.assertEqual(create_response.data["key_id"], "rzp_test_airway")
+        self.assertEqual(create_gateway_order.call_args.kwargs["data"]["amount"], 28500)
+
+        payment = Payment.objects.get(pk=create_response.data["payment_id"])
+        self.assertEqual(payment.amount, Decimal("285.00"))
+        self.assertEqual(
+            self.order.metadata["payment_allocation_v1"]["balance_total"],
+            "665.00",
+        )
+
+        razorpay_client.return_value.payment.fetch.return_value = {
+            "id": "pay_checkout_advance_950",
+            "order_id": "order_checkout_advance_950",
+            "amount": 28500,
+            "currency": "INR",
+            "status": "captured",
+            "fee": 590,
+            "tax": 106,
+        }
+        message = "order_checkout_advance_950|pay_checkout_advance_950"
+        signature = hmac.new(
+            b"test_payment_secret",
+            message.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        verify_response = api_client.post(
+            "/api/v1/payments/verify/",
+            {
+                "razorpay_order_id": "order_checkout_advance_950",
+                "razorpay_payment_id": "pay_checkout_advance_950",
+                "razorpay_signature": signature,
+            },
+            format="json",
+        )
+
+        self.assertEqual(verify_response.status_code, 200, verify_response.data)
+        payment.refresh_from_db()
+        self.order.refresh_from_db()
+        campaign.refresh_from_db()
+        redemption.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.amount, Decimal("285.00"))
+        self.assertEqual(payment.gateway_fee_amount, Decimal("5.90"))
+        self.assertEqual(payment.gateway_fee_tax_amount, Decimal("1.06"))
+        self.assertEqual(self.order.status, Order.Status.AWAITING_ASSIGNMENT)
+        self.assertEqual(campaign.budget_reserved, Decimal("0.00"))
+        self.assertEqual(campaign.budget_spent, Decimal("50.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.REDEEMED)
+        dispatch_order.assert_called_once()
+
     @patch("apps.bookings.dispatcher.DispatcherService.dispatch_order")
     def test_advance_payment_redeems_campaign_reservation(self, dispatch_order, create_gateway_order):
         from apps.bookings.models import CustomerCampaign, CampaignRedemption
