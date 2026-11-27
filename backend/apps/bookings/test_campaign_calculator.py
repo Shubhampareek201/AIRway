@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.campaigns import evaluate_customer_campaigns
+from apps.bookings.campaigns import evaluate_customer_campaigns, reserve_customer_campaigns
 from apps.bookings.models import CampaignRedemption, CustomerCampaign, Order
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
@@ -206,3 +206,52 @@ class CustomerCampaignCalculatorTests(TestCase):
             self.evaluate(subtotal="500.00", payout="490.00")["discount_amount"],
             Decimal("0.00"),
         )
+
+
+
+class CustomerCampaignReservationTests(CustomerCampaignCalculatorTests):
+    def test_checkout_reservation_increments_budget_and_creates_redemption(self):
+        campaign = self.make_campaign()
+        result = reserve_customer_campaigns(
+            customer=self.customer,
+            order=self.order,
+            zone=self.zone,
+            lines=[{
+                "key": "line-1",
+                "service": self.service,
+                "subtotal": Decimal("1000.00"),
+                "worker_payout": Decimal("300.00"),
+            }],
+        )
+
+        campaign.refresh_from_db()
+        redemption = CampaignRedemption.objects.get(
+            campaign=campaign, order=self.order
+        )
+        self.assertEqual(result["discount_amount"], Decimal("50.00"))
+        self.assertEqual(campaign.budget_reserved, Decimal("50.00"))
+        self.assertEqual(redemption.discount_amount, Decimal("50.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.RESERVED)
+
+    def test_reservation_requires_atomic_transaction(self):
+        self.make_campaign()
+        from django.db import transaction
+        with self.assertRaises(RuntimeError):
+            with transaction.atomic():
+                # The helper itself is expected to run in a transaction; this
+                # test's outer atomic block is therefore a valid invocation.
+                pass
+        # A direct call outside a transaction is rejected.
+        from django.db import connection
+        with self.assertRaises(RuntimeError):
+            reserve_customer_campaigns(
+                customer=self.customer,
+                order=self.order,
+                zone=self.zone,
+                lines=[{
+                    "key": "line-1",
+                    "service": self.service,
+                    "subtotal": Decimal("1000.00"),
+                    "worker_payout": Decimal("300.00"),
+                }],
+            )

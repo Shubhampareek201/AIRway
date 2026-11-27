@@ -213,3 +213,45 @@ def evaluate_customer_campaigns(*, customer, zone, lines, now=None):
         "line_discounts": total_discounts,
         "applied_campaigns": applied,
     }
+
+
+
+def reserve_customer_campaigns(*, customer, order, zone, lines, now=None):
+    """Lock customer/campaign rows, re-evaluate, and reserve budget for this order.
+
+    Call only inside the checkout transaction. Locking the customer serializes
+    first/second-booking claims; locking campaigns serializes shared budgets.
+    """
+    from django.db import transaction
+
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("Campaign reservations require an active checkout transaction.")
+
+    customer.__class__.objects.select_for_update().get(pk=customer.pk)
+    locked_campaigns = list(
+        CustomerCampaign.objects.select_for_update()
+        .filter(is_active=True)
+        .order_by("pk")
+    )
+    result = evaluate_customer_campaigns(
+        customer=customer,
+        zone=zone,
+        lines=lines,
+        now=now,
+    )
+    campaigns_by_id = {campaign.pk: campaign for campaign in locked_campaigns}
+    for applied in result["applied_campaigns"]:
+        campaign = campaigns_by_id.get(applied["campaign_id"])
+        amount = applied["discount_amount"]
+        if campaign is None or amount <= ZERO or amount > campaign.remaining_budget:
+            raise RuntimeError("Campaign budget changed during checkout reservation.")
+        campaign.budget_reserved += amount
+        campaign.save(update_fields=["budget_reserved", "updated_at"])
+        CampaignRedemption.objects.create(
+            campaign=campaign,
+            customer=customer,
+            order=order,
+            discount_amount=amount,
+            status=CampaignRedemption.Status.RESERVED,
+        )
+    return result
