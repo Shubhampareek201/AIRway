@@ -5,7 +5,10 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
-from apps.bookings.campaigns import (\n    evaluate_customer_campaigns, reserve_customer_campaigns,\n    redeem_customer_campaigns_for_order, release_customer_campaigns_for_order,\n)
+from apps.bookings.campaigns import (
+    evaluate_customer_campaigns, reserve_customer_campaigns,
+    redeem_customer_campaigns_for_order, release_customer_campaigns_for_order,
+)
 from apps.bookings.models import CampaignRedemption, CustomerCampaign, Order
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
