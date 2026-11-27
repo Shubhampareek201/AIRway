@@ -44,7 +44,7 @@ def calculate_booking_actual_finance(booking):
     item = OrderItem.objects.select_related('order').filter(booking=booking).first()
     pricing = booking.pricing_snapshot or {}
     subtotal = _decimal(item.line_subtotal if item is not None else pricing.get('subtotal', pricing.get('total')))
-    tax = _decimal(item.tax_amount if item is not None else pricing.get('tax', pricing.get('tax_amount', '0')))
+    tax = _decimal(item.tax_amount if item is not None else pricing.get('tax', pricing.get('tax_amount')))
     line_total = _decimal(item.line_total if item is not None else pricing.get('total'))
     if subtotal is None or subtotal < 0:
         reasons.append('Customer service subtotal is unavailable')
@@ -62,6 +62,8 @@ def calculate_booking_actual_finance(booking):
     elif item is None:
         reasons.append('Legacy booking discount allocation is unavailable')
     payments = Payment.objects.filter(status=Payment.Status.PAID).filter(Q(booking=booking) | Q(order__items__booking=booking)).distinct()
+    if not payments.exists():
+        reasons.append('No captured payment is linked to this booking')
     gateway_fee = ZERO
     gateway_fee_tax = ZERO
     gateway_fee_known = True
@@ -83,7 +85,7 @@ def calculate_booking_actual_finance(booking):
         ratio = min(gateway_allocation / payment_gateway_total, Decimal('1'))
         gateway_fee += payment.gateway_fee_amount * ratio
         gateway_fee_tax += payment.gateway_fee_tax_amount * ratio
-    refunds = PaymentRefund.objects.filter(booking=booking, status=PaymentRefund.Status.PROCESSED)
+    refunds = PaymentRefund.objects.filter(booking=booking, status=PaymentRefund.Status.PROCESSED, extra_work__isnull=True)
     refunded_gross = sum((_decimal(value) or ZERO for value in refunds.values_list('amount', flat=True)), ZERO)
     refunded_service_revenue = _money(refunded_gross * subtotal / line_total) if line_total > 0 else ZERO
     earning = WorkerEarning.objects.filter(booking=booking, extra_work__isnull=True).order_by('-updated_at', '-pk').first()
@@ -91,6 +93,8 @@ def calculate_booking_actual_finance(booking):
     if worker_payout is None or worker_payout < 0:
         reasons.append('Worker earning/payout snapshot is not available')
         worker_payout = ZERO
+    if WorkerEarning.objects.filter(booking=booking, extra_work__isnull=False).exists():
+        reasons.append('Separately quoted extra-work revenue and payout are not included')
     mission_rewards = sum((_decimal(amount) or ZERO for amount in WorkerRewardTransaction.objects.filter(booking=booking, type=WorkerRewardTransaction.Type.MISSION_REWARD).values_list('amount', flat=True)), ZERO)
     if earning is not None and WorkerRewardTransaction.objects.filter(worker_id=earning.worker_id, type=WorkerRewardTransaction.Type.MISSION_REWARD, booking__isnull=True).exists():
         reasons.append('Worker mission rewards are not attributable to one booking')
