@@ -793,7 +793,11 @@ class BookingVariableCostAdmin(ModelAdmin):
     list_display = ("id", "booking", "category", "amount", "description", "created_by", "created_at")
     list_filter = ("category", "created_at")
     search_fields = ("booking__id", "description", "reference")
-    readonly_fields = tuple(field.name for field in BookingVariableCost._meta.fields)
+    readonly_fields = ("created_by", "created_at", "updated_at")
+    fields = (
+        "booking", "category", "amount", "description", "reference",
+        "created_by", "created_at", "updated_at",
+    )
 
     def has_add_permission(self, request):
         return request.user.is_staff
