@@ -58,7 +58,7 @@ def award_worker_referral_reward_for_worker(worker, eligible_jobs_count, *, book
     if eligible_jobs_count < WORKER_REFERRAL_MILESTONE or worker.status != WorkerProfile.Status.APPROVED:
         return False
     referral = Referral.objects.select_for_update().select_related("referrer").filter(
-        referred_id=worker.user_id, worker_rewarded=False
+        referred_id=worker.user_id, referral_type=Referral.ReferralType.WORKER, worker_rewarded=False
     ).first()
     if referral is None:
         return False
