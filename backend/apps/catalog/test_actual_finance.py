@@ -99,3 +99,24 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["estimated_count"], 0)
         self.assertIsNone(report["variance"])
         self.assertEqual(report["profitability_status"], "Insufficient data")
+
+    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
+    @patch("apps.catalog.finance.calculate_estimated_contribution")
+    def test_profitability_classification_requires_all_finance_and_estimates(self, estimate_mock, actual_mock):
+        from apps.catalog.actual_finance import summarize_service_profitability
+
+        booking = SimpleNamespace(
+            pricing_snapshot={"subtotal": "500.00"},
+            worker_payout_snapshot={"total": "250.00"},
+        )
+        actual_mock.return_value = {
+            "status": "complete",
+            "partial_contribution": Decimal("180.00"),
+        }
+        estimate_mock.return_value = Decimal("150.00")
+
+        report = summarize_service_profitability([booking], SimpleNamespace())
+
+        self.assertEqual(report["profitability_status"], "Profitable")
+        self.assertEqual(report["actual_average"], Decimal("180.00"))
+        self.assertEqual(report["estimated_average"], Decimal("150.00"))
