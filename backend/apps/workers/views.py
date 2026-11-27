@@ -1323,9 +1323,10 @@ class WorkerJobRejectView(APIView):
             return Response({"detail": "Job already completed or cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         if booking.status != Booking.Status.ASSIGNED:
             return Response({"detail": "Job must be assigned to be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+        reason = str(request.data.get("reason", "")).strip()[:500]
         old = booking.status
         booking.status = Booking.Status.CANCELLED
-        booking.cancellation_reason = request.data.get("reason", "")
+        booking.cancellation_reason = reason
         booking.cancelled_by = request.user
         booking.cancelled_at = timezone.now()
         booking.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at"])
@@ -1336,7 +1337,7 @@ class WorkerJobRejectView(APIView):
         ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=timezone.now())
         BookingStatusHistory.objects.create(
             booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
-            changed_by=request.user, note=f"Worker rejected. AIRway unfulfilled; customer refund initiated. Reason: {request.data.get('reason', '')}",
+            changed_by=request.user, note=f"Worker rejected. AIRway unfulfilled; customer refund initiated. Reason: {reason}",
         )
         Notification.objects.create(
             user=booking.customer,
