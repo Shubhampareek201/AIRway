@@ -293,7 +293,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
     double amount(String key) =>
         double.tryParse(snapshot[key]?.toString() ?? '') ?? 0;
     final subtotal = amount('subtotal');
-    final discount = amount('discount');
+    final discount = amount('campaign_discount_amount');
     final tax = amount('tax');
     final taxRate = snapshot['tax_rate']?.toString() ?? '18';
     final total = booking.totalAmount;
