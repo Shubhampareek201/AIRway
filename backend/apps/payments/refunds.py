@@ -312,6 +312,12 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
             else:
                 amount = captured_remaining
             key = f"booking-cancel:{locked.pk}:{booking.pk}"
+            refund_audit_note = (
+                f"Late cancellation policy applied: {late_fee_percent}% retained from the captured advance "
+                f"within {late_window_hours} hour(s) of the scheduled service."
+                if is_late_customer_cancellation and locked.stage == Payment.Stage.ADVANCE
+                else ""
+            )
             if amount <= 0:
                 existing = PaymentRefund.objects.filter(idempotency_key=key).first()
                 if existing and existing.status == PaymentRefund.Status.PENDING:
@@ -328,6 +334,7 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
                     "wallet_amount": wallet_part,
                     "gateway_amount": gateway_part,
                     "reason": reason,
+                    "admin_note": refund_audit_note,
                     "status": PaymentRefund.Status.PENDING,
                 },
             )
