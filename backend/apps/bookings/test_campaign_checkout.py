@@ -163,6 +163,35 @@ class CustomerCampaignCheckoutTests(TestCase):
             Decimal("50.00"),
         )
 
+    def test_cancelling_last_unpaid_booking_releases_campaign_reservation(self):
+        campaign = self.create_campaign()
+        checkout_response = self.checkout()
+
+        self.assertEqual(checkout_response.status_code, 201, checkout_response.data)
+        order = Order.objects.get(pk=checkout_response.data["order_id"])
+        booking = order.items.select_related("booking").get().booking
+        redemption = CampaignRedemption.objects.get(campaign=campaign, order=order)
+        self.assertEqual(redemption.status, CampaignRedemption.Status.RESERVED)
+
+        cancel_response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/cancel/",
+            {"reason": "Customer cancelled before advance payment."},
+            format="json",
+        )
+
+        self.assertEqual(cancel_response.status_code, 200, cancel_response.data)
+        order.refresh_from_db()
+        campaign.refresh_from_db()
+        redemption.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CANCELLED)
+        self.assertEqual(campaign.budget_reserved, Decimal("0.00"))
+        self.assertEqual(campaign.budget_spent, Decimal("0.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.RELEASED)
+        self.assertEqual(
+            redemption.release_reason,
+            "Entire order cancelled before advance payment.",
+        )
+
     def test_insufficient_campaign_budget_caps_checkout_discount(self):
         campaign = self.create_campaign(budget_amount=Decimal("20.00"))
 
