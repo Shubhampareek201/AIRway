@@ -164,10 +164,30 @@ class DeviceToken(TimeStampedModel):
 
 
 class Referral(TimeStampedModel):
+    class RewardStatus(models.TextChoices):
+        PENDING = "pending", "Waiting for eligible completed booking"
+        REWARDED = "rewarded", "Promotional credits issued"
+
     referrer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="referrals_made")
     referred = models.OneToOneField(User, on_delete=models.CASCADE, related_name="referred_by")
-    rewarded = models.BooleanField(default=False)  # customer first-service reward
+    rewarded = models.BooleanField(default=False)
     rewarded_at = models.DateTimeField(null=True, blank=True)
+    reward_status = models.CharField(
+        max_length=16, choices=RewardStatus.choices,
+        default=RewardStatus.PENDING, db_index=True,
+    )
+    reward_booking_id = models.PositiveBigIntegerField(
+        null=True, blank=True,
+        help_text="Booking whose original service subtotal qualified for the referral reward.",
+    )
+    reward_original_service_charge = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Original pre-tax, pre-campaign-discount service subtotal at qualification.",
+    )
+    applied_ip = models.GenericIPAddressField(
+        null=True, blank=True,
+        help_text="Signup/application IP retained for referral abuse review; shared IP alone is not disqualifying.",
+    )
     worker_rewarded = models.BooleanField(default=False)
     worker_rewarded_at = models.DateTimeField(null=True, blank=True)
 

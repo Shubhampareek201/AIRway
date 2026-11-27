@@ -50,8 +50,28 @@ class ConsentLogAdmin(ModelAdmin):
 
 @admin.register(Referral)
 class ReferralAdmin(ModelAdmin):
-    list_display = ("referrer", "referred", "rewarded", "rewarded_at")
-    list_filter = ("rewarded",)
+    list_display = (
+        "referrer", "referred", "reward_status", "rewarded",
+        "reward_booking_id", "reward_original_service_charge", "rewarded_at", "applied_ip",
+    )
+    list_filter = ("reward_status", "rewarded", "created_at")
+    search_fields = (
+        "referrer__phone", "referrer__email", "referred__phone",
+        "referred__email", "referrer__name", "referred__name",
+    )
+    readonly_fields = tuple(field.name for field in Referral._meta.fields)
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_staff
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 admin.site.register(DeviceToken, ModelAdmin)

@@ -57,7 +57,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             user = User.objects.create_user(**validated_data, password=password)
             if referral_code:
-                apply_referral_code(user, referral_code)
+                apply_referral_code(user, referral_code, request=self.context.get("request"))
         return user
 
 

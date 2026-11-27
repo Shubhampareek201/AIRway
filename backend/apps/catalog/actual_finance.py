@@ -157,10 +157,15 @@ def calculate_booking_actual_finance(booking):
     customer_reward_cost = ZERO
     referral = Referral.objects.filter(referred=booking.customer, rewarded=True).first()
     first_completed_booking_id = booking.customer.bookings.filter(status='completed').order_by('completed_at', 'pk').values_list('pk', flat=True).first()
-    if referral is not None and first_completed_booking_id == booking.pk:
+    attributed_booking_id = (
+        referral.reward_booking_id
+        if referral is not None and referral.reward_booking_id
+        else first_completed_booking_id
+    )
+    if referral is not None and attributed_booking_id == booking.pk:
         referral_keys = ['referral:%s:referrer' % referral.pk, 'referral:%s:referred:first-service' % referral.pk]
-        customer_reward_cost = sum((_decimal(amount) or ZERO for amount in WalletTransaction.objects.filter(wallet__user_id__in=[referral.referrer_id, referral.referred_id], type=WalletTransaction.Type.CASHBACK, status=WalletTransaction.Status.COMPLETED, reference_id__in=referral_keys).values_list('amount', flat=True)), ZERO)
-    unallocated_cashback = WalletTransaction.objects.filter(wallet__user=booking.customer, type=WalletTransaction.Type.CASHBACK, status=WalletTransaction.Status.COMPLETED).exclude(reference_id__startswith='referral:').exists()
+        customer_reward_cost = sum((_decimal(amount) or ZERO for amount in WalletTransaction.objects.filter(wallet__user_id__in=[referral.referrer_id, referral.referred_id], type__in=[WalletTransaction.Type.CASHBACK, WalletTransaction.Type.PROMOTIONAL_CREDIT], status=WalletTransaction.Status.COMPLETED, reference_id__in=referral_keys).values_list('amount', flat=True)), ZERO)
+    unallocated_cashback = WalletTransaction.objects.filter(wallet__user=booking.customer, type__in=[WalletTransaction.Type.CASHBACK, WalletTransaction.Type.PROMOTIONAL_CREDIT], status=WalletTransaction.Status.COMPLETED).exclude(reference_id__startswith='referral:').exists()
     if unallocated_cashback:
         reasons.append('Non-referral customer wallet rewards are not attributed to a booking')
     other_variable_costs = _booking_other_variable_cost_total(booking)

@@ -47,6 +47,7 @@ class WalletTransaction(TimeStampedModel):
         DEBIT = "debit", "Debit"
         REFUND = "refund", "Refund"
         CASHBACK = "cashback", "Cashback"
+        PROMOTIONAL_CREDIT = "promotional_credit", "Promotional credit"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

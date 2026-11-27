@@ -30,7 +30,7 @@ class CustomerReferralAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["new_customer_credit"], "100.00")
         self.assertEqual(response.data["referrer_reward"], "200.00")
-        self.assertEqual(response.data["status"], "waiting_for_first_service")
+        self.assertEqual(response.data["status"], "pending")
         self.assertTrue(
             Referral.objects.filter(
                 referrer=self.referrer,
@@ -64,7 +64,7 @@ class CustomerReferralAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["new_customer_credit"], "100.00")
         self.assertEqual(response.data["referrer_reward"], "200.00")
-        self.assertIn("first service", response.data["reward_condition"].lower())
+        self.assertIn("₹500", response.data["reward_condition"])
 
 
     def test_applied_referral_is_returned_to_referred_customer(self):
@@ -120,6 +120,7 @@ class CustomerReferralAPITests(APITestCase):
             status="completed",
             customer=self.referred,
             pk=987654,
+            order_item=SimpleNamespace(line_subtotal="500.01", order_id=None),
         )
 
         self.assertTrue(reward_referral_for_first_completed_booking(completed_booking))
@@ -186,3 +187,67 @@ class CustomerReferralAPITests(APITestCase):
         self.assertEqual(Wallet.objects.get(user=new_user).balance, 0)
         self.assertEqual(Wallet.objects.get(user=self.referrer).balance, 0)
         self.assertFalse(WalletTransaction.objects.exists())
+
+
+    def test_exactly_500_original_service_charge_does_not_qualify(self):
+        from types import SimpleNamespace
+        from apps.accounts.referrals import reward_referral_for_first_completed_booking
+
+        referral = Referral.objects.create(referrer=self.referrer, referred=self.referred)
+        booking = SimpleNamespace(
+            status="completed",
+            customer=self.referred,
+            pk=987652,
+            order_item=SimpleNamespace(line_subtotal="500.00", order_id=None),
+        )
+        self.assertFalse(reward_referral_for_first_completed_booking(booking))
+        referral.refresh_from_db()
+        self.assertFalse(referral.rewarded)
+        self.assertFalse(WalletTransaction.objects.exists())
+
+    def test_refunded_booking_does_not_earn_referral_rewards(self):
+        from types import SimpleNamespace
+        from decimal import Decimal
+        from apps.accounts.referrals import reward_referral_for_first_completed_booking
+
+        referral = Referral.objects.create(referrer=self.referrer, referred=self.referred)
+        wallet = Wallet.objects.get(user=self.referred)
+        WalletTransaction.objects.create(
+            wallet=wallet,
+            type=WalletTransaction.Type.REFUND,
+            amount=Decimal("501.00"),
+            description="Booking refund",
+            status=WalletTransaction.Status.COMPLETED,
+            reference_id="987651",
+        )
+        booking = SimpleNamespace(
+            status="completed",
+            customer=self.referred,
+            pk=987651,
+            order_item=SimpleNamespace(line_subtotal="501.00", order_id=None),
+        )
+        self.assertFalse(reward_referral_for_first_completed_booking(booking))
+        referral.refresh_from_db()
+        self.assertFalse(referral.rewarded)
+        self.assertFalse(WalletTransaction.objects.filter(type=WalletTransaction.Type.PROMOTIONAL_CREDIT).exists())
+
+    def test_matching_email_accounts_cannot_refer_each_other(self):
+        from apps.accounts.referrals import apply_referral_code
+
+        self.referrer.email = "same@example.com"
+        self.referrer.save(update_fields=["email"])
+        self.referred.email = "SAME@example.com"
+        self.referred.save(update_fields=["email"])
+        with self.assertRaisesMessage(ValueError, "duplicate or matching account identities"):
+            apply_referral_code(self.referred, self.referrer.referral_code)
+
+    def test_referral_application_records_request_ip_for_admin_review(self):
+        response = self.client.post(
+            "/api/v1/auth/referrals/",
+            {"referral_code": self.referrer.referral_code},
+            format="json",
+            REMOTE_ADDR="203.0.113.10",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        referral = Referral.objects.get(referred=self.referred)
+        self.assertEqual(referral.applied_ip, "203.0.113.10")
