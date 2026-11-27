@@ -96,13 +96,44 @@ def calculate_booking_actual_finance(booking):
     if WorkerEarning.objects.filter(booking=booking, extra_work__isnull=False).exists():
         reasons.append('Separately quoted extra-work revenue and payout are not included')
     mission_rewards = sum((_decimal(amount) or ZERO for amount in WorkerRewardTransaction.objects.filter(booking=booking, type=WorkerRewardTransaction.Type.MISSION_REWARD).values_list('amount', flat=True)), ZERO)
-    if earning is not None and WorkerRewardTransaction.objects.filter(worker_id=earning.worker_id, type=WorkerRewardTransaction.Type.MISSION_REWARD, booking__isnull=True).exists():
-        reasons.append('Worker mission rewards are not attributable to one booking')
+    if earning is not None:
+        mission_events = WorkerRewardTransaction.objects.filter(
+            worker_id=earning.worker_id,
+            type=WorkerRewardTransaction.Type.MISSION_REWARD,
+            booking__isnull=True,
+            milestone_jobs__isnull=False,
+        ).order_by('created_at')
+        for event in mission_events:
+            milestone = event.milestone_jobs or 0
+            if milestone <= 0:
+                continue
+            eligible_ids = list(
+                WorkerRewardTransaction.objects.filter(
+                    worker_id=earning.worker_id,
+                    type=WorkerRewardTransaction.Type.ELIGIBLE_JOB,
+                    created_at__lte=event.created_at,
+                ).order_by('-created_at').values_list('booking_id', flat=True)[:milestone]
+            )
+            if booking.pk in eligible_ids:
+                mission_rewards += (_decimal(event.amount) or ZERO) / Decimal(milestone)
+    from apps.bookings.models import BookingReworkProposal
+    rework_payout = ZERO
+    proposals = BookingReworkProposal.objects.filter(
+        dispute__booking=booking,
+        followup_booking__isnull=False,
+    ).select_related('followup_booking')
+    for proposal in proposals:
+        followup_earning = WorkerEarning.objects.filter(
+            booking=proposal.followup_booking,
+            extra_work__isnull=True,
+        ).order_by('-updated_at', '-pk').first()
+        if followup_earning and followup_earning.net_amount is not None:
+            rework_payout += followup_earning.net_amount
     reasons.append('Customer reward cost and other variable expenses are not fully allocated')
     if not gateway_fee_known:
         gateway_fee = None
         gateway_fee_tax = None
-    partial = subtotal - discount - refunded_service_revenue - worker_payout - mission_rewards
+    partial = subtotal - discount - refunded_service_revenue - worker_payout - mission_rewards - rework_payout
     if gateway_fee is not None and gateway_fee_tax is not None:
         partial -= gateway_fee + gateway_fee_tax
     return {
@@ -112,6 +143,6 @@ def calculate_booking_actual_finance(booking):
         'worker_payout': _money(worker_payout),
         'gateway_fee': _money(gateway_fee) if gateway_fee is not None else None,
         'gateway_fee_tax': _money(gateway_fee_tax) if gateway_fee_tax is not None else None,
-        'mission_rewards': _money(mission_rewards), 'partial_contribution': _money(partial),
+        'mission_rewards': _money(mission_rewards), 'rework_payout': _money(rework_payout), 'partial_contribution': _money(partial),
         'reasons': list(dict.fromkeys(reasons)),
     }
