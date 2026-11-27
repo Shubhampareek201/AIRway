@@ -2802,6 +2802,9 @@ class WorkerZoneChangeRequestAPITest(TestCase):
         self.assertEqual(reviewed.reviewed_by, admin_user)
         self.assertIsNotNone(reviewed.reviewed_at)
         self.assertTrue(WorkerZone.objects.filter(worker=self.worker, zone=self.zone).exists())
+        from apps.notifications.models import Notification
+        notice = Notification.objects.get(user=self.user, type=Notification.Type.WORKER_ZONE_APPROVED)
+        self.assertEqual(notice.data["worker_zone_request_id"], change.pk)
 
     def test_rejection_requires_a_reason(self):
         from .models import WorkerZoneChangeRequest
@@ -2816,3 +2819,20 @@ class WorkerZoneChangeRequestAPITest(TestCase):
                 request_id=change.pk, reviewer=admin_user,
                 decision=WorkerZoneChangeRequest.Status.REJECTED,
             )
+
+
+    def test_rejected_zone_request_notifies_worker_with_admin_reason(self):
+        from .models import WorkerZoneChangeRequest
+        from .zone_changes import review_worker_zone_change
+        from apps.notifications.models import Notification
+        admin_user = User.objects.create_superuser(phone="+919876543296", password="adminpass")
+        change = WorkerZoneChangeRequest.objects.create(
+            worker=self.worker, zone=self.zone, action=WorkerZoneChangeRequest.Action.ADD,
+        )
+        review_worker_zone_change(
+            request_id=change.pk, reviewer=admin_user,
+            decision=WorkerZoneChangeRequest.Status.REJECTED, note="Coverage is full",
+        )
+        notice = Notification.objects.get(user=self.user, type=Notification.Type.WORKER_ZONE_REJECTED)
+        self.assertIn("Coverage is full", notice.body)
+        self.assertEqual(notice.data["worker_zone_request_id"], change.pk)
