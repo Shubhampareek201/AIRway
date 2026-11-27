@@ -723,6 +723,14 @@ class DispatchConfiguration(TimeStampedModel):
     batch_size = models.PositiveSmallIntegerField(default=5)
     max_batches = models.PositiveSmallIntegerField(default=3)
     offer_expiry_minutes = models.PositiveSmallIntegerField(default=30)
+    late_cancellation_window_hours = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Hours before the appointment when the late-cancellation fee applies. Zero disables the fee.",
+    )
+    late_cancellation_fee_percent = models.PositiveSmallIntegerField(
+        default=30,
+        help_text="Percentage retained from the captured advance payment for late customer cancellations.",
+    )
     priority_order = models.CharField(
         max_length=32,
         choices=PRIORITY_CHOICES,
