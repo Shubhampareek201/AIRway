@@ -162,6 +162,40 @@ class WorkerEarningLedgerTests(TestCase):
         retried = mark_worker_payout_settlement_paid(batch.pk, "UPI-WEEK-001", self.admin_user)
         self.assertEqual(retried.pk, batch.pk)
 
+
+    def test_weekly_settlement_is_visible_in_worker_api_and_admin_report(self):
+        earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        batch = create_weekly_worker_settlements(
+            [earning.pk], created_by=self.admin_user,
+        )[0]
+
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=self.worker_user)
+        response = worker_client.get("/api/v1/workers/earnings/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["settlement_batch_id"], batch.pk)
+        self.assertEqual(
+            response.data[0]["settlement_period_start"],
+            batch.period_start.isoformat(),
+        )
+
+        from django.contrib.auth.models import Permission
+        from django.test import Client
+        from django.urls import reverse
+
+        permission = Permission.objects.get(
+            content_type__app_label="workers",
+            codename="manage_worker_payouts",
+        )
+        self.admin_user.user_permissions.add(permission)
+        admin_client = Client()
+        admin_client.force_login(self.admin_user)
+        admin_response = admin_client.get(
+            reverse("admin:workers_workerpayoutsettlement_change", args=[batch.pk])
+        )
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertContains(admin_response, str(self.booking.pk))
+
     def test_worker_api_returns_calculated_ledger_not_customer_gross(self):
         earning = sync_worker_earning(self.booking.pk, self.payment.pk)
         client = APIClient()
