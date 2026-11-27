@@ -1891,7 +1891,9 @@ class CustomerOrderDetailView(APIView):
 
         from apps.payments.models import PaymentRefund
         from apps.ratings.models import BookingRating
+        from apps.bookings.models import DispatchConfiguration
 
+        cancellation_policy = DispatchConfiguration.objects.filter(pk=1).first()
         order = get_object_or_404(
             Order.objects.prefetch_related(
                 "items__booking__assignment__worker__user",
@@ -1996,6 +1998,18 @@ class CustomerOrderDetailView(APIView):
                 "booking_status": booking.status,
                 "booking_mode": booking.booking_mode,
                 "can_cancel": booking.can_cancel,
+                "cancellation_policy": {
+                    "late_window_hours": cancellation_policy.late_cancellation_window_hours if cancellation_policy else 0,
+                    "late_fee_percent": cancellation_policy.late_cancellation_fee_percent if cancellation_policy else 30,
+                    "late_fee_applies": bool(
+                        cancellation_policy
+                        and cancellation_policy.late_cancellation_window_hours > 0
+                        and booking.scheduled_at > timezone.now()
+                        and booking.scheduled_at <= timezone.now() + timedelta(hours=cancellation_policy.late_cancellation_window_hours)
+                        and booking.can_cancel
+                    ),
+                    "fee_basis": "captured_advance_only",
+                },
                 "can_reschedule": (
                     shared_reschedule_eligible
                     and booking.status in (Booking.Status.PENDING, Booking.Status.CONFIRMED)
