@@ -512,6 +512,62 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertIsNone(sync_worker_earning(self.booking.pk, self.payment.pk))
         self.assertFalse(WorkerEarning.objects.filter(booking=self.booking).exists())
 
+    def test_worker_cash_collection_requires_completion_otp_and_records_cod_balance(self):
+        from apps.bookings.models import BookingCompletionOTP
+
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            subtotal=Decimal("100.00"),
+            total_amount=Decimal("100.00"),
+            metadata={
+                "payment_allocation_v1": {
+                    "balance": [{"order_item_id": 0, "booking_id": self.booking.pk, "amount": "70.00"}],
+                    "advance": [{"order_item_id": 0, "booking_id": self.booking.pk, "amount": "30.00"}],
+                    "balance_total": "70.00",
+                }
+            },
+        )
+        item = OrderItem.objects.create(
+            order=order, booking=self.booking, quantity=1,
+            line_subtotal=Decimal("100.00"), line_total=Decimal("100.00"),
+        )
+        order.metadata["payment_allocation_v1"]["balance"][0]["order_item_id"] = item.pk
+        order.metadata["payment_allocation_v1"]["advance"][0]["order_item_id"] = item.pk
+        order.save(update_fields=["metadata", "updated_at"])
+        Payment.objects.create(
+            order=order, customer=self.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("30.00"),
+            status=Payment.Status.PAID, paid_at=timezone.now(),
+        )
+        BookingCompletionOTP.objects.create(
+            booking=self.booking, code_hash="unused",
+            expires_at=timezone.now() + timedelta(minutes=5),
+            last_sent_at=timezone.now(), verified_at=timezone.now(),
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=self.worker_user)
+        response = client.post(
+            f"/api/v1/workers/jobs/{self.booking.assignment.pk}/cash-received/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        cash_payment = Payment.objects.get(order=order, stage=Payment.Stage.BALANCE)
+        self.assertEqual(cash_payment.method, Payment.Method.COD)
+        self.assertEqual(cash_payment.status, Payment.Status.PAID)
+        self.assertEqual(cash_payment.amount, Decimal("70.00"))
+        self.assertEqual(
+            cash_payment.raw_response["cash_collection"]["confirmed_by_worker_id"],
+            self.worker.pk,
+        )
+        self.assertEqual(response.data["payment_status"], Payment.Status.PAID)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+
     def test_worker_earnings_api_does_not_count_unrelated_wallet_credits(self):
         wallet, _ = Wallet.objects.get_or_create(user=self.worker_user)
         WalletTransaction.objects.create(

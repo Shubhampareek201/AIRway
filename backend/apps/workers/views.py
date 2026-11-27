@@ -1547,6 +1547,148 @@ class WorkerJobCompleteView(APIView):
         return BookingViewSet().complete_job(request, pk=booking.pk)
 
 
+class WorkerCashReceivedView(APIView):
+    """Record cash balance only after every service in the appointment is OTP-verified complete."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if assignment.worker_id != profile.pk:
+            return Response({"detail": "Only the assigned worker can confirm cash collection."}, status=status.HTTP_403_FORBIDDEN)
+
+        from apps.bookings.models import BookingCompletionOTP, BookingExtraWork
+        from apps.payments.models import Payment
+        from apps.payments.verify_view import _process_verified_payment
+
+        order_item = OrderItem.objects.filter(booking=booking).select_related("order").first()
+        if order_item is None:
+            return Response({"detail": "Cash balance collection is available only for AIRway orders."}, status=status.HTTP_409_CONFLICT)
+
+        with transaction.atomic():
+            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+            group = booking.appointment_group
+            items_query = order.items.select_related("booking")
+            if group is not None:
+                items_query = items_query.filter(booking__appointment_group=group)
+            active_items = list(items_query.exclude(booking__status=Booking.Status.CANCELLED))
+            if not active_items or any(row.booking.status != Booking.Status.COMPLETED for row in active_items):
+                return Response({"detail": "Every active service in this appointment must be completed first."}, status=status.HTTP_409_CONFLICT)
+
+            booking_ids = [row.booking_id for row in active_items]
+            verified_ids = set(
+                BookingCompletionOTP.objects.filter(
+                    booking_id__in=booking_ids,
+                    verified_at__isnull=False,
+                ).values_list("booking_id", flat=True)
+            )
+            if verified_ids != set(booking_ids):
+                return Response({"detail": "Customer completion OTP verification is required for every service before cash can be recorded."}, status=status.HTTP_409_CONFLICT)
+
+            if not Payment.objects.filter(
+                order=order,
+                stage=Payment.Stage.ADVANCE,
+                appointment_group__isnull=True,
+                status=Payment.Status.PAID,
+            ).exists():
+                return Response({"detail": "The order advance must be paid before collecting its balance."}, status=status.HTTP_409_CONFLICT)
+
+            payment = Payment.objects.select_for_update().filter(
+                order=order,
+                stage=Payment.Stage.BALANCE,
+                appointment_group=group,
+            ).first()
+            if payment and payment.status == Payment.Status.PAID:
+                if payment.method != Payment.Method.COD:
+                    return Response({"detail": "This appointment balance was already paid online."}, status=status.HTTP_409_CONFLICT)
+                return Response({
+                    "detail": "Cash balance was already recorded.",
+                    "payment_id": payment.pk,
+                    "amount": str(payment.amount + payment.wallet_amount),
+                    "payment_status": payment.status,
+                }, status=status.HTTP_200_OK)
+            if payment and (payment.method != Payment.Method.COD or payment.razorpay_order_id):
+                return Response({"detail": "An online balance payment is already in progress. Complete or cancel it before recording cash."}, status=status.HTTP_409_CONFLICT)
+
+            allocation = (order.metadata or {}).get("payment_allocation_v1", {})
+            balance_rows = allocation.get("balance", [])
+            active_item_ids = {row.pk for row in active_items}
+            amount_due = sum(
+                (
+                    Decimal(str(row.get("amount", "0")))
+                    for row in balance_rows
+                    if row.get("order_item_id") in active_item_ids
+                ),
+                Decimal("0.00"),
+            )
+            extra_work_due = BookingExtraWork.objects.filter(
+                booking__order_item__order=order,
+                status=BookingExtraWork.Status.APPROVED,
+                payment_choice=BookingExtraWork.PaymentChoice.ADD_TO_BALANCE,
+                payment_status="pending",
+            )
+            if group is not None:
+                extra_work_due = extra_work_due.filter(appointment_group=group)
+            else:
+                extra_work_due = extra_work_due.filter(appointment_group__isnull=True)
+            amount_due += sum(extra_work_due.values_list("total_amount", flat=True), Decimal("0.00"))
+            if amount_due <= 0:
+                return Response({"detail": "No outstanding cash balance was found for this appointment."}, status=status.HTTP_409_CONFLICT)
+
+            if payment is None:
+                payment = Payment.objects.create(
+                    order=order,
+                    appointment_group=group,
+                    customer=order.customer,
+                    stage=Payment.Stage.BALANCE,
+                    amount=amount_due,
+                    method=Payment.Method.COD,
+                    status=Payment.Status.PENDING,
+                    raw_response={
+                        "cash_collection": {
+                            "confirmed_by_worker_id": profile.pk,
+                            "confirmed_at": timezone.now().isoformat(),
+                            "completion_otp_booking_ids": booking_ids,
+                        }
+                    },
+                )
+            else:
+                payment.amount = amount_due
+                payment.status = Payment.Status.PENDING
+                payment.failed_at = None
+                payment.raw_response = {
+                    **(payment.raw_response or {}),
+                    "cash_collection": {
+                        "confirmed_by_worker_id": profile.pk,
+                        "confirmed_at": timezone.now().isoformat(),
+                        "completion_otp_booking_ids": booking_ids,
+                    },
+                }
+                payment.save(update_fields=["amount", "status", "failed_at", "raw_response", "updated_at"])
+
+            result = _process_verified_payment(
+                payment, "", "", order.customer, "worker_cash_collection"
+            )
+            if result.status_code >= 400:
+                return result
+            payment.refresh_from_db()
+            return Response({
+                "detail": "Cash balance received and recorded.",
+                "payment_id": payment.pk,
+                "payment_stage": payment.stage,
+                "payment_method": payment.method,
+                "payment_status": payment.status,
+                "amount": str(payment.amount + payment.wallet_amount),
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+            }, status=status.HTTP_200_OK)
+
+
 class WorkerEarningsView(APIView):
     permission_classes = [IsAuthenticated]
 
