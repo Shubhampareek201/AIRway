@@ -545,6 +545,8 @@ class WorkerEarningAdmin(ModelAdmin):
             raise ValidationError("A recorded payout is immutable.")
 
         if previous.status == WorkerEarning.Status.AVAILABLE and obj.status == WorkerEarning.Status.PAID:
+            raise ValidationError("Create and pay a weekly settlement batch instead of paying a job earning individually.")
+        if previous.status == WorkerEarning.Status.AVAILABLE and obj.status == WorkerEarning.Status.PAID:
             if obj.adjustment_amount != previous.adjustment_amount or obj.adjustment_note != previous.adjustment_note:
                 raise ValidationError("Adjustments cannot be changed after earnings become available.")
             reference = str(obj.payout_reference or "").strip()

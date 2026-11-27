@@ -219,9 +219,8 @@ def create_weekly_worker_settlements(earning_ids, created_by=None):
     if not ids:
         return []
 
-    earnings = list(
-        WorkerEarning.objects.select_for_update()
-        .filter(
+    candidates = list(
+        WorkerEarning.objects.filter(
             pk__in=ids,
             status=WorkerEarning.Status.AVAILABLE,
             settlement_batch__isnull=True,
@@ -231,30 +230,44 @@ def create_weekly_worker_settlements(earning_ids, created_by=None):
         .order_by("worker_id", "created_at", "pk")
     )
     groups = {}
-    for earning in earnings:
+    for earning in candidates:
         settlement_date = timezone.localtime(
             earning.available_at or earning.updated_at or earning.created_at
         ).date()
         period_start = settlement_date - timedelta(days=settlement_date.weekday())
         period_end = period_start + timedelta(days=6)
-        groups.setdefault((earning.worker_id, period_start, period_end), []).append(earning)
+        key = (earning.worker_id, period_start, period_end)
+        groups.setdefault(key, []).append(earning.pk)
 
     batches = []
-    for (worker_id, period_start, period_end), rows in groups.items():
+    for (worker_id, period_start, period_end), candidate_ids in groups.items():
+        # Lock order is worker -> batch -> earnings in both creation and payment paths.
         WorkerProfile.objects.select_for_update().get(pk=worker_id)
         batch = WorkerPayoutSettlement.objects.select_for_update().filter(
             worker_id=worker_id,
             period_start=period_start,
             status=WorkerPayoutSettlement.Status.PENDING,
         ).first()
+        rows = list(
+            WorkerEarning.objects.select_for_update()
+            .filter(
+                pk__in=candidate_ids,
+                worker_id=worker_id,
+                status=WorkerEarning.Status.AVAILABLE,
+                settlement_batch__isnull=True,
+                net_amount__gt=0,
+            )
+            .order_by("pk")
+        )
+        if not rows:
+            continue
+
         if batch is None:
             batch = WorkerPayoutSettlement.objects.create(
                 worker_id=worker_id,
                 period_start=period_start,
                 period_end=period_end,
-                total_amount=sum(
-                    (row.net_amount for row in rows), Decimal("0.00")
-                ),
+                total_amount=sum((row.net_amount for row in rows), Decimal("0.00")),
                 created_by=created_by,
             )
         for earning in rows:
@@ -281,6 +294,10 @@ def mark_worker_payout_settlement_paid(settlement_id, payout_reference, paid_by)
     if not reference:
         raise ValidationError("A bank/UPI payout reference is required.")
 
+    worker_id = WorkerPayoutSettlement.objects.filter(
+        pk=settlement_id
+    ).values_list("worker_id", flat=True).get()
+    WorkerProfile.objects.select_for_update().get(pk=worker_id)
     batch = WorkerPayoutSettlement.objects.select_for_update().get(pk=settlement_id)
     if batch.status == WorkerPayoutSettlement.Status.PAID:
         if batch.payout_reference == reference:
