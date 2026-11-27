@@ -97,7 +97,10 @@ class CustomerCampaignModelTests(TestCase):
             campaign.full_clean()
 
     def test_reserved_and_spent_budget_cannot_exceed_budget(self):
-        campaign = self.make_campaign(
+        campaign = CustomerCampaign(
+            name="Over-budget campaign",
+            discount_value=Decimal("50.00"),
+            budget_amount=Decimal("1000.00"),
             budget_reserved=Decimal("700.00"),
             budget_spent=Decimal("400.00"),
         )
