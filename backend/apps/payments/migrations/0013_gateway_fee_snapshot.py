@@ -26,4 +26,25 @@ class Migration(migrations.Migration):
             name="gateway_fee_recorded_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
+        # django-simple-history writes a matching row for every Payment save.
+        # Keep the historical table schema in lockstep with the live model.
+        migrations.AddField(
+            model_name="historicalpayment",
+            name="gateway_fee_amount",
+            field=models.DecimalField(
+                blank=True, decimal_places=2, max_digits=12, null=True,
+            ),
+        ),
+        migrations.AddField(
+            model_name="historicalpayment",
+            name="gateway_fee_tax_amount",
+            field=models.DecimalField(
+                blank=True, decimal_places=2, max_digits=12, null=True,
+            ),
+        ),
+        migrations.AddField(
+            model_name="historicalpayment",
+            name="gateway_fee_recorded_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
     ]
