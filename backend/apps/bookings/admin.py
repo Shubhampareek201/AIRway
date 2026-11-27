@@ -244,12 +244,24 @@ def _issue_platform_refund(booking_id):
 
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
-    list_display = ("id", "customer", "service", "variant", "booking_mode", "status", "scheduled_at", "created_at")
+    list_display = ("id", "customer", "service", "variant", "booking_mode", "status", "actual_contribution_status", "actual_contribution", "scheduled_at", "created_at")
     list_filter = ("status", "booking_mode", "service")
     search_fields = ("customer__phone", "customer__name", "service__title")
     readonly_fields = ("created_at", "updated_at", "pricing_snapshot")
     inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline]
     actions = [mark_unfulfillable_and_refund]
+
+    @admin.display(description="Actual finance status")
+    def actual_contribution_status(self, obj):
+        from apps.catalog.actual_finance import calculate_booking_actual_finance
+        return calculate_booking_actual_finance(obj)['status'].title()
+
+    @admin.display(description="Partial contribution")
+    def actual_contribution(self, obj):
+        from apps.catalog.actual_finance import calculate_booking_actual_finance
+        report = calculate_booking_actual_finance(obj)
+        value = report['partial_contribution']
+        return '₹%s (partial)' % value if report['status'] != 'complete' else '₹%s' % value
 
 
 @admin.register(BookingWorkEvidence)
