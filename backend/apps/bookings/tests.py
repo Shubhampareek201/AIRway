@@ -848,6 +848,32 @@ class BookingCancelTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+    def test_customer_cannot_cancel_after_scheduled_start_time(self):
+        from apps.bookings.models import Booking
+
+        create_resp = self.client.post("/api/v1/bookings/", {
+            "service": self.service.id,
+            "variant": self.variant.id,
+            "booking_mode": "scheduled",
+            "scheduled_at": self.future_time.isoformat(),
+            "address_id": self.address.id,
+        }, format="json")
+        booking = Booking.objects.get(pk=create_resp.data["id"])
+        booking.status = Booking.Status.CONFIRMED
+        booking.scheduled_at = timezone.now() - timezone.timedelta(minutes=1)
+        booking.save(update_fields=["status", "scheduled_at"])
+
+        response = self.client.post(
+            f"/api/v1/bookings/{booking.pk}/cancel/",
+            {"reason": "Late cancellation attempt"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+
+
 class BookingTrackTest(BookingAPITestMixin, TestCase):
     """Test booking tracking endpoint."""
 
