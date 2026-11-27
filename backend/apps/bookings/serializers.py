@@ -956,30 +956,39 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             if locked_rows:
                 locked_total = sum((row.net_amount for row in locked_rows), Decimal("0.00"))
                 return str(locked_total) if locked_total > 0 else None
+        fixed_models = ("fixed_service_payout_v1", "admin_approved_quote_payout_v1")
         if obj.appointment_group_id:
-            group_rows = list(obj.appointment_group.bookings.exclude(
-                status=Booking.Status.CANCELLED
-            ).all())
-            snapshots = [row.worker_payout_snapshot or {} for row in group_rows]
-            fixed_models = ("fixed_service_payout_v1", "admin_approved_quote_payout_v1")
-            if snapshots and all(
-                row.get("pricing_model") in fixed_models
-                and row.get("total") not in (None, "")
-                for row in snapshots
-            ):
-                return str(sum(
-                    (Decimal(str(row["total"])) for row in snapshots),
-                    Decimal("0.00"),
-                ))
-            if any(row.get("pricing_model") in fixed_models for row in snapshots):
-                return None
+            payout_rows = [
+                row.worker_payout_snapshot or {}
+                for row in obj.appointment_group.bookings.exclude(
+                    status=Booking.Status.CANCELLED
+                ).all()
+            ]
+        elif obj.order_id:
+            # Parent-order offers cover all active service lines. Aggregate their
+            # immutable payout snapshots just like appointment-group offers.
+            payout_rows = [
+                item.booking.worker_payout_snapshot or {}
+                for item in obj.order.items.exclude(
+                    booking__status=Booking.Status.CANCELLED
+                ).select_related("booking")
+            ]
         else:
-            payout_snapshot = obj.booking.worker_payout_snapshot or {}
-            if payout_snapshot.get("pricing_model") in (
-                "fixed_service_payout_v1", "admin_approved_quote_payout_v1"
-            ):
-                value = payout_snapshot.get("total")
-                return str(Decimal(str(value))) if value not in (None, "") else None
+            payout_rows = [obj.booking.worker_payout_snapshot or {}]
+
+        if payout_rows and all(
+            row.get("pricing_model") in fixed_models
+            and row.get("total") not in (None, "")
+            for row in payout_rows
+        ):
+            return str(sum(
+                (Decimal(str(row["total"])) for row in payout_rows),
+                Decimal("0.00"),
+            ))
+        if any(row.get("pricing_model") in fixed_models for row in payout_rows):
+            # Never silently replace a partially configured fixed payout with
+            # the legacy commission calculation.
+            return None
 
         rate = obj.worker.commission_rate
         if rate is None:
@@ -995,7 +1004,8 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             )
         elif obj.order_id:
             gross = sum(
-                (Decimal(str(item.line_subtotal or "0.00")) for item in obj.order.items.all()),
+                (Decimal(str(item.line_subtotal or "0.00"))
+                 for item in obj.order.items.exclude(booking__status=Booking.Status.CANCELLED)),
                 Decimal("0.00"),
             )
         else:

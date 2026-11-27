@@ -1346,6 +1346,81 @@ class WorkerOfferModelTest(TestCase):
             status=Booking.Status.PENDING,
         )
 
+    def test_parent_order_offer_shows_sum_of_fixed_worker_payouts(self):
+        from apps.bookings.serializers import WorkerOfferSerializer
+
+        second_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=timezone.now() + timezone.timedelta(days=2),
+            status=Booking.Status.PENDING,
+            worker_payout_snapshot={
+                "pricing_model": "fixed_service_payout_v1",
+                "total": "125.00",
+            },
+        )
+        self.booking.worker_payout_snapshot = {
+            "pricing_model": "fixed_service_payout_v1",
+            "total": "175.00",
+        }
+        self.booking.save(update_fields=["worker_payout_snapshot", "updated_at"])
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.address,
+            subtotal=Decimal("1000.00"),
+            total_amount=Decimal("1000.00"),
+        )
+        OrderItem.objects.create(
+            order=order, booking=self.booking, quantity=1,
+            line_subtotal=Decimal("500.00"), line_total=Decimal("500.00"),
+        )
+        OrderItem.objects.create(
+            order=order, booking=second_booking, quantity=1,
+            line_subtotal=Decimal("500.00"), line_total=Decimal("500.00"),
+        )
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            order=order,
+            worker=self.worker,
+            expires_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+
+        self.assertEqual(WorkerOfferSerializer(offer).data["worker_payout"], "300.00")
+
+    def test_parent_order_offer_does_not_fallback_when_fixed_snapshot_is_incomplete(self):
+        from apps.bookings.serializers import WorkerOfferSerializer
+
+        self.booking.worker_payout_snapshot = {
+            "pricing_model": "fixed_service_payout_v1",
+            "total": "175.00",
+        }
+        self.booking.save(update_fields=["worker_payout_snapshot", "updated_at"])
+        second_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=timezone.now() + timezone.timedelta(days=2),
+            status=Booking.Status.PENDING,
+            worker_payout_snapshot={},
+        )
+        order = Order.objects.create(
+            customer=self.customer, address=self.address,
+            subtotal=Decimal("1000.00"), total_amount=Decimal("1000.00"),
+        )
+        OrderItem.objects.create(order=order, booking=self.booking, line_subtotal=500, line_total=500)
+        OrderItem.objects.create(order=order, booking=second_booking, line_subtotal=500, line_total=500)
+        offer = WorkerOffer.objects.create(
+            booking=self.booking, order=order, worker=self.worker,
+            expires_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+
+        self.assertIsNone(WorkerOfferSerializer(offer).data["worker_payout"])
+
     def test_offer_defaults_to_pending(self):
         offer = WorkerOffer.objects.create(
             booking=self.booking,
