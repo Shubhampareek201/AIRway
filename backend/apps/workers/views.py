@@ -39,6 +39,7 @@ from .models import (
     WorkerRewardTransaction,
     WorkerRewardWithdrawal,
     WorkerMonthlyMissionProgress,
+    WorkerReferralSettings,
 )
 from .serializers import (
     WorkerProfileSerializer,
@@ -1863,7 +1864,40 @@ class WorkerMissionWalletView(APIView):
         transaction_limit, withdrawal_limit = 50, 20
         tx_rows = list(wallet.transactions.order_by("-created_at", "-pk")[transaction_offset:transaction_offset + transaction_limit + 1])
         wd_rows = list(wallet.withdrawals.order_by("-created_at", "-pk")[withdrawal_offset:withdrawal_offset + withdrawal_limit + 1])
+        referral_settings = WorkerReferralSettings.objects.filter(pk=1, is_active=True).first()
+        referral_amount = referral_settings.reward_amount if referral_settings else Decimal("150.00")
+        referrals = Referral.objects.filter(
+            referrer=request.user,
+            referral_type=Referral.ReferralType.WORKER,
+        ).select_related("referred").order_by("-created_at")
+        referral_progress = []
+        for referral in referrals:
+            referred_profile = getattr(referral.referred, "worker_profile", None)
+            completed_eligible_jobs = 0
+            if referred_profile is not None:
+                completed_eligible_jobs = WorkerRewardTransaction.objects.filter(
+                    worker=referred_profile,
+                    type=WorkerRewardTransaction.Type.ELIGIBLE_JOB,
+                    reference_key__startswith=f"monthly-eligible-job:{referred_profile.pk}:",
+                ).count()
+            referral_progress.append({
+                "referral_id": referral.pk,
+                "worker_name": referral.referred.name or "Invited worker",
+                "worker_status": referred_profile.status if referred_profile else "not_applied",
+                "eligible_jobs_count": min(completed_eligible_jobs, 5),
+                "required_jobs": 5,
+                "reward_amount": str(referral_amount),
+                "rewarded": referral.worker_rewarded,
+                "rewarded_at": referral.worker_rewarded_at.isoformat() if referral.worker_rewarded_at else None,
+                "status": "rewarded" if referral.worker_rewarded else (
+                    "in_progress" if referred_profile and referred_profile.status == WorkerProfile.Status.APPROVED
+                    else "awaiting_approval"
+                ),
+            })
         return Response({
+            "referral_code": request.user.referral_code,
+            "worker_referral_reward_amount": str(referral_amount),
+            "worker_referrals": referral_progress,
             "eligible_jobs_count": wallet.eligible_jobs_count,
             "monthly_eligible_jobs_count": monthly_jobs,
             "mission_month": month_start.strftime("%Y-%m"),
