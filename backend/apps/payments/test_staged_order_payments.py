@@ -196,6 +196,7 @@ class StagedOrderPaymentServiceTests(TestCase):
 
         payment = Payment.objects.get(pk=create_response.data["payment_id"])
         self.assertEqual(payment.amount, Decimal("285.00"))
+        self.order.refresh_from_db()
         self.assertEqual(
             self.order.metadata["payment_allocation_v1"]["balance_total"],
             "665.00",
