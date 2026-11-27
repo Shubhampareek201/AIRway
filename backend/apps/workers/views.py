@@ -1556,9 +1556,24 @@ class WorkerEarningsView(APIView):
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
 
         from .models import WorkerEarning
-        earnings = WorkerEarning.objects.filter(worker=profile).select_related(
-            "booking__service", "booking__rework_source", "payment", "extra_work", "settlement_batch"
-        ).order_by("-created_at")[:100]
+        try:
+            offset = int(request.query_params.get("offset", "0"))
+            if offset < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "History offset must be a non-negative whole number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        limit = 50
+        earnings = list(
+            WorkerEarning.objects.filter(worker=profile).select_related(
+                "booking__service", "booking__rework_source", "payment", "extra_work", "settlement_batch"
+            ).order_by("-created_at", "-pk")[offset:offset + limit + 1]
+        )
+        has_more = len(earnings) > limit
+        earnings = earnings[:limit]
         results = []
         for earning in earnings:
             results.append({
@@ -1612,7 +1627,10 @@ class WorkerEarningsView(APIView):
                 "paid_at": earning.paid_at.isoformat() if earning.paid_at else None,
                 "created_at": earning.created_at.isoformat() if earning.created_at else "",
             })
-        return Response(results)
+        return Response({
+            "results": results,
+            "next_offset": offset + limit if has_more else None,
+        })
 
 
 class WorkerStreaksView(APIView):

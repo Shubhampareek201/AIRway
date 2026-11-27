@@ -330,15 +330,14 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  static Future<List<Map<String, dynamic>>> getEarnings() async {
-    final result = await _request('/api/v1/workers/earnings/');
-    if (result is! List) {
+  static Future<Map<String, dynamic>> getEarnings({int offset = 0}) async {
+    final result = await _request(
+      '/api/v1/workers/earnings/?offset=$offset',
+    );
+    if (result is! Map) {
       throw const FormatException('Unexpected earnings response');
     }
-    return result
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+    return Map<String, dynamic>.from(result);
   }
 
   static Future<Map<String, dynamic>> getMissionWallet({

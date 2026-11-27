@@ -204,11 +204,60 @@ class WorkerEarningLedgerTests(TestCase):
         response = client.get("/api/v1/workers/earnings/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["gross_amount"], "100.00")
-        self.assertEqual(response.data[0]["commission_amount"], "20.00")
-        self.assertEqual(response.data[0]["net_amount"], "80.00")
-        self.assertEqual(response.data[0]["status"], WorkerEarning.Status.AVAILABLE)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertIsNone(response.data["next_offset"])
+        self.assertEqual(response.data["results"][0]["gross_amount"], "100.00")
+        self.assertEqual(response.data["results"][0]["commission_amount"], "20.00")
+        self.assertEqual(response.data["results"][0]["net_amount"], "80.00")
+        self.assertEqual(response.data["results"][0]["status"], WorkerEarning.Status.AVAILABLE)
+
+    def test_worker_earning_history_paginates_with_stable_order_and_no_duplicates(self):
+        sync_worker_earning(self.booking.pk, self.payment.pk)
+        for index in range(51):
+            booking = Booking.objects.create(
+                customer=self.customer,
+                address=self.booking.address,
+                service=self.booking.service,
+                booking_mode=Booking.BookingMode.SCHEDULED,
+                scheduled_at=timezone.now() + timedelta(days=index + 2),
+                status=Booking.Status.COMPLETED,
+                pricing_snapshot={"total": "100.00"},
+                completed_at=timezone.now(),
+            )
+            BookingAssignment.objects.create(
+                booking=booking, worker=self.worker, completed_at=timezone.now(),
+            )
+            WorkerEarning.objects.create(
+                worker=self.worker, booking=booking,
+                gross_amount=Decimal("100.00"),
+                commission_rate=Decimal("20.00"),
+                commission_amount=Decimal("20.00"),
+                net_amount=Decimal("80.00"),
+                status=WorkerEarning.Status.AVAILABLE,
+            )
+
+        client = APIClient()
+        client.force_authenticate(user=self.worker_user)
+        first_page = client.get("/api/v1/workers/earnings/")
+        second_page = client.get("/api/v1/workers/earnings/?offset=50")
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.data["results"]), 50)
+        self.assertEqual(first_page.data["next_offset"], 50)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.data["results"]), 2)
+        self.assertIsNone(second_page.data["next_offset"])
+        first_ids = {row["id"] for row in first_page.data["results"]}
+        second_ids = {row["id"] for row in second_page.data["results"]}
+        self.assertFalse(first_ids & second_ids)
+        self.assertEqual(len(first_ids | second_ids), 52)
+        self.assertTrue(all(row["earning_reference"] for row in first_page.data["results"] + second_page.data["results"]))
+
+    def test_worker_earning_history_rejects_negative_offset(self):
+        client = APIClient()
+        client.force_authenticate(user=self.worker_user)
+        response = client.get("/api/v1/workers/earnings/?offset=-1")
+        self.assertEqual(response.status_code, 400)
 
     def test_commission_snapshot_is_not_rewritten_after_rate_change(self):
         earning = sync_worker_earning(self.booking.pk, self.payment.pk)

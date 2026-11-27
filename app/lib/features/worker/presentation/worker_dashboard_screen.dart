@@ -42,6 +42,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   List<Map<String, dynamic>> _assignedJobs = [];
   List<WorkerOffer> _offers = [];
   List<Map<String, dynamic>> _earnings = [];
+  int? _earningsNextOffset;
+  bool _earningsHistoryLoadingMore = false;
   Map<String, dynamic>? _missionWallet;
   bool _loading = true;
   bool _availabilitySaving = false;
@@ -332,7 +334,14 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           _assignedJobs = results[1] as List<Map<String, dynamic>>;
         }
         if (results[2] != null) {
-          _earnings = results[2] as List<Map<String, dynamic>>;
+          final earningsPage = results[2] as Map<String, dynamic>;
+          _earnings = (earningsPage['results'] as List? ?? const [])
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+          _earningsNextOffset = int.tryParse(
+            '${earningsPage['next_offset'] ?? ''}',
+          );
         }
         if (results[3] != null) {
           _missionWallet = results[3] as Map<String, dynamic>;
@@ -728,6 +737,31 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     ]);
   }
 
+  Future<void> _loadMoreEarnings() async {
+    if (_earningsHistoryLoadingMore || _earningsNextOffset == null) return;
+    setState(() => _earningsHistoryLoadingMore = true);
+    try {
+      final page = await WorkerApi.getEarnings(offset: _earningsNextOffset!);
+      if (!mounted) return;
+      final nextRows = (page['results'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      setState(() {
+        _earnings = [..._earnings, ...nextRows];
+        _earningsNextOffset = int.tryParse('${page['next_offset'] ?? ''}');
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load older earning history: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _earningsHistoryLoadingMore = false);
+    }
+  }
+
   Future<void> _loadMoreMissionHistory() async {
     if (_missionHistoryLoadingMore || _missionWallet == null) return;
     final current = _missionWallet!;
@@ -1072,6 +1106,22 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         )
       else
         ..._earnings.map(_buildEarningRow),
+      if (_earningsNextOffset != null) ...[
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: _earningsHistoryLoadingMore ? null : _loadMoreEarnings,
+            child: _earningsHistoryLoadingMore
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(AirwayText.tr('Load older earnings', 'पुरानी कमाई देखें')),
+          ),
+        ),
+      ],
       const SizedBox(height: 8),
       Text(
         'Commission and payout status are controlled by AIRway finance. Amounts on hold are not available for withdrawal.',
