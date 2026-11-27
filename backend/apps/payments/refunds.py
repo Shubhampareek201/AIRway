@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from datetime import timedelta
 
 import razorpay
 from django.conf import settings
@@ -277,7 +278,7 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
         reason == PaymentRefund.Reason.CUSTOMER_CANCELLATION
         and late_window_hours > 0
         and booking.scheduled_at > timezone.now()
-        and booking.scheduled_at <= timezone.now() + timezone.timedelta(hours=late_window_hours)
+        and booking.scheduled_at <= timezone.now() + timedelta(hours=late_window_hours)
     )
 
     created_ids = []
