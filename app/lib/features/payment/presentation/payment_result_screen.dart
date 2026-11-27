@@ -332,6 +332,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
             ),
             const SizedBox(height: 12),
             _detailRow('Status', PaymentStatus.display(result.status)),
+            _detailRow('Amount received', '₹${result.amount.toStringAsFixed(2)}'),
             _detailRow('Order ID', result.razorpayOrderId ?? 'N/A'),
             _detailRow('Payment ID', result.razorpayPaymentId ?? 'N/A'),
             if (result.paidAt != null)

@@ -35,6 +35,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
   Booking? _booking;
   bool _loading = true;
   String? _error;
+  Map<String, dynamic>? _paymentOrder;
   late Razorpay _razorpay;
 
   @override
@@ -102,16 +103,32 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
   }
 
   Future<void> _payNow() async {
-    final order = await BookingApi.createRazorpayOrder(widget.bookingId);
-    if (!mounted) return;
-    final options = {
-      'key': _Payment.keyId,
-      'amount': (double.parse(_booking!.totalAmount.toString()) * 100).toInt(),
-      'name': 'AIRway Booking',
-      'order_id': order['order_id'],
-      'prefill': {'contact': '9876543210'}, // Should be customer phone
-    };
     try {
+      final order = await BookingApi.createRazorpayOrder(widget.bookingId);
+      if (!mounted) return;
+      setState(() => _paymentOrder = order);
+      if (order['already_paid'] == true || order['fully_paid_by_wallet'] == true) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => PaymentResultScreen(
+            bookingId: widget.bookingId,
+            verificationResult: order,
+          ),
+        ));
+        return;
+      }
+      final keyId = order['key_id']?.toString() ?? '';
+      final orderId = order['order_id']?.toString() ?? '';
+      final amountPaise = int.tryParse(order['amount']?.toString() ?? '') ?? 0;
+      if (keyId.isEmpty || orderId.isEmpty || amountPaise <= 0) {
+        throw Exception('The server did not return a valid advance payment order.');
+      }
+      final options = {
+        'key': keyId,
+        'amount': amountPaise,
+        'name': 'AIRway Booking',
+        'order_id': orderId,
+        'prefill': {'contact': '9876543210'}, // Should be customer phone
+      };
       _razorpay.open(options);
     } catch (e) {
       if (!mounted) return;
@@ -279,16 +296,40 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
     final discount = amount('discount');
     final tax = amount('tax');
     final taxRate = snapshot['tax_rate']?.toString() ?? '18';
+    final total = booking.totalAmount;
+    final isInspection = booking.bookingMode == 'inspection';
+    final previewAdvance = double.tryParse(
+          snapshot['advance_amount']?.toString() ?? '',
+        ) ?? (isInspection ? total : (total * 30).roundToDouble() / 100);
+    final serverStageAmount = double.tryParse(
+      _paymentOrder?['stage_amount']?.toString() ?? '',
+    );
+    final advance = serverStageAmount ?? previewAdvance;
+    final balance = (total - advance).clamp(0.0, total).toDouble();
 
     return _card(
-      'Pricing',
+      'Pricing & Payment',
       [
-        _detailRow('Subtotal', '₹${subtotal.toStringAsFixed(0)}'),
+        _detailRow('Service subtotal', '₹${subtotal.toStringAsFixed(2)}'),
         if (discount > 0)
-          _detailRow('Discount', '-₹${discount.toStringAsFixed(0)}'),
+          _detailRow('Campaign savings', '-₹${discount.toStringAsFixed(2)}'),
         if (tax > 0)
-          _detailRow('Tax (${taxRate}%)', '+₹${tax.toStringAsFixed(0)}'),
-        _detailRow('Total', '₹${booking.totalAmount.toStringAsFixed(0)}', isTotal: true),
+          _detailRow('Taxes (${taxRate}%)', '+₹${tax.toStringAsFixed(2)}'),
+        _detailRow('Total after offer', '₹${total.toStringAsFixed(2)}', isTotal: true),
+        const Divider(height: 20),
+        _detailRow(
+          serverStageAmount == null ? 'Advance due (30% estimate)' : 'Advance due now',
+          '₹${advance.toStringAsFixed(2)}',
+        ),
+        _detailRow('Remaining balance (70%)', '₹${balance.toStringAsFixed(2)}'),
+        if (serverStageAmount == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Final advance is confirmed by AIRway when payment is created.',
+              style: TextStyle(color: _Ui.sub, fontSize: 12),
+            ),
+          ),
       ],
     );
   }
