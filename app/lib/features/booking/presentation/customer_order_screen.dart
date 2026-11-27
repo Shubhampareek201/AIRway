@@ -877,6 +877,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         : <String, dynamic>{};
     final lateFeeApplies = cancellationPolicy['late_fee_applies'] == true;
     final lateFeePercent = cancellationPolicy['late_fee_percent']?.toString() ?? '30';
+    final reasonController = TextEditingController();
     final cancellationMessage = lateFeeApplies
         ? 'This is within AIRway’s late-cancellation window. $lateFeePercent% of the already-paid advance will be retained as the cancellation fee; the remaining eligible amount will be refunded. Refund status will appear in this order.'
         : 'Do you want to cancel $service? Any eligible captured payment will be sent for refund. Refund status will appear in this order.';
@@ -884,7 +885,24 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AirwayText.tr('Cancel this service?', 'यह सेवा रद्द करें?')),
-        content: Text(cancellationMessage),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(cancellationMessage),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLength: 300,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Cancellation reason (optional)',
+                hintText: 'Tell us why you are cancelling',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -898,9 +916,14 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
         ],
       ),
     );
+    final cancellationReason = reasonController.text.trim();
+    reasonController.dispose();
     if (confirmed != true || !mounted) return;
     try {
-      await BookingApi.cancelBooking(bookingId, reason: 'Cancelled by customer');
+      await BookingApi.cancelBooking(
+        bookingId,
+        reason: cancellationReason.isEmpty ? 'Cancelled by customer' : cancellationReason,
+      );
       if (!mounted) return;
       await loadOrder(showLoader: false);
       if (!mounted) return;
