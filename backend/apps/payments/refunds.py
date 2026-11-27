@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from apps.bookings.models import Booking, BookingDispute, OrderItem
+from apps.bookings.models import Booking, BookingDispute, DispatchConfiguration, OrderItem
 from apps.notifications.models import Notification
 from apps.wallet.models import Wallet, WalletTransaction
 from .models import Payment, PaymentRefund
@@ -270,6 +270,16 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
     ) if hasattr(booking, "order_item") else Payment.objects.filter(
         booking=booking, status=Payment.Status.PAID
     )
+    policy = DispatchConfiguration.objects.filter(pk=1).first()
+    late_window_hours = policy.late_cancellation_window_hours if policy else 0
+    late_fee_percent = policy.late_cancellation_fee_percent if policy else 30
+    is_late_customer_cancellation = bool(
+        reason == PaymentRefund.Reason.CUSTOMER_CANCELLATION
+        and late_window_hours > 0
+        and booking.scheduled_at > timezone.now()
+        and booking.scheduled_at <= timezone.now() + timezone.timedelta(hours=late_window_hours)
+    )
+
     created_ids = []
     for payment in payments.distinct():
         with transaction.atomic():
@@ -282,8 +292,25 @@ def request_booking_refunds(booking, reason=PaymentRefund.Reason.CUSTOMER_CANCEL
             gateway_part = gateway_captured - refunded_gateway
             if wallet_part < 0 or gateway_part < 0:
                 raise ValueError("Existing refunds exceed the captured service allocation. Manual reconciliation is required.")
+            captured_remaining = wallet_part + gateway_part
+            # The late fee applies only to the already-captured 30% advance.
+            # Balance, extra-work and platform-unfulfilled refunds remain untouched.
+            if (
+                is_late_customer_cancellation
+                and locked.stage == Payment.Stage.ADVANCE
+                and captured_remaining > 0
+            ):
+                refund_ratio = Decimal("100") - Decimal(str(late_fee_percent))
+                refund_ratio = refund_ratio / Decimal("100")
+                amount = (captured_remaining * refund_ratio).quantize(CENT, rounding=ROUND_HALF_UP)
+                wallet_part = (wallet_part * refund_ratio).quantize(CENT, rounding=ROUND_HALF_UP)
+                gateway_part = amount - wallet_part
+                if gateway_part < 0 or gateway_part > (gateway_captured - refunded_gateway):
+                    gateway_part = min(gateway_captured - refunded_gateway, max(Decimal("0.00"), gateway_part))
+                    wallet_part = amount - gateway_part
+            else:
+                amount = captured_remaining
             key = f"booking-cancel:{locked.pk}:{booking.pk}"
-            amount = wallet_part + gateway_part
             if amount <= 0:
                 existing = PaymentRefund.objects.filter(idempotency_key=key).first()
                 if existing and existing.status == PaymentRefund.Status.PENDING:
