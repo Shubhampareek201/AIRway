@@ -850,6 +850,46 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+    def test_worker_rejection_cancels_booking_and_schedules_customer_refund(self):
+        from unittest.mock import patch
+        from apps.notifications.models import Notification
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+            pricing_snapshot={"total": "500.00"},
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+        )
+        worker_client = APIClient()
+        worker_client.force_authenticate(user=self.worker_user)
+
+        with patch("apps.workers.views._refund_worker_rejected_booking") as refund:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = worker_client.post(
+                    f"/api/v1/workers/jobs/{booking.pk}/reject/",
+                    {"reason": "Unable to attend"},
+                    format="json",
+                )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertFalse(BookingAssignment.objects.filter(pk=assignment.pk).exists())
+        refund.assert_called_once_with(booking.pk)
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer_user,
+            data__booking_id=booking.pk,
+            data__purpose="worker_rejection_refund",
+        ).exists())
+
+
 class JobOfferConcurrencyTest(TestCase):
     """Test concurrency scenarios for job offer acceptance."""
 
