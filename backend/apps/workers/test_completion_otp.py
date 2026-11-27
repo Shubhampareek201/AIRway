@@ -300,6 +300,7 @@ class WorkerCompletionOTPTests(TestCase):
             "/api/v1/workers/mission-wallet/",
             {"amount": "200.00"},
             format="json",
+            HTTP_IDEMPOTENCY_KEY="completion-otp-worker-withdrawal-1",
         )
         self.assertEqual(response.status_code, 201, response.data)
         wallet.refresh_from_db()
