@@ -1,0 +1,166 @@
+from datetime import timedelta
+from decimal import Decimal
+
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.accounts.models import Address, User
+from apps.bookings.models import (
+    CampaignRedemption,
+    CustomerCampaign,
+    CustomerCart,
+    CartItem,
+    Order,
+)
+from apps.catalog.models import Category, CityService, Service, ServiceVariant
+from apps.core.models import City, Zone
+
+
+class CustomerCampaignCheckoutTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = User.objects.create_user(
+            phone="+919876543922",
+            password="password123",
+            name="Campaign Checkout",
+        )
+        self.city = City.objects.create(
+            name="Campaign Checkout City",
+            state="Rajasthan",
+        )
+        self.zone = Zone.objects.create(
+            name="Campaign Checkout Zone",
+            city=self.city,
+            is_active=True,
+        )
+        self.address = Address.objects.create(
+            user=self.customer,
+            house_details="House 1",
+            landmark="Near market",
+            full_address="Campaign Checkout Address",
+            zone=self.zone,
+        )
+        self.category = Category.objects.create(
+            title="Campaign Checkout Category",
+            slug="campaign-checkout-category",
+        )
+        self.service = Service.objects.create(
+            category=self.category,
+            title="Campaign Checkout Service",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+            tax_rate=Decimal("18.00"),
+            estimated_gateway_fee_percent=Decimal("2.00"),
+            discount_reserve_percent=Decimal("0.00"),
+            rewards_reserve_percent=Decimal("0.00"),
+            refund_reserve_percent=Decimal("0.00"),
+            rework_reserve_percent=Decimal("0.00"),
+            other_variable_cost_per_booking=Decimal("0.00"),
+            minimum_contribution_floor=Decimal("10.00"),
+            target_contribution_margin_percent=Decimal("0.00"),
+            is_active=True,
+        )
+        CityService.objects.create(
+            city=self.city,
+            service=self.service,
+            is_active=True,
+        )
+        self.variant = ServiceVariant.objects.create(
+            service=self.service,
+            title="Standard",
+            price=Decimal("1000.00"),
+            mrp=Decimal("1200.00"),
+            duration_minutes=60,
+            worker_payout=Decimal("600.00"),
+        )
+        self.cart = CustomerCart.objects.create(
+            customer=self.customer,
+            address=self.address,
+        )
+        self.cart_item = CartItem.objects.create(
+            cart=self.cart,
+            service=self.service,
+            variant=self.variant,
+            quantity=1,
+            pricing_snapshot={"line_total": "1180.00"},
+        )
+        self.client.force_authenticate(user=self.customer)
+
+    def create_campaign(self, **overrides):
+        values = {
+            "name": "First booking ₹50 off",
+            "is_active": True,
+            "booking_sequence": CustomerCampaign.BookingSequence.FIRST,
+            "discount_type": CustomerCampaign.DiscountType.FIXED,
+            "discount_value": Decimal("50.00"),
+            "minimum_subtotal": Decimal("0.00"),
+            "budget_amount": Decimal("1000.00"),
+            "max_redemptions_per_customer": 1,
+        }
+        values.update(overrides)
+        return CustomerCampaign.objects.create(**values)
+
+    def checkout(self):
+        return self.client.post(
+            "/api/v1/bookings/cart/checkout/",
+            {
+                "items": [{
+                    "cart_item_id": self.cart_item.pk,
+                    "scheduled_at": (timezone.now() + timedelta(days=2)).isoformat(),
+                }],
+            },
+            format="json",
+        )
+
+    def test_campaign_is_reserved_and_discount_applies_before_tax_and_advance(self):
+        campaign = self.create_campaign()
+
+        response = self.checkout()
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        item = order.items.select_related("booking").get()
+        redemption = CampaignRedemption.objects.get(campaign=campaign, order=order)
+        campaign.refresh_from_db()
+
+        self.assertEqual(order.subtotal, Decimal("1000.00"))
+        self.assertEqual(order.discount_amount, Decimal("50.00"))
+        self.assertEqual(order.tax_amount, Decimal("171.00"))
+        self.assertEqual(order.total_amount, Decimal("1121.00"))
+        self.assertEqual(item.line_subtotal, Decimal("1000.00"))
+        self.assertEqual(item.tax_amount, Decimal("171.00"))
+        self.assertEqual(item.line_total, Decimal("1121.00"))
+        self.assertEqual(
+            Decimal(item.pricing_snapshot["campaign_discount_amount"]),
+            Decimal("50.00"),
+        )
+        self.assertEqual(
+            Decimal(item.pricing_snapshot["discounted_subtotal"]),
+            Decimal("950.00"),
+        )
+        self.assertEqual(
+            Decimal(item.booking.worker_payout_snapshot["total"]),
+            Decimal("600.00"),
+        )
+        self.assertEqual(campaign.budget_reserved, Decimal("50.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.RESERVED)
+        self.assertEqual(
+            Decimal(order.metadata["payment_allocation_v1"]["advance_total"]),
+            Decimal("336.30"),
+        )
+        self.assertEqual(
+            Decimal(response.data["discount_amount"]),
+            Decimal("50.00"),
+        )
+
+    def test_insufficient_campaign_budget_caps_checkout_discount(self):
+        campaign = self.create_campaign(budget_amount=Decimal("20.00"))
+
+        response = self.checkout()
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = Order.objects.get(pk=response.data["order_id"])
+        campaign.refresh_from_db()
+        self.assertEqual(order.discount_amount, Decimal("20.00"))
+        self.assertEqual(campaign.budget_reserved, Decimal("20.00"))
