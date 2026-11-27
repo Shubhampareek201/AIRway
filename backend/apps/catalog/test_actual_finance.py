@@ -180,3 +180,89 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["estimated_average"], Decimal("135.00"))
         self.assertEqual(report["variance"], Decimal("30.00"))
         self.assertEqual(report["profitability_status"], "Insufficient data")
+
+from datetime import timedelta
+from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
+
+
+class ServiceProfitabilityAdminReportIntegrationTests(TestCase):
+    def setUp(self):
+        from apps.accounts.models import Address, User
+        from apps.bookings.models import Booking
+        from apps.catalog.models import Category, Service
+
+        self.customer = User.objects.create_user(
+            phone="+919876543210", password="test-password"
+        )
+        self.admin_user = User.objects.create_superuser(
+            phone="+919876543211", password="test-password"
+        )
+        self.address = Address.objects.create(
+            user=self.customer,
+            house_details="Test House",
+            landmark="Test Landmark",
+            full_address="Test Address, Rawatbhata",
+        )
+        self.category = Category.objects.create(
+            title="Cleaning", slug="profitability-cleaning"
+        )
+        self.service = Service.objects.create(
+            category=self.category,
+            title="Home Cleaning",
+            booking_mode=Service.BookingMode.SCHEDULED,
+            pricing_type=Service.PricingType.FIXED,
+        )
+        self.today = timezone.localdate()
+        self.booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now(),
+            completed_at=timezone.now(),
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"subtotal": "500.00"},
+            worker_payout_snapshot={"total": "250.00"},
+        )
+        Booking.objects.create(
+            customer=self.customer,
+            address=self.address,
+            service=self.service,
+            scheduled_at=timezone.now() - timedelta(days=10),
+            completed_at=timezone.now() - timedelta(days=10),
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"subtotal": "300.00"},
+            worker_payout_snapshot={"total": "150.00"},
+        )
+
+    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
+    @patch("apps.catalog.finance.calculate_estimated_contribution")
+    def test_admin_report_route_applies_completion_date_filters(
+        self, estimate_mock, actual_mock
+    ):
+        estimate_mock.return_value = Decimal("150.00")
+        actual_mock.return_value = {
+            "status": "complete",
+            "partial_contribution": Decimal("180.00"),
+        }
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(
+            reverse("admin:catalog_service_profitability_report"),
+            {
+                "start_date": self.today.isoformat(),
+                "end_date": self.today.isoformat(),
+                "category": str(self.category.pk),
+                "service": str(self.service.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["service_rows"]), 1)
+        summary = response.context["service_rows"][0]["summary"]
+        self.assertEqual(summary["booking_count"], 1)
+        self.assertEqual(summary["actual_contribution_total"], Decimal("180.00"))
+        self.assertEqual(summary["estimated_contribution_total"], Decimal("150.00"))
+        self.assertContains(response, "Service profitability report")
+        self.assertContains(response, "Home Cleaning")
