@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
 from apps.catalog.models import Category, Service
-from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork, Order, OrderItem
+from apps.bookings.models import AppointmentGroup, Booking, BookingAssignment, BookingExtraWork, Order, OrderItem
 from apps.payments.models import Payment, PaymentRefund
 from apps.workers.earnings import (
     calculate_worker_earning_net,
@@ -567,6 +567,68 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(response.data["payment_status"], Payment.Status.PAID)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.PAID)
+
+    def test_group_cash_collection_is_blocked_when_services_have_different_workers(self):
+        second_worker_user = User.objects.create_user(phone="+919800000104", name="Second worker")
+        second_worker = WorkerProfile.objects.create(
+            user=second_worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
+        )
+        order = Order.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            status=Order.Status.AWAITING_ASSIGNMENT,
+            subtotal=Decimal("200.00"),
+            total_amount=Decimal("200.00"),
+            metadata={"payment_allocation_v1": {"balance": [], "advance": []}},
+        )
+        group = AppointmentGroup.objects.create(
+            order=order, group_number=1, scheduled_at=self.booking.scheduled_at,
+        )
+        self.booking.appointment_group = group
+        self.booking.save(update_fields=["appointment_group", "updated_at"])
+        first_item = OrderItem.objects.create(order=order, booking=self.booking, quantity=1)
+        second_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            service=self.booking.service,
+            appointment_group=group,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=self.booking.scheduled_at,
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"total": "100.00"},
+            completed_at=timezone.now(),
+        )
+        BookingAssignment.objects.create(
+            booking=second_booking, worker=second_worker, completed_at=timezone.now(),
+        )
+        second_item = OrderItem.objects.create(order=order, booking=second_booking, quantity=1)
+        order.metadata["payment_allocation_v1"] = {
+            "balance": [
+                {"order_item_id": first_item.pk, "booking_id": self.booking.pk, "amount": "70.00"},
+                {"order_item_id": second_item.pk, "booking_id": second_booking.pk, "amount": "70.00"},
+            ],
+            "advance": [],
+        }
+        order.save(update_fields=["metadata", "updated_at"])
+        Payment.objects.create(
+            order=order, customer=self.customer,
+            stage=Payment.Stage.ADVANCE, amount=Decimal("60.00"),
+            status=Payment.Status.PAID, paid_at=timezone.now(),
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=self.worker_user)
+        response = client.post(
+            f"/api/v1/workers/jobs/{self.booking.assignment.pk}/cash-received/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertIn("multiple workers", response.data["detail"])
+        self.assertFalse(Payment.objects.filter(order=order, stage=Payment.Stage.BALANCE).exists())
 
     def test_worker_earnings_api_does_not_count_unrelated_wallet_credits(self):
         wallet, _ = Wallet.objects.get_or_create(user=self.worker_user)

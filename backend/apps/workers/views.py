@@ -1582,6 +1582,18 @@ class WorkerCashReceivedView(APIView):
                 return Response({"detail": "Every active service in this appointment must be completed first."}, status=status.HTTP_409_CONFLICT)
 
             booking_ids = [row.booking_id for row in active_items]
+            if group is not None:
+                assigned_worker_ids = set(
+                    BookingAssignment.objects.filter(
+                        booking_id__in=booking_ids,
+                    ).values_list("worker_id", flat=True)
+                )
+                if assigned_worker_ids != {profile.pk}:
+                    return Response(
+                        {"detail": "Cash collection is unavailable when an appointment has multiple workers. Please use online balance payment."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
             verified_ids = set(
                 BookingCompletionOTP.objects.filter(
                     booking_id__in=booking_ids,
