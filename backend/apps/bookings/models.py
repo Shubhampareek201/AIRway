@@ -7,6 +7,7 @@ from simple_history.models import HistoricalRecords
 from apps.catalog.models import Service, ServiceVariant, AddOn, FormField
 from apps.core.models import TimeStampedModel
 from apps.accounts.models import Address
+from apps.core.models import Zone
 
 
 class Booking(TimeStampedModel):
@@ -524,6 +525,89 @@ class Order(TimeStampedModel):
 
     def __str__(self):
         return f"Order #{self.pk} - {self.customer.phone} - ₹{self.total_amount}"
+
+
+
+class CustomerCampaign(TimeStampedModel):
+    """Admin-managed customer discount campaign; budget counters are reserved atomically at checkout."""
+    class BookingSequence(models.TextChoices):
+        FIRST = "first", "First paid booking"
+        SECOND = "second", "Second paid booking"
+        ANY = "any", "Any eligible paid booking"
+    class DiscountType(models.TextChoices):
+        FIXED = "fixed", "Fixed amount"
+        PERCENTAGE = "percentage", "Percentage"
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=False)
+    booking_sequence = models.CharField(max_length=12, choices=BookingSequence.choices, default=BookingSequence.ANY)
+    discount_type = models.CharField(max_length=12, choices=DiscountType.choices, default=DiscountType.FIXED)
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    max_discount_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    minimum_subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    budget_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    budget_reserved = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    budget_spent = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    max_redemptions_per_customer = models.PositiveIntegerField(default=1)
+    max_total_redemptions = models.PositiveIntegerField(null=True, blank=True)
+    allow_stacking = models.BooleanField(default=False)
+    priority = models.PositiveIntegerField(default=100)
+    eligible_services = models.ManyToManyField(Service, blank=True, related_name="discount_campaigns")
+    eligible_zones = models.ManyToManyField(Zone, blank=True, related_name="discount_campaigns")
+    class Meta:
+        ordering = ["priority", "-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(discount_value__gt=0), name="campaign_discount_value_positive"),
+            models.CheckConstraint(condition=Q(minimum_subtotal__gte=0), name="campaign_min_subtotal_nonneg"),
+            models.CheckConstraint(condition=Q(budget_amount__gt=0), name="campaign_budget_positive"),
+            models.CheckConstraint(condition=Q(budget_reserved__gte=0) & Q(budget_spent__gte=0), name="campaign_budget_counters_nonneg"),
+            models.CheckConstraint(condition=Q(budget_reserved__lte=F("budget_amount") - F("budget_spent")), name="campaign_budget_within_limit"),
+            models.CheckConstraint(condition=Q(max_discount_amount__isnull=True) | Q(max_discount_amount__gt=0), name="campaign_discount_cap_positive"),
+            models.CheckConstraint(condition=Q(max_redemptions_per_customer__gte=1), name="campaign_customer_limit_positive"),
+            models.CheckConstraint(condition=Q(max_total_redemptions__isnull=True) | Q(max_total_redemptions__gte=1), name="campaign_total_limit_positive"),
+        ]
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValidationError({"ends_at": "End time must be after the start time."})
+        if self.discount_type == self.DiscountType.PERCENTAGE and self.discount_value > 100:
+            raise ValidationError({"discount_value": "Percentage discount cannot exceed 100%."})
+        if self.budget_amount is not None and self.budget_reserved + self.budget_spent > self.budget_amount:
+            raise ValidationError("Reserved plus spent campaign budget cannot exceed the campaign budget.")
+    @property
+    def remaining_budget(self):
+        return self.budget_amount - self.budget_reserved - self.budget_spent
+    def __str__(self):
+        return self.name
+
+
+class CampaignRedemption(TimeStampedModel):
+    """Order-level campaign claim with a retained reservation/redemption audit trail."""
+    class Status(models.TextChoices):
+        RESERVED = "reserved", "Reserved"
+        REDEEMED = "redeemed", "Redeemed"
+        RELEASED = "released", "Released"
+        REFUNDED = "refunded", "Refunded"
+    campaign = models.ForeignKey(CustomerCampaign, on_delete=models.PROTECT, related_name="redemptions")
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="campaign_redemptions")
+    order = models.ForeignKey("Order", on_delete=models.PROTECT, related_name="campaign_redemptions")
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.RESERVED, db_index=True)
+    reserved_at = models.DateTimeField(auto_now_add=True)
+    redeemed_at = models.DateTimeField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    release_reason = models.CharField(max_length=160, blank=True)
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["campaign", "order"], name="unique_campaign_redemption_per_order"),
+            models.CheckConstraint(condition=Q(discount_amount__gt=0), name="campaign_redemption_amount_positive"),
+        ]
+    def __str__(self):
+        return f"{self.campaign} / Order #{self.order_id} / ₹{self.discount_amount} ({self.status})"
 
 
 class AppointmentGroup(TimeStampedModel):

@@ -19,6 +19,8 @@ from .models import (
     CartItem,
     Order,
     OrderItem,
+    CustomerCampaign,
+    CampaignRedemption,
     AppointmentGroup,
     DispatchConfiguration,
     BookingCompletionOTP,
@@ -101,6 +103,38 @@ class OrderItemInline(TabularInline):
             drop = timezone.localtime(booking.drop_scheduled_at).strftime("%d %b %Y, %I:%M %p")
             return f"Service: {scheduled} | Drop-off: {drop}"
         return scheduled
+
+
+
+@admin.register(CustomerCampaign)
+class CustomerCampaignAdmin(ModelAdmin):
+    list_display = ("name", "booking_sequence", "discount_type", "discount_value", "is_active", "starts_at", "ends_at", "budget_amount", "budget_reserved", "budget_spent", "remaining_budget")
+    list_filter = ("is_active", "booking_sequence", "discount_type", "allow_stacking")
+    search_fields = ("name", "description")
+    filter_horizontal = ("eligible_services", "eligible_zones")
+    readonly_fields = ("budget_reserved", "budget_spent", "created_at", "updated_at")
+    fieldsets = (
+        ("Campaign", {"fields": ("name", "description", "is_active", "priority", "booking_sequence")}),
+        ("Discount", {"fields": ("discount_type", "discount_value", "max_discount_amount", "minimum_subtotal", "allow_stacking")}),
+        ("Eligibility", {"fields": ("eligible_services", "eligible_zones", "max_redemptions_per_customer", "max_total_redemptions")}),
+        ("Validity and budget", {"fields": ("starts_at", "ends_at", "budget_amount", "budget_reserved", "budget_spent")}),
+    )
+    @admin.display(description="Budget remaining")
+    def remaining_budget(self, obj):
+        return obj.remaining_budget
+
+
+@admin.register(CampaignRedemption)
+class CampaignRedemptionAdmin(ModelAdmin):
+    list_display = ("id", "campaign", "customer", "order", "discount_amount", "status", "reserved_at", "redeemed_at")
+    list_filter = ("status", "campaign")
+    search_fields = ("customer__phone", "customer__name", "order__id", "campaign__name")
+    readonly_fields = tuple(field.name for field in CampaignRedemption._meta.fields)
+    actions = None
+    def has_add_permission(self, request):
+        return False
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Order)
