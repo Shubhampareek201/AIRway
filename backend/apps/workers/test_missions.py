@@ -206,6 +206,12 @@ class WorkerRewardLedgerTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["transactions"][0]["reference_key"], "mission-reward:worker:5")
         self.assertEqual(response.data["transactions"][0]["type_display"], "Mission reward")
+        self.assertEqual(response.data["monthly_eligible_jobs_count"], 0)
+        self.assertEqual(response.data["minimum_original_service_charge"], "500.00")
+        self.assertEqual(
+            [(item["jobs"], item["reward"], item["achieved"]) for item in response.data["milestones"]],
+            [(5, "300.00", False), (15, "600.00", False), (25, "1000.00", False)],
+        )
         self.assertIsNone(response.data["transactions_next_offset"])
         self.assertIsNone(response.data["withdrawals_next_offset"])
 

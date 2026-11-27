@@ -1658,6 +1658,7 @@ class WorkerMissionWalletView(APIView):
             return None
 
     def get(self, request):
+        from .missions import MISSION_REWARDS
         profile = self._profile(request)
         if profile is None:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
