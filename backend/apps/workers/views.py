@@ -2305,12 +2305,10 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     return Response({"detail": "This appointment no longer has active services."}, status=status.HTTP_409_CONFLICT)
                 if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
-                from apps.payments.models import Payment
-                if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-                    order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID,
-                ).exists():
+                from apps.bookings.dispatcher import DispatcherService
+                if not DispatcherService.has_verified_worker_payment(order=order):
                     return Response(
-                        {"detail": "The customer's 30% advance must be verified before accepting this appointment."},
+                        {"detail": "The customer's payment must be verified before accepting this appointment."},
                         status=status.HTTP_409_CONFLICT,
                     )
             elif order_offer:
@@ -2326,24 +2324,19 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                     return Response({"detail": "This order no longer has service bookings."}, status=status.HTTP_409_CONFLICT)
                 if order.status not in (Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED):
                     return Response({"detail": "This order is no longer awaiting assignment."}, status=status.HTTP_409_CONFLICT)
-                from apps.payments.models import Payment
-                if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-                    order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID,
-                ).exists():
+                from apps.bookings.dispatcher import DispatcherService
+                if not DispatcherService.has_verified_worker_payment(order=order):
                     return Response(
-                        {"detail": "The customer's 30% advance must be verified before accepting this order."},
+                        {"detail": "The customer's payment must be verified before accepting this order."},
                         status=status.HTTP_409_CONFLICT,
                     )
             else:
-                from apps.payments.models import Payment
                 standalone_booking = Booking.objects.select_for_update(of=("self",)).select_related(
                     "service__category", "variant", "address__zone__city"
                 ).get(pk=offer.booking_id)
+                from apps.bookings.dispatcher import DispatcherService
                 if order:
-                    paid_advance = Payment.objects.filter(
-                        order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID,
-                    ).exists()
-                    has_allocation = bool((order.metadata or {}).get("payment_allocation_v1"))
+                    payment_verified = DispatcherService.has_verified_worker_payment(order=order)
                 else:
                     recurring_visit = getattr(standalone_booking, "recurring_wash_visit", None)
                     prepaid_recurring = bool(
@@ -2354,14 +2347,12 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                             recurring_visit.plan.Status.ACTIVE,
                         )
                     )
-                    paid_advance = prepaid_recurring or Payment.objects.filter(
-                        booking=standalone_booking, stage=Payment.Stage.ADVANCE,
-                        status=Payment.Status.PAID,
-                    ).exists()
-                    has_allocation = True
-                if not paid_advance or not has_allocation:
+                    payment_verified = prepaid_recurring or DispatcherService.has_verified_worker_payment(
+                        booking=standalone_booking
+                    )
+                if not payment_verified:
                     return Response(
-                        {"detail": "The customer's verified 30% advance is required before accepting this service."},
+                        {"detail": "The customer's verified payment is required before accepting this service."},
                         status=status.HTTP_409_CONFLICT,
                     )
                 bookings = [standalone_booking]

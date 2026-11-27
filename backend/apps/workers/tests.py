@@ -312,6 +312,32 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.data["results"][0]["id"], offer.id)
         self.assertEqual(response.data["results"][0]["status"], "pending")
 
+    def test_legacy_fully_paid_booking_can_be_dispatched_and_accepted(self):
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.payments.models import Payment
+
+        Payment.objects.filter(booking=self.booking).update(stage=Payment.Stage.LEGACY)
+        offers = DispatcherService.dispatch_offers(self.booking)
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].worker, self.worker_profile)
+
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.post(
+            f"/api/v1/workers/offers/{offers[0].id}/accept/", format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(BookingAssignment.objects.filter(booking=self.booking).exists())
+
+    def test_unpaid_legacy_booking_is_not_dispatched(self):
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.payments.models import Payment
+
+        Payment.objects.filter(booking=self.booking).update(
+            stage=Payment.Stage.LEGACY, status=Payment.Status.FAILED
+        )
+        self.assertEqual(DispatcherService.dispatch_offers(self.booking), [])
+        self.assertFalse(WorkerOffer.objects.filter(booking=self.booking).exists())
+
     def test_accept_offer(self):
         """Should accept an offer and create booking assignment."""
         self.client.force_authenticate(user=self.worker_user)

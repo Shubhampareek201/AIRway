@@ -32,6 +32,35 @@ class DispatcherService:
     3. Notify all offered workers; the first valid acceptance wins atomically.
     """
 
+    @staticmethod
+    def has_verified_worker_payment(*, order=None, booking=None):
+        """Authorize dispatch for current 30% advances or fully paid legacy bookings.
+
+        New-format orders must have a captured advance and allocation snapshot.
+        Legacy orders without that snapshot are eligible only with a captured
+        LEGACY payment; failed, pending, and refunded-only rows never qualify.
+        """
+        from apps.payments.models import Payment
+
+        if order is not None:
+            if (order.metadata or {}).get("payment_allocation_v1"):
+                return Payment.objects.filter(
+                    order=order, stage=Payment.Stage.ADVANCE,
+                    status=Payment.Status.PAID,
+                ).exists()
+            return Payment.objects.filter(
+                order=order, stage=Payment.Stage.LEGACY,
+                status=Payment.Status.PAID,
+            ).exists()
+
+        if booking is not None:
+            return Payment.objects.filter(
+                booking=booking,
+                stage__in=(Payment.Stage.ADVANCE, Payment.Stage.LEGACY),
+                status=Payment.Status.PAID,
+            ).exists()
+        return False
+
     @classmethod
     @transaction.atomic
     def dispatch_offers(cls, booking, batch_size=None, expiry_minutes=None, parent_order=None):
@@ -67,15 +96,9 @@ class DispatcherService:
         # do not create a synthetic Payment row for it.
         from apps.payments.models import Payment
         if parent_order is not None:
-            if not (parent_order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-                order=parent_order, stage=Payment.Stage.ADVANCE,
-                status=Payment.Status.PAID,
-            ).exists():
+            if not cls.has_verified_worker_payment(order=parent_order):
                 return []
-        elif not prepaid_recurring and not Payment.objects.filter(
-            booking=booking, stage=Payment.Stage.ADVANCE,
-            status=Payment.Status.PAID,
-        ).exists():
+        elif not prepaid_recurring and not cls.has_verified_worker_payment(booking=booking):
             return []
         expiry_minutes = max(int(expiry_minutes or config.offer_expiry_minutes), 1)
         existing = WorkerOffer.objects.filter(booking=booking, order__isnull=True)
@@ -142,10 +165,7 @@ class DispatcherService:
         from apps.payments.models import Payment
 
         group = AppointmentGroup.objects.select_for_update().get(pk=group.pk)
-        if not (parent_order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-            order=parent_order, stage=Payment.Stage.ADVANCE,
-            status=Payment.Status.PAID,
-        ).exists():
+        if not DispatcherService.has_verified_worker_payment(order=parent_order):
             return []
 
         bookings = list(
@@ -324,9 +344,7 @@ class DispatcherService:
                 Order.Status.AWAITING_ASSIGNMENT, Order.Status.PARTIALLY_CANCELLED
             ):
                 return []
-            if not (order.metadata or {}).get("payment_allocation_v1") or not Payment.objects.filter(
-                order=order, stage=Payment.Stage.ADVANCE, status=Payment.Status.PAID
-            ).exists():
+            if not cls.has_verified_worker_payment(order=order):
                 return []
             # Let any legacy whole-order offer finish before creating line offers.
             if WorkerOffer.objects.filter(
