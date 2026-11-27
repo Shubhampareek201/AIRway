@@ -9,8 +9,13 @@ from apps.accounts.models import Address, User
 from apps.catalog.models import Category, Service
 from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork, Order, OrderItem
 from apps.payments.models import Payment, PaymentRefund
-from apps.workers.earnings import calculate_worker_earning_net, sync_worker_earning
-from apps.workers.models import WorkerEarning, WorkerProfile
+from apps.workers.earnings import (
+    calculate_worker_earning_net,
+    create_weekly_worker_settlements,
+    mark_worker_payout_settlement_paid,
+    sync_worker_earning,
+)
+from apps.workers.models import WorkerEarning, WorkerPayoutSettlement, WorkerProfile
 from apps.wallet.models import Wallet, WalletTransaction
 
 
@@ -57,6 +62,7 @@ class WorkerEarningLedgerTests(TestCase):
     def setUp(self):
         self.customer = User.objects.create_user(phone="+919800000101", name="Customer")
         self.worker_user = User.objects.create_user(phone="+919800000102", name="Worker")
+        self.admin_user = User.objects.create_user(phone="+919800000103", name="Finance admin", is_staff=True)
         self.worker = WorkerProfile.objects.create(
             user=self.worker_user,
             status=WorkerProfile.Status.APPROVED,
@@ -106,6 +112,54 @@ class WorkerEarningLedgerTests(TestCase):
         self.assertEqual(first.commission_amount, Decimal("20.00"))
         self.assertEqual(first.net_amount, Decimal("80.00"))
         self.assertEqual(first.status, WorkerEarning.Status.AVAILABLE)
+
+
+    def test_weekly_settlement_groups_earnings_and_pays_them_once(self):
+        first_earning = sync_worker_earning(self.booking.pk, self.payment.pk)
+        second_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            service=self.booking.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status=Booking.Status.COMPLETED,
+            pricing_snapshot={"total": "200.00"},
+            completed_at=timezone.now(),
+        )
+        BookingAssignment.objects.create(
+            booking=second_booking, worker=self.worker, completed_at=timezone.now(),
+        )
+        second_payment = Payment.objects.create(
+            booking=second_booking, customer=self.customer,
+            stage=Payment.Stage.LEGACY, amount=Decimal("200.00"),
+            status=Payment.Status.PAID, paid_at=timezone.now(),
+        )
+        second_earning = sync_worker_earning(second_booking.pk, second_payment.pk)
+
+        batches = create_weekly_worker_settlements(
+            [first_earning.pk, second_earning.pk], created_by=self.admin_user,
+        )
+        self.assertEqual(len(batches), 1)
+        batch = batches[0]
+        self.assertEqual(batch.worker, self.worker)
+        self.assertEqual(batch.total_amount, first_earning.net_amount + second_earning.net_amount)
+        self.assertEqual(batch.earnings.count(), 2)
+        self.assertEqual(create_weekly_worker_settlements(
+            [first_earning.pk, second_earning.pk], created_by=self.admin_user,
+        ), [])
+
+        mark_worker_payout_settlement_paid(batch.pk, "UPI-WEEK-001", self.admin_user)
+        batch.refresh_from_db()
+        first_earning.refresh_from_db()
+        second_earning.refresh_from_db()
+        self.assertEqual(batch.status, WorkerPayoutSettlement.Status.PAID)
+        self.assertEqual(batch.payout_reference, "UPI-WEEK-001")
+        self.assertEqual(first_earning.status, WorkerEarning.Status.PAID)
+        self.assertEqual(second_earning.status, WorkerEarning.Status.PAID)
+        self.assertEqual(first_earning.payout_reference, "UPI-WEEK-001")
+        self.assertEqual(second_earning.payout_reference, "UPI-WEEK-001")
+        retried = mark_worker_payout_settlement_paid(batch.pk, "UPI-WEEK-001", self.admin_user)
+        self.assertEqual(retried.pk, batch.pk)
 
     def test_worker_api_returns_calculated_ledger_not_customer_gross(self):
         earning = sync_worker_earning(self.booking.pk, self.payment.pk)

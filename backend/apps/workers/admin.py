@@ -18,6 +18,7 @@ from .models import (
     WorkerLeave,
     WorkerLeaveHistory,
     WorkerEarning,
+    WorkerPayoutSettlement,
     WorkerRewardWallet,
     WorkerRewardTransaction,
     WorkerRewardWithdrawal,
@@ -462,13 +463,13 @@ class WorkerLeaveAdmin(ModelAdmin):
 @admin.register(WorkerEarning)
 class WorkerEarningAdmin(ModelAdmin):
     list_display = (
-        "id", "worker", "booking", "earning_source", "extra_work", "gross_amount", "commission_rate",
+        "id", "worker", "booking", "earning_source", "extra_work", "settlement_batch", "gross_amount", "commission_rate",
         "commission_amount", "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at", "paid_by",
     )
     list_filter = ("status", "created_at")
     search_fields = ("worker__user__name", "worker__user__phone", "booking__id", "extra_work__id", "payout_reference")
     readonly_fields = (
-        "worker", "booking", "extra_work", "payment", "gross_amount", "commission_rate",
+        "worker", "booking", "extra_work", "settlement_batch", "payment", "gross_amount", "commission_rate",
         "commission_amount", "net_amount", "hold_reason", "paid_at", "paid_by",
         "adjusted_by", "adjusted_at", "created_at", "updated_at",
     )
@@ -476,6 +477,30 @@ class WorkerEarningAdmin(ModelAdmin):
     @admin.display(description="Earning source")
     def earning_source(self, obj):
         return "AIRway-funded recovery" if getattr(obj.booking, "rework_source", None) is not None else "Customer payment"
+
+    @admin.action(description="Create / update weekly payout batches for selected available earnings")
+    def create_weekly_settlements(self, request, queryset):
+        from .earnings import create_weekly_worker_settlements
+        earning_ids = list(queryset.filter(
+            status=WorkerEarning.Status.AVAILABLE,
+            settlement_batch__isnull=True,
+            net_amount__gt=0,
+        ).values_list("pk", flat=True))
+        batches = create_weekly_worker_settlements(earning_ids, created_by=request.user)
+        if not batches:
+            self.message_user(
+                request,
+                "No unassigned available earnings with a valid payout were selected.",
+                level=messages.WARNING,
+            )
+            return
+        self.message_user(
+            request,
+            f"Created or updated {len(batches)} weekly worker settlement batch(es).",
+            level=messages.SUCCESS,
+        )
+
+    actions = ("create_weekly_settlements",)
 
     def has_add_permission(self, request):
         return False
@@ -500,6 +525,8 @@ class WorkerEarningAdmin(ModelAdmin):
         fields = list(super().get_readonly_fields(request, obj))
         if obj is None:
             fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
+        elif obj.settlement_batch_id:
+            fields.extend(["status", "payout_reference", "adjustment_amount", "adjustment_note"])
         elif obj.status == WorkerEarning.Status.AVAILABLE:
             fields.extend(["adjustment_amount", "adjustment_note"])
         elif obj.status == WorkerEarning.Status.ON_HOLD:
@@ -512,6 +539,8 @@ class WorkerEarningAdmin(ModelAdmin):
         if not change:
             raise ValidationError("Worker earning records are created by verified settlement only.")
         previous = WorkerEarning.objects.get(pk=obj.pk)
+        if previous.settlement_batch_id and obj.status != previous.status:
+            raise ValidationError("This earning is controlled by its weekly settlement batch.")
         if previous.status == WorkerEarning.Status.PAID:
             raise ValidationError("A recorded payout is immutable.")
 
@@ -541,6 +570,48 @@ class WorkerEarningAdmin(ModelAdmin):
         else:
             raise ValidationError("Only available earnings can be paid, or held earnings can be reconciled and released.")
         super().save_model(request, obj, form, change)
+
+
+@admin.register(WorkerPayoutSettlement)
+class WorkerPayoutSettlementAdmin(ModelAdmin):
+    list_display = (
+        "id", "worker", "period_start", "period_end", "total_amount",
+        "status", "payout_reference", "paid_at",
+    )
+    list_filter = ("status", "period_start", "paid_at")
+    search_fields = ("worker__user__name", "worker__user__phone", "payout_reference")
+    readonly_fields = (
+        "worker", "period_start", "period_end", "total_amount",
+        "created_by", "paid_at", "paid_by", "created_at", "updated_at",
+    )
+    fields = (
+        "worker", "period_start", "period_end", "total_amount", "status",
+        "payout_reference", "admin_note", "created_by", "paid_at", "paid_by",
+        "created_at", "updated_at",
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            raise ValidationError("Weekly settlement batches are created from available worker earnings.")
+        previous = WorkerPayoutSettlement.objects.get(pk=obj.pk)
+        if previous.status == WorkerPayoutSettlement.Status.PAID:
+            raise ValidationError("A paid weekly settlement is immutable.")
+        if obj.status == WorkerPayoutSettlement.Status.PAID:
+            from .earnings import mark_worker_payout_settlement_paid
+            mark_worker_payout_settlement_paid(
+                obj.pk, obj.payout_reference, request.user
+            )
+            obj.refresh_from_db()
+            return
+        if obj.status != previous.status:
+            raise ValidationError("Invalid weekly settlement status transition.")
+        super().save_model(request, obj, form, change)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(WorkerRewardWallet)

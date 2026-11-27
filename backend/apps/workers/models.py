@@ -353,6 +353,13 @@ class WorkerEarning(TimeStampedModel):
     worker = models.ForeignKey(WorkerProfile, on_delete=models.PROTECT, related_name="earnings")
     booking = models.ForeignKey("bookings.Booking", on_delete=models.PROTECT, related_name="worker_earnings")
     extra_work = models.ForeignKey("bookings.BookingExtraWork", on_delete=models.PROTECT, null=True, blank=True, related_name="worker_earnings")
+    settlement_batch = models.ForeignKey(
+        "workers.WorkerPayoutSettlement",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="earnings",
+    )
     payment = models.ForeignKey("payments.Payment", on_delete=models.PROTECT, null=True, blank=True, related_name="worker_earnings")
     gross_amount = models.DecimalField(max_digits=12, decimal_places=2)
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
@@ -401,6 +408,59 @@ class WorkerEarning(TimeStampedModel):
 
     def __str__(self):
         return f"Worker earning #{self.pk} - booking #{self.booking_id} - {self.status}"
+
+
+class WorkerPayoutSettlement(TimeStampedModel):
+    """Weekly worker payout batch with an auditable bank/UPI settlement reference."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Awaiting payout"
+        PAID = "paid", "Paid"
+
+    worker = models.ForeignKey(
+        WorkerProfile,
+        on_delete=models.PROTECT,
+        related_name="payout_settlements",
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True,
+    )
+    payout_reference = models.CharField(max_length=120, blank=True)
+    admin_note = models.TextField(blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="worker_payout_settlements",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_worker_payout_settlements",
+    )
+
+    class Meta:
+        ordering = ["-period_start", "-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(period_end__gte=F("period_start")),
+                name="worker_payout_period_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(total_amount__gt=0),
+                name="worker_payout_settlement_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Worker #{self.worker_id} · {self.period_start}–{self.period_end} · ₹{self.total_amount}"
 
 
 class WorkerJobStreak(TimeStampedModel):

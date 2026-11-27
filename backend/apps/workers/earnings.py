@@ -1,7 +1,10 @@
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
 from django.db.models import Q
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from apps.bookings.models import (
     Booking,
@@ -10,7 +13,7 @@ from apps.bookings.models import (
     OrderItem,
 )
 from apps.payments.models import Payment, PaymentRefund
-from .models import WorkerEarning
+from .models import WorkerEarning, WorkerPayoutSettlement
 
 
 REFUND_HOLD_STATUSES = (
@@ -191,6 +194,117 @@ def snapshot_worker_earning_for_assignment(booking, worker):
         payment=None,
         **values,
     )
+
+
+
+@transaction.atomic
+def create_weekly_worker_settlements(earning_ids, created_by=None):
+    """Group unassigned available earnings into worker-specific Monday–Sunday batches."""
+    ids = sorted({int(value) for value in earning_ids})
+    if not ids:
+        return []
+
+    earnings = list(
+        WorkerEarning.objects.select_for_update()
+        .filter(
+            pk__in=ids,
+            status=WorkerEarning.Status.AVAILABLE,
+            settlement_batch__isnull=True,
+            net_amount__gt=0,
+        )
+        .select_related("worker")
+        .order_by("worker_id", "created_at", "pk")
+    )
+    groups = {}
+    for earning in earnings:
+        day = earning.created_at.date()
+        period_start = day - timedelta(days=day.weekday())
+        period_end = period_start + timedelta(days=6)
+        groups.setdefault((earning.worker_id, period_start, period_end), []).append(earning)
+
+    batches = []
+    for (worker_id, period_start, period_end), rows in groups.items():
+        batch = WorkerPayoutSettlement.objects.select_for_update().filter(
+            worker_id=worker_id,
+            period_start=period_start,
+            status=WorkerPayoutSettlement.Status.PENDING,
+        ).first()
+        if batch is None:
+            batch = WorkerPayoutSettlement.objects.create(
+                worker_id=worker_id,
+                period_start=period_start,
+                period_end=period_end,
+                total_amount=Decimal("0.01"),
+                created_by=created_by,
+            )
+        for earning in rows:
+            earning.settlement_batch = batch
+            earning.save(update_fields=["settlement_batch", "updated_at"])
+
+        batch_rows = list(
+            WorkerEarning.objects.filter(settlement_batch=batch).values_list("net_amount", flat=True)
+        )
+        if any(amount is None or amount <= 0 for amount in batch_rows):
+            raise ValidationError("A weekly settlement contains an earning without a valid positive payout.")
+        batch.total_amount = sum(batch_rows, Decimal("0.00"))
+        batch.period_end = max(batch.period_end, period_end)
+        batch.save(update_fields=["total_amount", "period_end", "updated_at"])
+        batches.append(batch)
+
+    return batches
+
+
+@transaction.atomic
+def mark_worker_payout_settlement_paid(settlement_id, payout_reference, paid_by):
+    """Settle every earning in a weekly batch atomically; retries with the same ref are safe."""
+    reference = str(payout_reference or "").strip()
+    if not reference:
+        raise ValidationError("A bank/UPI payout reference is required.")
+
+    batch = WorkerPayoutSettlement.objects.select_for_update().get(pk=settlement_id)
+    if batch.status == WorkerPayoutSettlement.Status.PAID:
+        if batch.payout_reference == reference:
+            return batch
+        raise ValidationError("This weekly settlement was already paid with a different reference.")
+    if batch.status != WorkerPayoutSettlement.Status.PENDING:
+        raise ValidationError("This weekly settlement cannot be paid from its current status.")
+
+    earnings = list(
+        WorkerEarning.objects.select_for_update()
+        .filter(settlement_batch=batch)
+        .order_by("pk")
+    )
+    if not earnings:
+        raise ValidationError("This weekly settlement has no linked job earnings.")
+    if any(
+        earning.status != WorkerEarning.Status.AVAILABLE
+        or earning.net_amount is None
+        or earning.net_amount <= 0
+        for earning in earnings
+    ):
+        raise ValidationError("Every linked job earning must be available with a positive payout.")
+    actual_total = sum((earning.net_amount for earning in earnings), Decimal("0.00"))
+    if actual_total != batch.total_amount:
+        raise ValidationError("The batch total no longer matches its linked worker earnings.")
+
+    paid_at = timezone.now()
+    for earning in earnings:
+        earning.status = WorkerEarning.Status.PAID
+        earning.payout_reference = reference[:120]
+        earning.paid_at = paid_at
+        earning.paid_by = paid_by
+        earning.save(update_fields=[
+            "status", "payout_reference", "paid_at", "paid_by", "updated_at",
+        ])
+
+    batch.status = WorkerPayoutSettlement.Status.PAID
+    batch.payout_reference = reference[:120]
+    batch.paid_at = paid_at
+    batch.paid_by = paid_by
+    batch.save(update_fields=[
+        "status", "payout_reference", "paid_at", "paid_by", "updated_at",
+    ])
+    return batch
 
 
 def _get_paid_base_payment(booking):

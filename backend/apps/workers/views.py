@@ -1557,7 +1557,7 @@ class WorkerEarningsView(APIView):
 
         from .models import WorkerEarning
         earnings = WorkerEarning.objects.filter(worker=profile).select_related(
-            "booking__service", "booking__rework_source", "payment", "extra_work"
+            "booking__service", "booking__rework_source", "payment", "extra_work", "settlement_batch"
         ).order_by("-created_at")[:100]
         results = []
         for earning in earnings:
@@ -1585,6 +1585,19 @@ class WorkerEarningsView(APIView):
                     else "customer_payment"
                 ),
                 "extra_work_id": earning.extra_work_id,
+                "settlement_batch_id": earning.settlement_batch_id,
+                "settlement_period_start": (
+                    earning.settlement_batch.period_start.isoformat()
+                    if earning.settlement_batch_id else None
+                ),
+                "settlement_period_end": (
+                    earning.settlement_batch.period_end.isoformat()
+                    if earning.settlement_batch_id else None
+                ),
+                "settlement_status": (
+                    earning.settlement_batch.status
+                    if earning.settlement_batch_id else None
+                ),
                 "gross_amount": str(earning.gross_amount),
                 "commission_rate": str(earning.commission_rate) if earning.commission_rate is not None else None,
                 "commission_amount": str(earning.commission_amount) if earning.commission_amount is not None else None,
