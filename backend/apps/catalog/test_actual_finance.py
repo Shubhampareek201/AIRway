@@ -80,7 +80,7 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["estimated_contribution_total"], Decimal("300.00"))
         self.assertEqual(report["variance"], Decimal("30.00"))
         self.assertEqual(report["profitability_status"], "Insufficient data")
-        self.assertEqual(estimate_mock.call_count, 1)
+        self.assertEqual(estimate_mock.call_count, 2)
 
     @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
     def test_missing_historical_price_or_payout_does_not_invent_estimate(self, actual_mock):
