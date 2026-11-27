@@ -1016,14 +1016,13 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     int groupId,
     List<Map<String, dynamic>> groupRows,
   ) async {
-    final lateFeeRow = groupRows.cast<Map<String, dynamic>?>().firstWhere(
-      (row) => row?['cancellation_policy'] is Map &&
-          (row!['cancellation_policy'] as Map)['late_fee_applies'] == true,
-      orElse: () => null,
-    );
-    final lateFeeApplies = lateFeeRow != null;
+    final lateFeeRows = groupRows.where((row) {
+      final policy = row['cancellation_policy'];
+      return policy is Map && policy['late_fee_applies'] == true;
+    }).toList();
+    final lateFeeApplies = lateFeeRows.isNotEmpty;
     final lateFeePercent = lateFeeApplies
-        ? (lateFeeRow['cancellation_policy'] as Map)['late_fee_percent']?.toString() ?? '30'
+        ? (lateFeeRows.first['cancellation_policy'] as Map)['late_fee_percent']?.toString() ?? '30'
         : '30';
     final cancellationMessage = lateFeeApplies
         ? 'At least one service in this appointment is within AIRway’s late-cancellation window. $lateFeePercent% of the already-paid advance for each affected service will be retained as the cancellation fee; remaining eligible amounts will be refunded. Other appointments in this order will remain unchanged.'
