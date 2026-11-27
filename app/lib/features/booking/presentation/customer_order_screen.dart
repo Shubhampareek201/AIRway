@@ -1699,7 +1699,9 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
               }).toList();
               final groupStatus = group['status']?.toString() ?? 'pending';
               final canCancel = groupId != null &&
-                  ['pending', 'confirmed', 'assigned'].contains(groupStatus);
+                  ['pending', 'confirmed', 'assigned'].contains(groupStatus) &&
+                  groupRows.isNotEmpty &&
+                  groupRows.every((row) => row['can_cancel'] == true);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
