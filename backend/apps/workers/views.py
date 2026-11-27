@@ -103,10 +103,14 @@ class NearbyWorkersView(APIView):
             .distinct()
         )
 
+        from apps.workers.eligibility import worker_is_within_working_hours
+
         results = []
         seen_worker_ids = set()
         for zone_link in zone_links:
             worker = zone_link.worker
+            if not worker_is_within_working_hours(worker):
+                continue
             if worker.pk in seen_worker_ids:
                 continue
 
