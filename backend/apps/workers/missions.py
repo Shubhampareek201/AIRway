@@ -36,7 +36,7 @@ def _mission_month(completed_at):
     return timezone.localtime(completed_at).date().replace(day=1)
 
 
-def _booking_is_mission_eligible(booking):
+def _booking_is_verified_completed(booking):
     if booking.status != Booking.Status.COMPLETED or booking.completed_at is None or booking.cancelled_at is not None:
         return False
     otp = BookingCompletionOTP.objects.filter(booking_id=booking.pk).only("verified_at").first()
@@ -50,8 +50,7 @@ def _booking_is_mission_eligible(booking):
         Q(booking_id=booking.pk) | Q(order__items__booking_id=booking.pk)
     ).exists():
         return False
-    # Subtotal is the original service charge; discount and tax are separate.
-    return _service_line_cost(booking) > MINIMUM_SERVICE_COST
+    return True
 
 
 @transaction.atomic
@@ -89,37 +88,53 @@ def award_worker_referral_reward_for_worker(worker, eligible_jobs_count, *, book
 @transaction.atomic
 def award_mission_reward_for_completed_booking(booking):
     """Award repeatable calendar-month milestones for OTP-verified completed jobs."""
-    if not _booking_is_mission_eligible(booking):
+    if not _booking_is_verified_completed(booking):
         return None
     assignment = BookingAssignment.objects.filter(booking_id=booking.pk).first()
     if assignment is None:
         return None
+    service_cost = _service_line_cost(booking)
+    # Keep the pre-existing worker-referral eligibility (>₹300) independent
+    # from the newly approved monthly mission threshold (>₹500).
+    if service_cost <= Decimal("300.00"):
+        return None
 
-    # Worker row lock serializes concurrent completions and first wallet/progress creation.
     worker = WorkerProfile.objects.select_for_update().get(pk=assignment.worker_id)
-    month_start = _mission_month(booking.completed_at)
-    month_key = month_start.strftime("%Y-%m")
-    job_reference = f"monthly-eligible-job:{worker.pk}:{month_key}:{booking.pk}"
     wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=worker)
     wallet = WorkerRewardWallet.objects.select_for_update().get(pk=wallet.pk)
+    monthly_eligible = service_cost > MINIMUM_SERVICE_COST
+    month_start = _mission_month(booking.completed_at) if monthly_eligible else None
+    month_key = month_start.strftime("%Y-%m") if month_start else None
+    job_reference = (
+        f"monthly-eligible-job:{worker.pk}:{month_key}:{booking.pk}"
+        if monthly_eligible else f"completed-booking:{booking.pk}"
+    )
     if WorkerRewardTransaction.objects.filter(reference_key=job_reference).exists():
-        return WorkerMonthlyMissionProgress.objects.filter(worker=worker, month_start=month_start).first()
+        return WorkerMonthlyMissionProgress.objects.filter(
+            worker=worker, month_start=month_start
+        ).first() if monthly_eligible else None
 
-    progress, _ = WorkerMonthlyMissionProgress.objects.get_or_create(worker=worker, month_start=month_start)
-    progress = WorkerMonthlyMissionProgress.objects.select_for_update().get(pk=progress.pk)
-    next_count = progress.eligible_jobs_count + 1
+    if monthly_eligible:
+        progress, _ = WorkerMonthlyMissionProgress.objects.get_or_create(worker=worker, month_start=month_start)
+        progress = WorkerMonthlyMissionProgress.objects.select_for_update().get(pk=progress.pk)
+        next_count = progress.eligible_jobs_count + 1
+        description = f"Eligible service for {month_key} mission · booking #{booking.pk} · original charge ₹{service_cost}"
+        progress.eligible_jobs_count = next_count
+        progress.save(update_fields=["eligible_jobs_count", "updated_at"])
+    else:
+        progress = None
+        next_count = None
+        description = f"Lifetime referral-eligible completed service #{booking.pk} (₹{service_cost})"
+
     WorkerRewardTransaction.objects.create(
         wallet=wallet, worker=worker, booking=booking,
         type=WorkerRewardTransaction.Type.ELIGIBLE_JOB, amount=Decimal("0.00"),
-        reference_key=job_reference,
-        description=f"Eligible service for {month_key} mission · booking #{booking.pk} · original charge ₹{_service_line_cost(booking)}",
+        reference_key=job_reference, description=description,
     )
-    progress.eligible_jobs_count = next_count
-    progress.save(update_fields=["eligible_jobs_count", "updated_at"])
-
-    # Preserve the legacy lifetime counter for referral qualification/history.
+    # This remains a lifetime counter for the existing worker-referral programme.
     wallet.eligible_jobs_count += 1
-    reward = MISSION_REWARDS.get(next_count)
+
+    reward = MISSION_REWARDS.get(next_count) if monthly_eligible else None
     if reward is not None:
         _, created = WorkerRewardTransaction.objects.get_or_create(
             reference_key=f"monthly-mission-reward:{worker.pk}:{month_key}:{next_count}",

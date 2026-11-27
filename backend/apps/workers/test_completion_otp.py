@@ -302,7 +302,9 @@ class WorkerCompletionOTPTests(TestCase):
         )
         award_mission_reward_for_completed_booking(booking)
         self.assertFalse(WorkerMonthlyMissionProgress.objects.filter(worker=self.worker).exists())
-        self.assertFalse(WorkerRewardWallet.objects.filter(worker=self.worker).exists())
+        wallet = WorkerRewardWallet.objects.get(worker=self.worker)
+        self.assertEqual(wallet.balance, 0)
+        self.assertEqual(wallet.eligible_jobs_count, 1)
 
     def test_mission_wallet_withdrawal_is_separate_and_debits_available_rewards(self):
         self.worker.upi_id = "worker@upi"
