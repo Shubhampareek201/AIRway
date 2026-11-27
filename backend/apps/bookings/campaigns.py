@@ -317,3 +317,21 @@ def release_customer_campaigns_for_order(*, order, reason, now=None):
             ])
             transitioned += 1
     return transitioned
+
+
+
+def release_unpaid_customer_campaigns_for_order(*, order, reason, now=None):
+    """Release a reservation only when this order has no captured advance."""
+    from apps.payments.models import Payment
+
+    if Payment.objects.filter(
+        order=order,
+        stage=Payment.Stage.ADVANCE,
+        status=Payment.Status.PAID,
+    ).exists():
+        return 0
+    return release_customer_campaigns_for_order(
+        order=order,
+        reason=reason,
+        now=now,
+    )

@@ -138,6 +138,50 @@ class StagedOrderPaymentServiceTests(TestCase):
         self.assertEqual(balance.amount, Decimal("700.00"))
 
     @patch("apps.payments.views.client.order.create")
+    @patch("apps.bookings.dispatcher.DispatcherService.dispatch_order")
+    def test_advance_payment_redeems_campaign_reservation(self, dispatch_order, create_gateway_order):
+        from apps.bookings.models import CustomerCampaign, CampaignRedemption
+        from apps.payments.verify_view import _process_verified_payment
+
+        create_gateway_order.return_value = {"id": "order_campaign_advance"}
+        advance, gateway_order_id, _ = create_or_get_order_payment(
+            self.order, self.customer
+        )
+        campaign = CustomerCampaign.objects.create(
+            name="Payment lifecycle offer",
+            is_active=True,
+            booking_sequence=CustomerCampaign.BookingSequence.FIRST,
+            discount_type=CustomerCampaign.DiscountType.FIXED,
+            discount_value=Decimal("50.00"),
+            minimum_subtotal=Decimal("0.00"),
+            budget_amount=Decimal("100.00"),
+            budget_reserved=Decimal("50.00"),
+            max_redemptions_per_customer=1,
+        )
+        redemption = CampaignRedemption.objects.create(
+            campaign=campaign,
+            customer=self.customer,
+            order=self.order,
+            discount_amount=Decimal("50.00"),
+            status=CampaignRedemption.Status.RESERVED,
+        )
+
+        response = _process_verified_payment(
+            advance, "pay_campaign_advance", gateway_order_id, self.customer, "test"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        advance.refresh_from_db()
+        campaign.refresh_from_db()
+        redemption.refresh_from_db()
+        self.assertEqual(advance.status, Payment.Status.PAID)
+        self.assertEqual(campaign.budget_reserved, Decimal("0.00"))
+        self.assertEqual(campaign.budget_spent, Decimal("50.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.REDEEMED)
+        self.assertIsNotNone(redemption.redeemed_at)
+        dispatch_order.assert_called_once()
+
+    @patch("apps.payments.views.client.order.create")
     def test_completed_appointment_group_can_pay_balance_while_another_group_is_pending(self, create_gateway_order):
         create_gateway_order.side_effect = [
             {"id": "order_group_advance"},

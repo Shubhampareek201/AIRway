@@ -264,6 +264,42 @@ class CustomerCampaignCalculatorTests(TestCase):
         self.assertEqual(redemption.status, CampaignRedemption.Status.RELEASED)
         self.assertEqual(redemption.release_reason, "Order cancelled before advance.")
 
+    def test_unpaid_order_campaign_release_is_blocked_after_advance_capture(self):
+        from apps.bookings.campaigns import release_unpaid_customer_campaigns_for_order
+        from apps.bookings.models import CampaignRedemption
+        from apps.payments.models import Payment
+
+        campaign = self.make_campaign(budget_amount=Decimal("100.00"))
+        campaign.budget_reserved = Decimal("50.00")
+        campaign.save(update_fields=["budget_reserved", "updated_at"])
+        redemption = CampaignRedemption.objects.create(
+            campaign=campaign,
+            customer=self.customer,
+            order=self.order,
+            discount_amount=Decimal("50.00"),
+            status=CampaignRedemption.Status.RESERVED,
+        )
+        Payment.objects.create(
+            order=self.order,
+            customer=self.customer,
+            stage=Payment.Stage.ADVANCE,
+            amount=Decimal("300.00"),
+            method=Payment.Method.RAZORPAY,
+            status=Payment.Status.PAID,
+            razorpay_payment_id="captured-advance-protects-campaign",
+        )
+
+        self.assertEqual(
+            release_unpaid_customer_campaigns_for_order(
+                order=self.order, reason="Order cancelled"
+            ),
+            0,
+        )
+        campaign.refresh_from_db()
+        redemption.refresh_from_db()
+        self.assertEqual(campaign.budget_reserved, Decimal("50.00"))
+        self.assertEqual(redemption.status, CampaignRedemption.Status.RESERVED)
+
     def test_checkout_reservation_increments_budget_and_creates_redemption(self):
         campaign = self.make_campaign()
         result = reserve_customer_campaigns(

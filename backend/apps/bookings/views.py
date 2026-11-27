@@ -395,6 +395,12 @@ class BookingViewSet(viewsets.ModelViewSet):
                 if active_remaining else Order.Status.CANCELLED
             )
             order.save(update_fields=["status", "updated_at"])
+            if not active_remaining:
+                from apps.bookings.campaigns import release_unpaid_customer_campaigns_for_order
+                release_unpaid_customer_campaigns_for_order(
+                    order=order,
+                    reason="Entire order cancelled before advance payment.",
+                )
             WorkerOffer.objects.filter(
                 booking=booking, order__isnull=True,
                 status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
@@ -2504,6 +2510,12 @@ class CustomerAppointmentGroupCancelView(APIView):
             if active_remaining else Order.Status.CANCELLED
         )
         order.save(update_fields=["status", "updated_at"])
+        if not active_remaining:
+            from apps.bookings.campaigns import release_unpaid_customer_campaigns_for_order
+            release_unpaid_customer_campaigns_for_order(
+                order=order,
+                reason="Entire order cancelled before advance payment.",
+            )
         if active_remaining:
             transaction.on_commit(
                 lambda order_id=order.pk: _dispatch_order_after_group_cancellation(order_id)

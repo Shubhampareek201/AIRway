@@ -485,6 +485,10 @@ def _process_verified_payment(
             parent_order = Order.objects.select_for_update().get(pk=payment.order_id)
             order_items = list(parent_order.items.select_related("booking").order_by("id"))
             if payment.stage == Payment.Stage.ADVANCE:
+                # The captured advance is the paid-booking event for campaign eligibility.
+                # This runs in the same transaction as payment settlement and is idempotent.
+                from apps.bookings.campaigns import redeem_customer_campaigns_for_order
+                redeem_customer_campaigns_for_order(order=parent_order)
                 if parent_order.status not in (
                     Order.Status.AWAITING_ASSIGNMENT,
                     Order.Status.AWAITING_PAYMENT,
