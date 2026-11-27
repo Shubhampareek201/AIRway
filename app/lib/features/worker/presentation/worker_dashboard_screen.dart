@@ -51,6 +51,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   String? _earningsError;
   String? _missionWalletError;
   bool _missionWithdrawalSaving = false;
+  String? _missionWithdrawalRequestKey;
+  String? _missionWithdrawalAmount;
   int _selectedTab = 0;
   Timer? _offerPollTimer;
   final Set<int> _knownOfferIds = {};
@@ -736,9 +738,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       _editProfile();
       return;
     }
+    _missionWithdrawalRequestKey ??= DateTime.now().microsecondsSinceEpoch.toString();
+    _missionWithdrawalAmount ??= balance.toStringAsFixed(2);
     setState(() => _missionWithdrawalSaving = true);
     try {
-      await WorkerApi.requestMissionWithdrawal(balance.toStringAsFixed(2));
+      await WorkerApi.requestMissionWithdrawal(
+        _missionWithdrawalAmount!,
+        idempotencyKey: _missionWithdrawalRequestKey!,
+      );
+      _missionWithdrawalRequestKey = null;
+      _missionWithdrawalAmount = null;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AirwayText.tr('Withdrawal request sent to AIRway for review.', 'निकासी अनुरोध AIRway को भेज दिया गया है।'))),
@@ -774,6 +783,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
+    final transactions = (data['transactions'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
     final hasUpi = _profile?.upiId?.trim().isNotEmpty == true;
 
     return Card(
@@ -784,7 +797,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           Row(children: [
             const Icon(Icons.emoji_events_rounded, color: Color(0xFF6C4AE3)),
             const SizedBox(width: 8),
-            Expanded(child: Text(AirwayText.tr('Worker mission rewards', 'वर्कर मिशन रिवॉर्ड'),
+            Expanded(child: Text(AirwayText.tr('Worker rewards wallet', 'वर्कर रिवॉर्ड वॉलेट'),
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
           ]),
           const SizedBox(height: 12),
@@ -848,6 +861,25 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 label: Text(AirwayText.tr('Withdraw reward balance', 'रिवॉर्ड बैलेंस निकालें')),
               ),
             ),
+          if (transactions.isNotEmpty) ...[
+            const Divider(height: 22),
+            Text(AirwayText.tr('Reward transaction history', 'रिवॉर्ड लेन-देन का इतिहास'),
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+            for (final item in transactions.take(10))
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(item['type_display']?.toString() ?? item['type']?.toString() ?? 'Reward'),
+                subtitle: Text(
+                  '${item['description'] ?? ''}\nRef: ${item['reference_key'] ?? '—'}',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: (double.tryParse('${item['amount'] ?? '0'}') ?? 0) > 0
+                    ? Text('₹${item['amount']}')
+                    : null,
+              ),
+          ],
           if (withdrawals.isNotEmpty) ...[
             const Divider(height: 22),
             Text(AirwayText.tr('Withdrawal requests', 'निकासी अनुरोध'),

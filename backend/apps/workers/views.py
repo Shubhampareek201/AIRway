@@ -1563,7 +1563,13 @@ class WorkerEarningsView(APIView):
         for earning in earnings:
             results.append({
                 "id": earning.pk,
+                "earning_reference": f"worker-earning:{earning.pk}",
                 "booking_id": earning.booking_id,
+                "payment_id": earning.payment_id,
+                "payment_reference": (
+                    earning.payment.razorpay_payment_id
+                    if earning.payment_id and earning.payment.razorpay_payment_id else ""
+                ),
                 "service_title": (
                     f"Additional work · {earning.extra_work.reason}"
                     if earning.extra_work_id

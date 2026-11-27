@@ -349,11 +349,14 @@ class WorkerApi {
     return Map<String, dynamic>.from(result);
   }
 
-  static Future<Map<String, dynamic>> requestMissionWithdrawal(String amount) async {
+  static Future<Map<String, dynamic>> requestMissionWithdrawal(
+    String amount, {
+    required String idempotencyKey,
+  }) async {
     final result = await _request(
       '/api/v1/workers/mission-wallet/',
       method: 'POST',
-      data: {'amount': amount},
+      data: {'amount': amount, 'idempotency_key': idempotencyKey},
     );
     return Map<String, dynamic>.from(result as Map);
   }

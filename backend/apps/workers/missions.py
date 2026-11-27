@@ -40,7 +40,7 @@ def _service_line_cost(booking):
 
 
 @transaction.atomic
-def award_worker_referral_reward_for_worker(worker, eligible_jobs_count):
+def award_worker_referral_reward_for_worker(worker, eligible_jobs_count, *, booking=None):
     """Credit the referring worker once the invited worker completes five eligible jobs."""
     if eligible_jobs_count < WORKER_REFERRAL_MILESTONE:
         return False
@@ -66,6 +66,7 @@ def award_worker_referral_reward_for_worker(worker, eligible_jobs_count):
             "wallet": wallet,
             "worker": referrer_worker,
             "referral": referral,
+            "booking": booking,
             "type": WorkerRewardTransaction.Type.REFERRAL_REWARD,
             "amount": WORKER_REFERRAL_REWARD,
             "description": (
@@ -146,5 +147,5 @@ def award_mission_reward_for_completed_booking(booking):
     wallet.save(update_fields=[
         "eligible_jobs_count", "balance", "total_earned", "updated_at",
     ])
-    award_worker_referral_reward_for_worker(worker, next_count)
+    award_worker_referral_reward_for_worker(worker, next_count, booking=booking)
     return wallet
