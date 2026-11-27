@@ -733,6 +733,10 @@ class DispatchConfiguration(TimeStampedModel):
         validators=[MaxValueValidator(100)],
         help_text="Percentage retained from the captured advance payment for late customer cancellations.",
     )
+    no_show_grace_minutes = models.PositiveSmallIntegerField(
+        default=30,
+        help_text="Minutes after the scheduled start before a customer can report a worker no-show.",
+    )
     priority_order = models.CharField(
         max_length=32,
         choices=PRIORITY_CHOICES,
