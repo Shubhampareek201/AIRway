@@ -79,6 +79,7 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["actual_contribution_total"], Decimal("180.00"))
         self.assertEqual(report["estimated_contribution_total"], Decimal("150.00"))
         self.assertEqual(report["variance"], Decimal("30.00"))
+        self.assertEqual(report["profitability_status"], "Insufficient data")
         self.assertEqual(estimate_mock.call_count, 1)
 
     @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
@@ -97,3 +98,4 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["actual_complete_count"], 1)
         self.assertEqual(report["estimated_count"], 0)
         self.assertIsNone(report["variance"])
+        self.assertEqual(report["profitability_status"], "Insufficient data")

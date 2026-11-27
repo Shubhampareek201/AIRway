@@ -213,16 +213,18 @@ class ServiceAdmin(ModelAdmin):
             visible.append((
                 label, report["booking_count"], report["actual_complete_count"],
                 report["actual_incomplete_count"], money(report["actual_contribution_total"]),
-                money(report["estimated_contribution_total"]), money(report["variance"]),
+                money(report["estimated_contribution_total"]), money(report["actual_average"]),
+                money(report["estimated_average"]), money(report["variance"]),
+                report["profitability_status"],
             ))
         body = format_html_join(
             "",
-            "<tr><th>{}</th><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><th>{}</th><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             visible,
         )
         return format_html(
             "<p>All-time completed bookings. Estimates use saved booking subtotal/payout snapshots and the service's current cost assumptions. Incomplete actuals are excluded from profit/loss comparison.</p>"
-            "<table><thead><tr><th>Service / variant</th><th>Completed</th><th>Finance complete</th><th>Finance incomplete</th><th>Actual contribution</th><th>Estimated contribution</th><th>Variance (comparable)</th></tr></thead><tbody>{}</tbody></table>",
+            "<table><thead><tr><th>Service / variant</th><th>Completed</th><th>Finance complete</th><th>Finance incomplete</th><th>Actual contribution</th><th>Estimated contribution</th><th>Avg actual</th><th>Avg estimated</th><th>Variance (comparable)</th><th>Profitability</th></tr></thead><tbody>{}</tbody></table>",
             body,
         )
 

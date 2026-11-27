@@ -237,6 +237,18 @@ def summarize_service_profitability(bookings, service):
         result["variance"] = _money(
             result["comparable_actual_total"] - result["comparable_estimated_total"]
         )
+    if (
+        result["booking_count"] > 0
+        and result["actual_complete_count"] == result["booking_count"]
+        and result["estimated_count"] == result["booking_count"]
+    ):
+        result["profitability_status"] = (
+            "Profitable" if result["actual_contribution_total"] > ZERO
+            else "Loss-making" if result["actual_contribution_total"] < ZERO
+            else "Break-even"
+        )
+    else:
+        result["profitability_status"] = "Insufficient data"
     return result
 
 
