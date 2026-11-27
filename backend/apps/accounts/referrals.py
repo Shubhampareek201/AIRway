@@ -103,6 +103,7 @@ def apply_referral_code(referred_user, code, request=None):
         raise ValueError("This referral cannot be applied between duplicate or matching account identities.")
 
     return Referral.objects.create(
+        referral_type=Referral.ReferralType.CUSTOMER,
         referrer=referrer,
         referred=referred,
         applied_ip=_request_ip(request),
@@ -133,7 +134,7 @@ def reward_referral_for_first_completed_booking(booking):
     referral = (
         Referral.objects.select_for_update()
         .select_related("referrer", "referred")
-        .filter(referred=booking.customer, rewarded=False)
+        .filter(referred=booking.customer, referral_type=Referral.ReferralType.CUSTOMER, rewarded=False)
         .first()
     )
     if referral is None:
