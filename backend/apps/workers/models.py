@@ -614,6 +614,32 @@ class WorkerRewardWithdrawal(TimeStampedModel):
         return f"Worker reward withdrawal #{self.pk} · ₹{self.amount} · {self.status}"
 
 
+class WorkerReferralSettings(TimeStampedModel):
+    """Singleton admin controls for withdrawable worker referral rewards."""
+    reward_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=150,
+        help_text="Reward after an invited approved worker completes five eligible jobs. Minimum ₹150.",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Worker Referral Settings"
+        verbose_name_plural = "Worker Referral Settings"
+        constraints = [
+            models.CheckConstraint(condition=Q(reward_amount__gte=150), name="worker_referral_reward_min_150"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Worker referral settings cannot be deleted.")
+
+    def __str__(self):
+        return f"Worker referral reward: ₹{self.reward_amount}"
+
+
 class WorkerMonthlyMissionProgress(TimeStampedModel):
     """One independent, permanent counter per worker and calendar month."""
     worker = models.ForeignKey(WorkerProfile, on_delete=models.PROTECT, related_name="monthly_mission_progress")
