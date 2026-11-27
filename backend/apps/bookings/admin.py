@@ -247,21 +247,30 @@ class BookingAdmin(ModelAdmin):
     list_display = ("id", "customer", "service", "variant", "booking_mode", "status", "actual_contribution_status", "actual_contribution", "scheduled_at", "created_at")
     list_filter = ("status", "booking_mode", "service")
     search_fields = ("customer__phone", "customer__name", "service__title")
-    readonly_fields = ("created_at", "updated_at", "pricing_snapshot")
+    readonly_fields = ("created_at", "updated_at", "pricing_snapshot", "actual_finance_details")
     inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline]
     actions = [mark_unfulfillable_and_refund]
 
+    def _actual_finance_report(self, obj):
+        if not hasattr(obj, "_actual_finance_report"):
+            from apps.catalog.actual_finance import calculate_booking_actual_finance
+            obj._actual_finance_report = calculate_booking_actual_finance(obj)
+        return obj._actual_finance_report
+
     @admin.display(description="Actual finance status")
     def actual_contribution_status(self, obj):
-        from apps.catalog.actual_finance import calculate_booking_actual_finance
-        return calculate_booking_actual_finance(obj)['status'].title()
+        return self._actual_finance_report(obj)['status'].title()
 
     @admin.display(description="Partial contribution")
     def actual_contribution(self, obj):
-        from apps.catalog.actual_finance import calculate_booking_actual_finance
-        report = calculate_booking_actual_finance(obj)
+        report = self._actual_finance_report(obj)
         value = report['partial_contribution']
-        return '₹%s (partial)' % value if report['status'] != 'complete' else '₹%s' % value
+        return '₹%s (partial)' % value if report['status'] != 'complete' else '₹%s'
+
+    @admin.display(description="Actual finance reconciliation")
+    def actual_finance_details(self, obj):
+        report = self._actual_finance_report(obj)
+        return "; ".join(report['reasons']) or "All recorded components reconciled."
 
 
 @admin.register(BookingWorkEvidence)
