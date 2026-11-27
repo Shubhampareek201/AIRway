@@ -2470,6 +2470,11 @@ class CustomerAppointmentGroupCancelView(APIView):
                 {"detail": "An appointment that has started or finished cannot be cancelled online. Contact AIRway support."},
                 status=status.HTTP_409_CONFLICT,
             )
+        if any(booking.scheduled_at <= timezone.now() for booking in bookings):
+            return Response(
+                {"detail": "The scheduled start time has passed. Report a worker no-show or contact AIRway support instead of cancelling online."},
+                status=status.HTTP_409_CONFLICT,
+            )
         if any(
             booking.status not in (
                 Booking.Status.PENDING,
