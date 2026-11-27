@@ -870,13 +870,19 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     final service = row['service'] is Map
         ? (row['service']['service_title']?.toString() ?? 'this service')
         : 'this service';
+    final cancellationPolicy = row['cancellation_policy'] is Map
+        ? Map<String, dynamic>.from(row['cancellation_policy'])
+        : <String, dynamic>{};
+    final lateFeeApplies = cancellationPolicy['late_fee_applies'] == true;
+    final lateFeePercent = cancellationPolicy['late_fee_percent']?.toString() ?? '30';
+    final cancellationMessage = lateFeeApplies
+        ? 'This is within AIRway’s late-cancellation window. $lateFeePercent% of the already-paid advance will be retained as the cancellation fee; the remaining eligible amount will be refunded. Refund status will appear in this order.'
+        : 'Do you want to cancel $service? Any eligible captured payment will be sent for refund. Refund status will appear in this order.';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AirwayText.tr('Cancel this service?', 'यह सेवा रद्द करें?')),
-        content: Text(
-          'Do you want to cancel $service? Any eligible captured payment will be sent for refund. Refund status will appear in this order.',
-        ),
+        content: Text(cancellationMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1004,15 +1010,27 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
     if (mounted) await loadOrder(showLoader: false);
   }
 
-  Future<void> cancelAppointmentGroup(int groupId) async {
+  Future<void> cancelAppointmentGroup(
+    int groupId,
+    List<Map<String, dynamic>> groupRows,
+  ) async {
+    final lateFeeRow = groupRows.cast<Map<String, dynamic>?>().firstWhere(
+      (row) => row?['cancellation_policy'] is Map &&
+          (row!['cancellation_policy'] as Map)['late_fee_applies'] == true,
+      orElse: () => null,
+    );
+    final lateFeeApplies = lateFeeRow != null;
+    final lateFeePercent = lateFeeApplies
+        ? (lateFeeRow['cancellation_policy'] as Map)['late_fee_percent']?.toString() ?? '30'
+        : '30';
+    final cancellationMessage = lateFeeApplies
+        ? 'At least one service in this appointment is within AIRway’s late-cancellation window. $lateFeePercent% of the already-paid advance for each affected service will be retained as the cancellation fee; remaining eligible amounts will be refunded. Other appointments in this order will remain unchanged.'
+        : 'All services in this appointment will be cancelled. Other appointments in this order will remain unchanged. Eligible refunds will be processed separately.';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AirwayText.tr('Cancel this appointment?', 'यह अपॉइंटमेंट रद्द करें?')),
-        content: Text(AirwayText.tr(
-          'All services in this appointment will be cancelled. Other appointments in this order will remain unchanged. Eligible refunds will be processed separately.',
-          'इस अपॉइंटमेंट की सभी सेवाएँ रद्द हो जाएँगी। इस ऑर्डर के दूसरे अपॉइंटमेंट पर असर नहीं पड़ेगा। लागू रिफंड अलग से प्रोसेस होंगे।',
-        )),
+        content: Text(cancellationMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1732,7 +1750,7 @@ class _CustomerOrderScreenState extends State<CustomerOrderScreen> {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
-                          onPressed: () => cancelAppointmentGroup(groupId!),
+                          onPressed: () => cancelAppointmentGroup(groupId!, groupRows),
                           icon: const Icon(Icons.cancel_outlined, size: 15),
                           label: Text(AirwayText.tr('Cancel this appointment', 'यह अपॉइंटमेंट रद्द करें')),
                           style: TextButton.styleFrom(
