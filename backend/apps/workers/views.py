@@ -27,6 +27,21 @@ from apps.wallet.models import WalletTransaction
 
 logger = logging.getLogger(__name__)
 
+
+def _refund_worker_rejected_booking(booking_id):
+    from apps.payments.models import PaymentRefund
+    from apps.payments.refunds import request_booking_refunds
+
+    try:
+        booking = Booking.objects.get(pk=booking_id)
+        request_booking_refunds(
+            booking,
+            reason=PaymentRefund.Reason.PLATFORM_UNFULFILLED,
+        )
+    except Exception:
+        logger.exception("Could not process customer refund after worker rejection for booking %s", booking_id)
+
+
 from .models import (
     WorkerProfile,
     WorkerService,
@@ -1314,18 +1329,44 @@ class WorkerJobRejectView(APIView):
         booking.cancelled_by = request.user
         booking.cancelled_at = timezone.now()
         booking.save(update_fields=["status", "cancellation_reason", "cancelled_by", "cancelled_at"])
-        assign.live_latitude = None
-        assign.live_longitude = None
-        assign.live_accuracy_m = None
-        assign.live_location_updated_at = None
-        assign.save(update_fields=[
-            "live_latitude", "live_longitude", "live_accuracy_m",
-            "live_location_updated_at", "updated_at",
-        ])
+        assign.delete()
+        WorkerOffer.objects.filter(
+            booking=booking,
+            status__in=(WorkerOffer.Status.PENDING, WorkerOffer.Status.ACCEPTED),
+        ).update(status=WorkerOffer.Status.WITHDRAWN, responded_at=timezone.now())
         BookingStatusHistory.objects.create(
             booking=booking, from_status=old, to_status=Booking.Status.CANCELLED,
-            changed_by=request.user, note=f"Worker rejected. Reason: {request.data.get('reason', '')}",
+            changed_by=request.user, note=f"Worker rejected. AIRway unfulfilled; customer refund initiated. Reason: {request.data.get('reason', '')}",
         )
+        Notification.objects.create(
+            user=booking.customer,
+            type=Notification.Type.BOOKING_CANCELLED,
+            title="Your professional could not take this service",
+            body="The assigned professional declined the job. AIRway has cancelled this service and initiated a refund of its captured payments.",
+            channel=Notification.Channel.IN_APP,
+            data={"booking_id": booking.pk, "purpose": "worker_rejection_refund"},
+        )
+        transaction.on_commit(
+            lambda booking_id=booking.pk: _refund_worker_rejected_booking(booking_id)
+        )
+        order_item = getattr(booking, "order_item", None)
+        if order_item:
+            order = Order.objects.select_for_update().get(pk=order_item.order_id)
+            active_remaining = order.items.exclude(
+                booking__status=Booking.Status.CANCELLED
+            ).exists()
+            order.status = (
+                Order.Status.PARTIALLY_CANCELLED
+                if active_remaining else Order.Status.CANCELLED
+            )
+            order.save(update_fields=["status", "updated_at"])
+            if active_remaining:
+                from apps.bookings.dispatcher import DispatcherService
+                transaction.on_commit(
+                    lambda order_id=order.pk: DispatcherService.dispatch_order(
+                        Order.objects.filter(pk=order_id).first()
+                    )
+                )
         rework_proposal = getattr(booking, "rework_source", None)
         if rework_proposal is not None and rework_proposal.status == "accepted":
             rework_proposal.status = "expired"
