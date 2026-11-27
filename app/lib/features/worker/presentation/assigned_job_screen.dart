@@ -429,7 +429,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     if (proposal == null || !mounted) return;
     setState(() => _isActionInProgress = true);
     try {
-      await WorkerApi.proposeExtraWork(
+      final extraWork = await WorkerApi.proposeExtraWork(
         job.bookingId,
         reason: proposal['reason']!,
         description: proposal['description']!,
@@ -439,8 +439,16 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       );
       await _loadAssignedJob();
       if (!mounted) return;
+      final payout = extraWork['worker_payout_amount']?.toString();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Extra-work request sent. Wait for customer approval before proceeding.')),
+        SnackBar(
+          content: Text(
+            payout == null
+                ? 'Extra-work request sent. Wait for customer approval.'
+                : 'Request sent. Your additional payout after approval and payment: ₹$payout.',
+          ),
+          duration: const Duration(seconds: 5),
+        ),
       );
     } catch (e) {
       if (!mounted) return;

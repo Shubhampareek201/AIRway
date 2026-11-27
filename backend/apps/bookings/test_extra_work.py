@@ -99,8 +99,43 @@ class ExtraWorkAPITest(TestCase):
         customer_response = self.client.get(
             f"/api/v1/bookings/{self.booking.pk}/extra-work/"
         )
-        if customer_response.status_code == 200:
-            self.assertNotIn("worker_payout_amount", customer_response.data[0])
+        self.assertEqual(customer_response.status_code, 200)
+        self.assertNotIn("worker_payout_amount", customer_response.data[0])
+
+        second_booking = Booking.objects.create(
+            customer=self.customer,
+            address=self.booking.address,
+            service=self.booking.service,
+            scheduled_at=timezone.now(),
+            status=Booking.Status.IN_PROGRESS,
+            worker_payout_snapshot={
+                "pricing_model": "fixed_service_payout_v1",
+                "total": "600.00",
+            },
+        )
+        BookingAssignment.objects.create(
+            booking=second_booking, worker=self.worker, accepted_at=timezone.now(),
+        )
+        second_order = Order.objects.create(
+            customer=self.customer, address=self.booking.address,
+            subtotal="1000.00", total_amount="1000.00",
+        )
+        OrderItem.objects.create(
+            order=second_order, booking=second_booking, quantity=1,
+            line_subtotal="1000.00", line_total="1000.00",
+        )
+        self.client.force_authenticate(user=self.worker_user)
+        longer_scope = self.client.post(
+            f"/api/v1/workers/jobs/{second_booking.pk}/extra-work/",
+            {
+                "reason": "Same scope, longer time estimate",
+                "line_items": [{"description": "Extra room", "quantity": 1, "unit_price": "250.00"}],
+                "additional_duration_minutes": 600,
+            },
+            format="json",
+        )
+        self.assertEqual(longer_scope.status_code, 201, longer_scope.data)
+        self.assertEqual(longer_scope.data["worker_payout_amount"], "150.00")
 
     def test_worker_can_submit_new_proposal_after_previous_one_expires(self):
         previous = self._proposal()
