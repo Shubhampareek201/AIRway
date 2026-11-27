@@ -54,7 +54,7 @@ urlpatterns = [
     path("services/<int:service_id>/", WorkerServiceDetailView.as_view(), name="worker-service-detail"),
     path("zones/", WorkerZoneListView.as_view(), name="worker-zones"),
     path("zones/<int:zone_id>/", WorkerZoneDetailView.as_view(), name="worker-zone-detail"),
-    path("zone-requests/", WorkerZoneChangeRequestListView.as_view(), name="worker-zone-change-requests"),\n    path("zone-requests/", WorkerZoneChangeRequestListView.as_view(), name="worker-zone-change-requests"),
+    path("zone-requests/", WorkerZoneChangeRequestListView.as_view(), name="worker-zone-change-requests"),
     path("schedules/", WorkerScheduleListView.as_view(), name="worker-schedules"),
     path("schedules/<int:schedule_id>/", WorkerScheduleDetailView.as_view(), name="worker-schedule-detail"),
     path("documents/upload/", WorkerDocumentUploadView.as_view(), name="worker-document-upload"),
