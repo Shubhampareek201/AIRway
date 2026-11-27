@@ -8,7 +8,7 @@ from apps.bookings.models import Booking, BookingAssignment, BookingCompletionOT
 from apps.accounts.models import Referral
 from apps.payments.models import Payment, PaymentRefund
 
-from .models import WorkerRewardWallet, WorkerRewardTransaction, WorkerMonthlyMissionProgress, WorkerProfile
+from .models import WorkerRewardWallet, WorkerRewardTransaction, WorkerMonthlyMissionProgress, WorkerProfile, WorkerReferralSettings
 
 MISSION_REWARDS = {
     5: Decimal("300.00"),
@@ -55,7 +55,7 @@ def _booking_is_verified_completed(booking):
 
 @transaction.atomic
 def award_worker_referral_reward_for_worker(worker, eligible_jobs_count, *, booking=None):
-    if eligible_jobs_count < WORKER_REFERRAL_MILESTONE:
+    if eligible_jobs_count < WORKER_REFERRAL_MILESTONE or worker.status != WorkerProfile.Status.APPROVED:
         return False
     referral = Referral.objects.select_for_update().select_related("referrer").filter(
         referred_id=worker.user_id, worker_rewarded=False
@@ -63,21 +63,23 @@ def award_worker_referral_reward_for_worker(worker, eligible_jobs_count, *, book
     if referral is None:
         return False
     referrer_worker = WorkerProfile.objects.filter(user_id=referral.referrer_id).first()
-    if referrer_worker is None:
+    if referrer_worker is None or referrer_worker.status != WorkerProfile.Status.APPROVED:
         return False
+    settings_row = WorkerReferralSettings.objects.filter(pk=1, is_active=True).first()
+    reward_amount = settings_row.reward_amount if settings_row else WORKER_REFERRAL_REWARD
     wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=referrer_worker)
     wallet = WorkerRewardWallet.objects.select_for_update().get(pk=wallet.pk)
     _, created = WorkerRewardTransaction.objects.get_or_create(
         reference_key=f"worker-referral:{referral.pk}:referrer",
         defaults={
             "wallet": wallet, "worker": referrer_worker, "referral": referral, "booking": booking,
-            "type": WorkerRewardTransaction.Type.REFERRAL_REWARD, "amount": WORKER_REFERRAL_REWARD,
+            "type": WorkerRewardTransaction.Type.REFERRAL_REWARD, "amount": reward_amount,
             "description": f"Worker referral reward: invited worker #{worker.pk} completed {WORKER_REFERRAL_MILESTONE} eligible jobs",
         },
     )
     if created:
-        wallet.balance += WORKER_REFERRAL_REWARD
-        wallet.total_earned += WORKER_REFERRAL_REWARD
+        wallet.balance += reward_amount
+        wallet.total_earned += reward_amount
         wallet.save(update_fields=["balance", "total_earned", "updated_at"])
     referral.worker_rewarded = True
     referral.worker_rewarded_at = timezone.now()
@@ -94,8 +96,7 @@ def award_mission_reward_for_completed_booking(booking):
     if assignment is None:
         return None
     service_cost = _service_line_cost(booking)
-    # Keep the pre-existing worker-referral eligibility (>₹300) independent
-    # from the newly approved monthly mission threshold (>₹500).
+    # The legacy wallet counter remains >₹300; missions and worker referrals use >₹500.
     if service_cost <= Decimal("300.00"):
         return None
 
@@ -149,5 +150,11 @@ def award_mission_reward_for_completed_booking(booking):
             wallet.balance += reward
             wallet.total_earned += reward
     wallet.save(update_fields=["eligible_jobs_count", "balance", "total_earned", "updated_at"])
-    award_worker_referral_reward_for_worker(worker, wallet.eligible_jobs_count, booking=booking)
+    if monthly_eligible:
+        referral_eligible_jobs = WorkerRewardTransaction.objects.filter(
+            worker=worker,
+            type=WorkerRewardTransaction.Type.ELIGIBLE_JOB,
+            reference_key__startswith=f"monthly-eligible-job:{worker.pk}:",
+        ).count()
+        award_worker_referral_reward_for_worker(worker, referral_eligible_jobs, booking=booking)
     return progress
