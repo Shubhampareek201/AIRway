@@ -180,45 +180,6 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["estimated_average"], Decimal("135.00"))
         self.assertEqual(report["variance"], Decimal("30.00"))
         self.assertEqual(report["profitability_status"], "Insufficient data")
-    def test_admin_can_add_append_only_cost_and_new_cost_invalidates_review(self):
-        from apps.bookings.models import BookingFinanceReconciliation, BookingVariableCost
-
-        BookingFinanceReconciliation.objects.create(
-            booking=self.booking,
-            other_costs_reviewed=True,
-            review_note="Reviewed all expenses",
-            reviewed_by=self.admin_user,
-            reviewed_at=timezone.now(),
-        )
-        self.client.force_login(self.admin_user)
-        add_url = reverse("admin:bookings_bookingvariablecost_add")
-        response = self.client.get(add_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'name="amount"')
-        self.assertContains(response, 'name="description"')
-
-        response = self.client.post(
-            add_url,
-            {
-                "booking": str(self.booking.pk),
-                "category": BookingVariableCost.Category.TRAVEL,
-                "amount": "25.50",
-                "description": "Worker travel expense",
-                "reference": "TRAVEL-001",
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        cost = BookingVariableCost.objects.get(reference="TRAVEL-001")
-        self.assertEqual(cost.created_by, self.admin_user)
-        self.assertEqual(cost.amount, Decimal("25.50"))
-
-        reconciliation = BookingFinanceReconciliation.objects.get(booking=self.booking)
-        self.assertFalse(reconciliation.other_costs_reviewed)
-        self.assertIsNone(reconciliation.reviewed_by)
-        self.assertIsNone(reconciliation.reviewed_at)
-
-        change_url = reverse("admin:bookings_bookingvariablecost_change", args=[cost.pk])
-        self.assertEqual(self.client.get(change_url).status_code, 403)
 
 
 from datetime import timedelta
@@ -306,3 +267,43 @@ class ServiceProfitabilityAdminReportIntegrationTests(TestCase):
         self.assertEqual(summary["estimated_contribution_total"], Decimal("150.00"))
         self.assertContains(response, "Service profitability report")
         self.assertContains(response, "Home Cleaning")
+
+    def test_admin_can_add_append_only_cost_and_new_cost_invalidates_review(self):
+        from apps.bookings.models import BookingFinanceReconciliation, BookingVariableCost
+
+        BookingFinanceReconciliation.objects.create(
+            booking=self.booking,
+            other_costs_reviewed=True,
+            review_note="Reviewed all expenses",
+            reviewed_by=self.admin_user,
+            reviewed_at=timezone.now(),
+        )
+        self.client.force_login(self.admin_user)
+        add_url = reverse("admin:bookings_bookingvariablecost_add")
+        response = self.client.get(add_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="amount"')
+        self.assertContains(response, 'name="description"')
+
+        response = self.client.post(
+            add_url,
+            {
+                "booking": str(self.booking.pk),
+                "category": BookingVariableCost.Category.TRAVEL,
+                "amount": "25.50",
+                "description": "Worker travel expense",
+                "reference": "TRAVEL-001",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        cost = BookingVariableCost.objects.get(reference="TRAVEL-001")
+        self.assertEqual(cost.created_by, self.admin_user)
+        self.assertEqual(cost.amount, Decimal("25.50"))
+
+        reconciliation = BookingFinanceReconciliation.objects.get(booking=self.booking)
+        self.assertFalse(reconciliation.other_costs_reviewed)
+        self.assertIsNone(reconciliation.reviewed_by)
+        self.assertIsNone(reconciliation.reviewed_at)
+
+        change_url = reverse("admin:bookings_bookingvariablecost_change", args=[cost.pk])
+        self.assertEqual(self.client.get(change_url).status_code, 403)
