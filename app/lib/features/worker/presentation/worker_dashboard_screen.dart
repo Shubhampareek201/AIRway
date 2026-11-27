@@ -878,6 +878,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
     final hasUpi = _profile?.upiId?.trim().isNotEmpty == true;
+    final referralCode = data['referral_code']?.toString() ?? '';
+    final workerReferrals = (data['worker_referrals'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final referralReward = double.tryParse('${data['worker_referral_reward_amount'] ?? '150'}') ?? 150;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -935,6 +941,55 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           const SizedBox(height: 5),
           Text(AirwayText.tr('Only completed and OTP-verified services with an original service charge above ₹500 count. Discounts do not affect eligibility; cancelled, disputed or refunded bookings are excluded. Progress resets monthly; history stays available.', 'सिर्फ OTP से सत्यापित पूरी सेवाएँ जिनका मूल सर्विस चार्ज ₹500 से अधिक है, गिनी जाएँगी। डिस्काउंट से पात्रता नहीं बदलेगी; रद्द, विवादित या रिफंड बुकिंग शामिल नहीं होंगी। प्रगति हर महीने रीसेट होगी; इतिहास सुरक्षित रहेगा।'),
               style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, height: 1.4)),
+          const Divider(height: 24),
+          Text(AirwayText.tr('Invite another worker', 'दूसरे वर्कर को आमंत्रित करें'),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 5),
+          Text(AirwayText.tr('Share your code. When the invited worker is admin-approved and completes 5 eligible services above ₹500, you earn a withdrawable reward.', 'अपना कोड शेयर करें। आमंत्रित वर्कर के एडमिन से स्वीकृत होने और ₹500 से अधिक की 5 योग्य सेवाएँ पूरी करने पर आपको निकासी योग्य रिवॉर्ड मिलेगा।'),
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11, height: 1.4)),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: const Color(0xFFF7F5F0), borderRadius: BorderRadius.circular(12)),
+            child: Row(children: [
+              Expanded(child: Text(referralCode, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2))),
+              IconButton(
+                tooltip: 'Copy referral code',
+                onPressed: referralCode.isEmpty ? null : () async {
+                  await Clipboard.setData(ClipboardData(text: referralCode));
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Worker referral code copied.')));
+                },
+                icon: const Icon(Icons.copy_rounded),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 5),
+          Text('Reward per successful referral: ₹${referralReward.toStringAsFixed(0)}',
+              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF5637C8))),
+          if (workerReferrals.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('No worker referrals yet.', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+            ),
+          for (final referral in workerReferrals)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF6C4AE3)),
+              title: Text(referral['worker_name']?.toString() ?? 'Invited worker',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(
+                referral['status'] == 'rewarded'
+                    ? 'Reward credited · ₹${referral['reward_amount'] ?? referralReward}'
+                    : referral['status'] == 'awaiting_approval'
+                        ? 'Waiting for admin approval'
+                        : '${referral['eligible_jobs_count'] ?? 0}/5 eligible services completed',
+              ),
+              trailing: referral['rewarded'] == true
+                  ? const Icon(Icons.check_circle, color: AirwayColors.success)
+                  : Text('${referral['eligible_jobs_count'] ?? 0}/5',
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+            ),
           const SizedBox(height: 12),
           if (!hasUpi)
             TextButton.icon(
