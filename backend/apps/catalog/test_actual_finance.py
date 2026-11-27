@@ -150,3 +150,33 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
 
         get_template("admin/catalog/service/profitability_report.html")
         get_template("admin/catalog/service/change_list.html")
+
+    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
+    @patch("apps.catalog.finance.calculate_estimated_contribution")
+    def test_estimate_is_counted_even_when_actual_finance_is_incomplete(self, estimate_mock, actual_mock):
+        from apps.catalog.actual_finance import summarize_service_profitability
+
+        complete = SimpleNamespace(
+            pricing_snapshot={"subtotal": "500.00"},
+            worker_payout_snapshot={"total": "250.00"},
+        )
+        incomplete = SimpleNamespace(
+            pricing_snapshot={"subtotal": "400.00"},
+            worker_payout_snapshot={"total": "200.00"},
+        )
+        actual_mock.side_effect = [
+            {"status": "complete", "partial_contribution": Decimal("180.00")},
+            {"status": "incomplete", "partial_contribution": Decimal("0.00")},
+        ]
+        estimate_mock.side_effect = [Decimal("150.00"), Decimal("120.00")]
+
+        report = summarize_service_profitability([complete, incomplete], SimpleNamespace())
+
+        self.assertEqual(report["booking_count"], 2)
+        self.assertEqual(report["actual_complete_count"], 1)
+        self.assertEqual(report["actual_incomplete_count"], 1)
+        self.assertEqual(report["estimated_count"], 2)
+        self.assertEqual(report["estimated_contribution_total"], Decimal("270.00"))
+        self.assertEqual(report["estimated_average"], Decimal("135.00"))
+        self.assertEqual(report["variance"], Decimal("30.00"))
+        self.assertEqual(report["profitability_status"], "Insufficient data")

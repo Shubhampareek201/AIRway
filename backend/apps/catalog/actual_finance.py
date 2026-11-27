@@ -209,7 +209,7 @@ def _finalize_profitability_summary(result):
 
 
 def summarize_service_profitability(bookings, service=None):
-    """Summarize completed bookings using each booking's own service assumptions."""
+    """Summarize completed bookings; keep estimates separate from actual completeness."""
     from apps.catalog.finance import calculate_estimated_contribution
 
     result = {
@@ -228,11 +228,12 @@ def summarize_service_profitability(bookings, service=None):
     for booking in bookings:
         result["booking_count"] += 1
         actual = calculate_booking_actual_finance(booking)
-        if actual["status"] != "complete":
+        is_actual_complete = actual["status"] == "complete"
+        if is_actual_complete:
+            result["actual_complete_count"] += 1
+            result["actual_contribution_total"] += actual["partial_contribution"]
+        else:
             result["actual_incomplete_count"] += 1
-            continue
-        result["actual_complete_count"] += 1
-        result["actual_contribution_total"] += actual["partial_contribution"]
 
         pricing = booking.pricing_snapshot or {}
         payout_snapshot = booking.worker_payout_snapshot or {}
@@ -244,13 +245,14 @@ def summarize_service_profitability(bookings, service=None):
         ) if pricing.get("subtotal") is not None and payout_snapshot.get("total") is not None else None
         if estimated is None:
             continue
+
         result["estimated_count"] += 1
         result["estimated_contribution_total"] += estimated
-        result["comparable_actual_total"] += actual["partial_contribution"]
-        result["comparable_estimated_total"] += estimated
+        if is_actual_complete:
+            result["comparable_actual_total"] += actual["partial_contribution"]
+            result["comparable_estimated_total"] += estimated
 
     return _finalize_profitability_summary(result)
-
 
 def combine_profitability_summaries(summaries):
     """Combine service summaries without recalculating bookings or mixing assumptions."""
