@@ -873,7 +873,7 @@ class WorkerJobLifecycleTest(TestCase):
         with patch("apps.workers.views._refund_worker_rejected_booking") as refund:
             with self.captureOnCommitCallbacks(execute=True):
                 response = worker_client.post(
-                    f"/api/v1/workers/jobs/{booking.pk}/reject/",
+                    f"/api/v1/workers/jobs/{assignment.pk}/reject/",
                     {"reason": "Unable to attend"},
                     format="json",
                 )
