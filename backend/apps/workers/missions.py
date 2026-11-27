@@ -27,7 +27,7 @@ def _service_line_cost(booking):
         return Decimal(str(line_subtotal))
     snapshot = booking.pricing_snapshot or {}
     try:
-        return Decimal(str(snapshot.get("subtotal", snapshot.get("total", "0.00"))))
+        return Decimal(str(snapshot.get("subtotal", "0.00")))
     except Exception:
         return Decimal("0.00")
 
