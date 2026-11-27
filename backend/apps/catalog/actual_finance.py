@@ -73,11 +73,15 @@ def calculate_booking_actual_finance(booking):
     if line_total is None or line_total <= 0:
         line_total = subtotal + tax
     discount = ZERO
-    if item is not None and item.order.discount_amount:
-        order_subtotal = _decimal(item.order.subtotal) or ZERO
-        if order_subtotal > 0:
-            discount = _money(_decimal(item.order.discount_amount) * subtotal / order_subtotal)
-    elif item is None:
+    if item is not None:
+        snapshot_discount = _decimal((item.pricing_snapshot or {}).get('campaign_discount_amount'))
+        if snapshot_discount is not None and snapshot_discount >= 0:
+            discount = _money(snapshot_discount)
+        elif item.order.discount_amount:
+            order_subtotal = _decimal(item.order.subtotal) or ZERO
+            if order_subtotal > 0:
+                discount = _money(_decimal(item.order.discount_amount) * subtotal / order_subtotal)
+    else:
         reasons.append('Legacy booking discount allocation is unavailable')
     payments = Payment.objects.filter(status=Payment.Status.PAID).filter(Q(booking=booking) | Q(order__items__booking=booking)).distinct()
     if not payments.exists():
@@ -107,7 +111,8 @@ def calculate_booking_actual_finance(booking):
         gateway_fee_tax += payment.gateway_fee_tax_amount * ratio
     refunds = PaymentRefund.objects.filter(booking=booking, status=PaymentRefund.Status.PROCESSED, extra_work__isnull=True)
     refunded_gross = sum((_decimal(value) or ZERO for value in refunds.values_list('amount', flat=True)), ZERO)
-    refunded_service_revenue = _money(refunded_gross * subtotal / line_total) if line_total > 0 else ZERO
+    discounted_subtotal = max(subtotal - discount, ZERO)
+    refunded_service_revenue = _money(refunded_gross * discounted_subtotal / line_total) if line_total > 0 else ZERO
     earning = WorkerEarning.objects.filter(booking=booking, extra_work__isnull=True).order_by('-updated_at', '-pk').first()
     worker_payout = _decimal(earning.net_amount) if earning is not None else None
     if worker_payout is None or worker_payout < 0:

@@ -1696,10 +1696,86 @@ class CustomerCheckoutView(APIView):
             # Dispatch is deferred until every OrderItem exists.
             dispatch_results.append({"booking_id": booking.id, "offers_sent": 0})
 
+        # Apply eligible customer campaigns before tax and the staged 30/70 split.
+        # The reservation helper locks the customer and campaign budget rows and
+        # creates order-level redemption records inside this checkout transaction.
+        from apps.bookings.campaigns import reserve_customer_campaigns
+
+        campaign_lines = []
+        for order_item in order.items.select_related("booking__service").order_by("id"):
+            payout_value = (order_item.booking.worker_payout_snapshot or {}).get("total")
+            try:
+                worker_payout_for_campaign = (
+                    Decimal(str(payout_value)) if payout_value is not None else None
+                )
+            except Exception:
+                worker_payout_for_campaign = None
+            campaign_lines.append({
+                "key": str(order_item.pk),
+                "service": order_item.booking.service,
+                "subtotal": order_item.line_subtotal,
+                "worker_payout": worker_payout_for_campaign,
+            })
+
+        campaign_result = reserve_customer_campaigns(
+            customer=request.user,
+            order=order,
+            zone=getattr(cart.address, "zone", None),
+            lines=campaign_lines,
+        )
+        campaign_discount = campaign_result["discount_amount"]
+        tax_total = Decimal("0.00")
+        grand_total = Decimal("0.00")
+        line_discount_map = campaign_result["line_discounts"]
+        applied_campaigns = campaign_result["applied_campaigns"]
+
+        for order_item in order.items.select_related("booking__service").order_by("id"):
+            line_discount = line_discount_map.get(str(order_item.pk), Decimal("0.00"))
+            discounted_subtotal = max(order_item.line_subtotal - line_discount, Decimal("0.00"))
+            tax_rate = Decimal(str(order_item.booking.service.tax_rate))
+            line_tax = (discounted_subtotal * tax_rate / Decimal("100")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            line_total = discounted_subtotal + line_tax
+            pricing_snapshot = dict(order_item.pricing_snapshot or {})
+            pricing_snapshot.update({
+                "subtotal": str(order_item.line_subtotal),
+                "campaign_discount_amount": str(line_discount),
+                "discounted_subtotal": str(discounted_subtotal),
+                "tax": str(line_tax),
+                "tax_rate": str(tax_rate),
+                "total": str(line_total),
+                "campaigns": [
+                    {
+                        "id": row["campaign_id"],
+                        "name": row["name"],
+                    }
+                    for row in applied_campaigns
+                    if line_discount > Decimal("0.00")
+                ],
+            })
+            order_item.tax_amount = line_tax
+            order_item.line_total = line_total
+            order_item.pricing_snapshot = pricing_snapshot
+            order_item.save(update_fields=[
+                "tax_amount", "line_total", "pricing_snapshot", "updated_at",
+            ])
+
+            booking_snapshot = dict(order_item.booking.pricing_snapshot or {})
+            booking_snapshot.update(pricing_snapshot)
+            order_item.booking.pricing_snapshot = booking_snapshot
+            order_item.booking.save(update_fields=["pricing_snapshot", "updated_at"])
+            tax_total += line_tax
+            grand_total += line_total
+
+        grand_total = grand_total
         order.subtotal = subtotal
         order.tax_amount = tax_total
+        order.discount_amount = campaign_discount
         order.total_amount = grand_total
-        order.save(update_fields=["subtotal", "tax_amount", "total_amount", "updated_at"])
+        order.save(update_fields=[
+            "subtotal", "tax_amount", "discount_amount", "total_amount", "updated_at",
+        ])
 
         # Persist the exact 30/70 split before returning the checkout response so
         # the customer sees the due-now amount even before opening Razorpay.
@@ -1768,6 +1844,11 @@ class CustomerCheckoutView(APIView):
             "currency": order.currency,
             "subtotal": str(order.subtotal),
             "tax_amount": str(order.tax_amount),
+            "discount_amount": str(order.discount_amount),
+            "campaigns": [
+                {"id": row["campaign_id"], "name": row["name"], "discount_amount": str(row["discount_amount"])}
+                for row in applied_campaigns
+            ],
             "total_amount": str(order.total_amount),
             "items": [
                 {
