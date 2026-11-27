@@ -961,8 +961,9 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                 status=Booking.Status.CANCELLED
             ).all())
             snapshots = [row.worker_payout_snapshot or {} for row in group_rows]
+            fixed_models = ("fixed_service_payout_v1", "admin_approved_quote_payout_v1")
             if snapshots and all(
-                row.get("pricing_model") == "fixed_service_payout_v1"
+                row.get("pricing_model") in fixed_models
                 and row.get("total") not in (None, "")
                 for row in snapshots
             ):
@@ -970,11 +971,13 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
                     (Decimal(str(row["total"])) for row in snapshots),
                     Decimal("0.00"),
                 ))
-            if any(row.get("pricing_model") == "fixed_service_payout_v1" for row in snapshots):
+            if any(row.get("pricing_model") in fixed_models for row in snapshots):
                 return None
         else:
             payout_snapshot = obj.booking.worker_payout_snapshot or {}
-            if payout_snapshot.get("pricing_model") == "fixed_service_payout_v1":
+            if payout_snapshot.get("pricing_model") in (
+                "fixed_service_payout_v1", "admin_approved_quote_payout_v1"
+            ):
                 value = payout_snapshot.get("total")
                 return str(Decimal(str(value))) if value not in (None, "") else None
 
