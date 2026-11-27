@@ -45,7 +45,7 @@ def calculate_booking_actual_finance(booking):
     reasons = []
     item = OrderItem.objects.select_related('order').filter(booking=booking).first()
     pricing = booking.pricing_snapshot or {}
-    subtotal = _decimal(item.line_subtotal if item is not None else pricing.get('subtotal', pricing.get('total')))
+    subtotal = _decimal(item.line_subtotal if item is not None else pricing.get('subtotal'))
     tax = _decimal(item.tax_amount if item is not None else pricing.get('tax', pricing.get('tax_amount')))
     line_total = _decimal(item.line_total if item is not None else pricing.get('total'))
     if subtotal is None or subtotal < 0:
@@ -131,7 +131,16 @@ def calculate_booking_actual_finance(booking):
         ).order_by('-updated_at', '-pk').first()
         if followup_earning and followup_earning.net_amount is not None:
             rework_payout += followup_earning.net_amount
-    reasons.append('Customer reward cost and other variable expenses are not fully allocated')
+    customer_reward_cost = ZERO
+    referral = Referral.objects.filter(referred=booking.customer, rewarded=True).first()
+    first_completed_booking_id = booking.customer.bookings.filter(status='completed').order_by('completed_at', 'pk').values_list('pk', flat=True).first()
+    if referral is not None and first_completed_booking_id == booking.pk:
+        referral_keys = ['referral:%s:referrer' % referral.pk, 'referral:%s:referred:first-service' % referral.pk]
+        customer_reward_cost = sum((_decimal(amount) or ZERO for amount in WalletTransaction.objects.filter(wallet__user_id__in=[referral.referrer_id, referral.referred_id], type=WalletTransaction.Type.CASHBACK, status=WalletTransaction.Status.COMPLETED, reference_id__in=referral_keys).values_list('amount', flat=True)), ZERO)
+    unallocated_cashback = WalletTransaction.objects.filter(wallet__user=booking.customer, type=WalletTransaction.Type.CASHBACK, status=WalletTransaction.Status.COMPLETED).exclude(reference_id__startswith='referral:').exists()
+    if unallocated_cashback:
+        reasons.append('Non-referral customer wallet rewards are not attributed to a booking')
+    reasons.append('Other variable operating expenses need finance reconciliation')
     if not gateway_fee_known:
         gateway_fee = None
         gateway_fee_tax = None
