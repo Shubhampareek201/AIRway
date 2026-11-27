@@ -130,9 +130,6 @@ def reward_referral_for_first_completed_booking(booking):
         return False
     if not original_service_charge.is_finite() or original_service_charge <= MINIMUM_ORIGINAL_SERVICE_CHARGE:
         return False
-    if _booking_has_refund(booking, order_id=order_item.order_id):
-        return False
-
     referral = (
         Referral.objects.select_for_update()
         .select_related("referrer", "referred")
@@ -142,15 +139,20 @@ def reward_referral_for_first_completed_booking(booking):
     if referral is None:
         return False
 
+    if _booking_has_refund(booking, order_id=order_item.order_id):
+        return False
+
     # Locking the referral row serializes competing completion attempts.
-    # Earlier low-value services do not consume eligibility.
+    # Earlier low-value or refunded services do not consume eligibility.
     from apps.bookings.models import OrderItem
-    if OrderItem.objects.filter(
+    previous_eligible_items = OrderItem.objects.filter(
         booking__customer=booking.customer,
         booking__status="completed",
         line_subtotal__gt=MINIMUM_ORIGINAL_SERVICE_CHARGE,
-    ).exclude(booking_id=booking.pk).exists():
-        return False
+    ).exclude(booking_id=booking.pk).select_related("booking")
+    for previous_item in previous_eligible_items:
+        if not _booking_has_refund(previous_item.booking, order_id=previous_item.order_id):
+            return False
 
     _credit_wallet(
         referral.referrer,

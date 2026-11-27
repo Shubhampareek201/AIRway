@@ -165,7 +165,7 @@ class FirebaseLoginView(APIView):
                     raise ValueError("Referral codes can only be applied when creating a new AIRway account.")
                 if created and referral_code:
                     from .referrals import apply_referral_code
-                    apply_referral_code(user, referral_code)
+                    apply_referral_code(user, referral_code, request=request)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -205,7 +205,7 @@ class RegisterView(APIView):
                 {"error": "Accept the Terms & Conditions and Privacy Policy before creating your account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             errors = serializer.errors
             error_msg = next(iter(errors.values()))[0] if errors else "Invalid data."
@@ -446,23 +446,47 @@ class CustomerReferralView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        referrals = Referral.objects.filter(referrer=request.user).select_related("referred").order_by("-created_at")
-        applied = Referral.objects.filter(referred=request.user).select_related("referrer").first()
+        referrals = Referral.objects.filter(
+            referrer=request.user
+        ).select_related("referred").order_by("-created_at")
+        applied = Referral.objects.filter(
+            referred=request.user
+        ).select_related("referrer").first()
+        from .referrals import MINIMUM_ORIGINAL_SERVICE_CHARGE
+        completed_count = referrals.filter(rewarded=True).count()
         return Response({
             "referral_code": request.user.referral_code,
             "applied_referral": ({
                 "code": applied.referrer.referral_code,
                 "rewarded": applied.rewarded,
+                "reward_status": applied.reward_status,
+                "reward_booking_id": applied.reward_booking_id,
+                "original_service_charge": (
+                    str(applied.reward_original_service_charge)
+                    if applied.reward_original_service_charge is not None else None
+                ),
                 "rewarded_at": applied.rewarded_at.isoformat() if applied.rewarded_at else None,
             } if applied else None),
             "new_customer_credit": "100.00",
             "referrer_reward": "200.00",
-            "reward_condition": "Both rewards are credited after the referred customer's first service is successfully completed.",
+            "minimum_original_service_charge": str(MINIMUM_ORIGINAL_SERVICE_CHARGE),
+            "reward_condition": (
+                "Both promotional credits are issued after the referred customer's first "
+                "completed booking with an original pre-tax, pre-discount service charge "
+                "strictly greater than ₹500. Cancelled or refunded bookings do not qualify."
+            ),
             "total_referrals": referrals.count(),
-            "completed_referrals": referrals.filter(rewarded=True).count(),
+            "completed_referrals": completed_count,
+            "total_referrer_credits": str(Decimal("200.00") * completed_count),
             "referrals": [{
                 "name": row.referred.name or "AIRway customer",
-                "status": "rewarded" if row.rewarded else "waiting_for_first_service",
+                "status": row.reward_status,
+                "rewarded": row.rewarded,
+                "reward_booking_id": row.reward_booking_id,
+                "original_service_charge": (
+                    str(row.reward_original_service_charge)
+                    if row.reward_original_service_charge is not None else None
+                ),
                 "created_at": row.created_at.isoformat(),
                 "rewarded_at": row.rewarded_at.isoformat() if row.rewarded_at else None,
             } for row in referrals[:50]],
@@ -471,15 +495,21 @@ class CustomerReferralView(APIView):
     def post(self, request):
         from .referrals import apply_referral_code
         try:
-            referral = apply_referral_code(request.user, request.data.get("referral_code"))
+            referral = apply_referral_code(
+                request.user, request.data.get("referral_code"), request=request
+            )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({
-            "detail": "Referral code applied. You and your referrer will receive wallet credits after your first service is completed.",
+            "detail": (
+                "Referral code applied. ₹200 and ₹100 promotional credits are issued "
+                "only after the first eligible booking is completed."
+            ),
             "referral_id": referral.pk,
             "new_customer_credit": "100.00",
             "referrer_reward": "200.00",
-            "status": "waiting_for_first_service",
+            "minimum_original_service_charge": "500.00",
+            "status": Referral.RewardStatus.PENDING,
         }, status=status.HTTP_201_CREATED)
 
 
