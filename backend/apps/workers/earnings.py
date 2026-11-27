@@ -13,7 +13,7 @@ from apps.bookings.models import (
     OrderItem,
 )
 from apps.payments.models import Payment, PaymentRefund
-from .models import WorkerEarning, WorkerPayoutSettlement
+from .models import WorkerEarning, WorkerPayoutSettlement, WorkerProfile
 
 
 REFUND_HOLD_STATUSES = (
@@ -230,6 +230,7 @@ def create_weekly_worker_settlements(earning_ids, created_by=None):
 
     batches = []
     for (worker_id, period_start, period_end), rows in groups.items():
+        WorkerProfile.objects.select_for_update().get(pk=worker_id)
         batch = WorkerPayoutSettlement.objects.select_for_update().filter(
             worker_id=worker_id,
             period_start=period_start,
@@ -240,7 +241,9 @@ def create_weekly_worker_settlements(earning_ids, created_by=None):
                 worker_id=worker_id,
                 period_start=period_start,
                 period_end=period_end,
-                total_amount=Decimal("0.01"),
+                total_amount=sum(
+                    (row.net_amount for row in rows), Decimal("0.00")
+                ),
                 created_by=created_by,
             )
         for earning in rows:

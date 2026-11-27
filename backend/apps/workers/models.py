@@ -461,6 +461,11 @@ class WorkerPayoutSettlement(TimeStampedModel):
                 condition=Q(total_amount__gt=0),
                 name="worker_payout_settlement_positive",
             ),
+            models.UniqueConstraint(
+                fields=("worker", "period_start"),
+                condition=Q(status="pending"),
+                name="one_pending_worker_settlement_per_week",
+            ),
         ]
 
     def __str__(self):
