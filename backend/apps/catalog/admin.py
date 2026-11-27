@@ -251,10 +251,32 @@ class ServiceAdmin(ModelAdmin):
 
 @admin.register(ServiceInspectionRate)
 class ServiceInspectionRateAdmin(ModelAdmin):
-    list_display = ("service", "title", "rate_type", "customer_price", "worker_payout", "is_active", "updated_at")
+    list_display = (
+        "service", "title", "rate_type", "customer_price", "worker_payout",
+        "estimated_contribution", "launch_recommendation", "is_active", "updated_at",
+    )
     list_filter = ("service", "rate_type", "is_active")
     search_fields = ("service__title", "title", "code")
     fields = ("service", "title", "code", "description", "rate_type", "customer_price", "worker_payout", "pricing_change_reason", "sort_order", "is_active")
+
+    @admin.display(description="Base estimated contribution")
+    def estimated_contribution(self, obj):
+        from .finance import calculate_estimated_contribution
+        value = calculate_estimated_contribution(
+            customer_price=obj.customer_price,
+            worker_payout=obj.worker_payout,
+            service=obj.service,
+        )
+        return f"₹{value}" if value is not None else "Configure assumptions"
+
+    @admin.display(description="Base recommendation")
+    def launch_recommendation(self, obj):
+        from .finance import contribution_recommendation
+        return contribution_recommendation(
+            customer_price=obj.customer_price,
+            worker_payout=obj.worker_payout,
+            service=obj.service,
+        )
 
     def save_model(self, request, obj, form, change):
         reason = str(obj.pricing_change_reason or "").strip()
@@ -299,11 +321,33 @@ class RateSheetAdmin(PricingAuditAdminMixin, ModelAdmin):
 
 @admin.register(AddOn)
 class AddOnAdmin(PricingAuditAdminMixin, ModelAdmin):
-    list_display = ("service", "title", "mrp", "price", "worker_payout", "is_active")
+    list_display = (
+        "service", "title", "mrp", "price", "worker_payout",
+        "estimated_contribution", "launch_recommendation", "is_active",
+    )
     list_editable = ("is_active",)
     list_filter = ("service__category", "service", "is_active")
     search_fields = ("title", "service__title")
     list_per_page = 50
+
+    @admin.display(description="Base estimated contribution")
+    def estimated_contribution(self, obj):
+        from .finance import calculate_estimated_contribution
+        value = calculate_estimated_contribution(
+            customer_price=obj.price,
+            worker_payout=obj.worker_payout,
+            service=obj.service,
+        )
+        return f"₹{value}" if value is not None else "Configure assumptions"
+
+    @admin.display(description="Base recommendation")
+    def launch_recommendation(self, obj):
+        from .finance import contribution_recommendation
+        return contribution_recommendation(
+            customer_price=obj.price,
+            worker_payout=obj.worker_payout,
+            service=obj.service,
+        )
 
 
 @admin.register(FormField)
