@@ -31,6 +31,7 @@ class ExtraWorkAPITest(TestCase):
         )
         self.worker = WorkerProfile.objects.create(
             user=self.worker_user, status=WorkerProfile.Status.APPROVED,
+            commission_rate=Decimal("20.00"),
         )
         self.booking = Booking.objects.create(
             customer=self.customer, address=address, service=service,
@@ -71,6 +72,35 @@ class ExtraWorkAPITest(TestCase):
         self.assertEqual(response.data["total_amount"], "250.00")
         self.assertEqual(response.data["status"], BookingExtraWork.Status.PENDING_CUSTOMER)
 
+
+
+    def test_extra_work_payout_is_snapshotted_for_worker_only(self):
+        self.booking.worker_payout_snapshot = {
+            "pricing_model": "fixed_service_payout_v1",
+            "total": "600.00",
+        }
+        self.booking.save(update_fields=["worker_payout_snapshot", "updated_at"])
+        self.client.force_authenticate(user=self.worker_user)
+        worker_response = self.client.post(
+            f"/api/v1/workers/jobs/{self.booking.pk}/extra-work/",
+            {
+                "reason": "Additional room cleaning",
+                "line_items": [{"description": "Extra room", "quantity": 1, "unit_price": "250.00"}],
+                "additional_duration_minutes": 90,
+            },
+            format="json",
+        )
+        self.assertEqual(worker_response.status_code, 201, worker_response.data)
+        self.assertEqual(worker_response.data["worker_payout_amount"], "150.00")
+        proposal = BookingExtraWork.objects.get(pk=worker_response.data["id"])
+        self.assertEqual(proposal.worker_payout_snapshot["pricing_model"], "booking_fixed_payout_ratio_v1")
+
+        self.client.force_authenticate(user=self.customer)
+        customer_response = self.client.get(
+            f"/api/v1/bookings/{self.booking.pk}/extra-work/"
+        )
+        if customer_response.status_code == 200:
+            self.assertNotIn("worker_payout_amount", customer_response.data[0])
 
     def test_worker_can_submit_new_proposal_after_previous_one_expires(self):
         previous = self._proposal()

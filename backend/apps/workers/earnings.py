@@ -46,6 +46,9 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
         "admin_approved_quote_payout_v1",
     )
     fixed_payout_raw = payout_snapshot.get("total") if fixed_model else None
+    if extra_work is not None and extra_work.worker_payout_amount is not None:
+        fixed_model = True
+        fixed_payout_raw = extra_work.worker_payout_amount
     fixed_payout = None
     if fixed_payout_raw not in (None, ""):
         fixed_payout = Decimal(str(fixed_payout_raw))
@@ -59,7 +62,11 @@ def _upsert_worker_earning(booking, worker, payment, gross_amount, extra_work=No
     )
     hold_reason = ""
     if fixed_model and fixed_payout is None:
-        hold_reason = "Fixed service payout is not configured by AIRway finance."
+        hold_reason = (
+            "Additional-scope worker payout was not snapshotted."
+            if extra_work is not None
+            else "Fixed service payout is not configured by AIRway finance."
+        )
     elif not fixed_model and rate is None:
         hold_reason = "Commission rate / worker earning rate has not been configured for this legacy booking."
     elif refunds_exist:

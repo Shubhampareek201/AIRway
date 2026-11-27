@@ -14,8 +14,8 @@ from apps.bookings.models import Booking, BookingAssignment, BookingExtraWork
 from apps.workers.models import WorkerProfile
 
 
-def _extra_work_payload(item):
-    return {
+def _extra_work_payload(item, *, include_worker_payout=False):
+    payload = {
         "id": item.pk,
         "request_key": str(item.request_key),
         "booking_id": item.booking_id,
@@ -41,7 +41,82 @@ def _extra_work_payload(item):
         "approved_at": item.approved_at.isoformat() if item.approved_at else None,
         "created_at": item.created_at.isoformat(),
     }
+    if include_worker_payout:
+        payload["worker_payout_amount"] = (
+            str(item.worker_payout_amount)
+            if item.worker_payout_amount is not None else None
+        )
+    return payload
 
+
+
+def _calculate_extra_work_worker_payout(booking, worker, subtotal):
+    """
+    Snapshot extra-work payout using this booking's own configured payout economics.
+    Duration is deliberately not an input: ordinary time overruns never change fixed pay.
+    """
+    from apps.bookings.models import OrderItem
+    from apps.workers.models import WorkerEarning
+
+    subtotal = Decimal(str(subtotal))
+    payout_snapshot = booking.worker_payout_snapshot or {}
+    pricing_model = payout_snapshot.get("pricing_model")
+    base_payout_raw = payout_snapshot.get("total")
+    base_subtotal_raw = OrderItem.objects.filter(
+        booking_id=booking.pk
+    ).values_list("line_subtotal", flat=True).first()
+    if base_subtotal_raw is None:
+        pricing = booking.pricing_snapshot or {}
+        base_subtotal_raw = pricing.get("subtotal", pricing.get("total"))
+
+    if pricing_model in ("fixed_service_payout_v1", "admin_approved_quote_payout_v1"):
+        if base_payout_raw in (None, "") or base_subtotal_raw in (None, ""):
+            return None, {}
+        base_payout = Decimal(str(base_payout_raw))
+        base_subtotal = Decimal(str(base_subtotal_raw))
+        if (
+            not base_payout.is_finite() or base_payout <= 0
+            or not base_subtotal.is_finite() or base_subtotal <= 0
+        ):
+            return None, {}
+        payout_ratio = base_payout / base_subtotal
+        calculation = {
+            "pricing_model": "booking_fixed_payout_ratio_v1",
+            "source_booking_id": booking.pk,
+            "base_customer_subtotal": str(base_subtotal),
+            "base_worker_payout": str(base_payout),
+            "payout_ratio": str(payout_ratio),
+        }
+    else:
+        # Legacy bookings retain their already locked commission basis; never
+        # borrow the customer's wallet or infer payout from elapsed duration.
+        locked_earning = WorkerEarning.objects.filter(
+            booking=booking, worker=worker, extra_work__isnull=True
+        ).first()
+        rate = (
+            locked_earning.commission_rate
+            if locked_earning and locked_earning.commission_rate is not None
+            else worker.commission_rate
+        )
+        if rate is None:
+            return None, {}
+        rate = Decimal(str(rate))
+        if not rate.is_finite() or rate < 0 or rate > 100:
+            return None, {}
+        payout_ratio = (Decimal("100.00") - rate) / Decimal("100.00")
+        calculation = {
+            "pricing_model": "legacy_locked_commission_ratio_v1",
+            "source_booking_id": booking.pk,
+            "commission_rate": str(rate),
+            "payout_ratio": str(payout_ratio),
+        }
+
+    payout = (subtotal * payout_ratio).quantize(Decimal("0.01"))
+    if not payout.is_finite() or payout <= 0:
+        return None, {}
+    calculation["extra_work_customer_subtotal"] = str(subtotal)
+    calculation["worker_payout_amount"] = str(payout)
+    return payout, calculation
 
 
 def _notify_extra_work(user, *, title, body, proposal, event):
@@ -148,6 +223,15 @@ class WorkerExtraWorkProposalView(APIView):
         except (TypeError, ValueError):
             return Response({"detail": "Additional duration must be between 0 and 600 minutes."}, status=status.HTTP_400_BAD_REQUEST)
 
+        worker_payout, worker_payout_snapshot = _calculate_extra_work_worker_payout(
+            booking, worker, subtotal
+        )
+        if worker_payout is None:
+            return Response(
+                {"detail": "AIRway cannot calculate a fixed payout for this additional scope yet. Please contact Admin."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         try:
             with transaction.atomic():
                 proposal = BookingExtraWork.objects.create(
@@ -157,6 +241,8 @@ class WorkerExtraWorkProposalView(APIView):
                     reason=reason,
                     line_items=items,
                     subtotal=subtotal,
+                    worker_payout_amount=worker_payout,
+                    worker_payout_snapshot=worker_payout_snapshot,
                     tax_amount=Decimal("0.00"),
                     total_amount=subtotal,
                     additional_duration_minutes=duration,
@@ -172,7 +258,10 @@ class WorkerExtraWorkProposalView(APIView):
             proposal=proposal,
             event="proposed",
         )
-        return Response(_extra_work_payload(proposal), status=status.HTTP_201_CREATED)
+        return Response(
+            _extra_work_payload(proposal, include_worker_payout=True),
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CustomerExtraWorkListView(APIView):

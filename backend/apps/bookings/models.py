@@ -189,6 +189,14 @@ class BookingExtraWork(TimeStampedModel):
         help_text="Immutable item snapshot: description, quantity, unit price and line total.",
     )
     subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    worker_payout_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Worker's immutable payout snapshot for this customer-approved extra-work scope.",
+    )
+    worker_payout_snapshot = models.JSONField(
+        default=dict, blank=True,
+        help_text="Calculation inputs captured when the extra-work proposal was created.",
+    )
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     additional_duration_minutes = models.PositiveSmallIntegerField(default=0)
