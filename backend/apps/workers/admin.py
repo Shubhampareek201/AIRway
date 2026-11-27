@@ -582,7 +582,16 @@ class WorkerPayoutSettlementEarningInline(TabularInline):
     )
     readonly_fields = fields
 
+    def has_view_permission(self, request, obj=None):
+        return bool(
+            request.user.is_superuser
+            or request.user.has_perm("workers.manage_worker_payouts")
+        )
+
     def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):
