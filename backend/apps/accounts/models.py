@@ -164,10 +164,15 @@ class DeviceToken(TimeStampedModel):
 
 
 class Referral(TimeStampedModel):
+    class ReferralType(models.TextChoices):
+        CUSTOMER = "customer", "Customer"
+        WORKER = "worker", "Worker"
+
     class RewardStatus(models.TextChoices):
         PENDING = "pending", "Waiting for eligible completed booking"
         REWARDED = "rewarded", "Promotional credits issued"
 
+    referral_type = models.CharField(max_length=12, choices=ReferralType.choices, default=ReferralType.CUSTOMER, db_index=True)
     referrer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="referrals_made")
     referred = models.OneToOneField(User, on_delete=models.CASCADE, related_name="referred_by")
     rewarded = models.BooleanField(default=False)
