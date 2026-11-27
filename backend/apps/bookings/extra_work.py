@@ -1,4 +1,4 @@
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
@@ -216,6 +216,14 @@ class WorkerExtraWorkProposalView(APIView):
         if subtotal <= 0 or subtotal > Decimal("1000000.00"):
             return Response({"detail": "The proposal total is outside the allowed range."}, status=status.HTTP_400_BAD_REQUEST)
 
+        tax_rate = Decimal(str(booking.service.tax_rate or "0.00"))
+        if not tax_rate.is_finite() or tax_rate < 0 or tax_rate > 100:
+            return Response({"detail": "The service tax configuration is invalid. Please contact Admin."}, status=status.HTTP_409_CONFLICT)
+        tax_amount = (subtotal * tax_rate / Decimal("100.00")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        total_amount = subtotal + tax_amount
+
         try:
             duration = int(request.data.get("additional_duration_minutes", 0))
             if duration < 0 or duration > 600:
@@ -243,8 +251,8 @@ class WorkerExtraWorkProposalView(APIView):
                     subtotal=subtotal,
                     worker_payout_amount=worker_payout,
                     worker_payout_snapshot=worker_payout_snapshot,
-                    tax_amount=Decimal("0.00"),
-                    total_amount=subtotal,
+                    tax_amount=tax_amount,
+                    total_amount=total_amount,
                     additional_duration_minutes=duration,
                     expires_at=timezone.now() + timedelta(hours=24),
                 )

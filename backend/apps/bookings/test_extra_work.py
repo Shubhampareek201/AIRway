@@ -69,7 +69,8 @@ class ExtraWorkAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data["total_amount"], "250.00")
+        self.assertEqual(response.data["tax_amount"], "45.00")
+        self.assertEqual(response.data["total_amount"], "295.00")
         self.assertEqual(response.data["status"], BookingExtraWork.Status.PENDING_CUSTOMER)
 
 
@@ -91,6 +92,8 @@ class ExtraWorkAPITest(TestCase):
             format="json",
         )
         self.assertEqual(worker_response.status_code, 201, worker_response.data)
+        self.assertEqual(worker_response.data["tax_amount"], "45.00")
+        self.assertEqual(worker_response.data["total_amount"], "295.00")
         self.assertEqual(worker_response.data["worker_payout_amount"], "150.00")
         proposal = BookingExtraWork.objects.get(pk=worker_response.data["id"])
         self.assertEqual(proposal.worker_payout_snapshot["pricing_model"], "booking_fixed_payout_ratio_v1")
