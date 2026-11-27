@@ -15,6 +15,7 @@ from apps.workers.models import (
     WorkerRewardWallet,
     WorkerRewardWithdrawal,
     WorkerMonthlyMissionProgress,
+    WorkerReferralSettings,
 )
 
 
@@ -29,6 +30,7 @@ class WorkerRewardLedgerTests(TestCase):
             user=self.referred_user, status=WorkerProfile.Status.APPROVED,
         )
         self.referral = Referral.objects.create(
+            referral_type=Referral.ReferralType.WORKER,
             referrer=self.referrer_user, referred=self.referred_user,
         )
         self.category = Category.objects.create(title="Reward tests", slug="reward-tests")
@@ -86,6 +88,32 @@ class WorkerRewardLedgerTests(TestCase):
         self.referral.refresh_from_db()
         self.assertTrue(self.referral.worker_rewarded)
         self.assertIsNotNone(self.referral.worker_rewarded_at)
+
+    def test_worker_referral_reward_requires_five_jobs_strictly_over_500(self):
+        exact_jobs = [self._completed_eligible_booking(i, amount="500.00") for i in range(5)]
+        for booking in exact_jobs:
+            award_mission_reward_for_completed_booking(booking)
+        self.assertFalse(WorkerRewardWallet.objects.filter(worker=self.referrer).exists())
+
+        over_jobs = [self._completed_eligible_booking(i + 10, amount="500.01") for i in range(5)]
+        for booking in over_jobs:
+            award_mission_reward_for_completed_booking(booking)
+        self.assertEqual(WorkerRewardWallet.objects.get(worker=self.referrer).balance, Decimal("150.00"))
+
+    def test_worker_referral_reward_uses_admin_configured_amount(self):
+        WorkerReferralSettings.objects.create(reward_amount=Decimal("250.00"))
+        for i in range(5):
+            award_mission_reward_for_completed_booking(self._completed_eligible_booking(i))
+        self.assertEqual(WorkerRewardWallet.objects.get(worker=self.referrer).balance, Decimal("250.00"))
+
+    def test_worker_referral_reward_waits_for_approved_referrer(self):
+        self.referrer.status = WorkerProfile.Status.SUSPENDED
+        self.referrer.save(update_fields=["status", "updated_at"])
+        for i in range(5):
+            award_mission_reward_for_completed_booking(self._completed_eligible_booking(i))
+        self.assertFalse(WorkerRewardWallet.objects.filter(worker=self.referrer).exists())
+        self.referral.refresh_from_db()
+        self.assertFalse(self.referral.worker_rewarded)
 
     def test_monthly_mission_uses_original_charge_and_requires_strictly_more_than_500(self):
         exactly_500 = self._completed_eligible_booking(1, amount="500.00")
