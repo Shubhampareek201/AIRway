@@ -144,3 +144,9 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(result["estimated_contribution_total"], Decimal("120.00"))
         self.assertEqual(result["variance"], Decimal("30.00"))
         self.assertEqual(result["profitability_status"], "Insufficient data")
+
+    def test_profitability_admin_templates_are_discoverable(self):
+        from django.template.loader import get_template
+
+        get_template("admin/catalog/service/profitability_report.html")
+        get_template("admin/catalog/service/change_list.html")
