@@ -561,11 +561,11 @@ class WorkerRewardWalletAdmin(ModelAdmin):
 
 @admin.register(WorkerRewardTransaction)
 class WorkerRewardTransactionAdmin(ModelAdmin):
-    list_display = ("worker", "type", "amount", "milestone_jobs", "booking", "created_at")
+    list_display = ("worker", "type", "amount", "milestone_jobs", "booking", "referral", "reference_key", "created_at")
     list_filter = ("type", "created_at")
     search_fields = ("worker__user__phone", "reference_key", "description")
     readonly_fields = (
-        "wallet", "worker", "booking", "type", "amount", "milestone_jobs",
+        "wallet", "worker", "booking", "referral", "type", "amount", "milestone_jobs",
         "reference_key", "description", "created_at", "updated_at",
     )
 
@@ -582,11 +582,11 @@ class WorkerRewardWithdrawalAdmin(ModelAdmin):
     list_filter = ("status", "created_at")
     search_fields = ("worker__user__name", "worker__user__phone", "payout_upi_id", "payout_reference")
     readonly_fields = (
-        "wallet", "worker", "amount", "payout_upi_id", "processed_by",
+        "wallet", "worker", "amount", "request_key", "payout_upi_id", "processed_by",
         "processed_at", "created_at", "updated_at",
     )
     fields = (
-        "wallet", "worker", "amount", "payout_upi_id", "status",
+        "wallet", "worker", "amount", "request_key", "payout_upi_id", "status",
         "payout_reference", "admin_note", "processed_by", "processed_at",
         "created_at", "updated_at",
     )

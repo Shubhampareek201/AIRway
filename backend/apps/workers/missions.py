@@ -3,11 +3,13 @@ from decimal import Decimal
 from django.db import transaction
 
 from apps.bookings.models import Booking, BookingAssignment, OrderItem
+from apps.accounts.models import Referral
 
 from .models import (
     WorkerRewardWallet,
     WorkerRewardTransaction,
     WorkerJobStreak,
+    WorkerProfile,
 )
 
 
@@ -17,6 +19,8 @@ MISSION_REWARDS = {
     25: Decimal("1000.00"),
 }
 MINIMUM_SERVICE_COST = Decimal("300.00")
+WORKER_REFERRAL_MILESTONE = 5
+WORKER_REFERRAL_REWARD = Decimal("150.00")
 
 
 def _service_line_cost(booking):
@@ -33,6 +37,52 @@ def _service_line_cost(booking):
         return Decimal(str(raw))
     except Exception:
         return Decimal("0.00")
+
+
+@transaction.atomic
+def award_worker_referral_reward_for_worker(worker, eligible_jobs_count):
+    """Credit the referring worker once the invited worker completes five eligible jobs."""
+    if eligible_jobs_count < WORKER_REFERRAL_MILESTONE:
+        return False
+
+    referral = (
+        Referral.objects.select_for_update()
+        .select_related("referrer")
+        .filter(referred_id=worker.user_id, worker_rewarded=False)
+        .first()
+    )
+    if referral is None:
+        return False
+
+    referrer_worker = WorkerProfile.objects.filter(user_id=referral.referrer_id).first()
+    if referrer_worker is None:
+        return False
+
+    wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=referrer_worker)
+    wallet = WorkerRewardWallet.objects.select_for_update().get(pk=wallet.pk)
+    transaction_row, created = WorkerRewardTransaction.objects.get_or_create(
+        reference_key=f"worker-referral:{referral.pk}:referrer",
+        defaults={
+            "wallet": wallet,
+            "worker": referrer_worker,
+            "referral": referral,
+            "type": WorkerRewardTransaction.Type.REFERRAL_REWARD,
+            "amount": WORKER_REFERRAL_REWARD,
+            "description": (
+                f"Worker referral reward: invited worker #{worker.pk} "
+                f"completed {WORKER_REFERRAL_MILESTONE} eligible jobs"
+            ),
+        },
+    )
+    if created:
+        wallet.balance += WORKER_REFERRAL_REWARD
+        wallet.total_earned += WORKER_REFERRAL_REWARD
+        wallet.save(update_fields=["balance", "total_earned", "updated_at"])
+
+    referral.worker_rewarded = True
+    referral.worker_rewarded_at = timezone.now()
+    referral.save(update_fields=["worker_rewarded", "worker_rewarded_at", "updated_at"])
+    return created
 
 
 @transaction.atomic
@@ -96,4 +146,5 @@ def award_mission_reward_for_completed_booking(booking):
     wallet.save(update_fields=[
         "eligible_jobs_count", "balance", "total_earned", "updated_at",
     ])
+    award_worker_referral_reward_for_worker(worker, next_count)
     return wallet

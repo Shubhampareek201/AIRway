@@ -166,8 +166,10 @@ class DeviceToken(TimeStampedModel):
 class Referral(TimeStampedModel):
     referrer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="referrals_made")
     referred = models.OneToOneField(User, on_delete=models.CASCADE, related_name="referred_by")
-    rewarded = models.BooleanField(default=False)  # pehli booking complete hone par True
+    rewarded = models.BooleanField(default=False)  # customer first-service reward
     rewarded_at = models.DateTimeField(null=True, blank=True)
+    worker_rewarded = models.BooleanField(default=False)
+    worker_rewarded_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.referrer.phone} -> {self.referred.phone}"

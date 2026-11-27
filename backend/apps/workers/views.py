@@ -1652,11 +1652,16 @@ class WorkerMissionWalletView(APIView):
                 "type": row.type,
                 "amount": str(row.amount),
                 "milestone_jobs": row.milestone_jobs,
+                "booking_id": row.booking_id,
+                "referral_id": row.referral_id,
+                "reference_key": row.reference_key,
+                "type_display": row.get_type_display(),
                 "description": row.description,
                 "created_at": row.created_at.isoformat(),
             } for row in transactions],
             "withdrawals": [{
                 "id": row.pk,
+                "request_key": row.request_key,
                 "amount": str(row.amount),
                 "status": row.status,
                 "payout_upi_id": row.payout_upi_id,
@@ -1684,9 +1689,41 @@ class WorkerMissionWalletView(APIView):
         except Exception:
             return Response({"amount": ["Enter a valid positive amount with up to two decimal places."]}, status=status.HTTP_400_BAD_REQUEST)
 
+        raw_idempotency_key = (
+            request.headers.get("Idempotency-Key")
+            or request.data.get("idempotency_key")
+            or ""
+        )
+        raw_idempotency_key = str(raw_idempotency_key).strip()
+        if raw_idempotency_key and (
+            len(raw_idempotency_key) > 80
+            or any(character.isspace() for character in raw_idempotency_key)
+        ):
+            return Response(
+                {"detail": "Idempotency-Key must be 1–80 characters without spaces."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request_key = f"{profile.pk}:{raw_idempotency_key or uuid.uuid4()}"
+
         with transaction.atomic():
             wallet, _ = WorkerRewardWallet.objects.get_or_create(worker=profile)
             wallet = WorkerRewardWallet.objects.select_for_update().get(pk=wallet.pk)
+            existing = WorkerRewardWithdrawal.objects.filter(
+                worker=profile, request_key=request_key
+            ).first()
+            if existing is not None:
+                if existing.amount != amount:
+                    return Response(
+                        {"detail": "This idempotency key was already used for a different withdrawal amount."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                return Response({
+                    "id": existing.pk,
+                    "request_key": existing.request_key,
+                    "amount": str(existing.amount),
+                    "status": existing.status,
+                    "message": "This withdrawal request was already received.",
+                }, status=status.HTTP_200_OK)
             if amount > wallet.balance:
                 return Response({"detail": "Withdrawal amount exceeds your available mission reward balance."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1694,6 +1731,7 @@ class WorkerMissionWalletView(APIView):
                 wallet=wallet,
                 worker=profile,
                 amount=amount,
+                request_key=request_key,
                 payout_upi_id=upi_id,
             )
             wallet.balance -= amount
@@ -1703,12 +1741,13 @@ class WorkerMissionWalletView(APIView):
                 worker=profile,
                 type=WorkerRewardTransaction.Type.WITHDRAWAL,
                 amount=amount,
-                reference_key=f"mission-withdrawal:{withdrawal.pk}",
+                reference_key=f"worker-reward-withdrawal:{withdrawal.request_key}",
                 description=f"Mission reward withdrawal request #{withdrawal.pk}",
             )
 
         return Response({
             "id": withdrawal.pk,
+            "request_key": withdrawal.request_key,
             "amount": str(withdrawal.amount),
             "status": withdrawal.status,
             "message": "Withdrawal request submitted for AIRway review.",

@@ -1,6 +1,8 @@
 from django.db import models
 
 # Create your models here.
+import uuid
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -457,6 +459,7 @@ class WorkerRewardTransaction(TimeStampedModel):
     class Type(models.TextChoices):
         ELIGIBLE_JOB = "eligible_job", "Eligible completed service"
         MISSION_REWARD = "mission_reward", "Mission reward"
+        REFERRAL_REWARD = "referral_reward", "Worker referral reward"
         WITHDRAWAL = "withdrawal", "Withdrawal request"
         REFUND = "refund", "Withdrawal refund"
 
@@ -472,6 +475,13 @@ class WorkerRewardTransaction(TimeStampedModel):
     )
     booking = models.ForeignKey(
         "bookings.Booking",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="worker_reward_transactions",
+    )
+    referral = models.ForeignKey(
+        "accounts.Referral",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -511,6 +521,7 @@ class WorkerRewardWithdrawal(TimeStampedModel):
         related_name="reward_withdrawals",
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    request_key = models.CharField(max_length=120, unique=True, default=uuid.uuid4, editable=False)
     payout_upi_id = models.CharField(max_length=100)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
     payout_reference = models.CharField(max_length=120, blank=True)
