@@ -1864,8 +1864,9 @@ class WorkerMissionWalletView(APIView):
         transaction_limit, withdrawal_limit = 50, 20
         tx_rows = list(wallet.transactions.order_by("-created_at", "-pk")[transaction_offset:transaction_offset + transaction_limit + 1])
         wd_rows = list(wallet.withdrawals.order_by("-created_at", "-pk")[withdrawal_offset:withdrawal_offset + withdrawal_limit + 1])
-        referral_settings = WorkerReferralSettings.objects.filter(pk=1, is_active=True).first()
+        referral_settings = WorkerReferralSettings.objects.filter(pk=1).first()
         referral_amount = referral_settings.reward_amount if referral_settings else Decimal("150.00")
+        referral_active = referral_settings.is_active if referral_settings else True
         referrals = Referral.objects.filter(
             referrer=request.user,
             referral_type=Referral.ReferralType.WORKER,
@@ -1891,12 +1892,15 @@ class WorkerMissionWalletView(APIView):
                 "rewarded_at": referral.worker_rewarded_at.isoformat() if referral.worker_rewarded_at else None,
                 "status": "rewarded" if referral.worker_rewarded else (
                     "in_progress" if referred_profile and referred_profile.status == WorkerProfile.Status.APPROVED
-                    else "awaiting_approval"
+                    else "awaiting_approval" if referred_profile and referred_profile.status == WorkerProfile.Status.PENDING
+                    else "application_not_submitted" if referred_profile is None
+                    else "not_eligible"
                 ),
             })
         return Response({
             "referral_code": request.user.referral_code,
             "worker_referral_reward_amount": str(referral_amount),
+            "worker_referral_active": referral_active,
             "worker_referrals": referral_progress,
             "eligible_jobs_count": wallet.eligible_jobs_count,
             "monthly_eligible_jobs_count": monthly_jobs,
