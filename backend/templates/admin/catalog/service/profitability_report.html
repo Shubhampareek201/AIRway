@@ -1,146 +1,87 @@
-from decimal import Decimal
-from types import SimpleNamespace
-from django.test import SimpleTestCase
-from unittest.mock import patch
-from apps.catalog.actual_finance import (
-    _booking_payment_allocation,
-    _booking_other_variable_cost_total,
-    _booking_other_costs_reviewed,
-    _money,
-)
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+<div id="content-main">
+  <p>Completed bookings only. Date filters use the booking completion date; bookings without a completion timestamp are excluded when a date range is applied. Actual contribution uses recorded finance data and excludes pass-through tax. Estimates use each booking's saved customer subtotal and worker payout snapshot with the service's <strong>current</strong> cost assumptions. Historical cost assumptions are not stored on legacy bookings, so this is not a reconstructed historical forecast.</p>
+  {% if date_error %}<p class="errornote">{{ date_error }}</p>{% endif %}
+  <form method="get" class="module aligned">
+    <div class="form-row">
+      <label for="id_start_date">Completed from</label>
+      <input type="date" id="id_start_date" name="start_date" value="{{ start_date }}">
+      <label for="id_end_date">Completed to</label>
+      <input type="date" id="id_end_date" name="end_date" value="{{ end_date }}">
+    </div>
+    <div class="form-row">
+      <label for="id_category">Category</label>
+      <select id="id_category" name="category">
+        <option value="">All categories</option>
+        {% for category in categories %}
+          <option value="{{ category.pk }}" {% if selected_category == category.pk|stringformat:"s" %}selected{% endif %}>{{ category.title }}</option>
+        {% endfor %}
+      </select>
+      <label for="id_service">Service</label>
+      <select id="id_service" name="service">
+        <option value="">All services</option>
+        {% for service in services %}
+          <option value="{{ service.pk }}" {% if selected_service == service.pk|stringformat:"s" %}selected{% endif %}>{{ service.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="submit-row"><input type="submit" value="Apply filters" class="default"></div>
+  </form>
 
-class BookingActualFinanceAllocationTests(SimpleTestCase):
-    def test_legacy_booking_payment_allocation_uses_captured_tender(self):
-        payment = SimpleNamespace(booking_id=17, order_id=None, amount=Decimal('280.00'), wallet_amount=Decimal('20.00'), raw_response={})
-        self.assertEqual(_booking_payment_allocation(payment, SimpleNamespace(pk=17)), (Decimal('300.00'), Decimal('280.00'), True))
+  <div class="module">
+    <h2>Category profitability</h2>
+    <table>
+      <thead><tr><th>Category</th><th>Completed</th><th>Finance complete</th><th>Finance incomplete</th><th>Estimated count</th><th>Actual contribution</th><th>Estimated total</th><th>Average actual</th><th>Average estimated</th><th>Variance (comparable)</th><th>Profitability</th></tr></thead>
+      <tbody>
+        {% for row in category_rows %}
+          <tr>
+            <th>{{ row.category.title }}</th>
+            <td>{{ row.summary.booking_count }}</td>
+            <td>{{ row.summary.actual_complete_count }}</td>
+            <td>{{ row.summary.actual_incomplete_count }}</td>
+            <td>{{ row.summary.estimated_count }}</td>
+            <td>₹{{ row.summary.actual_contribution_total }}</td>
+            <td>₹{{ row.summary.estimated_contribution_total }}</td>
+            <td>₹{{ row.summary.actual_average|default_if_none:"—" }}</td>
+            <td>₹{{ row.summary.estimated_average|default_if_none:"—" }}</td>
+            <td>₹{{ row.summary.variance|default_if_none:"—" }}</td>
+            <td>{{ row.summary.profitability_status }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="11">No completed bookings match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-    def test_order_payment_uses_booking_specific_service_allocation(self):
-        payment = SimpleNamespace(booking_id=None, order_id=4, amount=Decimal('500.00'), wallet_amount=Decimal('100.00'), raw_response={'service_allocation_v1': [{'booking_id': 17, 'total': '300.00', 'gateway_amount': '250.00'}, {'booking_id': 18, 'total': '300.00', 'gateway_amount': '150.00'}]})
-        self.assertEqual(_booking_payment_allocation(payment, SimpleNamespace(pk=17)), (Decimal('300.00'), Decimal('250.00'), True))
-
-    def test_missing_order_allocation_is_not_guessed(self):
-        payment = SimpleNamespace(booking_id=None, order_id=4, amount=Decimal('100.00'), wallet_amount=Decimal('0.00'), raw_response={})
-        self.assertEqual(_booking_payment_allocation(payment, SimpleNamespace(pk=17)), (Decimal('0.00'), Decimal('0.00'), False))
-
-    def test_money_rounds_to_currency_precision(self):
-        self.assertEqual(_money(Decimal('1.005')), Decimal('1.01'))
-
-
-class BookingVariableCostReconciliationUnitTests(SimpleTestCase):
-    @patch("apps.bookings.models.BookingVariableCost.objects.filter")
-    def test_variable_costs_are_summed_without_rounding_away_cents(self, filter_mock):
-        filter_mock.return_value.values_list.return_value = [
-            Decimal("12.35"), Decimal("7.65"), Decimal("0.01"),
-        ]
-        total = _booking_other_variable_cost_total(SimpleNamespace(pk=17))
-        self.assertEqual(total, Decimal("20.01"))
-        filter_mock.assert_called_once_with(booking=SimpleNamespace(pk=17))
-
-    @patch("apps.bookings.models.BookingFinanceReconciliation.objects.filter")
-    def test_unreviewed_expenses_keep_finance_incomplete(self, filter_mock):
-        filter_mock.return_value.first.return_value = None
-        self.assertFalse(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
-
-    @patch("apps.bookings.models.BookingFinanceReconciliation.objects.filter")
-    def test_review_requires_flag_and_review_timestamp(self, filter_mock):
-        reconciliation = SimpleNamespace(other_costs_reviewed=True, reviewed_at=None)
-        filter_mock.return_value.first.return_value = reconciliation
-        self.assertFalse(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
-        reconciliation.reviewed_at = object()
-        self.assertTrue(_booking_other_costs_reviewed(SimpleNamespace(pk=17)))
-
-
-class ServiceProfitabilitySummaryTests(SimpleTestCase):
-    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
-    @patch("apps.catalog.finance.calculate_estimated_contribution")
-    def test_compares_only_complete_actuals_with_known_estimates(self, estimate_mock, actual_mock):
-        from apps.catalog.actual_finance import summarize_service_profitability
-
-        complete = SimpleNamespace(
-            pricing_snapshot={"subtotal": "500.00"},
-            worker_payout_snapshot={"total": "250.00"},
-        )
-        incomplete = SimpleNamespace(
-            pricing_snapshot={"subtotal": "400.00"},
-            worker_payout_snapshot={"total": "200.00"},
-        )
-        actual_mock.side_effect = [
-            {"status": "complete", "partial_contribution": Decimal("180.00")},
-            {"status": "incomplete", "partial_contribution": Decimal("0.00")},
-        ]
-        estimate_mock.return_value = Decimal("150.00")
-
-        report = summarize_service_profitability([complete, incomplete], SimpleNamespace())
-
-        self.assertEqual(report["booking_count"], 2)
-        self.assertEqual(report["actual_complete_count"], 1)
-        self.assertEqual(report["actual_incomplete_count"], 1)
-        self.assertEqual(report["estimated_count"], 1)
-        self.assertEqual(report["actual_contribution_total"], Decimal("180.00"))
-        self.assertEqual(report["estimated_contribution_total"], Decimal("150.00"))
-        self.assertEqual(report["variance"], Decimal("30.00"))
-        self.assertEqual(report["profitability_status"], "Insufficient data")
-        self.assertEqual(estimate_mock.call_count, 1)
-
-    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
-    def test_missing_historical_price_or_payout_does_not_invent_estimate(self, actual_mock):
-        from apps.catalog.actual_finance import summarize_service_profitability
-
-        booking = SimpleNamespace(
-            pricing_snapshot={"subtotal": "500.00"},
-            worker_payout_snapshot={},
-        )
-        actual_mock.return_value = {
-            "status": "complete",
-            "partial_contribution": Decimal("100.00"),
-        }
-        report = summarize_service_profitability([booking], SimpleNamespace())
-        self.assertEqual(report["actual_complete_count"], 1)
-        self.assertEqual(report["estimated_count"], 0)
-        self.assertIsNone(report["variance"])
-        self.assertEqual(report["profitability_status"], "Insufficient data")
-
-    @patch("apps.catalog.actual_finance.calculate_booking_actual_finance")
-    @patch("apps.catalog.finance.calculate_estimated_contribution")
-    def test_profitability_classification_requires_all_finance_and_estimates(self, estimate_mock, actual_mock):
-        from apps.catalog.actual_finance import summarize_service_profitability
-
-        booking = SimpleNamespace(
-            pricing_snapshot={"subtotal": "500.00"},
-            worker_payout_snapshot={"total": "250.00"},
-        )
-        actual_mock.return_value = {
-            "status": "complete",
-            "partial_contribution": Decimal("180.00"),
-        }
-        estimate_mock.return_value = Decimal("150.00")
-
-        report = summarize_service_profitability([booking], SimpleNamespace())
-
-        self.assertEqual(report["profitability_status"], "Profitable")
-        self.assertEqual(report["actual_average"], Decimal("180.00"))
-        self.assertEqual(report["estimated_average"], Decimal("150.00"))
-
-    def test_combined_category_summary_preserves_totals_and_requires_complete_data(self):
-        from apps.catalog.actual_finance import combine_profitability_summaries
-
-        first = {
-            "booking_count": 2, "actual_complete_count": 1, "actual_incomplete_count": 1,
-            "estimated_count": 1, "actual_contribution_total": Decimal("100.00"),
-            "estimated_contribution_total": Decimal("80.00"),
-            "comparable_actual_total": Decimal("100.00"),
-            "comparable_estimated_total": Decimal("80.00"),
-        }
-        second = {
-            "booking_count": 1, "actual_complete_count": 1, "actual_incomplete_count": 0,
-            "estimated_count": 1, "actual_contribution_total": Decimal("50.00"),
-            "estimated_contribution_total": Decimal("40.00"),
-            "comparable_actual_total": Decimal("50.00"),
-            "comparable_estimated_total": Decimal("40.00"),
-        }
-        result = combine_profitability_summaries([first, second])
-        self.assertEqual(result["booking_count"], 3)
-        self.assertEqual(result["actual_contribution_total"], Decimal("150.00"))
-        self.assertEqual(result["estimated_contribution_total"], Decimal("120.00"))
-        self.assertEqual(result["variance"], Decimal("30.00"))
-        self.assertEqual(result["profitability_status"], "Insufficient data")
+  <div class="module">
+    <h2>Service profitability</h2>
+    <table>
+      <thead><tr><th>Category</th><th>Service</th><th>Completed</th><th>Finance complete</th><th>Finance incomplete</th><th>Estimated count</th><th>Actual total</th><th>Estimated total</th><th>Average actual</th><th>Average estimated</th><th>Variance (comparable)</th><th>Profitability</th></tr></thead>
+      <tbody>
+        {% for row in service_rows %}
+          <tr>
+            <td>{{ row.service.category.title }}</td>
+            <th><a href="{% url 'admin:catalog_service_change' row.service.pk %}">{{ row.service.title }}</a></th>
+            <td>{{ row.summary.booking_count }}</td>
+            <td>{{ row.summary.actual_complete_count }}</td>
+            <td>{{ row.summary.actual_incomplete_count }}</td>
+            <td>{{ row.summary.estimated_count }}</td>
+            <td>₹{{ row.summary.actual_contribution_total }}</td>
+            <td>₹{{ row.summary.estimated_contribution_total }}</td>
+            <td>₹{{ row.summary.actual_average|default_if_none:"—" }}</td>
+            <td>₹{{ row.summary.estimated_average|default_if_none:"—" }}</td>
+            <td>₹{{ row.summary.variance|default_if_none:"—" }}</td>
+            <td>{{ row.summary.profitability_status }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="12">No completed bookings match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p><a href="{{ service_changelist_url }}">Back to services</a></p>
+</div>
+{% endblock %}
