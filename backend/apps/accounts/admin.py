@@ -51,7 +51,7 @@ class ConsentLogAdmin(ModelAdmin):
 @admin.register(Referral)
 class ReferralAdmin(ModelAdmin):
     list_display = (
-        "referrer", "referred", "reward_status", "rewarded",
+        "referral_type", "referrer", "referred", "reward_status", "rewarded",
         "reward_booking_id", "reward_original_service_charge", "rewarded_at", "applied_ip",
     )
     list_filter = ("reward_status", "rewarded", "created_at")
