@@ -263,7 +263,9 @@ class BookingDisputeAPITests(TestCase):
         self.worker.save(update_fields=["is_online", "commission_rate", "updated_at"])
         WorkerService.objects.create(worker=self.worker, service=self.booking.service)
         WorkerZone.objects.create(worker=self.worker, zone=self.zone)
-        scheduled_at = timezone.now() + timedelta(days=2)
+        scheduled_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         local_time = timezone.localtime(scheduled_at)
         WorkerSchedule.objects.create(
             worker=self.worker,

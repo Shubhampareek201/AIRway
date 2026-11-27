@@ -486,11 +486,14 @@ class ParentOrderWalletPaymentTest(TestCase):
         )
         category = Category.objects.create(title="Wallet Services", slug="wallet-services")
         service = Service.objects.create(category=category, title="Wallet Test Service")
+        scheduled_at = timezone.localtime(timezone.now() + timezone.timedelta(days=1)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         self.booking = Booking.objects.create(
             customer=self.customer,
             address=self.address,
             service=service,
-            scheduled_at=timezone.now() + timezone.timedelta(days=1),
+            scheduled_at=scheduled_at,
             status=Booking.Status.PENDING,
             pricing_snapshot={"total": "1000.00"},
         )

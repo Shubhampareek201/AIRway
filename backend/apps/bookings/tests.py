@@ -5485,7 +5485,9 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             status=Order.Status.PAID,
             total_amount=Decimal("1000.00"),
         )
-        self.first_at = timezone.now() + timedelta(days=2)
+        self.first_at = timezone.localtime(timezone.now() + timedelta(days=2)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         self.source_booking = Booking.objects.create(
             customer=self.customer,
             address=self.address,

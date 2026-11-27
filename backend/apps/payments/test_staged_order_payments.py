@@ -49,12 +49,15 @@ class StagedOrderPaymentServiceTests(TestCase):
             price=Decimal("1000.00"),
             worker_payout=Decimal("200.00"),
         )
+        scheduled_at = timezone.localtime(timezone.now() + timedelta(days=1)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         self.booking = Booking.objects.create(
             customer=self.customer,
             address=self.address,
             service=self.service,
             variant=self.variant,
-            scheduled_at=timezone.now() + timedelta(days=1),
+            scheduled_at=scheduled_at,
             status=Booking.Status.PENDING,
             pricing_snapshot={"total": "1000.00"},
             worker_payout_snapshot={"pricing_model": "fixed_service_payout_v1", "total": "200.00", "configured": True, "currency": "INR"},
