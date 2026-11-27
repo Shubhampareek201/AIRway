@@ -501,7 +501,7 @@ class WorkerJobStreak(TimeStampedModel):
 
 
 class WorkerRewardWallet(TimeStampedModel):
-    """Withdrawable mission-reward balance, separate from customer discount wallet."""
+    """Withdrawable mission and worker-referral rewards, separate from job earnings and customer wallet."""
 
     worker = models.OneToOneField(
         WorkerProfile,
@@ -521,7 +521,7 @@ class WorkerRewardWallet(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f"Mission rewards for worker #{self.worker_id}: ₹{self.balance}"
+        return f"Worker rewards for worker #{self.worker_id}: ₹{self.balance}"
 
 
 class WorkerRewardTransaction(TimeStampedModel):

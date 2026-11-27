@@ -71,6 +71,7 @@ urlpatterns = [
     path("earnings/", WorkerEarningsView.as_view(), name="worker-earnings"),
     path("streaks/", WorkerStreaksView.as_view(), name="worker-streaks"),
     path("mission-wallet/", WorkerMissionWalletView.as_view(), name="worker-mission-wallet"),
+    path("reward-wallet/", WorkerMissionWalletView.as_view(), name="worker-reward-wallet"),
     path("status/", WorkerStatusUpdateView.as_view(), name="worker-status"),
     path("", include(router.urls)),
 ]

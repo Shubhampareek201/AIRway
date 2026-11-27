@@ -649,9 +649,9 @@ class WorkerRewardTransactionAdmin(ModelAdmin):
 
 @admin.register(WorkerRewardWithdrawal)
 class WorkerRewardWithdrawalAdmin(ModelAdmin):
-    list_display = ("id", "worker", "amount", "status", "payout_upi_id", "created_at", "processed_at")
+    list_display = ("id", "worker", "amount", "status", "request_key", "payout_upi_id", "payout_reference", "created_at", "processed_at")
     list_filter = ("status", "created_at")
-    search_fields = ("worker__user__name", "worker__user__phone", "payout_upi_id", "payout_reference")
+    search_fields = ("worker__user__name", "worker__user__phone", "request_key", "payout_upi_id", "payout_reference")
     readonly_fields = (
         "wallet", "worker", "amount", "request_key", "payout_upi_id", "processed_by",
         "processed_at", "created_at", "updated_at",

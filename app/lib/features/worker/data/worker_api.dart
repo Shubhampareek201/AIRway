@@ -342,7 +342,7 @@ class WorkerApi {
   }
 
   static Future<Map<String, dynamic>> getMissionWallet() async {
-    final result = await _request('/api/v1/workers/mission-wallet/');
+    final result = await _request('/api/v1/workers/reward-wallet/');
     if (result is! Map) {
       throw const FormatException('Unexpected mission wallet response');
     }
@@ -354,7 +354,7 @@ class WorkerApi {
     required String idempotencyKey,
   }) async {
     final result = await _request(
-      '/api/v1/workers/mission-wallet/',
+      '/api/v1/workers/reward-wallet/',
       method: 'POST',
       data: {'amount': amount, 'idempotency_key': idempotencyKey},
     );
