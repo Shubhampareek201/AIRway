@@ -331,6 +331,45 @@ class WorkerScheduleListView(APIView):
         return Response(WorkerScheduleSerializer(obj).data, status=status.HTTP_201_CREATED)
 
 
+    @transaction.atomic
+    def put(self, request):
+        """Replace weekly hours while preserving all accepted appointments."""
+        try:
+            profile = WorkerProfile.objects.select_for_update().get(user=request.user)
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "Only approved workers can update working hours."}, status=status.HTTP_403_FORBIDDEN)
+        rows = request.data.get("schedules") if isinstance(request.data, dict) else request.data
+        if not isinstance(rows, list) or not rows:
+            return Response({"schedules": ["Select at least one working day and provide its hours."]}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = WorkerScheduleSerializer(data=rows, many=True)
+        serializer.is_valid(raise_exception=True)
+        proposed = list(serializer.validated_data)
+        by_day = {}
+        for row in proposed:
+            if row.get("is_active", True):
+                by_day.setdefault(row["weekday"], []).append((row["start_time"], row["end_time"]))
+        for windows in by_day.values():
+            windows.sort()
+            if any(current[0] < previous[1] for previous, current in zip(windows, windows[1:])):
+                return Response({"schedules": ["Working-hour windows on the same day cannot overlap."]}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.bookings.models import Booking
+        assignments = BookingAssignment.objects.select_for_update(of=("self",)).filter(worker=profile, booking__status__in=(Booking.Status.CONFIRMED, Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)).select_related("booking__service", "booking__variant", "booking__appointment_group")
+        for assignment in assignments:
+            for start_at, end_at in DispatcherService._assigned_booking_intervals(assignment.booking):
+                local_start, local_end = timezone.localtime(start_at), timezone.localtime(end_at)
+                if local_start.date() != local_end.date():
+                    return Response({"detail": "Schedule cannot be changed because an accepted booking crosses local midnight."}, status=status.HTTP_409_CONFLICT)
+                covered = any(row.get("is_active", True) and row["weekday"] == local_start.weekday() and row["start_time"] <= local_start.time() and row["end_time"] >= local_end.time() for row in proposed)
+                if not covered:
+                    return Response({"detail": "Schedule update blocked because it would exclude an accepted booking.", "conflicting_booking_id": assignment.booking_id, "next_step": "Complete or safely reschedule the accepted booking before changing these hours."}, status=status.HTTP_409_CONFLICT)
+        WorkerSchedule.objects.filter(worker=profile).delete()
+        WorkerSchedule.objects.bulk_create([WorkerSchedule(worker=profile, weekday=row["weekday"], start_time=row["start_time"], end_time=row["end_time"], is_active=row.get("is_active", True)) for row in proposed])
+        saved = WorkerSchedule.objects.filter(worker=profile)
+        return Response(WorkerScheduleSerializer(saved, many=True).data, status=status.HTTP_200_OK)
+
 class WorkerScheduleDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
