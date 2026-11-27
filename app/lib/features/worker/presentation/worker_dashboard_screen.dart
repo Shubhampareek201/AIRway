@@ -742,8 +742,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     setState(() => _missionHistoryLoadingMore = true);
     try {
       final next = await WorkerApi.getMissionWallet(
-        transactionOffset: transactionOffset ?? 0,
-        withdrawalOffset: withdrawalOffset ?? 0,
+        transactionOffset: transactionOffset ??
+            (current['transactions'] as List? ?? const []).length,
+        withdrawalOffset: withdrawalOffset ??
+            (current['withdrawals'] as List? ?? const []).length,
       );
       if (!mounted) return;
       final oldTransactions = (current['transactions'] as List? ?? const [])

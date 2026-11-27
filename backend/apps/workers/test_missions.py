@@ -144,22 +144,39 @@ class WorkerRewardLedgerTests(TestCase):
                 reference_key=f"history-mission:{index}",
                 description=f"Mission reward {index}",
             )
+        for _ in range(22):
+            WorkerRewardWithdrawal.objects.create(
+                wallet=wallet,
+                worker=self.referred,
+                amount=Decimal("5.00"),
+                payout_upi_id="worker@upi",
+            )
 
         client = APIClient()
         client.force_authenticate(user=self.referred_user)
         first = client.get("/api/v1/workers/reward-wallet/")
-        second = client.get("/api/v1/workers/reward-wallet/?transaction_offset=50")
+        second = client.get(
+            "/api/v1/workers/reward-wallet/?transaction_offset=50&withdrawal_offset=20"
+        )
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(len(first.data["transactions"]), 50)
         self.assertEqual(first.data["transactions_next_offset"], 50)
+        self.assertEqual(len(first.data["withdrawals"]), 20)
+        self.assertEqual(first.data["withdrawals_next_offset"], 20)
         self.assertEqual(second.status_code, 200)
         self.assertEqual(len(second.data["transactions"]), 5)
         self.assertIsNone(second.data["transactions_next_offset"])
+        self.assertEqual(len(second.data["withdrawals"]), 2)
+        self.assertIsNone(second.data["withdrawals_next_offset"])
         first_ids = {row["id"] for row in first.data["transactions"]}
         second_ids = {row["id"] for row in second.data["transactions"]}
         self.assertFalse(first_ids & second_ids)
         self.assertEqual(len(first_ids | second_ids), 55)
+        first_withdrawals = {row["id"] for row in first.data["withdrawals"]}
+        second_withdrawals = {row["id"] for row in second.data["withdrawals"]}
+        self.assertFalse(first_withdrawals & second_withdrawals)
+        self.assertEqual(len(first_withdrawals | second_withdrawals), 22)
         self.assertTrue(all(row["reference_key"] for row in first.data["transactions"] + second.data["transactions"]))
 
     def test_reward_wallet_rejects_negative_history_offsets(self):
