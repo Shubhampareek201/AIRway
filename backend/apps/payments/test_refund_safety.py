@@ -526,3 +526,29 @@ class RefundRetrySafetyTests(TestCase):
         self.assertEqual(refund.wallet_amount, Decimal("30.00"))
         self.assertEqual(refund.gateway_amount, Decimal("270.00"))
         process_refund.assert_called_once_with(refund.pk)
+
+
+    @patch("apps.payments.refunds.process_payment_refund")
+    def test_platform_unfulfilled_refund_never_applies_customer_late_fee(self, process_refund):
+        payment = self.refund.payment
+        self.refund.delete()
+        payment.stage = Payment.Stage.ADVANCE
+        payment.amount = Decimal("270.00")
+        payment.wallet_amount = Decimal("30.00")
+        payment.save(update_fields=["stage", "amount", "wallet_amount"])
+        self.booking.scheduled_at = timezone.now() + timedelta(hours=1)
+        self.booking.save(update_fields=["scheduled_at"])
+        DispatchConfiguration.objects.create(
+            late_cancellation_window_hours=2,
+            late_cancellation_fee_percent=30,
+        )
+
+        refunds = request_booking_refunds(
+            self.booking,
+            reason=PaymentRefund.Reason.PLATFORM_UNFULFILLED,
+        )
+
+        refund = refunds.get(payment=payment)
+        self.assertEqual(refund.amount, Decimal("300.00"))
+        self.assertEqual(refund.reason, PaymentRefund.Reason.PLATFORM_UNFULFILLED)
+        process_refund.assert_called_once_with(refund.pk)
