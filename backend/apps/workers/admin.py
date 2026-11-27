@@ -546,15 +546,6 @@ class WorkerEarningAdmin(ModelAdmin):
 
         if previous.status == WorkerEarning.Status.AVAILABLE and obj.status == WorkerEarning.Status.PAID:
             raise ValidationError("Create and pay a weekly settlement batch instead of paying a job earning individually.")
-        if previous.status == WorkerEarning.Status.AVAILABLE and obj.status == WorkerEarning.Status.PAID:
-            if obj.adjustment_amount != previous.adjustment_amount or obj.adjustment_note != previous.adjustment_note:
-                raise ValidationError("Adjustments cannot be changed after earnings become available.")
-            reference = str(obj.payout_reference or "").strip()
-            if not reference:
-                raise ValidationError("A bank/UPI payout reference is required.")
-            obj.payout_reference = reference[:100]
-            obj.paid_at = timezone.now()
-            obj.paid_by = request.user
         elif previous.status == WorkerEarning.Status.ON_HOLD and obj.status == WorkerEarning.Status.AVAILABLE:
             if previous.commission_amount is None:
                 raise ValidationError("Configure the worker commission rate before releasing this earning.")
