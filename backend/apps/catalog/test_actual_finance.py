@@ -120,3 +120,27 @@ class ServiceProfitabilitySummaryTests(SimpleTestCase):
         self.assertEqual(report["profitability_status"], "Profitable")
         self.assertEqual(report["actual_average"], Decimal("180.00"))
         self.assertEqual(report["estimated_average"], Decimal("150.00"))
+
+    def test_combined_category_summary_preserves_totals_and_requires_complete_data(self):
+        from apps.catalog.actual_finance import combine_profitability_summaries
+
+        first = {
+            "booking_count": 2, "actual_complete_count": 1, "actual_incomplete_count": 1,
+            "estimated_count": 1, "actual_contribution_total": Decimal("100.00"),
+            "estimated_contribution_total": Decimal("80.00"),
+            "comparable_actual_total": Decimal("100.00"),
+            "comparable_estimated_total": Decimal("80.00"),
+        }
+        second = {
+            "booking_count": 1, "actual_complete_count": 1, "actual_incomplete_count": 0,
+            "estimated_count": 1, "actual_contribution_total": Decimal("50.00"),
+            "estimated_contribution_total": Decimal("40.00"),
+            "comparable_actual_total": Decimal("50.00"),
+            "comparable_estimated_total": Decimal("40.00"),
+        }
+        result = combine_profitability_summaries([first, second])
+        self.assertEqual(result["booking_count"], 3)
+        self.assertEqual(result["actual_contribution_total"], Decimal("150.00"))
+        self.assertEqual(result["estimated_contribution_total"], Decimal("120.00"))
+        self.assertEqual(result["variance"], Decimal("30.00"))
+        self.assertEqual(result["profitability_status"], "Insufficient data")

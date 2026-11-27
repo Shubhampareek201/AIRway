@@ -178,12 +178,38 @@ def calculate_booking_actual_finance(booking):
         'reasons': list(dict.fromkeys(reasons)),
     }
 
-def summarize_service_profitability(bookings, service):
-    """Summarize completed bookings; compare actuals only where both sides are known.
+def _finalize_profitability_summary(result):
+    for key in ("actual_contribution_total", "estimated_contribution_total",
+                "comparable_actual_total", "comparable_estimated_total"):
+        result[key] = _money(result[key])
+    if result["estimated_count"]:
+        result["estimated_average"] = _money(
+            result["estimated_contribution_total"] / result["estimated_count"]
+        )
+        result["variance"] = _money(
+            result["comparable_actual_total"] - result["comparable_estimated_total"]
+        )
+    if result["actual_complete_count"]:
+        result["actual_average"] = _money(
+            result["actual_contribution_total"] / result["actual_complete_count"]
+        )
+    if (
+        result["booking_count"] > 0
+        and result["actual_complete_count"] == result["booking_count"]
+        and result["estimated_count"] == result["booking_count"]
+    ):
+        result["profitability_status"] = (
+            "Profitable" if result["actual_contribution_total"] > ZERO
+            else "Loss-making" if result["actual_contribution_total"] < ZERO
+            else "Break-even"
+        )
+    else:
+        result["profitability_status"] = "Insufficient data"
+    return result
 
-    Estimated contribution uses each booking's immutable subtotal and worker payout
-    snapshot, with the service's currently configured cost assumptions.
-    """
+
+def summarize_service_profitability(bookings, service=None):
+    """Summarize completed bookings using each booking's own service assumptions."""
     from apps.catalog.finance import calculate_estimated_contribution
 
     result = {
@@ -210,10 +236,11 @@ def summarize_service_profitability(bookings, service):
 
         pricing = booking.pricing_snapshot or {}
         payout_snapshot = booking.worker_payout_snapshot or {}
+        estimate_service = service or booking.service
         estimated = calculate_estimated_contribution(
             customer_price=pricing.get("subtotal"),
             worker_payout=payout_snapshot.get("total"),
-            service=service,
+            service=estimate_service,
         ) if pricing.get("subtotal") is not None and payout_snapshot.get("total") is not None else None
         if estimated is None:
             continue
@@ -222,38 +249,36 @@ def summarize_service_profitability(bookings, service):
         result["comparable_actual_total"] += actual["partial_contribution"]
         result["comparable_estimated_total"] += estimated
 
-    for key in ("actual_contribution_total", "estimated_contribution_total",
-                "comparable_actual_total", "comparable_estimated_total"):
-        result[key] = _money(result[key])
-    if result["estimated_count"]:
-        result["estimated_average"] = _money(
-            result["estimated_contribution_total"] / result["estimated_count"]
-        )
-    if result["actual_complete_count"]:
-        result["actual_average"] = _money(
-            result["actual_contribution_total"] / result["actual_complete_count"]
-        )
-    if result["estimated_count"]:
-        result["variance"] = _money(
-            result["comparable_actual_total"] - result["comparable_estimated_total"]
-        )
-    if (
-        result["booking_count"] > 0
-        and result["actual_complete_count"] == result["booking_count"]
-        and result["estimated_count"] == result["booking_count"]
-    ):
-        result["profitability_status"] = (
-            "Profitable" if result["actual_contribution_total"] > ZERO
-            else "Loss-making" if result["actual_contribution_total"] < ZERO
-            else "Break-even"
-        )
-    else:
-        result["profitability_status"] = "Insufficient data"
-    return result
+    return _finalize_profitability_summary(result)
 
 
-def build_service_profitability_report(service, variant=None):
-    """Return all-time profitability for completed bookings of a service/package."""
+def combine_profitability_summaries(summaries):
+    """Combine service summaries without recalculating bookings or mixing assumptions."""
+    combined = {
+        "booking_count": 0,
+        "actual_complete_count": 0,
+        "actual_incomplete_count": 0,
+        "estimated_count": 0,
+        "actual_contribution_total": ZERO,
+        "estimated_contribution_total": ZERO,
+        "comparable_actual_total": ZERO,
+        "comparable_estimated_total": ZERO,
+        "variance": None,
+        "actual_average": None,
+        "estimated_average": None,
+    }
+    for summary in summaries:
+        for key in (
+            "booking_count", "actual_complete_count", "actual_incomplete_count",
+            "estimated_count", "actual_contribution_total", "estimated_contribution_total",
+            "comparable_actual_total", "comparable_estimated_total",
+        ):
+            combined[key] += summary[key]
+    return _finalize_profitability_summary(combined)
+
+
+def build_service_profitability_report(service, variant=None, start_date=None, end_date=None):
+    """Return completed-booking profitability for a service/package and date range."""
     from apps.bookings.models import Booking
 
     bookings = Booking.objects.filter(
@@ -261,4 +286,8 @@ def build_service_profitability_report(service, variant=None):
     ).select_related("service", "variant").order_by("pk")
     if variant is not None:
         bookings = bookings.filter(variant=variant)
-    return summarize_service_profitability(bookings, service)
+    if start_date:
+        bookings = bookings.filter(completed_at__date__gte=start_date)
+    if end_date:
+        bookings = bookings.filter(completed_at__date__lte=end_date)
+    return summarize_service_profitability(bookings, service=service)

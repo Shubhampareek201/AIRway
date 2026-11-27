@@ -5,6 +5,10 @@ from django.contrib import admin, messages
 from django.contrib.admin.helpers import ActionForm
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.urls import path, reverse
+from django.template.response import TemplateResponse
+from django.utils.dateparse import parse_date
+from django.core.exceptions import PermissionDenied
 from django.forms.models import BaseInlineFormSet
 from simple_history.utils import update_change_reason
 from unfold.admin import ModelAdmin, TabularInline
@@ -193,6 +197,89 @@ class ServiceAdmin(ModelAdmin):
     readonly_fields = ("profitability_report",)
     list_per_page = 30
 
+    def get_urls(self):
+        custom_urls = [
+            path(
+                "profitability-report/",
+                self.admin_site.admin_view(self.profitability_report_view),
+                name="catalog_service_profitability_report",
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def profitability_report_view(self, request):
+        from apps.bookings.models import Booking
+        from .actual_finance import (
+            summarize_service_profitability,
+            combine_profitability_summaries,
+        )
+
+        if not self.has_view_or_change_permission(request):
+            raise PermissionDenied
+
+        start_date = parse_date(request.GET.get("start_date", ""))
+        end_date = parse_date(request.GET.get("end_date", ""))
+        category_id = request.GET.get("category") or ""
+        service_id = request.GET.get("service") or ""
+        date_error = ""
+        if start_date and end_date and start_date > end_date:
+            date_error = "Start date must be on or before end date."
+            start_date = end_date = None
+
+        bookings = Booking.objects.filter(
+            status=Booking.Status.COMPLETED,
+        ).select_related("service", "service__category", "variant").order_by(
+            "service__category__title", "service__title", "variant__title", "pk"
+        )
+        if start_date:
+            bookings = bookings.filter(completed_at__date__gte=start_date)
+        if end_date:
+            bookings = bookings.filter(completed_at__date__lte=end_date)
+        if category_id.isdigit():
+            bookings = bookings.filter(service__category_id=int(category_id))
+        if service_id.isdigit():
+            bookings = bookings.filter(service_id=int(service_id))
+
+        service_rows = []
+        category_summaries = {}
+        categories = {}
+        for service in Service.objects.filter(
+            bookings__in=bookings
+        ).select_related("category").distinct().order_by("category__title", "title"):
+            service_bookings = list(bookings.filter(service=service))
+            summary = summarize_service_profitability(service_bookings, service=service)
+            service_rows.append({"service": service, "summary": summary})
+            categories[service.category_id] = service.category
+            category_summaries.setdefault(service.category_id, []).append(summary)
+
+        category_rows = [
+            {
+                "category": category,
+                "summary": combine_profitability_summaries(category_summaries[category_id]),
+            }
+            for category_id, category in sorted(
+                categories.items(), key=lambda item: (item[1].title.lower(), item[0])
+            )
+        ]
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Service profitability report",
+            "opts": self.model._meta,
+            "start_date": start_date.isoformat() if start_date else request.GET.get("start_date", ""),
+            "end_date": end_date.isoformat() if end_date else request.GET.get("end_date", ""),
+            "selected_category": category_id,
+            "selected_service": service_id,
+            "categories": Category.objects.order_by("title"),
+            "services": Service.objects.filter(category_id=category_id).order_by("title") if category_id.isdigit() else Service.objects.order_by("title"),
+            "category_rows": category_rows,
+            "service_rows": service_rows,
+            "date_error": date_error,
+            "report_url": reverse("admin:catalog_service_profitability_report"),
+            "service_changelist_url": reverse("admin:catalog_service_changelist"),
+        }
+        return TemplateResponse(request, "admin/catalog/service/profitability_report.html", context)
+
     @admin.display(description="Completed booking profitability")
     def profitability_report(self, obj):
         from .actual_finance import build_service_profitability_report
@@ -223,8 +310,9 @@ class ServiceAdmin(ModelAdmin):
             visible,
         )
         return format_html(
-            "<p>All-time completed bookings. Estimates use saved booking subtotal/payout snapshots and the service's current cost assumptions. Incomplete actuals are excluded from profit/loss comparison.</p>"
+            '<p>All-time completed bookings. Estimates use saved booking subtotal/payout snapshots and the service\'s current cost assumptions. Incomplete actuals are excluded from profit/loss comparison. <a href="{}">Open date-range/category report</a></p>'
             "<table><thead><tr><th>Service / variant</th><th>Completed</th><th>Finance complete</th><th>Finance incomplete</th><th>Actual contribution</th><th>Estimated contribution</th><th>Avg actual</th><th>Avg estimated</th><th>Variance (comparable)</th><th>Profitability</th></tr></thead><tbody>{}</tbody></table>",
+            reverse("admin:catalog_service_profitability_report"),
             body,
         )
 
