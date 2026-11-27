@@ -264,6 +264,7 @@ def combine_profitability_summaries(summaries):
         "actual_complete_count": 0,
         "actual_incomplete_count": 0,
         "estimated_count": 0,
+        "comparable_count": 0,
         "actual_contribution_total": ZERO,
         "estimated_contribution_total": ZERO,
         "comparable_actual_total": ZERO,
