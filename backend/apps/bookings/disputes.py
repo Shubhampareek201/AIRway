@@ -20,7 +20,7 @@ from apps.notifications.models import Notification
 from .models import (
     Booking, BookingAssignment, BookingDispute, BookingDisputeHistory,
     BookingDisputeEvidence, BookingReworkProposal, BookingStatusHistory,
-    BookingAddOn, BookingFormResponse,
+    BookingAddOn, BookingFormResponse, DispatchConfiguration,
 )
 
 
@@ -99,8 +99,19 @@ class BookingDisputeListCreateView(APIView):
             return Response({"detail": "Only the booking customer or assigned professional can raise a dispute."},
                             status=status.HTTP_403_FORBIDDEN)
 
-        if booking.status not in (Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED):
-            return Response({"detail": "A dispute can be raised while service is in progress or within the post-completion review window."},
+        category = request.data.get("category")
+        no_show_report = False
+        if (
+            role == "customer"
+            and booking.status == Booking.Status.ASSIGNED
+            and category == BookingDispute.Category.WORKER_CONDUCT
+        ):
+            policy = DispatchConfiguration.objects.filter(pk=1).first()
+            grace_minutes = policy.no_show_grace_minutes if policy else 30
+            no_show_report = timezone.now() >= booking.scheduled_at + timedelta(minutes=grace_minutes)
+
+        if booking.status not in (Booking.Status.IN_PROGRESS, Booking.Status.COMPLETED) and not no_show_report:
+            return Response({"detail": "A service issue can be raised while work is in progress, within 7 days after completion, or as a worker no-show after the configured grace period."},
                             status=status.HTTP_400_BAD_REQUEST)
         if booking.status == Booking.Status.COMPLETED:
             completion_time = booking.completed_at or booking.updated_at
@@ -108,7 +119,6 @@ class BookingDisputeListCreateView(APIView):
                 return Response({"detail": "The 7-day post-completion dispute window has expired."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        category = request.data.get("category")
         outcome = request.data.get("requested_outcome")
         description = str(request.data.get("description", "")).strip()
         evidence = request.data.get("evidence_items", [])
@@ -147,7 +157,7 @@ class BookingDisputeListCreateView(APIView):
                     from_status="",
                     to_status=BookingDispute.Status.OPEN,
                     changed_by=request.user,
-                    note=f"Dispute raised by {role}.",
+                    note=("Customer reported a worker no-show after the configured grace period." if no_show_report else f"Dispute raised by {role}."),
                 )
         except IntegrityError:
             return Response({"detail": "An active dispute already exists for this booking."},
@@ -163,8 +173,8 @@ class BookingDisputeListCreateView(APIView):
             Notification.objects.create(
                 user=recipient,
                 type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                title="A booking support case was raised",
-                body=f"A support case was raised for booking #{booking.pk}. AIRway will review the details.",
+                title=("Worker no-show reported" if no_show_report else "A booking support case was raised"),
+                body=(f"The customer reported that the professional did not arrive for booking #{booking.pk}. AIRway support will review the case." if no_show_report else f"A support case was raised for booking #{booking.pk}. AIRway will review the details."),
                 channel=Notification.Channel.IN_APP,
                 data={"booking_id": booking.pk, "dispute_id": dispute.pk},
             )
