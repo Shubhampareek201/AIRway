@@ -1565,7 +1565,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ]),
         const SizedBox(height: 5),
         Text(
-          'Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['created_at'])}',
+          'Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['available_at'] ?? item['created_at'])}',
           style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
         ),
         if (item['settlement_batch_id'] != null)

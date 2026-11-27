@@ -572,8 +572,27 @@ class WorkerEarningAdmin(ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
+class WorkerPayoutSettlementEarningInline(TabularInline):
+    model = WorkerEarning
+    extra = 0
+    can_delete = False
+    fields = (
+        "booking", "extra_work", "gross_amount", "commission_amount",
+        "adjustment_amount", "net_amount", "status", "payout_reference", "paid_at",
+    )
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(WorkerPayoutSettlement)
 class WorkerPayoutSettlementAdmin(ModelAdmin):
+    inlines = (WorkerPayoutSettlementEarningInline,)
+
     list_display = (
         "id", "worker", "period_start", "period_end", "total_amount",
         "status", "payout_reference", "paid_at",
@@ -606,6 +625,18 @@ class WorkerPayoutSettlementAdmin(ModelAdmin):
         if obj.status != previous.status:
             raise ValidationError("Invalid weekly settlement status transition.")
         super().save_model(request, obj, form, change)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(
+            request.user.is_superuser
+            or request.user.has_perm("workers.manage_worker_payouts")
+        )
+
+    def has_change_permission(self, request, obj=None):
+        return bool(
+            request.user.is_superuser
+            or request.user.has_perm("workers.manage_worker_payouts")
+        )
 
     def has_add_permission(self, request):
         return False

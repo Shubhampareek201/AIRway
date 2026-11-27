@@ -1629,7 +1629,7 @@ class WorkerStreaksView(APIView):
 
 
 class WorkerMissionWalletView(APIView):
-    """Worker-only withdrawable wallet for mission rewards; never uses customer Wallet."""
+    """Worker-only withdrawable mission/referral reward wallet; separate from job earnings and customer Wallet."""
 
     permission_classes = [IsAuthenticated]
 
