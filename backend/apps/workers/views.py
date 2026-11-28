@@ -1617,17 +1617,36 @@ class WorkerJobArrivalView(APIView):
                 ])
 
         if first_arrival:
+            from django.contrib.auth.hashers import make_password
+            import secrets
+
+            start_code = f"{secrets.randbelow(10000):04d}"
+            start_code_hash = make_password(start_code)
+            start_code_expires_at = now + timedelta(minutes=10)
+            for row in assignments:
+                row.start_otp_hash = start_code_hash
+                row.start_otp_expires_at = start_code_expires_at
+                row.start_otp_attempts = 0
+                row.start_otp_last_sent_at = now
+                row.start_otp_verified_at = None
+                row.save(update_fields=[
+                    "start_otp_hash", "start_otp_expires_at", "start_otp_attempts",
+                    "start_otp_last_sent_at", "start_otp_verified_at", "updated_at",
+                ])
             Notification.objects.create(
                 user=booking.customer,
                 type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                title="Your professional has arrived",
-                body="Your AIRway professional has marked arrival. Service will begin only after you share the 4-digit start code.",
+                title="Your service start OTP is ready",
+                body="Your professional has arrived. Enter the 4-digit OTP shown in your AIRway home screen when the professional is ready to start.",
                 channel=Notification.Channel.IN_APP,
                 data={
+                    "purpose": "service_start_otp",
                     "booking_id": booking.pk,
                     "booking_ids": [row.pk for row in bookings],
                     "appointment_group_id": booking.appointment_group_id,
                     "arrived_at": assignments[0].arrived_at.isoformat(),
+                    "service_start_code": start_code,
+                    "service_start_code_expires_at": start_code_expires_at.isoformat(),
                 },
             )
         assignment = next((row for row in assignments if row.booking_id == booking.pk), assignments[0])
