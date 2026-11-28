@@ -312,6 +312,20 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.data["results"][0]["id"], offer.id)
         self.assertEqual(response.data["results"][0]["status"], "pending")
 
+    def test_offer_api_hides_customer_bill_and_exposes_only_worker_payout(self):
+        from apps.bookings.serializers import WorkerOfferSerializer
+
+        offer = WorkerOffer.objects.create(
+            booking=self.booking,
+            worker=self.worker_profile,
+            expires_at=self.booking.scheduled_at,
+        )
+        data = WorkerOfferSerializer(offer).data
+        self.assertIn("worker_payout", data)
+        for private_field in ("customer_total", "advance_received", "remaining_balance"):
+            self.assertNotIn(private_field, data)
+
+
     def test_legacy_fully_paid_booking_can_be_dispatched_and_accepted(self):
         from apps.bookings.dispatcher import DispatcherService
         from apps.payments.models import Payment
@@ -480,10 +494,13 @@ class JobOfferAPITest(TestCase):
 
         response = self.client.post(f"/api/v1/workers/offers/{offer.id}/decline/", format="json")
 
+        acceptance_rate_before = self.worker_profile.acceptance_rate
         self.assertEqual(response.status_code, 200)
 
         offer.refresh_from_db()
+        self.worker_profile.refresh_from_db()
         self.assertEqual(offer.status, WorkerOffer.Status.DECLINED)
+        self.assertEqual(self.worker_profile.acceptance_rate, acceptance_rate_before)
 
     def test_withdraw_offer(self):
         """Should withdraw a pending offer."""
