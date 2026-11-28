@@ -656,9 +656,6 @@ class DispatcherService:
                 "address": address_text,
                 "customer_instructions": (appointment_group.customer_message if appointment_group else booking.notes) or "",
                 "expected_duration_minutes": duration_minutes,
-                "customer_total": customer_total,
-                "advance_received": advance_received,
-                "remaining_balance": remaining_balance,
                 "worker_payout": worker_payout,
                 "notification_kind": "worker_offer",
             }
