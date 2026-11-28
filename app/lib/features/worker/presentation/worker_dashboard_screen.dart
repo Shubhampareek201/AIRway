@@ -146,116 +146,209 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   Future<void> _showIncomingOffer(WorkerOffer offer) async {
     if (!mounted || _incomingOfferDialogOpen) return;
     _incomingOfferDialogOpen = true;
-    SystemSound.play(SystemSoundType.alert);
-    HapticFeedback.vibrate();
+    var now = DateTime.now();
+    var responding = false;
+    String? responseError;
+    Timer? ringTimer;
+    Timer? countdownTimer;
+    Map<String, String>? photoHeaders;
+
+    if (offer.customerIssuePhotoUrl?.isNotEmpty == true ||
+        offer.formResponses.any((item) => (item['photo_url']?.toString() ?? '').isNotEmpty)) {
+      try {
+        photoHeaders = await WorkerApi.getAuthHeaders();
+      } catch (_) {
+        // Text and offer actions remain available if photo auth is temporarily unavailable.
+      }
+    }
+
+    void ring() {
+      final expiry = (offer.expiresAt ?? offer.scheduledAt)?.toLocal();
+      if (mounted && !responding && (expiry == null || expiry.isAfter(DateTime.now()))) {
+        unawaited(SystemSound.play(SystemSoundType.alert));
+        unawaited(HapticFeedback.vibrate());
+      }
+    }
+
+    String countdownLabel() {
+      final expiry = (offer.expiresAt ?? offer.scheduledAt)?.toLocal();
+      if (expiry == null) return 'Expiry: scheduled service time';
+      final seconds = expiry.difference(now).inSeconds;
+      if (seconds <= 0) return 'Offer expired';
+      final days = seconds ~/ 86400;
+      final hours = (seconds % 86400) ~/ 3600;
+      final minutes = (seconds % 3600) ~/ 60;
+      final secs = seconds % 60;
+      if (days > 0) return 'Expires in ${days}d ${hours}h';
+      return 'Expires in ${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    }
+
+    ring();
+    ringTimer = Timer.periodic(const Duration(seconds: 2), (_) => ring());
     try {
       await showDialog<void>(
         context: context,
-        barrierDismissible: true,
-        builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.notifications_active_rounded, size: 34, color: AirwayColors.primary),
-          title: Text(AirwayText.tr('New service request', 'नई सेवा रिक्वेस्ट')),
-          content: SizedBox(
-            width: 420,
-            child: SingleChildScrollView(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                if (offer.serviceImageUrl?.isNotEmpty == true)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(offer.serviceImageUrl!, height: 120, width: double.infinity, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-                  ),
-                Text(offer.serviceTitle ?? 'AIRway service', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-                if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
-                if (offer.customerName?.trim().isNotEmpty == true)
-                  Text(AirwayText.tr('Customer: ${offer.customerName}', 'ग्राहक: ${offer.customerName}')),
-                if (offer.serviceDescription?.trim().isNotEmpty == true)
-                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(offer.serviceDescription!, style: const TextStyle(fontSize: 12, height: 1.4))),
-                if (offer.orderServices.length > 1) ...[
-                  const SizedBox(height: 10),
-                  Text(AirwayText.tr('Services in this order', 'इस ऑर्डर की सेवाएँ'), style: TextStyle(fontWeight: FontWeight.w800)),
-                  for (final item in offer.orderServices)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5),
-                      child: Text(
-                        '• ${item['service_title'] ?? 'Service'}'
-                        '${item['variant_title'] == null ? '' : ' — ${item['variant_title']}'}'
-                        '${item['quantity'] == null ? '' : ' × ${item['quantity']}'}'
-                        '${item['scheduled_at'] == null ? '' : ' · ${_dateLabel(item['scheduled_at'])}'}',
-                      ),
-                    ),
-                ],
-                const SizedBox(height: 8),
-                if (offer.scheduledAt != null) Text(AirwayText.tr('Requested time: ${_dateLabel(offer.scheduledAt)}', 'अनुरोधित समय: ${_dateLabel(offer.scheduledAt)}')),
-                if (offer.serviceAddress?.isNotEmpty == true) ...[
-                  Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
-                  TextButton.icon(
-                    onPressed: () => _openOfferMap(offer),
-                    icon: const Icon(Icons.directions_rounded, size: 17),
-                    label: Text(AirwayText.tr('Open customer location', 'ग्राहक की लोकेशन खोलें')),
-                  ),
-                ],
-                if (offer.bookingNotes?.trim().isNotEmpty == true)
-                  Padding(padding: const EdgeInsets.only(top: 6), child: Text(AirwayText.tr('Customer message: ${offer.bookingNotes}', 'ग्राहक का संदेश: ${offer.bookingNotes}'), style: const TextStyle(fontSize: 12, height: 1.35))),
-                Text(offer.workerPayout == null ? AirwayText.tr('Worker payout is not configured yet.', 'वर्कर की कमाई अभी तय नहीं है।') : 'Your earning: ₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.success)),
-                Text(AirwayText.tr('Quantity: ${offer.quantity}', 'मात्रा: ${offer.quantity}')),
-                for (final entry in offer.customerAnswers.entries)
-                  Text(workerCustomerAnswerLabel(entry.key, entry.value)),
-                for (final answer in offer.formResponses)
-                  Text('${answer['label'] ?? answer['key']}: ${answer['value']}'),
-                if (offer.addons.isNotEmpty)
-                  Text(AirwayText.tr('Add-ons: ${offer.addons.map((item) => item['title']).join(', ')}', 'अतिरिक्त सेवाएँ: ${offer.addons.map((item) => item['title']).join(', ')}')),
-                const SizedBox(height: 8),
-                Text(AirwayText.tr('Review the details before accepting. AIRway will confirm the assignment with the server.', 'स्वीकार करने से पहले विवरण जाँचें। AIRway सर्वर से असाइनमेंट की पुष्टि करेगा।'), style: TextStyle(fontSize: 12)),
-              ]),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _openOffers();
-              },
-              child: Text(AirwayText.tr('View later', 'बाद में देखें')),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(dialogContext);
-                try {
-                  await WorkerApi.declineOffer(offer.id);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request declined.', 'रिक्वेस्ट अस्वीकार कर दी गई।'))));
-                    await _refresh();
-                  }
-                } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not decline request: $e', 'रिक्वेस्ट अस्वीकार नहीं हो सकी: $e'))));
-                }
-              },
-              child: Text(AirwayText.tr('Reject', 'अस्वीकार करें')),
-            ),
-            FilledButton(
-              onPressed: offer.canAccept ? () async {
-                Navigator.pop(dialogContext);
-                try {
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() => now = DateTime.now());
+              final expiry = (offer.expiresAt ?? offer.scheduledAt)?.toLocal();
+              if (expiry != null && !expiry.isAfter(DateTime.now())) {
+                Navigator.of(dialogContext).pop();
+              }
+            });
+
+            final expiry = (offer.expiresAt ?? offer.scheduledAt)?.toLocal();
+            final expired = expiry != null && !expiry.isAfter(now);
+
+            Future<void> respond(bool accept) async {
+              if (responding || expired) return;
+              setDialogState(() {
+                responding = true;
+                responseError = null;
+              });
+              try {
+                if (accept) {
                   await WorkerApi.acceptOffer(offer.id);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request accepted. Assignment confirmed.', 'रिक्वेस्ट स्वीकार हो गई। असाइनमेंट कन्फ़र्म है।'))));
-                    await _refresh();
-                    _openAssignedJobs();
-                  }
-                } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Request could not be accepted: $e', 'रिक्वेस्ट स्वीकार नहीं हो सकी: $e'))));
-                  await _refresh();
+                } else {
+                  await WorkerApi.declineOffer(offer.id);
                 }
-              } : null,
-              child: Text(offer.workerPayout == null
-                  ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
-                  : AirwayText.tr('Accept service', 'सेवा स्वीकार करें')),
-            ),
-          ],
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(accept
+                        ? AirwayText.tr('Request accepted. Assignment confirmed.', 'रिक्वेस्ट स्वीकार हो गई। असाइनमेंट कन्फ़र्म है।')
+                        : AirwayText.tr('Request declined.', 'रिक्वेस्ट अस्वीकार कर दी गई।')),
+                  ));
+                  await _refresh();
+                  if (accept && mounted) _openAssignedJobs();
+                }
+              } catch (error) {
+                if (mounted) await _refresh();
+                final latest = _offers.where((item) => item.id == offer.id).firstOrNull;
+                if (latest != null && latest.status != WorkerOffer.pending) {
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                  return;
+                }
+                if (dialogContext.mounted) {
+                  setDialogState(() {
+                    responseError = error.toString().replaceFirst('Exception: ', '');
+                    responding = false;
+                  });
+                }
+              }
+            }
+
+            return PopScope(
+              canPop: false,
+              child: AlertDialog(
+                icon: const Icon(Icons.notifications_active_rounded, size: 34, color: AirwayColors.primary),
+                title: Text(AirwayText.tr('New service request', 'नई सेवा रिक्वेस्ट')),
+                content: SizedBox(
+                  width: 420,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (offer.serviceImageUrl?.isNotEmpty == true)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(offer.serviceImageUrl!, height: 120, width: double.infinity, fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                          ),
+                        Text(offer.serviceTitle ?? 'AIRway service', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                        if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
+                        if (offer.customerName?.trim().isNotEmpty == true)
+                          Text(AirwayText.tr('Customer: ${offer.customerName}', 'ग्राहक: ${offer.customerName}')),
+                        if (offer.serviceDescription?.trim().isNotEmpty == true)
+                          Padding(padding: const EdgeInsets.only(top: 8), child: Text(offer.serviceDescription!, style: const TextStyle(fontSize: 12, height: 1.4))),
+                        if (offer.customerIssuePhotoUrl?.isNotEmpty == true) ...[
+                          const SizedBox(height: 8),
+                          Text(AirwayText.tr('Customer reference photo', 'ग्राहक की भेजी फोटो'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                          if (photoHeaders != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.network(offer.customerIssuePhotoUrl!, headers: photoHeaders, height: 130, width: double.infinity, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                            ),
+                        ],
+                        if (offer.orderServices.length > 1) ...[
+                          const SizedBox(height: 10),
+                          Text(AirwayText.tr('Services in this order', 'इस ऑर्डर की सेवाएँ'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                          for (final item in offer.orderServices)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: Text(
+                                '• ${item['service_title'] ?? 'Service'}'
+                                '${item['variant_title'] == null ? '' : ' — ${item['variant_title']}'}'
+                                '${item['quantity'] == null ? '' : ' × ${item['quantity']}'}'
+                                '${item['scheduled_at'] == null ? '' : ' · ${_dateLabel(item['scheduled_at'])}'}',
+                              ),
+                            ),
+                        ],
+                        const SizedBox(height: 8),
+                        if (offer.scheduledAt != null)
+                          Text(AirwayText.tr('Requested time: ${_dateLabel(offer.scheduledAt)}', 'अनुरोधित समय: ${_dateLabel(offer.scheduledAt)}')),
+                        if (offer.serviceAddress?.isNotEmpty == true) ...[
+                          Text(AirwayText.tr('Address: ${offer.serviceAddress}', 'पता: ${offer.serviceAddress}')),
+                          TextButton.icon(
+                            onPressed: () => _openOfferMap(offer),
+                            icon: const Icon(Icons.directions_rounded, size: 17),
+                            label: Text(AirwayText.tr('Open customer location', 'ग्राहक की लोकेशन खोलें')),
+                          ),
+                        ],
+                        if (offer.bookingNotes?.trim().isNotEmpty == true)
+                          Padding(padding: const EdgeInsets.only(top: 6), child: Text(AirwayText.tr('Customer message: ${offer.bookingNotes}', 'ग्राहक का संदेश: ${offer.bookingNotes}'), style: const TextStyle(fontSize: 12, height: 1.35))),
+                        Text(offer.workerPayout == null ? AirwayText.tr('Worker payout is not configured yet.', 'वर्कर की कमाई अभी तय नहीं है।') : 'Your earning: ₹${offer.workerPayout!.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.success)),
+                        Text(AirwayText.tr('Quantity: ${offer.quantity}', 'मात्रा: ${offer.quantity}')),
+                        for (final entry in offer.customerAnswers.entries)
+                          Text(workerCustomerAnswerLabel(entry.key, entry.value)),
+                        for (final answer in offer.formResponses) ...[
+                          Text('${answer['label'] ?? answer['key']}: ${answer['value']}'),
+                          if ((answer['photo_url']?.toString() ?? '').isNotEmpty && photoHeaders != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: Image.network(answer['photo_url'].toString(), headers: photoHeaders, height: 110, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                            ),
+                        ],
+                        if (offer.addons.isNotEmpty)
+                          Text(AirwayText.tr('Add-ons: ${offer.addons.map((item) => item['title']).join(', ')}', 'अतिरिक्त सेवाएँ: ${offer.addons.map((item) => item['title']).join(', ')}')),
+                        const SizedBox(height: 10),
+                        Text(countdownLabel(), style: const TextStyle(fontWeight: FontWeight.w900, color: AirwayColors.primary)),
+                        if (responseError != null)
+                          Padding(padding: const EdgeInsets.only(top: 8), child: Text(responseError!, style: const TextStyle(color: Colors.red, fontSize: 12))),
+                        const SizedBox(height: 8),
+                        Text(AirwayText.tr('Accept or reject this offer before the scheduled service time. No rejection penalty applies.', 'निर्धारित सेवा समय से पहले ऑफ़र स्वीकार या अस्वीकार करें। अस्वीकार करने पर कोई पेनल्टी नहीं है।'), style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: responding || expired ? null : () => respond(false),
+                    child: Text(AirwayText.tr('Reject', 'अस्वीकार करें')),
+                  ),
+                  FilledButton(
+                    onPressed: responding || expired || !offer.canAccept ? null : () => respond(true),
+                    child: responding
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Text(offer.workerPayout == null
+                            ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
+                            : AirwayText.tr('Accept service', 'सेवा स्वीकार करें')),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       );
     } finally {
+      ringTimer?.cancel();
+      countdownTimer?.cancel();
       _incomingOfferDialogOpen = false;
     }
   }
