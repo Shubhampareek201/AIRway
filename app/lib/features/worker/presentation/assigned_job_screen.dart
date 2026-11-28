@@ -1457,6 +1457,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
               AirwayText.tr('Call and message unlock one hour before the appointment: ${_formatDateTime(job.customerContactAvailableAt!)}', 'कॉल और मैसेज अपॉइंटमेंट से एक घंटे पहले उपलब्ध होंगे: ${_formatDateTime(job.customerContactAvailableAt!)}'),
               style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
             ),
+          ] else if (job.assignment.acceptedAt == null) ...[
+            Text(
+              AirwayText.tr('Accept this job to view the exact customer address. Call and SMS unlock one hour before the appointment.', 'ग्राहक का पूरा पता देखने के लिए जॉब स्वीकार करें। कॉल और SMS अपॉइंटमेंट से एक घंटे पहले उपलब्ध होंगे।'),
+              style: const TextStyle(fontSize: 12, color: AirwayColors.textSecondary),
+            ),
           ],
           if (job.address?.isNotEmpty == true) ...[
             const SizedBox(height: 8),
