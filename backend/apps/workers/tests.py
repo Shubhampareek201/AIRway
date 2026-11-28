@@ -725,6 +725,9 @@ class WorkerJobLifecycleTest(TestCase):
     def test_worker_offer_hides_exact_location_until_accepted(self):
         from apps.bookings.serializers import WorkerOfferSerializer
 
+        self.customer_address.latitude = Decimal("19.076000")
+        self.customer_address.longitude = Decimal("72.877700")
+        self.customer_address.save(update_fields=["latitude", "longitude"])
         booking = Booking.objects.create(
             customer=self.customer_user,
             address=self.customer_address,
