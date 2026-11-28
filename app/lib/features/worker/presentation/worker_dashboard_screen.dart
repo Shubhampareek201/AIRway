@@ -2102,6 +2102,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ? _startOtpControllers.putIfAbsent(assignmentId!, () => TextEditingController())
         : null;
     final error = assignmentId == null ? null : _startOtpErrors[assignmentId];
+    final adminReviewPending = assignmentId != null &&
+        (_startOtpExceptionPending.contains(assignmentId) ||
+         job['start_otp_exception_status']?.toString() == 'pending');
     return Card(
       child: Column(
         children: [
@@ -2152,7 +2155,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   ),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: _startOtpExceptionPending.contains(assignmentId)
+                    child: adminReviewPending
                         ? const Text('Admin review pending', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w700))
                         : TextButton(
                             onPressed: () => _requestStartOtpException(job),
