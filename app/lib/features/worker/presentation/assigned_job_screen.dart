@@ -335,78 +335,14 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
-  Future<String?> _requestStartOtp() async {
-    final controller = TextEditingController();
-    final code = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(AirwayText.tr('Customer service-start OTP', 'ग्राहक का सर्विस OTP')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(AirwayText.tr(
-              'Enter the 4-digit OTP shown on the customer AIRway home screen. Verification starts automatically after the fourth digit.',
-              'ग्राहक की AIRway होम स्क्रीन पर दिख रहा 4 अंकों का OTP डालें। चौथा अंक डालते ही वेरिफ़िकेशन शुरू हो जाएगा।',
-            )),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              decoration: InputDecoration(
-                labelText: AirwayText.tr('4-digit service OTP', '4 अंकों का सर्विस OTP'),
-                border: const OutlineInputBorder(),
-                counterText: '',
-              ),
-              onChanged: (value) {
-                if (value.length == 4) Navigator.pop(dialogContext, value);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(AirwayText.tr('Cancel', 'रद्द करें')),
-          ),
-        ],
+  Future<void> _startJob() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Enter the customer OTP on the Worker Home service card to start this job.'),
       ),
     );
-    controller.dispose();
-    return code;
-  }
-
-  Future<void> _startJob() async {
-    if (!mounted || _jobDetail == null || _isActionInProgress) return;
-    setState(() => _isActionInProgress = true);
-    try {
-      final startOtp = await _requestStartOtp();
-      if (startOtp == null || startOtp.isEmpty) return;
-      await WorkerApi.startJob(
-        _jobDetail!.assignmentId,
-        startOtp: startOtp,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr(
-            'Customer OTP verified. Service started.',
-            'ग्राहक OTP वेरिफ़ाई हो गया। सेवा शुरू हो गई।',
-          ))),
-        );
-        await _loadAssignedJob();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AirwayText.tr('Failed to start job: $e', 'काम शुरू नहीं हो सका: $e'))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isActionInProgress = false);
-    }
+    Navigator.of(context).pop();
   }
 
   Future<void> _proposeExtraWork() async {
@@ -1955,10 +1891,10 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Icon(hasArrived ? Icons.play_arrow_rounded : Icons.location_on_rounded),
+              : Icon(hasArrived ? Icons.lock_outline_rounded : Icons.location_on_rounded),
           label: Text(_isActionInProgress
-              ? (hasArrived ? 'Starting...' : 'Saving arrival...')
-              : (hasArrived ? 'Start Service' : "I've Arrived")),
+              ? 'Saving arrival...'
+              : (hasArrived ? 'Enter OTP on Worker Home' : "I've Arrived")),
         ),
       );
     }
