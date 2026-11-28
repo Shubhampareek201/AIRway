@@ -120,11 +120,12 @@ def worker_contact_access(assignment, *, at=None):
     now = at or timezone.now()
     accepted = bool(assignment.accepted_at)
     active = booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+    worker_approved = assignment.worker.status == WorkerProfile.Status.APPROVED
     contact_available_at = (
         booking.scheduled_at - timedelta(hours=1)
-        if accepted and active and booking.scheduled_at else None
+        if accepted and active and worker_approved and booking.scheduled_at else None
     )
-    address_available = accepted and active
+    address_available = accepted and active and worker_approved
     phone_available = bool(
         address_available
         and contact_available_at
