@@ -225,6 +225,62 @@ class WorkerCompletionOTPTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_customer_can_refresh_expired_service_start_otp_but_worker_cannot(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.arrived_at = timezone.now()
+        self.assignment.start_otp_last_sent_at = timezone.now() - timedelta(minutes=11)
+        self.assignment.start_otp_expires_at = timezone.now() - timedelta(minutes=1)
+        self.assignment.save(update_fields=[
+            "started_at", "arrived_at", "start_otp_last_sent_at",
+            "start_otp_expires_at", "updated_at",
+        ])
+        url = f"/api/v1/bookings/{self.booking.pk}/service-start-otp/"
+
+        worker_attempt = self.client.post(url, {}, format="json")
+        self.assertEqual(worker_attempt.status_code, 404)
+
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=self.customer)
+        refreshed = customer_client.post(url, {}, format="json")
+        self.assertEqual(refreshed.status_code, 200, refreshed.data)
+        self.assertRegex(refreshed.data["code"], r"^\\d{4}$")
+        self.assignment.refresh_from_db()
+        self.assertTrue(check_password(refreshed.data["code"], self.assignment.start_otp_hash))
+        self.assertEqual(self.assignment.start_otp_attempts, 0)
+
+        throttled = customer_client.post(url, {}, format="json")
+        self.assertEqual(throttled.status_code, 429)
+
+    def test_service_start_otp_locks_after_five_wrong_attempts(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.save(update_fields=["started_at", "updated_at"])
+        self.client.post(
+            f"/api/v1/workers/jobs/{self.assignment.pk}/arrived/",
+            {},
+            format="json",
+        )
+        for attempt in range(5):
+            wrong = "9999"
+            self.assignment.refresh_from_db()
+            if check_password(wrong, self.assignment.start_otp_hash):
+                wrong = "9998"
+            response = self.client.post(
+                f"/api/v1/workers/jobs/{self.assignment.pk}/start/",
+                {"start_otp": wrong},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400, response.data)
+        locked = self.client.post(
+            f"/api/v1/workers/jobs/{self.assignment.pk}/start/",
+            {"start_otp": "1234"},
+            format="json",
+        )
+        self.assertEqual(locked.status_code, 429)
+
     def test_worker_location_requires_explicit_consent_and_30_minute_window(self):
         self.booking.status = Booking.Status.ASSIGNED
         self.booking.scheduled_at = timezone.now() + timedelta(hours=2)
