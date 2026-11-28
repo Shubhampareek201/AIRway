@@ -5,8 +5,28 @@ This module deliberately contains only the stable, location-independent
 eligibility gates. Booking-time checks (weekday hours, leave, blocked slots,
 and overlapping assignments) remain in the dispatcher.
 """
+import re
+
 from apps.workers.models import WorkerProfile
 
+
+
+_CONTACT_PHONE_RE = re.compile(r"(?<!\\d)(?:\\+?91[\\s.-]?)?[6-9]\\d{4}[\\s.-]?\\d{5}(?!\\d)")
+_CONTACT_EMAIL_RE = re.compile(r"\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", re.IGNORECASE)
+
+
+def mask_personal_contact_details(value):
+    """Mask phone numbers and email addresses embedded in customer-provided text."""
+    if isinstance(value, str):
+        value = _CONTACT_EMAIL_RE.sub("[contact hidden]", value)
+        return _CONTACT_PHONE_RE.sub("[contact hidden]", value)
+    if isinstance(value, dict):
+        return {key: mask_personal_contact_details(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [mask_personal_contact_details(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(mask_personal_contact_details(item) for item in value)
+    return value
 
 def required_worker_gender_for_booking(service, category_answers=None):
     """Resolve the required worker gender from service policy and customer choice.
