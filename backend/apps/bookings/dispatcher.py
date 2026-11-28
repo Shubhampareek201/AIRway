@@ -603,7 +603,11 @@ class DispatcherService:
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "service_area": location_preview,
-                "customer_instructions": (appointment_group.customer_message if appointment_group else booking.notes) or "",
+                "customer_instructions": __import__(
+                    "apps.workers.eligibility", fromlist=["mask_personal_contact_details"]
+                ).mask_personal_contact_details(
+                    (appointment_group.customer_message if appointment_group else booking.notes) or ""
+                ),
                 "expected_duration_minutes": duration_minutes,
                 "worker_payout": worker_payout,
                 "notification_kind": "worker_offer",
