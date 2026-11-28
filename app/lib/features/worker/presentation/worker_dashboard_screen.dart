@@ -108,6 +108,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     try {
       final latest = await WorkerApi.getJobOffers();
       if (!mounted) return;
+      _knownOfferIds.addAll(latest.map((item) => item.id));
       setState(() => _offers = latest);
       final matching = latest.where((item) =>
           item.id == offerId && item.status == WorkerOffer.pending).toList();
