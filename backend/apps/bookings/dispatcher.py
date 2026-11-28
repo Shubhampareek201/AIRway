@@ -842,8 +842,6 @@ class DispatcherService:
         if not scheduled_at or not zone or not zone.is_active or not zone.city.is_active:
             return WorkerProfile.objects.none()
 
-        from apps.workers.eligibility import worker_is_within_working_hours
-
         eligible_workers = eligible_workers_for_service(
             service, zone=zone, required_tasks=required_tasks,
         )
@@ -868,8 +866,6 @@ class DispatcherService:
         ]
         eligible_ids = []
         for worker in eligible_workers:
-            if not worker_is_within_working_hours(worker):
-                continue
             schedule_ok = True
             for visit_start, visit_end in visit_windows:
                 local_start = timezone.localtime(visit_start)
