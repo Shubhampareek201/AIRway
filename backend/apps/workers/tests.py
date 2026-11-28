@@ -675,6 +675,14 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertNotIn("help@example.com", detail_response.data["notes"])
         self.assertNotIn(self.customer_user.phone, str(detail_response.data))
 
+        self.worker_profile.status = WorkerProfile.Status.SUSPENDED
+        self.worker_profile.save(update_fields=["status", "updated_at"])
+        suspended_response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+        self.assertFalse(suspended_response.data["customer_contact_available"])
+        self.assertIsNone(suspended_response.data["customer_phone"])
+        self.assertIsNone(suspended_response.data["address"])
+        self.assertIsNone(suspended_response.data["customer_contact_available_at"])
+
     def test_worker_cannot_access_customer_address_or_phone_before_accepting(self):
         booking = Booking.objects.create(
             customer=self.customer_user,
