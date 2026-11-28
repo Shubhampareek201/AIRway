@@ -248,12 +248,18 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
 
   void _scheduleContactUnlock(WorkerAssignmentDetail job) {
     _contactRefreshTimer?.cancel();
-    if (job.customerContactAvailable ||
-        job.customerContactAvailableAt == null ||
-        (job.status != BookingStatus.assigned && job.status != BookingStatus.inProgress)) return;
+    if (job.status != BookingStatus.assigned &&
+        job.status != BookingStatus.inProgress) return;
+
+    // Keep checking after unlock too: a reschedule or terminal status must
+    // revoke a phone number that was previously visible in this screen.
+    if (job.customerContactAvailable) {
+      _contactRefreshTimer = Timer(const Duration(minutes: 1), _refreshContactAccess);
+      return;
+    }
+    if (job.customerContactAvailableAt == null) return;
+
     final delay = job.customerContactAvailableAt!.difference(DateTime.now());
-    // Re-check periodically as well as at the unlock boundary so a customer
-    // reschedule is reflected without requiring the worker to reopen the job.
     final refreshAfter = delay.isNegative
         ? const Duration(minutes: 1)
         : (delay > const Duration(minutes: 5)
@@ -264,7 +270,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
 
   Future<void> _refreshContactAccess() async {
     final current = _jobDetail;
-    if (!mounted || current == null || current.customerContactAvailable ||
+    if (!mounted || current == null ||
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
     try {
       final data = await WorkerApi.getJobDetail(current.assignmentId);
@@ -273,7 +279,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       setState(() => _jobDetail = updated);
       _scheduleContactUnlock(updated);
     } catch (_) {
-      // A failed refresh must not interrupt the active job; resume will retry.
+      // Retry on a short interval without interrupting the active job.
+      if (mounted) _scheduleContactUnlock(current);
     }
   }
 
