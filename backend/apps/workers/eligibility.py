@@ -36,22 +36,6 @@ def required_worker_gender_for_booking(service, category_answers=None):
     return None
 
 
-def worker_is_within_working_hours(worker, at=None):
-    """Return whether an approved worker is currently inside an active local shift."""
-    from django.utils import timezone
-    from .models import WorkerSchedule
-
-    local_now = timezone.localtime(at or timezone.now())
-    current_time = local_now.time().replace(tzinfo=None)
-    return WorkerSchedule.objects.filter(
-        worker=worker,
-        weekday=local_now.weekday(),
-        is_active=True,
-        start_time__lte=current_time,
-        end_time__gt=current_time,
-    ).exists()
-
-
 def eligible_worker_profiles(*, city=None, zone=None):
     """
     Base pool of workers who can currently serve at least one configured
