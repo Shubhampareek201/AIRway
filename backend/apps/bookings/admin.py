@@ -567,6 +567,19 @@ class BookingStartOTPExceptionAdmin(ModelAdmin):
                         blocked += 1
                         continue
 
+                    order_item = getattr(booking_ref, "order_item", None)
+                    if order_item and "payment_allocation_v1" in (order_item.order.metadata or {}):
+                        from apps.payments.models import Payment
+                        advance_paid = Payment.objects.filter(
+                            order=order_item.order,
+                            stage=Payment.Stage.ADVANCE,
+                            appointment_group__isnull=True,
+                            status=Payment.Status.PAID,
+                        ).exists()
+                        if not advance_paid:
+                            blocked += 1
+                            continue
+
                     now = timezone.now()
                     for row in assignments:
                         row.started_at = now
