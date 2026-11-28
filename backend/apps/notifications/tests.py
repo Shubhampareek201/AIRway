@@ -93,6 +93,32 @@ class NotificationServiceTest(TestCase):
         self.assertEqual(saved.user, self.user)
 
 
+    def test_worker_offer_push_expires_at_service_time_and_collapses_duplicates(self):
+        from datetime import timedelta
+        from unittest.mock import Mock, patch
+        from apps.accounts.models import DeviceToken
+        from apps.notifications.service import send_push_notification
+
+        DeviceToken.objects.create(
+            user=self.user, token="offer-fcm-token", platform="android",
+        )
+        scheduled_at = timezone.now() + timedelta(hours=3)
+        response = Mock(success_count=1, responses=[Mock(success=True)])
+        with patch("apps.accounts.firebase_service.get_firebase_app"), patch(
+            "firebase_admin.messaging.send_each_for_multicast", return_value=response,
+        ) as send:
+            send_push_notification(
+                self.user, "New job", "New AIRway request",
+                data={"offer_id": 42, "scheduled_at": scheduled_at.isoformat()},
+                channel_id="airway_job_alerts",
+            )
+
+        message = send.call_args.args[0]
+        self.assertGreater(message.android.ttl.total_seconds(), 0)
+        self.assertLessEqual(message.android.ttl.total_seconds(), 3 * 60 * 60)
+        self.assertEqual(message.android.notification.tag, "42")
+        self.assertEqual(message.apns.headers["apns-collapse-id"], "42")
+
     def test_send_push_initializes_firebase_and_sends_to_registered_devices(self):
         from unittest.mock import Mock, patch
         from apps.accounts.models import DeviceToken
