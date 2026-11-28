@@ -24,6 +24,7 @@ from .models import (
     AppointmentGroup,
     DispatchConfiguration,
     BookingCompletionOTP,
+    BookingStartOTPException,
     WorkerOffer,
     BookingQuote,
     BookingExtraWork,
@@ -498,6 +499,172 @@ class DispatchConfigurationAdmin(ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+
+
+@admin.register(BookingStartOTPException)
+class BookingStartOTPExceptionAdmin(ModelAdmin):
+    list_display = (
+        "id", "booking", "worker_name", "status", "created_at",
+        "reviewed_by", "reviewed_at",
+    )
+    list_filter = ("status", "created_at", "reviewed_at")
+    search_fields = (
+        "booking__id", "booking__customer__phone",
+        "assignment__worker__user__phone", "reason",
+    )
+    readonly_fields = tuple(field.name for field in BookingStartOTPException._meta.fields)
+    fields = readonly_fields
+    actions = ("approve_service_start_exception", "reject_service_start_exception")
+
+    @admin.display(description="Worker")
+    def worker_name(self, obj):
+        return obj.requested_by.user.name or "AIRway Professional"
+
+    @admin.action(description="Approve selected OTP exceptions and start the service")
+    def approve_service_start_exception(self, request, queryset):
+        approved = 0
+        blocked = 0
+        for exception_id in queryset.filter(
+            status=BookingStartOTPException.Status.PENDING
+        ).values_list("pk", flat=True):
+            try:
+                with transaction.atomic():
+                    exception = BookingStartOTPException.objects.select_for_update().get(pk=exception_id)
+                    if exception.status != BookingStartOTPException.Status.PENDING:
+                        continue
+                    booking_ref = Booking.objects.select_related("appointment_group").get(pk=exception.booking_id)
+                    if booking_ref.appointment_group_id:
+                        group_ref = AppointmentGroup.objects.get(pk=booking_ref.appointment_group_id)
+                        Order.objects.select_for_update().get(pk=group_ref.order_id)
+                        group = AppointmentGroup.objects.select_for_update().get(pk=group_ref.pk)
+                        bookings = list(
+                            Booking.objects.select_for_update(of=("self",))
+                            .filter(appointment_group=group)
+                            .exclude(status=Booking.Status.CANCELLED)
+                            .order_by("pk")
+                        )
+                        assignments = list(
+                            BookingAssignment.objects.select_for_update()
+                            .filter(booking__in=bookings)
+                            .select_related("booking")
+                            .order_by("booking_id")
+                        )
+                    else:
+                        booking = Booking.objects.select_for_update(of=("self",)).get(pk=booking_ref.pk)
+                        assignment = BookingAssignment.objects.select_for_update().get(pk=exception.assignment_id)
+                        bookings, assignments = [booking], [assignment]
+
+                    if (
+                        len(assignments) != len(bookings)
+                        or any(
+                            row.booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
+                            or not row.accepted_at
+                            or not row.arrived_at
+                            or row.started_at
+                            for row in assignments
+                        )
+                    ):
+                        blocked += 1
+                        continue
+
+                    now = timezone.now()
+                    for row in assignments:
+                        row.started_at = now
+                        row.start_otp_hash = ""
+                        row.start_otp_expires_at = now
+                        row.save(update_fields=[
+                            "started_at", "start_otp_hash",
+                            "start_otp_expires_at", "updated_at",
+                        ])
+                    for active_booking in bookings:
+                        old_status = active_booking.status
+                        active_booking.status = Booking.Status.IN_PROGRESS
+                        active_booking.save(update_fields=["status", "updated_at"])
+                        BookingStatusHistory.objects.create(
+                            booking=active_booking,
+                            from_status=old_status,
+                            to_status=Booking.Status.IN_PROGRESS,
+                            changed_by=request.user,
+                            note=(
+                                f"Admin-approved service-start OTP exception #{exception.pk}. "
+                                f"Worker reason: {exception.reason}"
+                            ),
+                        )
+                        from apps.bookings.models import RecurringWashVisit
+                        RecurringWashVisit.objects.filter(
+                            booking=active_booking,
+                            status=RecurringWashVisit.Status.BOOKED,
+                        ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=now)
+
+                    exception.status = BookingStartOTPException.Status.APPROVED
+                    exception.reviewed_by = request.user
+                    exception.reviewed_at = now
+                    exception.review_note = "Approved by admin after reviewing the reported OTP issue."
+                    exception.save(update_fields=[
+                        "status", "reviewed_by", "reviewed_at",
+                        "review_note", "updated_at",
+                    ])
+                    Notification.objects.create(
+                        user=booking_ref.customer,
+                        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                        title="Service start exception approved",
+                        body="AIRway Admin verified the OTP issue and approved the service start.",
+                        channel=Notification.Channel.IN_APP,
+                        data={"purpose": "service_start_otp_exception", "exception_id": exception.pk, "booking_id": booking_ref.pk},
+                    )
+                    Notification.objects.create(
+                        user=exception.requested_by.user,
+                        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                        title="Service start approved",
+                        body="AIRway Admin approved your OTP exception request. The service is now marked In Progress.",
+                        channel=Notification.Channel.IN_APP,
+                        data={"purpose": "service_start_otp_exception", "exception_id": exception.pk, "booking_id": booking_ref.pk},
+                    )
+                    approved += 1
+            except Exception:
+                blocked += 1
+        if blocked:
+            self.message_user(
+                request,
+                f"Approved {approved} exception(s). {blocked} could not be approved because the appointment state changed or processing failed.",
+                level=messages.WARNING,
+            )
+        else:
+            self.message_user(
+                request, f"Approved {approved} service-start exception(s).",
+                level=messages.SUCCESS,
+            )
+
+    @admin.action(description="Reject selected OTP exceptions")
+    def reject_service_start_exception(self, request, queryset):
+        pending = queryset.filter(status=BookingStartOTPException.Status.PENDING)
+        count = 0
+        for exception in pending.select_related("requested_by__user", "booking__customer"):
+            now = timezone.now()
+            exception.status = BookingStartOTPException.Status.REJECTED
+            exception.reviewed_by = request.user
+            exception.reviewed_at = now
+            exception.review_note = "Rejected by admin after reviewing the reported OTP issue."
+            exception.save(update_fields=[
+                "status", "reviewed_by", "reviewed_at",
+                "review_note", "updated_at",
+            ])
+            Notification.objects.create(
+                user=exception.requested_by.user,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Service start exception rejected",
+                body="AIRway Admin could not approve your OTP exception. Contact support before proceeding.",
+                channel=Notification.Channel.IN_APP,
+                data={"purpose": "service_start_otp_exception", "exception_id": exception.pk, "booking_id": exception.booking_id},
+            )
+            count += 1
+        self.message_user(request, f"Rejected {count} service-start exception request(s).", level=messages.SUCCESS)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(BookingCompletionOTP)
