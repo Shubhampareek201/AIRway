@@ -2377,6 +2377,15 @@ class WorkerOfferViewSet(viewsets.ModelViewSet):
                 ).values_list("order_id", flat=True).first()
                 if parent_order_id:
                     order = Order.objects.select_for_update().get(pk=parent_order_id)
+                else:
+                    # Standalone offers for the same booking must serialize on
+                    # the booking row BEFORE locking individual offer rows.
+                    # Otherwise competing workers can each hold their offer
+                    # while waiting for the booking, deadlocking when the first
+                    # winner withdraws every other pending offer.
+                    Booking.objects.select_for_update(of=("self",)).get(
+                        pk=offer.booking_id
+                    )
             offer = WorkerOffer.objects.select_for_update().get(pk=offer.pk)
             worker = WorkerProfile.objects.select_for_update().get(pk=offer.worker_id)
             if worker.user_id != request.user.id:
