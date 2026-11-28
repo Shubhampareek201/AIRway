@@ -1854,15 +1854,22 @@ class WorkerStartOTPExceptionRequestView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, job_id):
         try:
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
 
-        assignment, booking = _get_assignment_and_booking(job_id, profile)
-        if booking is None:
+        assignment = (
+            BookingAssignment.objects.select_for_update()
+            .select_related("booking")
+            .filter(pk=job_id, worker=profile)
+            .first()
+        )
+        if assignment is None:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        booking = assignment.booking
         if (
             profile.status != WorkerProfile.Status.APPROVED
             or not assignment.accepted_at
