@@ -646,6 +646,7 @@ class WorkerJobLifecycleTest(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
+            notes="Please call me at +919876543210 or email help@example.com.",
         )
         assignment = BookingAssignment.objects.create(
             booking=booking,
@@ -669,6 +670,9 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertFalse(detail_response.data["customer_contact_available"])
         self.assertIsNotNone(detail_response.data["customer_contact_available_at"])
         self.assertEqual(detail_response.data["address"], self.customer_address.full_address)
+        self.assertIn("[contact hidden]", detail_response.data["notes"])
+        self.assertNotIn("+919876543210", detail_response.data["notes"])
+        self.assertNotIn("help@example.com", detail_response.data["notes"])
         self.assertNotIn(self.customer_user.phone, str(detail_response.data))
 
     def test_worker_cannot_access_customer_address_or_phone_before_accepting(self):
