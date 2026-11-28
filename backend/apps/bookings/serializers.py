@@ -796,6 +796,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     worker_phone = serializers.CharField(source="worker.user.phone", read_only=True)
     service_title = serializers.SerializerMethodField()
     customer_name = serializers.CharField(source="booking.customer.name", read_only=True)
+    customer_reputation = serializers.SerializerMethodField()
     service_description = serializers.CharField(source="booking.service.description", read_only=True)
     service_material_requirements = serializers.JSONField(source="booking.service.material_requirements", read_only=True)
     service_image_url = serializers.SerializerMethodField()
@@ -833,7 +834,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "batch_number", "worker_payout",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
-            "worker_phone", "customer_name", "service_title", "service_description", "service_material_requirements", "service_image_url",
+            "worker_phone", "customer_name", "customer_reputation", "service_title", "service_description", "service_material_requirements", "service_image_url",
             "customer_issue_photo_url", "address_latitude", "address_longitude",
             "service_unit_label", "variant_title", "scheduled_at",
             "service_address", "booking_notes", "expected_duration_minutes",
@@ -842,6 +843,10 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             "can_withdraw",
         ]
         read_only_fields = fields
+
+    def get_customer_reputation(self, obj):
+        from apps.ratings.public import customer_reputation_summary
+        return customer_reputation_summary(obj.booking.customer)
 
     def _service_image_url(self, service):
         image = service.image
