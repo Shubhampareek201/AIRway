@@ -20,6 +20,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
   String? _error;
   int _actionInProgress = -1;
   Timer? _pollTimer;
+  Timer? _countdownTimer;
   bool _fetching = false;
 
   @override
@@ -27,6 +28,9 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadOffers();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
     // Keep this route current even when it was already open before a customer
     // completed checkout. The dashboard's polling does not refresh this page.
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -45,6 +49,7 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -289,6 +294,10 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
             _infoLine(Icons.person_outline_rounded, 'Customer: ${offer.customerName}'),
           const SizedBox(height: 8),
           _infoLine(Icons.calendar_month_outlined, offer.scheduledAt == null ? 'Schedule to be confirmed' : 'Service time: ${_formatDateTime(offer.scheduledAt!)}'),
+          if (pending && offer.expiresAt != null) ...[
+            const SizedBox(height: 8),
+            _infoLine(Icons.timer_outlined, 'Offer expires at service start: ${_offerExpiryLabel(offer.expiresAt!)}'),
+          ],
           if (address.isNotEmpty) ...[
             const SizedBox(height: 8),
             _infoLine(Icons.location_on_outlined, address, maxLines: 3),
@@ -552,6 +561,16 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
 
     // Unknown status - no action
     return const SizedBox.shrink();
+  }
+
+  String _offerExpiryLabel(DateTime expiresAt) {
+    final remaining = expiresAt.toLocal().difference(DateTime.now());
+    if (remaining.inSeconds <= 0) return 'Service time reached';
+    final days = remaining.inDays;
+    final hours = remaining.inHours.remainder(24).toString().padLeft(2, '0');
+    final minutes = remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return days > 0 ? '${days}d ${hours}h ${minutes}m' : '${hours}:${minutes}:${seconds}';
   }
 
   String _formatDateTime(DateTime dt) {
