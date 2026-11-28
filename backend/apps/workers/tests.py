@@ -2924,6 +2924,26 @@ class WorkerZoneChangeRequestAPITest(TestCase):
         self.assertTrue(WorkerZone.objects.filter(worker=self.worker, zone=self.zone).exists())
         self.assertEqual(response.data["action"], "remove")
 
+    def test_admin_approval_applies_worker_zone_removal(self):
+        from .models import WorkerZoneChangeRequest
+        from .zone_changes import review_worker_zone_change
+        admin_user = User.objects.create_superuser(
+            phone="+919876543296", password="adminpass"
+        )
+        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
+        change = WorkerZoneChangeRequest.objects.create(
+            worker=self.worker, zone=self.zone,
+            action=WorkerZoneChangeRequest.Action.REMOVE,
+        )
+        reviewed = review_worker_zone_change(
+            request_id=change.pk, reviewer=admin_user,
+            decision=WorkerZoneChangeRequest.Status.APPROVED,
+        )
+        self.assertEqual(reviewed.status, WorkerZoneChangeRequest.Status.APPROVED)
+        self.assertFalse(
+            WorkerZone.objects.filter(worker=self.worker, zone=self.zone).exists()
+        )
+
     def test_admin_review_applies_zone_change_and_is_audited(self):
         from .models import WorkerZoneChangeRequest
         from .zone_changes import review_worker_zone_change
