@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:geolocator_android/geolocator_android.dart';
+import 'package:geolocator_apple/geolocator_apple.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
@@ -31,6 +34,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   bool _isActionInProgress = false;
   bool _hasRatedCustomer = false;
   Timer? _locationTimer;
+  StreamSubscription<Position>? _locationSubscription;
   Timer? _contactRefreshTimer;
   int? _sharingAssignmentId;
   bool _locationRequestInProgress = false;
@@ -48,6 +52,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   @override
   void dispose() {
     _locationTimer?.cancel();
+    _locationSubscription?.cancel();
     _contactRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -59,9 +64,6 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       _locationPermissionBlocked = false;
       _configureLocationSharing(_jobDetail!);
       _refreshContactAccess();
-    } else if (state != AppLifecycleState.resumed) {
-      _locationTimer?.cancel();
-      _locationTimer = null;
     }
   }
 
@@ -74,6 +76,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
       _locationTimer?.cancel();
       _locationTimer = null;
       _sharingAssignmentId = null;
+      unawaited(_stopLocationStream());
       return;
     }
     final visibilityStartsAt = job.scheduledAt.subtract(const Duration(minutes: 30));
@@ -81,22 +84,19 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     if (now.isBefore(visibilityStartsAt)) {
       _locationTimer?.cancel();
       _sharingAssignmentId = null;
+      unawaited(_stopLocationStream());
       _locationTimer = Timer(
         visibilityStartsAt.difference(now),
         () => _configureLocationSharing(job),
       );
       return;
     }
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
     if (_sharingAssignmentId != job.assignmentId) {
       _locationTimer?.cancel();
+      unawaited(_stopLocationStream());
       _sharingAssignmentId = job.assignmentId;
-      _publishCurrentLocation(job.assignmentId);
-      _locationTimer = Timer.periodic(
-        const Duration(seconds: 30),
-        (_) => _publishCurrentLocation(job.assignmentId),
-      );
     }
+    unawaited(_startBackgroundLocationStream(job.assignmentId));
   }
 
   Future<void> _setLocationSharing(bool enabled) async {
@@ -104,6 +104,10 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     if (job == null || _locationConsentRequestInProgress) return;
     setState(() => _locationConsentRequestInProgress = true);
     try {
+      if (enabled && !await _ensureBackgroundLocationPermission()) {
+        if (mounted) setState(() => _locationConsentRequestInProgress = false);
+        return;
+      }
       await WorkerApi.setJobLocationSharing(
         job.assignmentId,
         enabled: enabled,
@@ -118,6 +122,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         _locationTimer?.cancel();
         _locationTimer = null;
         _sharingAssignmentId = null;
+        await _stopLocationStream();
       } else {
         _configureLocationSharing(job);
       }
@@ -133,42 +138,105 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
-  Future<void> _publishCurrentLocation(int assignmentId) async {
-    if (!mounted || _locationRequestInProgress || _locationPermissionBlocked ||
-        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
-    _locationRequestInProgress = true;
-    try {
-      if (!await Geolocator.isLocationServiceEnabled()) return;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+  Future<bool> _ensureBackgroundLocationPermission() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Turn on device location to share your live route.')),
+        );
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      return false;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.whileInUse) {
+      // iOS can show the second-stage Always permission prompt here.
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission != LocationPermission.always) {
+      if (permission != LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Set AIRway location permission to “Allow all the time” to keep customer tracking active in the background.'),
+          ),
+        );
+      }
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _stopLocationStream() async {
+    final subscription = _locationSubscription;
+    _locationSubscription = null;
+    await subscription?.cancel();
+  }
+
+  Future<void> _startBackgroundLocationStream(int assignmentId) async {
+    if (_locationSubscription != null ||
+        _locationPermissionBlocked ||
+        _sharingAssignmentId != assignmentId) return;
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission != LocationPermission.always) {
         _locationPermissionBlocked = true;
         return;
       }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
+      late final LocationSettings settings;
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        settings = AndroidSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
-        ),
-      );
-      if (!mounted ||
-          _sharingAssignmentId != assignmentId ||
-          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
-        return;
+          distanceFilter: 10,
+          intervalDuration: const Duration(seconds: 15),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: 'AIRway live location is active',
+            notificationText: 'Your location is being shared with the customer for this active service.',
+            notificationChannelName: 'AIRway service tracking',
+            enableWakeLock: true,
+            setOngoing: true,
+          ),
+        );
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        settings = AppleSettings(
+          accuracy: LocationAccuracy.best,
+          activityType: ActivityType.automotiveNavigation,
+          distanceFilter: 10,
+          pauseLocationUpdatesAutomatically: false,
+          showBackgroundLocationIndicator: true,
+          allowBackgroundLocationUpdates: true,
+        );
+      } else {
+        settings = const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        );
       }
-      await WorkerApi.updateJobLocation(
-        assignmentId,
-        latitude: position.latitude,
-        longitude: position.longitude,
-        accuracyMeters: position.accuracy,
+      _locationSubscription = Geolocator.getPositionStream(
+        locationSettings: settings,
+      ).listen(
+        (position) {
+          if (_sharingAssignmentId != assignmentId) return;
+          WorkerApi.updateJobLocation(
+            assignmentId,
+            latitude: position.latitude,
+            longitude: position.longitude,
+            accuracyMeters: position.accuracy,
+          ).catchError((_) {
+            // A temporary network failure must not terminate the GPS stream.
+          });
+        },
+        onError: (_) {
+          _locationPermissionBlocked = true;
+          unawaited(_stopLocationStream());
+        },
       );
     } catch (_) {
-      // Location is optional; the job lifecycle remains usable without GPS/network.
-    } finally {
-      _locationRequestInProgress = false;
+      _locationPermissionBlocked = true;
     }
   }
 
