@@ -313,17 +313,32 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.data["results"][0]["status"], "pending")
 
     def test_offer_api_hides_customer_bill_and_exposes_only_worker_payout(self):
-        from apps.bookings.serializers import WorkerOfferSerializer
-
-        offer = WorkerOffer.objects.create(
+        self.client.force_authenticate(user=self.worker_user)
+        WorkerOffer.objects.create(
             booking=self.booking,
             worker=self.worker_profile,
             expires_at=self.booking.scheduled_at,
         )
-        data = WorkerOfferSerializer(offer).data
+        response = self.client.get("/api/v1/workers/offers/")
+        self.assertEqual(response.status_code, 200)
+        data = response.data["results"][0]
         self.assertIn("worker_payout", data)
         for private_field in ("customer_total", "advance_received", "remaining_balance"):
             self.assertNotIn(private_field, data)
+
+    def test_dispatch_notification_contains_worker_payout_not_customer_bill(self):
+        from apps.bookings.dispatcher import DispatcherService
+        from apps.notifications.models import Notification
+
+        offers = DispatcherService.dispatch_offers(self.booking)
+        self.assertEqual(len(offers), 1)
+        notification = Notification.objects.get(
+            user=self.worker_user,
+            type=Notification.Type.WORKER_OFFER,
+        )
+        self.assertEqual(notification.data["worker_payout"], "90.00")
+        for private_field in ("customer_total", "advance_received", "remaining_balance"):
+            self.assertNotIn(private_field, notification.data)
 
 
     def test_legacy_fully_paid_booking_can_be_dispatched_and_accepted(self):
