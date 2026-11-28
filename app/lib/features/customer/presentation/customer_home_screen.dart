@@ -10,6 +10,7 @@ import 'package:airway/features/location/presentation/address_picker_screen.dart
 import 'package:airway/features/location/presentation/location_selection_screen.dart';
 import 'package:airway/features/welcome/presentation/welcome_screen.dart';
 import 'package:airway/features/booking/presentation/booking_list_screen.dart';
+import 'package:airway/features/booking/data/booking_api.dart';
 import 'package:airway/features/booking/presentation/customer_order_screen.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/booking/presentation/customer_cart_screen.dart';
@@ -62,6 +63,8 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   StreamSubscription<RemoteMessage>? _pushOpenSubscription;
+  Timer? _serviceOtpRefreshTimer;
+  List<Map<String, dynamic>> _serviceStartOtpCards = [];
   List<Map<String, dynamic>> _addresses = [];
   List<Category> _catalogCategories = [];
   List<Service> _popularCatalogServices = [];
@@ -95,6 +98,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (message != null) _handlePushOpen(message);
     });
     _refresh();
+    _serviceOtpRefreshTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _loadActiveServiceStartOtps(),
+    );
   }
 
   void _handlePushOpen(RemoteMessage message) {
@@ -109,6 +116,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void dispose() {
     _pushOpenSubscription?.cancel();
+    _serviceOtpRefreshTimer?.cancel();
     _search.dispose();
     _searchFocus.dispose();
     _bannerController.dispose();
@@ -167,6 +175,47 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         );
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadActiveServiceStartOtps() async {
+    try {
+      final orders = await BookingApi.listOrders();
+      final activeOrders = orders.where((order) {
+        final items = order['items'] as List? ?? [];
+        return items.any((raw) {
+          if (raw is! Map) return false;
+          final state = raw['status']?.toString();
+          return state == 'assigned' || state == 'confirmed';
+        });
+      }).take(8).toList();
+
+      final cards = <Map<String, dynamic>>[];
+      for (final order in activeOrders) {
+        final id = int.tryParse(order['id']?.toString() ?? '');
+        if (id == null) continue;
+        final detail = await BookingApi.request('/api/v1/bookings/orders/$id/');
+        final items = (detail['items'] as List? ?? []);
+        for (final raw in items) {
+          if (raw is! Map) continue;
+          final item = Map<String, dynamic>.from(raw);
+          final otp = item['service_start_otp'];
+          if (otp is! Map || otp['code'] == null) continue;
+          cards.add({
+            'booking_id': item['booking_id'],
+            'service_title': (item['service'] as Map?)?['title'] ??
+                (item['service'] as Map?)?['service_title'] ??
+                'Your service',
+            'scheduled_at': item['scheduled_at'],
+            'code': otp['code'].toString(),
+            'expires_at': otp['expires_at'],
+            'status': item['booking_status'],
+          });
+        }
+      }
+      if (mounted) setState(() => _serviceStartOtpCards = cards);
+    } catch (_) {
+      // Keep the customer home usable if an order refresh temporarily fails.
     }
   }
 
@@ -795,6 +844,54 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ],
   );
 
+  Widget _serviceStartOtpSection() {
+    if (_serviceStartOtpCards.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Service start OTP',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _Ui.ink)),
+          const SizedBox(height: 8),
+          ..._serviceStartOtpCards.map((item) => Card(
+            elevation: 0,
+            color: const Color(0xFFF3F7F1),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Color(0xFFDCE8D8)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_user_outlined, color: _Ui.violet, size: 26),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item['service_title']?.toString() ?? 'Your service',
+                            style: const TextStyle(fontWeight: FontWeight.w700, color: _Ui.ink)),
+                        const SizedBox(height: 4),
+                        const Text('Share this code with your AIRway professional to start work.',
+                            style: TextStyle(fontSize: 11, color: _Ui.sub)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(item['code'].toString(),
+                      style: const TextStyle(fontSize: 25, letterSpacing: 4,
+                          fontWeight: FontWeight.w900, color: _Ui.violet)),
+                ],
+              ),
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+
   Widget _home(Map<String, dynamic> address) {
     final addressId = int.tryParse('${address['id']}');
     final query = _query.trim().toLowerCase();
@@ -814,6 +911,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         padding: const EdgeInsets.only(bottom: 30),
         children: [
           _purpleHeader(address),
+          _serviceStartOtpSection(),
           if (_workerStatus == 'pending' ||
               _workerStatus == 'approved' ||
               _workerStatus == 'rejected')
