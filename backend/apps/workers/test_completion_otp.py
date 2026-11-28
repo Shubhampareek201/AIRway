@@ -180,7 +180,7 @@ class WorkerCompletionOTPTests(TestCase):
             title="Your service start OTP is ready",
         )
         code = notification.data["service_start_code"]
-        self.assertRegex(code, r"^\\d{4}$")
+        self.assertRegex(code, r"^\d{4}$")
         self.assertTrue(check_password(code, self.assignment.start_otp_hash))
         self.assertNotIn(code, str(self.client.get(
             f"/api/v1/workers/jobs/{self.assignment.pk}/"
@@ -245,7 +245,7 @@ class WorkerCompletionOTPTests(TestCase):
         customer_client.force_authenticate(user=self.customer)
         refreshed = customer_client.post(url, {}, format="json")
         self.assertEqual(refreshed.status_code, 200, refreshed.data)
-        self.assertRegex(refreshed.data["code"], r"^\\d{4}$")
+        self.assertRegex(refreshed.data["code"], r"^\d{4}$")
         self.assignment.refresh_from_db()
         self.assertTrue(check_password(refreshed.data["code"], self.assignment.start_otp_hash))
         self.assertEqual(self.assignment.start_otp_attempts, 0)
