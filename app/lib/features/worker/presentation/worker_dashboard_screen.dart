@@ -2029,10 +2029,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       if (!mounted) return;
       final message = error.toString().toLowerCase();
       controller.clear();
-      setState(() => _startOtpErrors[assignmentId] =
-          message.contains('too many') || message.contains('429')
-              ? 'OTP attempts limit reached. Ask the customer to refresh the code.'
-              : 'Incorrect or expired OTP. Check the customer screen and try again.');
+      final needsAdminReview = message.contains('too many') ||
+          message.contains('429') || message.contains('expired') ||
+          message.contains('refresh');
+      setState(() => _startOtpErrors[assignmentId] = needsAdminReview
+          ? 'OTP unavailable or attempts limit reached. Request admin verification if customer refresh does not resolve it.'
+          : 'Incorrect OTP. Check the customer screen and try again.');
       await _refresh();
     } finally {
       if (mounted) setState(() => _startOtpSubmitting.remove(assignmentId));
@@ -2148,7 +2150,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   }
                 },
                   ),
-                  if (error?.contains('attempts limit reached') == true)
+                  if (error?.contains('admin verification') == true)
                     Align(
                       alignment: Alignment.centerRight,
                       child: _startOtpExceptionPending.contains(assignmentId)
