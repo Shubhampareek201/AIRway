@@ -33,6 +33,9 @@ ORDER_ADVANCE_PERCENTAGE = int(os.environ.get("ORDER_ADVANCE_PERCENTAGE", "30"))
 if not 1 <= ORDER_ADVANCE_PERCENTAGE <= 99:
     raise ValueError("ORDER_ADVANCE_PERCENTAGE must be between 1 and 99.")
 
+# Optional server-side Mapbox Directions token. Leave unset to disable road routes.
+MAPBOX_ACCESS_TOKEN = os.environ.get("MAPBOX_ACCESS_TOKEN", "").strip()
+
 
 # Application definition
 
