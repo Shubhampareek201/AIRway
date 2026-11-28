@@ -1902,6 +1902,102 @@ class CustomerCheckoutView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class CustomerServiceStartOTPView(APIView):
+    """Issue or refresh the four-digit service-start OTP for the booking customer only."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, booking_id):
+        booking_ref = Booking.objects.filter(
+            pk=booking_id, customer=request.user
+        ).select_related("appointment_group").first()
+        if booking_ref is None:
+            return Response({"detail": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if booking_ref.appointment_group_id:
+            group_ref = AppointmentGroup.objects.get(pk=booking_ref.appointment_group_id)
+            Order.objects.select_for_update().get(pk=group_ref.order_id)
+            group = AppointmentGroup.objects.select_for_update().get(pk=group_ref.pk)
+            bookings = list(
+                Booking.objects.select_for_update(of=("self",))
+                .filter(appointment_group=group)
+                .exclude(status=Booking.Status.CANCELLED)
+                .order_by("pk")
+            )
+            assignments = list(
+                BookingAssignment.objects.select_for_update()
+                .filter(booking__in=bookings)
+                .select_related("booking")
+            )
+        else:
+            booking = Booking.objects.select_for_update(of=("self",)).get(pk=booking_ref.pk)
+            assignment = BookingAssignment.objects.select_for_update().filter(booking=booking).first()
+            bookings = [booking]
+            assignments = [assignment] if assignment else []
+
+        if not assignments or len(assignments) != len(bookings):
+            return Response({"detail": "The service has not been accepted by a professional yet."}, status=status.HTTP_409_CONFLICT)
+        if any(
+            row.booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
+            or not row.accepted_at
+            or not row.arrived_at
+            or row.started_at
+            or row.start_otp_verified_at
+            for row in assignments
+        ):
+            return Response({"detail": "A service-start OTP can be refreshed only after arrival and before service starts."}, status=status.HTTP_409_CONFLICT)
+
+        now = timezone.now()
+        latest_sent = max(
+            (row.start_otp_last_sent_at for row in assignments if row.start_otp_last_sent_at),
+            default=None,
+        )
+        if latest_sent and latest_sent > now - timedelta(seconds=30):
+            return Response(
+                {"detail": "Please wait before refreshing the service OTP.", "retry_after_seconds": max(1, 30 - int((now - latest_sent).total_seconds()))},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        import secrets
+        from django.contrib.auth.hashers import make_password
+        code = f"{secrets.randbelow(10000):04d}"
+        code_hash = make_password(code)
+        expires_at = now + timedelta(minutes=10)
+        for row in assignments:
+            row.start_otp_hash = code_hash
+            row.start_otp_expires_at = expires_at
+            row.start_otp_attempts = 0
+            row.start_otp_last_sent_at = now
+            row.start_otp_verified_at = None
+            row.save(update_fields=[
+                "start_otp_hash", "start_otp_expires_at", "start_otp_attempts",
+                "start_otp_last_sent_at", "start_otp_verified_at", "updated_at",
+            ])
+
+        for active_booking in bookings:
+            Notification.objects.create(
+                user=request.user,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Your service start OTP is ready",
+                body="Your 4-digit service-start OTP has been refreshed. Show it to your AIRway professional.",
+                channel=Notification.Channel.IN_APP,
+                data={
+                    "purpose": "service_start_otp",
+                    "booking_id": active_booking.pk,
+                    "booking_ids": [row.pk for row in bookings],
+                    "appointment_group_id": booking_ref.appointment_group_id,
+                    "service_start_code": code,
+                    "service_start_code_expires_at": expires_at.isoformat(),
+                },
+            )
+        return Response({
+            "booking_id": booking_ref.pk,
+            "code": code,
+            "expires_at": expires_at.isoformat(),
+        })
+
+
 class CustomerOrderDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
