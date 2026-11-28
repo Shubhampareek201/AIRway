@@ -11,8 +11,8 @@ from apps.workers.models import WorkerProfile
 
 
 
-_CONTACT_PHONE_RE = re.compile(r"(?<!\\d)(?:\\+?91[\\s.-]?)?[6-9]\\d{4}[\\s.-]?\\d{5}(?!\\d)")
-_CONTACT_EMAIL_RE = re.compile(r"\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", re.IGNORECASE)
+_CONTACT_PHONE_RE = re.compile(r"(?<!\d)(?:\+?91[\s.-]?)?[6-9]\d{4}[\s.-]?\d{5}(?!\d)")
+_CONTACT_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 
 
 def mask_personal_contact_details(value):
