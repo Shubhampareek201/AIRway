@@ -818,9 +818,6 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     appointment_group_id = serializers.IntegerField(read_only=True, allow_null=True)
     appointment_group_message = serializers.SerializerMethodField()
     appointment_group_services = serializers.SerializerMethodField()
-    customer_total = serializers.SerializerMethodField()
-    advance_received = serializers.SerializerMethodField()
-    remaining_balance = serializers.SerializerMethodField()
     worker_payout = serializers.SerializerMethodField()
     offered_at = serializers.DateTimeField(read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -833,7 +830,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         fields = [
             "id", "booking", "order", "order_id", "order_services",
             "appointment_group_id", "appointment_group_message", "appointment_group_services",
-            "batch_number", "customer_total", "advance_received", "remaining_balance", "worker_payout",
+            "batch_number", "worker_payout",
             "worker", "status", "status_display", "offered_at", "expires_at",
             "accepted_at", "responded_at", "booking_status", "worker_name",
             "worker_phone", "customer_name", "service_title", "service_description", "service_material_requirements", "service_image_url",
