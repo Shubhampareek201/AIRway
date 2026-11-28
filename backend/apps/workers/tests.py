@@ -180,9 +180,9 @@ class NearbyWorkersAPITest(TestCase):
         WorkerZone.objects.create(worker=worker_profile, zone=self.zone)
         WorkerSchedule.objects.create(
             worker=worker_profile,
-            weekday=0,
-            start_time="09:00",
-            end_time="18:00",
+            weekday=timezone.localtime().weekday(),
+            start_time="00:00",
+            end_time="23:59:59",
             is_active=True,
         )
 
@@ -274,9 +274,18 @@ class JobOfferAPITest(TestCase):
             worker=self.worker_profile,
             weekday=booking_local.weekday(),
             start_time="00:00:00",
-            end_time="23:59:00",
+            end_time="23:59:59",
             is_active=True,
         )
+        current_weekday = timezone.localtime().weekday()
+        if current_weekday != booking_local.weekday():
+            WorkerSchedule.objects.create(
+                worker=self.worker_profile,
+                weekday=current_weekday,
+                start_time="00:00:00",
+                end_time="23:59:59",
+                is_active=True,
+            )
 
 
     def test_offers_requires_authentication(self):
@@ -966,9 +975,18 @@ class JobOfferConcurrencyTest(TestCase):
             worker=worker,
             weekday=booking_local.weekday(),
             start_time="00:00:00",
-            end_time="23:59:00",
+            end_time="23:59:59",
             is_active=True,
         )
+        current_weekday = timezone.localtime().weekday()
+        if current_weekday != booking_local.weekday():
+            WorkerSchedule.objects.create(
+                worker=worker,
+                weekday=current_weekday,
+                start_time="00:00:00",
+                end_time="23:59:59",
+                is_active=True,
+            )
 
     def test_accept_offer_assigns_worker(self):
         """Accepting an offer creates booking assignment."""
