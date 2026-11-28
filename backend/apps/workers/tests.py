@@ -2575,6 +2575,33 @@ class WorkerAvailabilityPrerequisiteTests(TestCase):
         self.assertEqual(response.status_code, 409, response.data)
         self.assertEqual(self.profile.schedules.get().start_time.isoformat(), "09:00:00")
 
+    def test_schedule_row_cannot_be_deleted_when_it_covers_an_accepted_booking(self):
+        customer = User.objects.create_user(phone="+919876543225", name="Delete Schedule Customer")
+        address = Address.objects.create(
+            user=customer, label="home", house_details="House 3",
+            full_address="Rawatbhata, Rajasthan", zone=self.zone,
+        )
+        scheduled_at = _tomorrow_at_noon()
+        weekday = timezone.localtime(scheduled_at).weekday()
+        schedule = WorkerSchedule.objects.create(
+            worker=self.profile, weekday=weekday,
+            start_time="09:00", end_time="18:00", is_active=True,
+        )
+        booking = Booking.objects.create(
+            customer=customer, address=address, service=self.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=scheduled_at, status=Booking.Status.ASSIGNED,
+        )
+        BookingAssignment.objects.create(
+            booking=booking, worker=self.profile, accepted_at=timezone.now(),
+        )
+
+        response = self.client.delete(
+            f"/api/v1/workers/schedules/{schedule.pk}/"
+        )
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertTrue(WorkerSchedule.objects.filter(pk=schedule.pk).exists())
+
     def test_offline_withdraws_pending_offers_but_preserves_accepted_jobs(self):
         customer = User.objects.create_user(phone="+919876543224", name="Offline Customer")
         address = Address.objects.create(
