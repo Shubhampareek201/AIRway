@@ -31,6 +31,7 @@ from apps.notifications.models import Notification
 from apps.accounts.models import Address
 from apps.catalog.audience import validate_beauty_audience
 from apps.catalog.models import FormField
+from .routing import get_live_directions
 
 
 def _schedule_booking_refund(booking_id):
@@ -1085,7 +1086,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             and assignment.live_longitude is not None
             and (assignment.live_accuracy_m is None or assignment.live_accuracy_m <= 150)
         )
-        return Response({
+        tracking_data = {
             "is_assigned": True,
             "worker_id": worker.id,
             "worker_name": (worker.user.name or "AIRway Professional") if worker_is_approved else "AIRway Professional",
@@ -1128,7 +1129,27 @@ class BookingViewSet(viewsets.ModelViewSet):
                 if not location_window_open else
                 "Live location unavailable or the latest GPS update is stale."
             ),
-        })
+        }
+        # Road route and ETA are optional and only exposed during the live,
+        # pre-arrival tracking window. GPS/status tracking works without Mapbox.
+        if (
+            location_is_fresh
+            and booking.status == Booking.Status.ASSIGNED
+            and assignment.arrived_at is None
+            and booking.address.latitude is not None
+            and booking.address.longitude is not None
+        ):
+            directions = get_live_directions(
+                assignment.live_latitude,
+                assignment.live_longitude,
+                booking.address.latitude,
+                booking.address.longitude,
+            )
+            if directions:
+                tracking_data["route_coordinates"] = directions["coordinates"]
+                tracking_data["route_eta_seconds"] = directions["duration_seconds"]
+                tracking_data["route_distance_meters"] = directions["distance_meters"]
+        return Response(tracking_data)
     @action(detail=True, methods=["post"], url_path="start")
     def start_job(self, request, pk=None):
         """Keep the legacy booking route on the same arrival-OTP-enforced lifecycle."""
