@@ -309,6 +309,9 @@ class _JobOffersScreenState extends State<JobOffersScreen> with WidgetsBindingOb
                   label: Text(AirwayText.tr('Open customer location in Maps', 'ग्राहक की लोकेशन Maps में खोलें')),
                 ),
               ),
+          ] else if (pending) ...[
+            const SizedBox(height: 8),
+            _infoLine(Icons.lock_outline_rounded, AirwayText.tr('Exact customer address is shared after you accept.', 'ग्राहक का पूरा पता स्वीकार करने के बाद दिखेगा।')),
           ],
           if (offer.serviceDescription?.trim().isNotEmpty == true) ...[
             const SizedBox(height: 12),
