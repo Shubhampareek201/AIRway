@@ -491,13 +491,11 @@ class DispatcherService:
                 f"New appointment ({len(service_titles)} services): {summary}"
                 if appointment_group else (f"New order ({len(service_titles)} services): {summary}" if order else
                 f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"))
-            if recurring_visit:
-                address_text = booking.address.full_address
-            elif appointment_group or order or payment_order:
-                payment_context = order or payment_order
-                address_text = payment_context.address.full_address
-            else:
-                address_text = booking.address.full_address
+            location_preview = (
+                booking.address.zone.name
+                if booking.address_id and booking.address.zone_id
+                else "Service area"
+            )[:90]
             duration_minutes = (
                 booking.variant.duration_minutes
                 if booking.variant_id and booking.variant.duration_minutes
@@ -604,7 +602,7 @@ class DispatcherService:
                 "recurring_visit_number": recurring_visit.visit_number if recurring_visit else None,
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
-                "address": address_text,
+                "service_area": location_preview,
                 "customer_instructions": (appointment_group.customer_message if appointment_group else booking.notes) or "",
                 "expected_duration_minutes": duration_minutes,
                 "worker_payout": worker_payout,
@@ -612,7 +610,6 @@ class DispatcherService:
             }
             # Keep the lock-screen alert focused on the job and the worker's
             # own earning; customer payment totals are intentionally not shown.
-            location_preview = (address_text or "").strip()[:90]
             notification_body = (
                 f"New AIRway service request: {summary} • "
                 f"{booking.scheduled_at.strftime('%d %b, %I:%M %p')} • {location_preview} "
