@@ -1144,6 +1144,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 assignment.live_longitude,
                 booking.address.latitude,
                 booking.address.longitude,
+                cache_scope=booking.pk,
             )
             if directions:
                 tracking_data["route_coordinates"] = directions["coordinates"]
