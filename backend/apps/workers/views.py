@@ -1522,6 +1522,121 @@ class WorkerJobRejectView(APIView):
         return Response({"detail": "Job rejected.", "status": booking.status})
 
 
+class WorkerJobArrivalView(APIView):
+    """Record the assigned worker's arrival without starting the service."""
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "Only approved workers can record arrival."}, status=status.HTTP_403_FORBIDDEN)
+
+        if booking.appointment_group_id:
+            group_ref = AppointmentGroup.objects.get(pk=booking.appointment_group_id)
+            Order.objects.select_for_update().get(pk=group_ref.order_id)
+            group = AppointmentGroup.objects.select_for_update().get(pk=group_ref.pk)
+            bookings = list(
+                Booking.objects.select_for_update(of=("self",))
+                .filter(appointment_group=group)
+                .exclude(status=Booking.Status.CANCELLED)
+                .order_by("pk")
+            )
+            assignments = list(
+                BookingAssignment.objects.select_for_update()
+                .filter(booking__in=bookings)
+                .select_related("booking")
+            )
+            if len(assignments) != len(bookings) or any(
+                row.worker_id != profile.pk or not row.accepted_at
+                for row in assignments
+            ):
+                return Response(
+                    {"detail": "Every active service in this appointment must be accepted by you before recording arrival."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+        else:
+            booking = Booking.objects.select_for_update(of=("self",)).get(pk=booking.pk)
+            assignment = BookingAssignment.objects.select_for_update().get(pk=assignment.pk)
+            bookings, assignments = [booking], [assignment]
+
+        if any(row.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED) for row in bookings):
+            return Response(
+                {"detail": "Arrival can only be recorded for an assigned service that has not started or been cancelled."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if any(not row.accepted_at for row in assignments):
+            return Response({"detail": "Accept the job before recording arrival."}, status=status.HTTP_409_CONFLICT)
+
+        latitude_raw = request.data.get("latitude")
+        longitude_raw = request.data.get("longitude")
+        accuracy_raw = request.data.get("accuracy_m")
+        latitude = longitude = accuracy = None
+        if (latitude_raw in (None, "")) != (longitude_raw in (None, "")):
+            return Response({"detail": "Send both latitude and longitude, or omit both."}, status=status.HTTP_400_BAD_REQUEST)
+        if latitude_raw not in (None, ""):
+            try:
+                latitude = Decimal(str(latitude_raw))
+                longitude = Decimal(str(longitude_raw))
+                accuracy = Decimal(str(accuracy_raw)) if accuracy_raw not in (None, "") else None
+                if (
+                    not latitude.is_finite() or not longitude.is_finite()
+                    or not (Decimal("-90") <= latitude <= Decimal("90"))
+                    or not (Decimal("-180") <= longitude <= Decimal("180"))
+                    or (accuracy is not None and (
+                        not accuracy.is_finite() or accuracy < 0 or accuracy > Decimal("1000")
+                    ))
+                ):
+                    raise ValueError
+            except (TypeError, ValueError, ArithmeticError):
+                return Response(
+                    {"detail": "Provide valid GPS coordinates and optional accuracy between 0 and 1000 metres."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        now = timezone.now()
+        for row in assignments:
+            if row.arrived_at is None:
+                row.arrived_at = now
+                row.arrival_latitude = latitude
+                row.arrival_longitude = longitude
+                row.arrival_accuracy_m = accuracy
+                row.save(update_fields=[
+                    "arrived_at", "arrival_latitude", "arrival_longitude",
+                    "arrival_accuracy_m", "updated_at",
+                ])
+
+        Notification.objects.create(
+            user=booking.customer,
+            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+            title="Your professional has arrived",
+            body="Your AIRway professional has marked arrival. Service will begin only after you share the 4-digit start code.",
+            channel=Notification.Channel.IN_APP,
+            data={
+                "booking_id": booking.pk,
+                "booking_ids": [row.pk for row in bookings],
+                "appointment_group_id": booking.appointment_group_id,
+                "arrived_at": assignments[0].arrived_at.isoformat(),
+            },
+        )
+        assignment = next((row for row in assignments if row.booking_id == booking.pk), assignments[0])
+        return Response({
+            "detail": "Arrival recorded. The service has not started.",
+            "arrived_at": assignment.arrived_at.isoformat(),
+            "arrival_latitude": str(assignment.arrival_latitude) if assignment.arrival_latitude is not None else None,
+            "arrival_longitude": str(assignment.arrival_longitude) if assignment.arrival_longitude is not None else None,
+            "status": booking.status,
+        })
+
+
 class WorkerJobStartView(APIView):
     permission_classes = [IsAuthenticated]
 
