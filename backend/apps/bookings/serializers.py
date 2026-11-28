@@ -879,62 +879,6 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
             return []
         return self.get_order_services(obj)
 
-    def get_customer_total(self, obj):
-        if obj.appointment_group_id:
-            from decimal import Decimal
-            return str(sum(
-                (item.order_item.line_total for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED).select_related("order_item").all() if hasattr(item, "order_item")),
-                Decimal("0.00"),
-            ))
-        if obj.order_id:
-            return str(obj.order.total_amount)
-        order_item = getattr(obj.booking, "order_item", None)
-        if order_item:
-            return str(order_item.line_total)
-        return str((obj.booking.pricing_snapshot or {}).get("total", obj.booking.total_amount))
-
-    def get_advance_received(self, obj):
-        from apps.payments.models import Payment
-        if obj.appointment_group_id:
-            from decimal import Decimal
-            order_item_ids = {
-                item.order_item.id
-                for item in obj.appointment_group.bookings.exclude(status=Booking.Status.CANCELLED)
-                if hasattr(item, "order_item")
-            }
-            allocation = (obj.booking.order_item.order.metadata or {}).get("payment_allocation_v1", {})
-            return str(sum(
-                (Decimal(str(row.get("amount", "0"))) for row in allocation.get("advance", [])
-                 if row.get("order_item_id") in order_item_ids),
-                Decimal("0.00"),
-            ))
-        if obj.order_id:
-            payment = Payment.objects.filter(
-                order=obj.order, stage=Payment.Stage.ADVANCE,
-                status=Payment.Status.PAID,
-            ).first()
-            return str(payment.amount + payment.wallet_amount) if payment else "0.00"
-        order_item = getattr(obj.booking, "order_item", None)
-        if order_item:
-            allocation = (order_item.order.metadata or {}).get("payment_allocation_v1", {})
-            row = next(
-                (entry for entry in allocation.get("advance", [])
-                 if entry.get("order_item_id") == order_item.id),
-                None,
-            )
-            return str(row.get("amount", "0.00")) if row else "0.00"
-        payment = Payment.objects.filter(
-            booking=obj.booking, stage=Payment.Stage.ADVANCE,
-            status=Payment.Status.PAID,
-        ).first()
-        return str(payment.amount + payment.wallet_amount) if payment else "0.00"
-
-    def get_remaining_balance(self, obj):
-        from decimal import Decimal
-        total = Decimal(self.get_customer_total(obj))
-        advance = Decimal(self.get_advance_received(obj))
-        return str(max(total - advance, Decimal("0.00")))
-
     def get_worker_payout(self, obj):
         """Mirror the settled worker-earning calculation for a pre-acceptance estimate."""
         from decimal import Decimal, ROUND_HALF_UP
