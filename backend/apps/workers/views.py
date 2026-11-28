@@ -23,7 +23,7 @@ from apps.core.models import Zone
 from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
 from apps.bookings.extra_work import WorkerExtraWorkProposalView
 from apps.notifications.models import Notification
-from .eligibility import worker_contact_access
+from .eligibility import worker_contact_access, mask_personal_contact_details
 from apps.wallet.models import WalletTransaction
 
 logger = logging.getLogger(__name__)
@@ -1191,14 +1191,17 @@ class WorkerJobDetailView(APIView):
                 if hasattr(booking, "order_item")
                 else int((booking.pricing_snapshot or {}).get("quantity", 1))
             ),
-            "customer_answers": customer_answers,
+            "customer_answers": customer_answers if customer_contact_available else mask_personal_contact_details(customer_answers),
             "issue_photo_url": (
                 request.build_absolute_uri(f"/api/v1/bookings/issue-photos/{booking.id}/")
                 if has_issue_photo else None
             ),
             "notes": (
-                booking.appointment_group.customer_message
-                if booking.appointment_group_id else booking.notes
+                (booking.appointment_group.customer_message if booking.appointment_group_id else booking.notes)
+                if customer_contact_available
+                else mask_personal_contact_details(
+                    booking.appointment_group.customer_message if booking.appointment_group_id else booking.notes
+                )
             ),
             "appointment_group_id": booking.appointment_group_id,
             "worker_notes": booking.worker_notes,
@@ -1214,7 +1217,7 @@ class WorkerJobDetailView(APIView):
                 {
                     "key": fr.form_field.key,
                     "label": fr.form_field.label,
-                    "value": "Photo attached" if fr.form_field.field_type == "photo" and form_photo_paths.get(fr.form_field.key) else fr.value,
+                    "value": "Photo attached" if fr.form_field.field_type == "photo" and form_photo_paths.get(fr.form_field.key) else (fr.value if customer_contact_available else mask_personal_contact_details(fr.value)),
                     "photo_url": (
                         request.build_absolute_uri(
                             f"/api/v1/bookings/issue-photos/{booking.id}/?field_key={fr.form_field.key}"
