@@ -948,6 +948,13 @@ class BookingTrackTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.data["worker_phone"], worker_user.phone)
         self.assertTrue(response.data["worker_contact_available"])
 
+        worker.status = WorkerProfile.Status.SUSPENDED
+        worker.save(update_fields=["status", "updated_at"])
+        response = self.client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertIsNone(response.data["worker_phone"])
+        self.assertFalse(response.data["worker_contact_available"])
+        self.assertIsNone(response.data["worker_contact_available_at"])
+
 
 class BookingDetailTest(BookingAPITestMixin, TestCase):
     """Test booking detail endpoint."""
