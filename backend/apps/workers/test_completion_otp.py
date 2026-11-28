@@ -331,9 +331,12 @@ class WorkerCompletionOTPTests(TestCase):
             requested_by=self.worker,
             reason="Customer cannot retrieve the active service OTP.",
         )
-        admin_user = User.objects.create_superuser(
+        admin_user = User.objects.create_user(
             phone="+919876543299", password="admin-password"
         )
+        admin_user.is_staff = True
+        admin_user.is_superuser = True
+        admin_user.save(update_fields=["is_staff", "is_superuser"])
         request = RequestFactory().post("/admin/")
         request.user = admin_user
         request.session = {}
