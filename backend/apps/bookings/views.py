@@ -1060,7 +1060,10 @@ class BookingViewSet(viewsets.ModelViewSet):
         location_window_open = timezone.now() >= booking.scheduled_at - timedelta(minutes=30)
         worker_contact_available_at = (
             booking.scheduled_at - timedelta(hours=1)
-            if assignment.accepted_at and booking.scheduled_at else None
+            if assignment.accepted_at
+            and booking.scheduled_at
+            and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+            else None
         )
         worker_contact_available = bool(
             worker_is_approved
