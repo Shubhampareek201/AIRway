@@ -2150,16 +2150,15 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                   }
                 },
                   ),
-                  if (error?.contains('admin verification') == true)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _startOtpExceptionPending.contains(assignmentId)
-                          ? const Text('Admin review pending', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w700))
-                          : TextButton(
-                              onPressed: () => _requestStartOtpException(job),
-                              child: const Text('Request admin verification'),
-                            ),
-                    ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _startOtpExceptionPending.contains(assignmentId)
+                        ? const Text('Admin review pending', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w700))
+                        : TextButton(
+                            onPressed: () => _requestStartOtpException(job),
+                            child: const Text('OTP issue? Request admin verification'),
+                          ),
+                  ),
                 ],
               ),
             ),
