@@ -709,11 +709,21 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       return local.year == now.year && local.month == now.month && local.day == now.day;
     }).toList();
     final upcomingJobs = activeJobs.where((job) => !todayJobs.contains(job)).toList();
+    final arrivedJobs = activeJobs.where((job) =>
+        job['arrived_at'] != null &&
+        (job['status']?.toString() == 'assigned' ||
+         job['status']?.toString() == 'confirmed')).toList();
 
     return _page([
       _buildWelcomeCard(profile),
       const SizedBox(height: 12),
       _buildAvailabilityCard(profile),
+      if (arrivedJobs.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        _sectionHeading('Ready to start', action: 'Enter customer OTP'),
+        const SizedBox(height: 6),
+        for (final job in arrivedJobs) _buildJobPreview(job),
+      ],
       const SizedBox(height: 14),
       Card(
         clipBehavior: Clip.antiAlias,
