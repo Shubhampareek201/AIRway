@@ -138,6 +138,7 @@ class WorkerOffer {
   final String? workerPhone;
   final String? serviceTitle;
   final String? customerName;
+  final Map<String, dynamic> customerReputation;
   final String? serviceDescription;
   final List<String> serviceMaterialRequirements;
   final String? serviceImageUrl;
@@ -171,6 +172,7 @@ class WorkerOffer {
     this.workerPhone,
     this.serviceTitle,
     this.customerName,
+    this.customerReputation = const {},
     this.serviceDescription,
     this.serviceMaterialRequirements = const [],
     this.serviceImageUrl,
@@ -206,6 +208,7 @@ class WorkerOffer {
       workerPhone: map['worker_phone'] as String?,
       serviceTitle: map['service_title'] as String?,
       customerName: map['customer_name'] as String?,
+      customerReputation: Map<String, dynamic>.from(map['customer_reputation'] as Map? ?? {}),
       serviceDescription: map['service_description'] as String?,
       serviceMaterialRequirements: ((map['service_material_requirements'] ?? map['material_requirements'] ?? map['required_materials']) as List? ?? [])
           .map((item) => item.toString()).toList(),
