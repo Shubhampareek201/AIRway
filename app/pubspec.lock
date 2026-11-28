@@ -361,7 +361,7 @@ packages:
     source: hosted
     version: "14.1.2"
   geolocator_android:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: geolocator_android
       sha256: e67583809a1fab5f4a2255902978e2bc095ace9451fde0d9624e54facd0a5c22
@@ -369,7 +369,7 @@ packages:
     source: hosted
     version: "5.2.1"
   geolocator_apple:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: geolocator_apple
       sha256: a1e177f3081089724f2095856aeb96eb8d7d1c59e425aed8dd4de7aa2c11ab66
