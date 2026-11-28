@@ -191,8 +191,18 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                               : 'Waiting for your professional to arrive.'),
                       _step('Professional assigned', assigned || started || completed,
                           assigned ? 'A professional has accepted your service.' : 'We are looking for an available professional.'),
-                      _step('Service started', started, started ? 'Your professional has started the job.' : 'Updates when work begins.'),
-                      _step('Service completed', completed, completed ? 'Your service is complete.' : 'Waiting for completion.'),
+                      _step('Service started', started,
+                          started
+                              ? (_tracking['started_at'] != null
+                                  ? 'Service started at ${DateTime.parse(_tracking['started_at'].toString()).toLocal()}'
+                                  : 'Your professional has started the job.')
+                              : 'Updates when work begins.'),
+                      _step('Service completed', completed,
+                          completed
+                              ? (_tracking['completed_at'] != null
+                                  ? 'Service completed at ${DateTime.parse(_tracking['completed_at'].toString()).toLocal()}'
+                                  : 'Your service is complete.')
+                              : 'Waiting for completion.'),
                     ]),
                   ),
                   const SizedBox(height: 16),
