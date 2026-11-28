@@ -84,7 +84,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           offer.status == WorkerOffer.pending &&
           (offer.expiresAt == null || offer.expiresAt!.isAfter(DateTime.now())) &&
           DateTime.now().difference(offer.offeredAt).abs() <= const Duration(minutes: 5)).toList();
-      if (recentOffers.isNotEmpty) _showIncomingOffer(recentOffers.first);
+      if (recentOffers.isNotEmpty) {
+        _knownOfferIds.removeAll(recentOffers.map((offer) => offer.id));
+        _knownOfferIds.add(recentOffers.first.id);
+        _showIncomingOffer(recentOffers.first);
+      }
     });
   }
 
@@ -108,11 +112,11 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     try {
       final latest = await WorkerApi.getJobOffers();
       if (!mounted) return;
-      _knownOfferIds.addAll(latest.map((item) => item.id));
       setState(() => _offers = latest);
       final matching = latest.where((item) =>
           item.id == offerId && item.status == WorkerOffer.pending).toList();
       if (matching.isNotEmpty) {
+        _knownOfferIds.add(matching.first.id);
         await _showIncomingOffer(matching.first);
       } else {
         _openOffers();
@@ -134,9 +138,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       if (!mounted) return;
       final incoming = latest.where((offer) =>
           offer.status == WorkerOffer.pending && !_knownOfferIds.contains(offer.id)).toList();
-      _knownOfferIds.addAll(latest.map((offer) => offer.id));
+      _knownOfferIds.addAll(
+        latest.where((offer) => offer.status != WorkerOffer.pending).map((offer) => offer.id),
+      );
       setState(() => _offers = latest);
       if (incoming.isNotEmpty && !_incomingOfferDialogOpen) {
+        _knownOfferIds.add(incoming.first.id);
         _showIncomingOffer(incoming.first);
       }
     } catch (_) {
