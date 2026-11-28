@@ -116,8 +116,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       final matching = latest.where((item) =>
           item.id == offerId && item.status == WorkerOffer.pending).toList();
       if (matching.isNotEmpty) {
-        _knownOfferIds.add(matching.first.id);
-        await _showIncomingOffer(matching.first);
+        if (!_incomingOfferDialogOpen) {
+          _knownOfferIds.add(matching.first.id);
+          await _showIncomingOffer(matching.first);
+        }
       } else {
         _openOffers();
       }
