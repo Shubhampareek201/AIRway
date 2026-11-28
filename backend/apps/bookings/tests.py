@@ -36,25 +36,26 @@ class BookingAPITestMixin:
         return User.objects.create_user(phone=phone, password="password123")
 
     def _start_job_with_arrival_otp(self, worker_client, booking_id, customer):
-        start_url = f"/api/v1/bookings/{booking_id}/start/"
-        response = worker_client.post(start_url, format="json")
-        if response.data.get("arrival_otp_required"):
-            notification = Notification.objects.filter(
-                user=customer,
-                title="Your professional has arrived",
-            ).latest("created_at")
-            match = re.search(
-                r"arrival code with your AIRway professional: (\d{6})\.",
-                notification.body,
-            )
-            if not match:
-                raise AssertionError("Arrival OTP was not present in customer notification.")
-            response = worker_client.post(
-                start_url,
-                {"arrival_otp": match.group(1)},
-                format="json",
-            )
-        return response
+        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        arrived = worker_client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/arrived/",
+            {},
+            format="json",
+        )
+        if arrived.status_code != 200:
+            return arrived
+        notification = Notification.objects.filter(
+            user=customer,
+            data__purpose="service_start_otp",
+            data__booking_id=booking_id,
+        ).latest("created_at")
+        code = notification.data["service_start_code"]
+        self.assertIsNotNone(code)
+        return worker_client.post(
+            f"/api/v1/bookings/{booking_id}/start/",
+            {"start_otp": code},
+            format="json",
+        )
 
     def _create_category(self, title="Cleaning", slug="cleaning"):
         return Category.objects.create(title=title, slug="cleaning")
@@ -1792,23 +1793,8 @@ class WorkerJobLifecycleTest(BookingAPITestMixin, TestCase):
             accepted_at=timezone.now(),
         )
 
-        start_url = f"/api/v1/bookings/{booking.id}/start/"
-        start_resp = self.worker_client.post(start_url, format="json")
-        self.assertEqual(start_resp.status_code, 200)
-        self.assertTrue(start_resp.data["arrival_otp_required"])
-        booking.refresh_from_db()
-        self.assertEqual(booking.status, Booking.Status.ASSIGNED)
-
-        notification = Notification.objects.get(
-            user=self.customer,
-            title="Your professional has arrived",
-        )
-        arrival_code = re.search(
-            r"arrival code with your AIRway professional: (\d{6})\.",
-            notification.body,
-        ).group(1)
-        start_resp = self.worker_client.post(
-            start_url, {"arrival_otp": arrival_code}, format="json"
+        start_resp = self._start_job_with_arrival_otp(
+            self.worker_client, booking.id, self.customer
         )
         self.assertEqual(start_resp.status_code, 200, start_resp.data)
         self.assertEqual(start_resp.data["status"], "in_progress")
