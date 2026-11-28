@@ -167,6 +167,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _workersMessage = null;
         });
       }
+      await _loadActiveServiceStartOtps();
     } catch (_) {
       if (mounted)
         setState(
