@@ -1687,6 +1687,13 @@ class WorkerJobStartView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        if booking.status == Booking.Status.IN_PROGRESS and assign.started_at:
+            return Response({
+                "detail": "Service has already started.",
+                "status": Booking.Status.IN_PROGRESS,
+                "started_at": assign.started_at.isoformat(),
+                "already_started": True,
+            })
         if booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED):
             return Response(
                 {"detail": "Job must be assigned and confirmed before starting."},
@@ -1753,6 +1760,22 @@ class WorkerJobStartView(APIView):
             assign = BookingAssignment.objects.select_for_update().get(pk=assign.pk)
             group_bookings = [booking]
             group_assignments = [assign]
+
+        if all(
+            row.status == Booking.Status.IN_PROGRESS and row_assignment.started_at
+            for row, row_assignment in zip(group_bookings, group_assignments)
+        ):
+            return Response({
+                "detail": "Service has already started.",
+                "status": Booking.Status.IN_PROGRESS,
+                "started_at": assign.started_at.isoformat() if assign.started_at else None,
+                "already_started": True,
+            })
+        if any(row.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED) for row in group_bookings):
+            return Response(
+                {"detail": "The appointment state changed. Refresh the job before trying again."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         now = timezone.now()
         otp_state = group_assignments[0]
