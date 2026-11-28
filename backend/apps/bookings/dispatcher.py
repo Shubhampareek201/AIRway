@@ -579,6 +579,7 @@ class DispatcherService:
                 net_payout = payout_gross - commission
                 worker_payout = str(net_payout) if net_payout > 0 else None
 
+            from apps.workers.eligibility import mask_personal_contact_details
             notification_data = {
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
@@ -603,9 +604,7 @@ class DispatcherService:
                 "service_title": summary,
                 "scheduled_at": booking.scheduled_at.isoformat(),
                 "service_area": location_preview,
-                "customer_instructions": __import__(
-                    "apps.workers.eligibility", fromlist=["mask_personal_contact_details"]
-                ).mask_personal_contact_details(
+                "customer_instructions": mask_personal_contact_details(
                     (appointment_group.customer_message if appointment_group else booking.notes) or ""
                 ),
                 "expected_duration_minutes": duration_minutes,
