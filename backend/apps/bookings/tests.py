@@ -5730,8 +5730,9 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             user=worker_user,
             data__recurring_visit_id=visit.pk,
         )
-        self.assertEqual(notice.data["advance_received"], str(visit.prepaid_amount))
-        self.assertEqual(notice.data["remaining_balance"], "0.00")
+        for private_field in ("customer_total", "advance_received", "remaining_balance"):
+            self.assertNotIn(private_field, notice.data)
+        self.assertIn("worker_payout", notice.data)
 
         worker_client = APIClient()
         worker_client.force_authenticate(user=worker_user)
