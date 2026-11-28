@@ -255,7 +255,7 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     // Re-check periodically as well as at the unlock boundary so a customer
     // reschedule is reflected without requiring the worker to reopen the job.
     final refreshAfter = delay.isNegative
-        ? const Duration(seconds: 3)
+        ? const Duration(minutes: 1)
         : (delay > const Duration(minutes: 5)
             ? const Duration(minutes: 5)
             : delay + const Duration(seconds: 3));
