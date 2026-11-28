@@ -809,6 +809,8 @@ class WorkerJobListView(APIView):
                 ),
                 "worker_notes": booking.worker_notes or None,
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
+                "arrived_at": assign.arrived_at.isoformat() if assign.arrived_at else None,
+                "started_at": assign.started_at.isoformat() if assign.started_at else None,
                 "contact_available_at": contact_access["contact_available_at"].isoformat() if contact_access["contact_available_at"] else None,
                 "customer_contact_available": contact_access["phone_available"],
             })
