@@ -61,6 +61,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   Timer? _offerPollTimer;
   final Set<int> _knownOfferIds = {};
   final Set<int> _offerActionsInProgress = {};
+  final Set<int> _startOtpSubmitting = {};
+  final Map<int, TextEditingController> _startOtpControllers = {};
+  final Map<int, String> _startOtpErrors = {};
   bool _incomingOfferDialogOpen = false;
   StreamSubscription<RemoteMessage>? _pushOpenSubscription;
   StreamSubscription<RemoteMessage>? _pushForegroundSubscription;
@@ -98,6 +101,9 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     _offerPollTimer?.cancel();
     _pushOpenSubscription?.cancel();
     _pushForegroundSubscription?.cancel();
+    for (final controller in _startOtpControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -1651,14 +1657,502 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     );
   }
 
-  Widget _buildJobPreview(Map<String, dynamic> job) {
+  Future<void> _submitServiceStartOtp(Map<String, dynamic> job) async {
+    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
+    if (assignmentId == null || _startOtpSubmitting.contains(assignmentId)) return;
+    final controller = _startOtpControllers.putIfAbsent(
+      assignmentId, () => TextEditingController(),
+    );
+    final code = controller.text.trim();
+    if (code.length != 4 || !RegExp(r'^\\d{4}
+  Future<void> _openOfferMap(WorkerOffer offer) async {
+    final latitude = offer.addressLatitude;
+    final longitude = offer.addressLongitude;
+    final query = latitude != null && longitude != null
+        ? '$latitude,$longitude'
+        : (offer.serviceAddress?.trim() ?? '');
+    if (query.isEmpty) return;
+    final uri = Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': query});
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AirwayText.tr('Could not open Maps.', 'Maps नहीं खुल सका।'))));
+    }
+  }
+
+  Future<void> _respondToOfferFromHome(WorkerOffer offer, {required bool accept}) async {
+    if (_offerActionsInProgress.contains(offer.id)) return;
+    setState(() => _offerActionsInProgress.add(offer.id));
+    try {
+      if (accept) {
+        await WorkerApi.acceptOffer(offer.id);
+      } else {
+        await WorkerApi.declineOffer(offer.id);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(accept
+            ? AirwayText.tr('Service accepted. Your job is confirmed.', 'सेवा स्वीकार हो गई। आपका काम कन्फ़र्म है।')
+            : AirwayText.tr('Request rejected.', 'रिक्वेस्ट अस्वीकार कर दी गई।')),
+      ));
+      await _refresh();
+      if (accept && mounted) _openAssignedJobs();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AirwayText.tr('Could not respond: $error', 'जवाब नहीं भेज सके: $error')),
+      ));
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _offerActionsInProgress.remove(offer.id));
+    }
+  }
+
+  Widget _buildOfferPreview(WorkerOffer offer) {
+    final serviceName = offer.serviceTitle?.trim().isNotEmpty == true
+        ? offer.serviceTitle!.trim()
+        : AirwayText.tr('Service request', 'सर्विस रिक्वेस्ट');
+    final when = offer.scheduledAt == null
+        ? AirwayText.tr('Schedule to be confirmed', 'समय की पुष्टि बाकी है')
+        : _dateLabel(offer.scheduledAt);
+    final address = offer.serviceAddress?.trim() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AirwayColors.primary.withValues(alpha: 0.24)),
+        boxShadow: [
+          BoxShadow(color: AirwayColors.primary.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 5)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(color: AirwayColors.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.home_repair_service_rounded, color: AirwayColors.primary, size: 25),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AirwayColors.text)),
+                      const SizedBox(height: 3),
+                      Text('Booking #${offer.bookingId}', style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(color: const Color(0xFFEAF7EF), borderRadius: BorderRadius.circular(20)),
+                  child: Text(AirwayText.tr('NEW', 'नई'), style: const TextStyle(color: Color(0xFF21834A), fontSize: 10, fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            if (offer.serviceImageUrl?.isNotEmpty == true) ...[
+              const SizedBox(height: 10),
+              ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(offer.serviceImageUrl!, height: 110, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink())),
+            ],
+            if (offer.variantTitle?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 10),
+              Text(offer.variantTitle!, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+            if (offer.customerName?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.person_outline_rounded, 'Customer: ${offer.customerName}'),
+              if ((offer.customerReputation['customer_rating_count'] as num? ?? 0) > 0) ...[
+                _offerInfoLine(Icons.star_outline_rounded, 'Customer rating: ${offer.customerReputation['customer_rating_average']}/5 (${offer.customerReputation['customer_rating_count']} reviews)'),
+                ...((offer.customerReputation['customer_rating_comments'] as List? ?? []).take(2).map((comment) => _offerInfoLine(Icons.comment_outlined, comment.toString(), maxLines: 2))),
+              ],
+            ],
+            if (offer.serviceDescription?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 7),
+              Text(offer.serviceDescription!, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.35, color: AirwayColors.textSecondary)),
+            ],
+            if (offer.bookingNotes?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.message_outlined, 'Customer message: ${offer.bookingNotes}', maxLines: 2),
+            ],
+            const SizedBox(height: 12),
+            _offerInfoLine(Icons.calendar_month_outlined, when),
+            if (address.isNotEmpty) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.location_on_outlined, address, maxLines: 2),
+              Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+                  onPressed: () => _openOfferMap(offer),
+                  icon: const Icon(Icons.directions_rounded, size: 17),
+                  label: Text(AirwayText.tr('Open map', 'मैप खोलें')),
+                )),
+            ],
+            const SizedBox(height: 7),
+            _offerInfoLine(Icons.currency_rupee_rounded, offer.workerPayout == null ? AirwayText.tr('Worker payout not configured yet', 'वर्कर की कमाई अभी तय नहीं है') : 'Your earning after completion: ₹${offer.workerPayout!.toStringAsFixed(2)}'),
+            const SizedBox(height: 7),
+            _offerInfoLine(Icons.timer_outlined, '${offer.expectedDurationMinutes} min estimated service time'),
+            if (offer.quantity > 1) ...[
+              const SizedBox(height: 7),
+              _offerInfoLine(Icons.format_list_numbered_rounded, 'Quantity: ${offer.quantity}'),
+            ],
+            const SizedBox(height: 14),
+            if (_offerActionsInProgress.contains(offer.id))
+              const Center(child: CircularProgressIndicator())
+            else
+              Row(children: [
+                if (offer.canDecline)
+                  Expanded(child: OutlinedButton.icon(
+                    onPressed: () => _respondToOfferFromHome(offer, accept: false),
+                    icon: const Icon(Icons.close_rounded),
+                    label: Text(AirwayText.tr('Reject', 'मना करें')),
+                    style: OutlinedButton.styleFrom(foregroundColor: AirwayColors.error, minimumSize: const Size.fromHeight(48)),
+                  )),
+                if (offer.canDecline && offer.canAccept) const SizedBox(width: 10),
+                Expanded(flex: 2, child: FilledButton.icon(
+                  onPressed: offer.canAccept ? () => _respondToOfferFromHome(offer, accept: true) : null,
+                  icon: const Icon(Icons.check_circle_outline_rounded),
+                  label: Text(offer.workerPayout == null
+                      ? AirwayText.tr('Payout not set', 'कमाई तय नहीं')
+                      : AirwayText.tr('Accept job', 'काम स्वीकार करें')),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                )),
+              ]),
+            Align(alignment: Alignment.centerRight, child: TextButton.icon(
+              onPressed: _openOffers,
+              icon: const Icon(Icons.open_in_new_rounded, size: 16),
+              label: Text(AirwayText.tr('See full request details', 'पूरी रिक्वेस्ट देखें')),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _offerInfoLine(IconData icon, String value, {int maxLines = 1}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17, color: AirwayColors.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(value, maxLines: maxLines, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: AirwayColors.textSecondary, height: 1.35))),
+      ],
+    );
+  }
+
+  Widget _buildEarningRow(Map<String, dynamic> item) {
+    final gross = double.tryParse('${item['gross_amount']}') ?? 0;
+    final commission = double.tryParse('${item['commission_amount']}') ?? 0;
+    final net = double.tryParse('${item['net_amount']}') ?? 0;
+    final status = item['status']?.toString() ?? 'pending';
+    final statusLabel = switch (status) {
+      'available' => item['settlement_batch_id'] != null ? 'In weekly settlement' : 'Available',
+      'paid' => 'Paid',
+      'on_hold' => 'On hold',
+      _ => 'Pending settlement',
+    };
+    final statusColor = switch (status) {
+      'available' || 'paid' => AirwayColors.success,
+      'on_hold' => const Color(0xFFB45309),
+      _ => const Color(0xFF8A641B),
+    };
+    final title = item['service_title']?.toString().trim();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E2F5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(
+            title?.isNotEmpty == true ? title! : 'Service earning',
+            style: const TextStyle(fontWeight: FontWeight.w800, color: AirwayColors.text),
+          )),
+          Text(
+            statusLabel,
+            style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w800),
+          ),
+        ]),
+        const SizedBox(height: 5),
+        Text(
+          'Booking #${item['booking_id'] ?? '—'} • ${_dateLabel(item['available_at'] ?? item['created_at'])}',
+          style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+        ),
+        if (item['settlement_batch_id'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Weekly settlement #${item['settlement_batch_id']} • ${item['settlement_period_start']} to ${item['settlement_period_end']}',
+              style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11),
+            ),
+          ),
+        const Divider(height: 18),
+        _earningAmountLine(
+          item['extra_work_id'] != null ? 'Approved extra-work amount' : 'Service amount',
+          gross,
+        ),
+        if (item['commission_amount'] != null)
+          _earningAmountLine(
+            item['commission_rate'] == null
+                ? 'AIRway price–payout difference'
+                : 'AIRway commission (${item['commission_rate']}%)',
+            -commission,
+          ),
+        if ((double.tryParse('${item['adjustment_amount'] ?? '0'}') ?? 0) != 0)
+          _earningAmountLine(
+            'Finance adjustment',
+            double.tryParse('${item['adjustment_amount']}') ?? 0,
+          ),
+        const SizedBox(height: 5),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Your earning', style: TextStyle(fontWeight: FontWeight.w800)),
+          Text(
+            item['net_amount'] == null ? 'Awaiting rate' : '₹${net.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6C4AE3), fontSize: 16),
+          ),
+        ]),
+        if ((item['adjustment_note']?.toString() ?? '').isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text('Finance note: ${item['adjustment_note']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+        ],
+        if ((item['hold_reason']?.toString() ?? '').isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(item['hold_reason'].toString(), style: const TextStyle(color: Color(0xFFB45309), fontSize: 12)),
+        ],
+        if ((item['earning_reference']?.toString() ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('Earning reference: ${item['earning_reference']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+          ),
+        if ((item['payment_reference']?.toString() ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('Payment reference: ${item['payment_reference']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+          ),
+        if ((item['payout_reference']?.toString() ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('Payout reference: ${item['payout_reference']}', style: TextStyle(color: AirwayColors.textSecondary, fontSize: 11)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _earningAmountLine(String label, double amount) {
+    final prefix = amount < 0 ? '-₹' : '₹';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+        Text(
+          '$prefix${amount.abs().toStringAsFixed(2)}',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ]),
+    );
+  }
+
+  Widget _detailTile(IconData icon, String title, String value) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AirwayColors.primary),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(value, softWrap: true),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionHeading(String title, {String? action, VoidCallback? onAction}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        if (action != null)
+          TextButton(onPressed: onAction, child: Text(action)),
+      ],
+    );
+  }
+
+  String _dateLabel(dynamic value) {
+    if (value == null || value.toString().isEmpty) return 'Date not available';
+    final parsed = DateTime.tryParse(value.toString());
+    if (parsed == null) return 'Date not available';
+    return DateFormat('dd MMM, hh:mm a').format(parsed.toLocal());
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(icon, size: 34, color: AirwayColors.textSecondary),
+            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(subtitle, textAlign: TextAlign.center,
+                style: TextStyle(color: AirwayColors.textSecondary, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionErrorCard extends StatelessWidget {
+  const _SectionErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       child: ListTile(
-        leading: Icon(Icons.work_outline, color: AirwayColors.primary),
-        title: Text(job['service_title']?.toString() ?? 'Service job'),
-        subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => _openAssignedJobs(assignmentId: job['id'] as int?),
+        leading: const Icon(Icons.cloud_off_outlined, color: Colors.orange),
+        title: Text(AirwayText.tr('This section could not be loaded', 'यह सेक्शन लोड नहीं हो सका')),
+        subtitle: Text(message, maxLines: 3, overflow: TextOverflow.ellipsis),
+        trailing: IconButton(
+          tooltip: AirwayText.tr('Retry', 'फिर कोशिश करें'),
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh),
+        ),
+      ),
+    );
+  }
+}
+).hasMatch(code)) return;
+
+    setState(() {
+      _startOtpSubmitting.add(assignmentId);
+      _startOtpErrors.remove(assignmentId);
+    });
+    try {
+      await WorkerApi.startJob(assignmentId, startOtp: code);
+      controller.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Customer OTP verified. Service started.')),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString();
+      controller.clear();
+      setState(() => _startOtpErrors[assignmentId] =
+          message.toLowerCase().contains('too many')
+              ? 'OTP attempts limit reached. Ask the customer to refresh the code.'
+              : 'Incorrect or expired OTP. Check the customer screen and try again.');
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _startOtpSubmitting.remove(assignmentId));
+    }
+  }
+
+  Widget _buildJobPreview(Map<String, dynamic> job) {
+    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
+    final status = job['status']?.toString();
+    final arrived = job['arrived_at'] != null;
+    final showStartOtp = arrived &&
+        (status == 'assigned' || status == 'confirmed') &&
+        assignmentId != null;
+    final controller = showStartOtp
+        ? _startOtpControllers.putIfAbsent(
+            assignmentId!, () => TextEditingController(),
+          )
+        : null;
+    final error = assignmentId == null ? null : _startOtpErrors[assignmentId];
+
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(Icons.work_outline, color: AirwayColors.primary),
+            title: Text(job['service_title']?.toString() ?? 'Service job'),
+            subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _openAssignedJobs(assignmentId: assignmentId),
+          ),
+          if (showStartOtp)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  labelText: 'Enter customer 4-digit OTP',
+                  helperText: 'Service starts automatically after the fourth digit is verified.',
+                  errorText: error,
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: error == null ? AirwayColors.primary.withValues(alpha: 0.35) : Colors.red),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: error == null ? AirwayColors.primary : Colors.red, width: 1.5),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                  ),
+                ),
+                onChanged: (value) {
+                  if (value.length == 4) {
+                    unawaited(_submitServiceStartOtp(job));
+                  } else if (assignmentId != null && _startOtpErrors.containsKey(assignmentId)) {
+                    setState(() => _startOtpErrors.remove(assignmentId));
+                  }
+                },
+              ),
+            ),
+        ],
       ),
     );
   }
