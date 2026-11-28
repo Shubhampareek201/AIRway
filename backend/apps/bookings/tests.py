@@ -907,6 +907,48 @@ class BookingTrackTest(BookingAPITestMixin, TestCase):
         self.assertEqual(response.data["is_assigned"], False)
 
 
+    def test_customer_worker_phone_unlocks_one_hour_before_current_accepted_slot(self):
+        worker_user = self._create_user(phone="+919876543299")
+        worker = WorkerProfile.objects.create(
+            user=worker_user,
+            status=WorkerProfile.Status.APPROVED,
+            is_online=True,
+        )
+        booking = Booking.objects.create(
+            customer=self.user,
+            address=self.address,
+            service=self.service,
+            variant=self.variant,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=timezone.now() + timedelta(hours=2),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=worker,
+        )
+
+        response = self.client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["worker_phone"])
+        self.assertFalse(response.data["worker_contact_available"])
+        self.assertIsNone(response.data["worker_contact_available_at"])
+
+        assignment.accepted_at = timezone.now()
+        assignment.save(update_fields=["accepted_at"])
+        response = self.client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertIsNone(response.data["worker_phone"])
+        self.assertFalse(response.data["worker_contact_available"])
+        self.assertIsNotNone(response.data["worker_contact_available_at"])
+
+        # A customer reschedule must immediately move the contact unlock window.
+        booking.scheduled_at = timezone.now() + timedelta(minutes=30)
+        booking.save(update_fields=["scheduled_at", "updated_at"])
+        response = self.client.get(f"/api/v1/bookings/{booking.id}/track/")
+        self.assertEqual(response.data["worker_phone"], worker_user.phone)
+        self.assertTrue(response.data["worker_contact_available"])
+
+
 class BookingDetailTest(BookingAPITestMixin, TestCase):
     """Test booking detail endpoint."""
 
