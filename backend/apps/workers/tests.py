@@ -722,6 +722,36 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertTrue(response.data["customer_contact_available"])
         self.assertEqual(response.data["customer_phone"], self.customer_user.phone)
 
+    def test_worker_offer_hides_exact_location_until_accepted(self):
+        from apps.bookings.serializers import WorkerOfferSerializer
+
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+        )
+        offer = WorkerOffer.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            expires_at=booking.scheduled_at,
+        )
+        pending_data = WorkerOfferSerializer(offer).data
+        self.assertIsNone(pending_data["service_address"])
+        self.assertIsNone(pending_data["address_latitude"])
+        self.assertIsNone(pending_data["address_longitude"])
+        self.assertEqual(pending_data["customer_name"], "Customer")
+
+        offer.status = WorkerOffer.Status.ACCEPTED
+        offer.accepted_at = timezone.now()
+        offer.save(update_fields=["status", "accepted_at", "updated_at"])
+        accepted_data = WorkerOfferSerializer(offer).data
+        self.assertEqual(accepted_data["service_address"], self.customer_address.full_address)
+        self.assertIsNotNone(accepted_data["address_latitude"])
+        self.assertIsNotNone(accepted_data["address_longitude"])
+
     def test_worker_job_detail_includes_extra_work_decision_and_payment_history(self):
         from apps.bookings.models import BookingExtraWork
 
