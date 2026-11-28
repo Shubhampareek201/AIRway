@@ -657,6 +657,7 @@ class WorkerJobLifecycleTest(TestCase):
         list_response = self.client.get("/api/v1/workers/jobs/")
         self.assertEqual(list_response.status_code, 200)
         self.assertEqual(list_response.data[0]["customer_name"], "Customer")
+        self.assertEqual(list_response.data[0]["address"], self.customer_address.full_address)
         self.assertNotIn("customer_phone", list_response.data[0])
         self.assertNotIn(self.customer_user.phone, str(list_response.data[0]))
 
@@ -667,8 +668,59 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertIsNone(detail_response.data["customer_phone"])
         self.assertFalse(detail_response.data["customer_contact_available"])
         self.assertIsNotNone(detail_response.data["customer_contact_available_at"])
+        self.assertEqual(detail_response.data["address"], self.customer_address.full_address)
         self.assertNotIn(self.customer_user.phone, str(detail_response.data))
 
+    def test_worker_cannot_access_customer_address_or_phone_before_accepting(self):
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=_tomorrow_at_noon(),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+        )
+        self.client.force_authenticate(user=self.worker_user)
+
+        list_response = self.client.get("/api/v1/workers/jobs/")
+        self.assertEqual(list_response.status_code, 200)
+        job_row = next(row for row in list_response.data if row["id"] == assignment.pk)
+        self.assertIsNone(job_row["address"])
+        self.assertFalse(job_row["customer_contact_available"])
+
+        detail_response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIsNone(detail_response.data["address"])
+        self.assertIsNone(detail_response.data["address_latitude"])
+        self.assertIsNone(detail_response.data["address_longitude"])
+        self.assertIsNone(detail_response.data["customer_phone"])
+        self.assertFalse(detail_response.data["customer_contact_available"])
+        self.assertIsNone(detail_response.data["customer_contact_available_at"])
+        self.assertNotIn(self.customer_user.phone, str(detail_response.data))
+
+    def test_worker_contact_phone_unlocks_one_hour_before_accepted_booking(self):
+        booking = Booking.objects.create(
+            customer=self.customer_user,
+            address=self.customer_address,
+            service=self.service,
+            booking_mode="scheduled",
+            scheduled_at=timezone.now() + timedelta(minutes=30),
+            status=Booking.Status.ASSIGNED,
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=booking,
+            worker=self.worker_profile,
+            accepted_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["customer_contact_available"])
+        self.assertEqual(response.data["customer_phone"], self.customer_user.phone)
 
     def test_worker_job_detail_includes_extra_work_decision_and_payment_history(self):
         from apps.bookings.models import BookingExtraWork
