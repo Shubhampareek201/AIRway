@@ -2060,24 +2060,27 @@ class CustomerOrderDetailView(APIView):
                 and assignment.arrived_at
                 and not assignment.started_at
                 and not assignment.start_otp_verified_at
-                and assignment.start_otp_hash
             ):
                 from apps.notifications.models import Notification
+                otp_expired = (
+                    not assignment.start_otp_hash
+                    or not assignment.start_otp_expires_at
+                    or assignment.start_otp_expires_at <= timezone.now()
+                )
                 start_notice = Notification.objects.filter(
                     user=request.user,
                     data__booking_id=booking.id,
                     data__purpose="service_start_otp",
                 ).order_by("-created_at").first()
-                if start_notice:
-                    otp_expired = (
-                        not assignment.start_otp_expires_at
-                        or assignment.start_otp_expires_at <= timezone.now()
-                    )
-                    service_start_otp = {
-                        "code": None if otp_expired else (start_notice.data or {}).get("service_start_code"),
-                        "expires_at": assignment.start_otp_expires_at.isoformat() if assignment.start_otp_expires_at else None,
-                        "expired": otp_expired,
-                    }
+                service_start_otp = {
+                    "code": (
+                        None if otp_expired or not start_notice
+                        else (start_notice.data or {}).get("service_start_code")
+                    ),
+                    "expires_at": assignment.start_otp_expires_at.isoformat() if assignment.start_otp_expires_at else None,
+                    "expired": otp_expired,
+                    "available": bool(assignment.start_otp_hash),
+                }
             if booking.status == Booking.Status.IN_PROGRESS:
                 from apps.bookings.models import BookingCompletionOTP
                 from apps.notifications.models import Notification
