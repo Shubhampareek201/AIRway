@@ -202,14 +202,29 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           final item = Map<String, dynamic>.from(raw);
           final otp = item['service_start_otp'];
           if (otp is! Map) continue;
+          var code = otp['code']?.toString();
+          var expiresAt = otp['expires_at'];
+          if (code == null && otp['available'] == false) {
+            try {
+              final issued = await BookingApi.request(
+                '/api/v1/bookings/${item['booking_id']}/service-start-otp/',
+                method: 'POST',
+                data: const {},
+              );
+              code = issued['code']?.toString();
+              expiresAt = issued['expires_at'];
+            } catch (_) {
+              // The customer owns OTP issuance; retry on the next home refresh if needed.
+            }
+          }
           cards.add({
             'booking_id': item['booking_id'],
             'service_title': (item['service'] as Map?)?['title'] ??
                 (item['service'] as Map?)?['service_title'] ??
                 'Your service',
             'scheduled_at': item['scheduled_at'],
-            'code': otp['code']?.toString(),
-            'expires_at': otp['expires_at'],
+            'code': code,
+            'expires_at': expiresAt,
             'expired': otp['expired'] == true,
             'status': item['booking_status'],
           });
