@@ -2042,7 +2042,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
 
   Future<void> _requestStartOtpException(Map<String, dynamic> job) async {
     final assignmentId = int.tryParse(job['id']?.toString() ?? '');
-    if (assignmentId == null || _startOtpExceptionPending.contains(assignmentId)) return;
+    if (assignmentId == null) return;
     final reasonController = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
