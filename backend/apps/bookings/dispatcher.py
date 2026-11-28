@@ -584,7 +584,9 @@ class DispatcherService:
                 "offer_id": offer.pk,
                 "booking_id": booking.pk,
                 "appointment_group_id": appointment_group.pk if appointment_group else None,
-                "appointment_group_message": appointment_group.customer_message if appointment_group else "",
+                "appointment_group_message": mask_personal_contact_details(
+                    appointment_group.customer_message if appointment_group else ""
+                ),
                 "quantity": service_quantity,
                 "service_unit_label": service_unit_label,
                 "order_id": (
