@@ -2484,6 +2484,18 @@ class WorkerAvailabilityPrerequisiteTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.profile.schedules.count(), 0)
 
+    def test_legacy_schedule_create_rejects_overlapping_window(self):
+        WorkerSchedule.objects.create(
+            worker=self.profile, weekday=1, start_time="09:00",
+            end_time="13:00", is_active=True,
+        )
+        response = self.client.post("/api/v1/workers/schedules/", {
+            "weekday": 1, "start_time": "12:00",
+            "end_time": "17:00", "is_active": True,
+        }, format="json")
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(self.profile.schedules.count(), 1)
+
     def test_worker_schedule_api_rejects_end_time_before_start(self):
         response = self.client.put("/api/v1/workers/schedules/", {"schedules": [
             {"weekday": 1, "start_time": "18:00", "end_time": "09:00", "is_active": True},
