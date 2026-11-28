@@ -140,6 +140,14 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertEqual(float(self.assignment.arrival_longitude), 75.7873)
         self.assertIsNone(self.assignment.started_at)
         self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+        self.assertTrue(
+            BookingStatusHistory.objects.filter(
+                booking=self.booking,
+                from_status=Booking.Status.ASSIGNED,
+                to_status=Booking.Status.ASSIGNED,
+                note__contains="marked arrival",
+            ).exists()
+        )
 
     def test_only_assigned_worker_can_record_arrival(self):
         other_user = User.objects.create_user(
