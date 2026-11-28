@@ -6,8 +6,6 @@ import 'package:airway/core/theme/airway_theme.dart';
 import 'package:airway/core/localization/airway_locale.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/firebase_options.dart';
-import 'package:airway/core/navigation/airway_navigator.dart';
-import 'package:airway/features/worker/presentation/worker_offer_alert_listener.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,10 +32,6 @@ class AirwayApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AirwayTheme.light,
         themeMode: ThemeMode.light,
-        navigatorKey: airwayNavigatorKey,
-        builder: (context, child) => WorkerOfferAlertListener(
-          child: child ?? const SizedBox.shrink(),
-        ),
         locale: locale,
         supportedLocales: const [Locale('en'), Locale('hi')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
