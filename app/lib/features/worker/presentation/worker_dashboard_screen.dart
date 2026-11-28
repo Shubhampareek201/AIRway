@@ -1667,14 +1667,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     );
   }
 
-  Future<void> _submitServiceStartOtp(Map<String, dynamic> job) async {
-    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
-    if (assignmentId == null || _startOtpSubmitting.contains(assignmentId)) return;
-    final controller = _startOtpControllers.putIfAbsent(
-      assignmentId, () => TextEditingController(),
-    );
-    final code = controller.text.trim();
-    if (code.length != 4 || !RegExp(r'^\\d{4}
   Future<void> _openOfferMap(WorkerOffer offer) async {
     final latitude = offer.addressLatitude;
     final longitude = offer.addressLongitude;
@@ -2010,6 +2002,102 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     );
   }
 
+  Future<void> _submitServiceStartOtp(Map<String, dynamic> job) async {
+    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
+    if (assignmentId == null || _startOtpSubmitting.contains(assignmentId)) return;
+    final controller = _startOtpControllers.putIfAbsent(
+      assignmentId, () => TextEditingController(),
+    );
+    final code = controller.text.trim();
+    final digitsOnly = code.length == 4 && code.codeUnits.every((digit) => digit >= 48 && digit <= 57);
+    if (!digitsOnly) return;
+
+    setState(() {
+      _startOtpSubmitting.add(assignmentId);
+      _startOtpErrors.remove(assignmentId);
+    });
+    try {
+      await WorkerApi.startJob(assignmentId, startOtp: code);
+      controller.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Customer OTP verified. Service started.')),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().toLowerCase();
+      controller.clear();
+      setState(() => _startOtpErrors[assignmentId] =
+          message.contains('too many') || message.contains('429')
+              ? 'OTP attempts limit reached. Ask the customer to refresh the code.'
+              : 'Incorrect or expired OTP. Check the customer screen and try again.');
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _startOtpSubmitting.remove(assignmentId));
+    }
+  }
+
+  Widget _buildJobPreview(Map<String, dynamic> job) {
+    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
+    final status = job['status']?.toString();
+    final showStartOtp = job['arrived_at'] != null &&
+        (status == 'assigned' || status == 'confirmed') && assignmentId != null;
+    final controller = showStartOtp
+        ? _startOtpControllers.putIfAbsent(assignmentId!, () => TextEditingController())
+        : null;
+    final error = assignmentId == null ? null : _startOtpErrors[assignmentId];
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(Icons.work_outline, color: AirwayColors.primary),
+            title: Text(job['service_title']?.toString() ?? 'Service job'),
+            subtitle: Text('Booking #' + (job['booking_id'] ?? job['id']).toString() + ' • ' + _dateLabel(job['scheduled_at'])),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _openAssignedJobs(assignmentId: assignmentId),
+          ),
+          if (showStartOtp)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  labelText: 'Enter customer 4-digit OTP',
+                  helperText: 'Service starts automatically after the fourth digit is verified.',
+                  errorText: error,
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: error == null ? AirwayColors.primary.withValues(alpha: 0.35) : Colors.red),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: error == null ? AirwayColors.primary : Colors.red, width: 1.5),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                  ),
+                ),
+                onChanged: (value) {
+                  if (value.length == 4) {
+                    unawaited(_submitServiceStartOtp(job));
+                  } else if (assignmentId != null && _startOtpErrors.containsKey(assignmentId)) {
+                    setState(() => _startOtpErrors.remove(assignmentId));
+                  }
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   String _dateLabel(dynamic value) {
     if (value == null || value.toString().isEmpty) return 'Date not available';
     final parsed = DateTime.tryParse(value.toString());
@@ -2074,98 +2162,6 @@ class _SectionErrorCard extends StatelessWidget {
     );
   }
 }
-).hasMatch(code)) return;
-
-    setState(() {
-      _startOtpSubmitting.add(assignmentId);
-      _startOtpErrors.remove(assignmentId);
-    });
-    try {
-      await WorkerApi.startJob(assignmentId, startOtp: code);
-      controller.clear();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Customer OTP verified. Service started.')),
-      );
-      await _refresh();
-    } catch (error) {
-      if (!mounted) return;
-      final message = error.toString();
-      controller.clear();
-      setState(() => _startOtpErrors[assignmentId] =
-          message.toLowerCase().contains('too many')
-              ? 'OTP attempts limit reached. Ask the customer to refresh the code.'
-              : 'Incorrect or expired OTP. Check the customer screen and try again.');
-      await _refresh();
-    } finally {
-      if (mounted) setState(() => _startOtpSubmitting.remove(assignmentId));
-    }
-  }
-
-  Widget _buildJobPreview(Map<String, dynamic> job) {
-    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
-    final status = job['status']?.toString();
-    final arrived = job['arrived_at'] != null;
-    final showStartOtp = arrived &&
-        (status == 'assigned' || status == 'confirmed') &&
-        assignmentId != null;
-    final controller = showStartOtp
-        ? _startOtpControllers.putIfAbsent(
-            assignmentId!, () => TextEditingController(),
-          )
-        : null;
-    final error = assignmentId == null ? null : _startOtpErrors[assignmentId];
-
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            leading: Icon(Icons.work_outline, color: AirwayColors.primary),
-            title: Text(job['service_title']?.toString() ?? 'Service job'),
-            subtitle: Text(AirwayText.tr('Booking #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}', 'बुकिंग #${job['booking_id'] ?? job['id']} • ${_dateLabel(job['scheduled_at'])}')),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => _openAssignedJobs(assignmentId: assignmentId),
-          ),
-          if (showStartOtp)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(
-                  labelText: 'Enter customer 4-digit OTP',
-                  helperText: 'Service starts automatically after the fourth digit is verified.',
-                  errorText: error,
-                  counterText: '',
-                  prefixIcon: const Icon(Icons.lock_outline_rounded),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: error == null ? AirwayColors.primary.withValues(alpha: 0.35) : Colors.red),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: error == null ? AirwayColors.primary : Colors.red, width: 1.5),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.red, width: 1.5),
-                  ),
-                ),
-                onChanged: (value) {
-                  if (value.length == 4) {
-                    unawaited(_submitServiceStartOtp(job));
-                  } else if (assignmentId != null && _startOtpErrors.containsKey(assignmentId)) {
-                    setState(() => _startOtpErrors.remove(assignmentId));
-                  }
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _openOfferMap(WorkerOffer offer) async {
     final latitude = offer.addressLatitude;
