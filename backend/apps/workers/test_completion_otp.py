@@ -270,6 +270,14 @@ class WorkerCompletionOTPTests(TestCase):
             {},
             format="json",
         )
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=self.customer)
+        issued = customer_client.post(
+            f"/api/v1/bookings/{self.booking.pk}/service-start-otp/",
+            {},
+            format="json",
+        )
+        self.assertEqual(issued.status_code, 200, issued.data)
         for attempt in range(5):
             wrong = "9999"
             self.assignment.refresh_from_db()
