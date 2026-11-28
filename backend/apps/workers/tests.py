@@ -842,11 +842,11 @@ class WorkerJobLifecycleTest(TestCase):
         import re
         from apps.notifications.models import Notification
 
-        worker_match = re.search(r"/workers/jobs/(\\d+)/start/", url)
+        worker_match = re.search(r"/workers/jobs/(\d+)/start/", url)
         if worker_match:
             assignment = BookingAssignment.objects.get(pk=int(worker_match.group(1)))
         else:
-            booking_match = re.search(r"/bookings/(\\d+)/start/", url)
+            booking_match = re.search(r"/bookings/(\d+)/start/", url)
             self.assertIsNotNone(booking_match, url)
             assignment = BookingAssignment.objects.get(booking_id=int(booking_match.group(1)))
 
