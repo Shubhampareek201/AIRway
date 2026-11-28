@@ -1604,6 +1604,7 @@ class WorkerJobArrivalView(APIView):
                 )
 
         now = timezone.now()
+        first_arrival = any(row.arrived_at is None for row in assignments)
         for row in assignments:
             if row.arrived_at is None:
                 row.arrived_at = now
@@ -1615,7 +1616,8 @@ class WorkerJobArrivalView(APIView):
                     "arrival_accuracy_m", "updated_at",
                 ])
 
-        Notification.objects.create(
+        if first_arrival:
+            Notification.objects.create(
             user=booking.customer,
             type=Notification.Type.SYSTEM_ANNOUNCEMENT,
             title="Your professional has arrived",
