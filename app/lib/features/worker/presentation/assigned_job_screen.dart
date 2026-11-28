@@ -345,8 +345,8 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(AirwayText.tr(
-              'Ask the customer for the 6-digit code sent to their AIRway notifications. Work cannot start until the customer shares it.',
-              'ग्राहक से AIRway नोटिफ़िकेशन में भेजा गया 6 अंकों का कोड लें। ग्राहक के कोड के बिना काम शुरू नहीं होगा।',
+              'Enter the 4-digit OTP shown on the customer AIRway home screen. Verification starts automatically after the fourth digit.',
+              'ग्राहक की AIRway होम स्क्रीन पर दिख रहा 4 अंकों का OTP डालें। चौथा अंक डालते ही वेरिफ़िकेशन शुरू हो जाएगा।',
             )),
             const SizedBox(height: 14),
             TextField(
@@ -358,10 +358,11 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
                 labelText: AirwayText.tr('4-digit service OTP', '4 अंकों का सर्विस OTP'),
                 border: const OutlineInputBorder(),
                 counterText: '',
-                onChanged: (value) {
-                  if (value.length == 4) Navigator.pop(dialogContext, value);
-                },
               ),
+              onChanged: (value) {
+                if (value.length == 4) Navigator.pop(dialogContext, value);
+              },
+            ),
           ],
         ),
         actions: [
