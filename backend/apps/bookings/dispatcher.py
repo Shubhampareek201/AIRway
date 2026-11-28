@@ -440,6 +440,7 @@ class DispatcherService:
     @classmethod
     def _create_offers(cls, *, booking, order, workers, batch_number, expiry_minutes, service_titles, payment_order=None, recurring_visit=None, appointment_group=None):
         from datetime import timedelta
+        from decimal import Decimal
         from apps.bookings.models import WorkerOffer
         from apps.notifications.models import Notification
         # A pending request remains available until the scheduled service start.
