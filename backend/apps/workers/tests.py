@@ -735,6 +735,7 @@ class WorkerJobLifecycleTest(TestCase):
             booking_mode="scheduled",
             scheduled_at=_tomorrow_at_noon(),
             status=Booking.Status.ASSIGNED,
+            notes="Call +919876543210 or email customer@example.com",
         )
         offer = WorkerOffer.objects.create(
             booking=booking,
@@ -746,6 +747,9 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertIsNone(pending_data["address_latitude"])
         self.assertIsNone(pending_data["address_longitude"])
         self.assertEqual(pending_data["customer_name"], "Customer")
+        self.assertIn("[contact hidden]", pending_data["booking_notes"])
+        self.assertNotIn(self.customer_user.phone, pending_data["booking_notes"])
+        self.assertNotIn("customer@example.com", pending_data["booking_notes"])
 
         offer.status = WorkerOffer.Status.ACCEPTED
         offer.accepted_at = timezone.now()
