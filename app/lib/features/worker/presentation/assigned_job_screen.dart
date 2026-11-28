@@ -3,8 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:geolocator_android/geolocator_android.dart';
-import 'package:geolocator_apple/geolocator_apple.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
@@ -37,7 +35,6 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
   StreamSubscription<Position>? _locationSubscription;
   Timer? _contactRefreshTimer;
   int? _sharingAssignmentId;
-  bool _locationRequestInProgress = false;
   bool _locationPermissionBlocked = false;
   bool _locationSharingEnabled = false;
   bool _locationConsentRequestInProgress = false;
