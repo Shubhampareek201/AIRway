@@ -857,13 +857,15 @@ class WorkerJobLifecycleTest(TestCase):
         )
         if arrived.status_code != 200:
             return arrived
-        notice = Notification.objects.filter(
-            user=self.customer_user,
-            data__purpose="service_start_otp",
-            data__booking_id=assignment.booking_id,
-        ).latest("created_at")
-        code = notice.data["service_start_code"]
-        return self.client.post(url, {"start_otp": code}, format="json")
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=self.customer_user)
+        issued = customer_client.post(
+            f"/api/v1/bookings/{assignment.booking_id}/service-start-otp/",
+            {},
+            format="json",
+        )
+        self.assertEqual(issued.status_code, 200, issued.data)
+        return self.client.post(url, {"start_otp": issued.data["code"]}, format="json")
 
     def test_worker_can_start_assigned_job(self):
         """Worker can mark a job as in progress after accepting offer."""
