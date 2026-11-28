@@ -1753,89 +1753,46 @@ class WorkerJobStartView(APIView):
 
         now = timezone.now()
         otp_state = group_assignments[0]
-        submitted_code = str(request.data.get("arrival_otp", "")).strip()
+        submitted_code = str(request.data.get("start_otp", "")).strip()
 
-        if not all(row.arrival_verified_at for row in group_assignments):
-            if not submitted_code:
-                can_resend = (
-                    not otp_state.arrival_otp_hash
-                    or not otp_state.arrival_otp_last_sent_at
-                    or otp_state.arrival_otp_last_sent_at <= now - timedelta(seconds=30)
-                )
-                if can_resend:
-                    code = f"{secrets.randbelow(1000000):06d}"
-                    code_hash = make_password(code)
-                    expires_at = now + timedelta(minutes=10)
-                    for row in group_assignments:
-                        row.arrival_requested_at = row.arrival_requested_at or now
-                        row.arrival_verified_at = None
-                        row.arrival_otp_hash = code_hash
-                        row.arrival_otp_expires_at = expires_at
-                        row.arrival_otp_attempts = 0
-                        row.arrival_otp_last_sent_at = now
-                        row.save(update_fields=[
-                            "arrival_requested_at", "arrival_verified_at",
-                            "arrival_otp_hash", "arrival_otp_expires_at",
-                            "arrival_otp_attempts", "arrival_otp_last_sent_at",
-                            "updated_at",
-                        ])
-                    Notification.objects.create(
-                        user=booking.customer,
-                        type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                        title="Your professional has arrived",
-                        body=(
-                            f"Share this 6-digit arrival code with your AIRway professional: {code}. "
-                            "It expires in 10 minutes. AIRway will not start the service until you provide this code."
-                        ),
-                        channel=Notification.Channel.IN_APP,
-                        data={
-                            "booking_id": booking.pk,
-                            "booking_ids": [row.pk for row in group_bookings],
-                            "appointment_group_id": booking.appointment_group_id,
-                            "arrival_otp_expires_at": expires_at.isoformat(),
-                        },
-                    )
-                return Response({
-                    "arrival_otp_required": True,
-                    "detail": "Ask the customer for the arrival code shown in their AIRway notifications, then enter it to start work.",
-                    "expires_at": (
-                        otp_state.arrival_otp_expires_at.isoformat()
-                        if otp_state.arrival_otp_expires_at else None
-                    ),
-                })
-
-            if any(
-                not row.arrival_otp_hash
-                or not row.arrival_otp_expires_at
-                or row.arrival_otp_expires_at <= now
-                for row in group_assignments
-            ):
-                return Response(
-                    {"detail": "The arrival code has expired. Request a new code and ask the customer again."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if any(row.arrival_otp_attempts >= 5 for row in group_assignments):
-                return Response(
-                    {"detail": "Too many incorrect arrival-code attempts. Request a new code."},
-                    status=status.HTTP_429_TOO_MANY_REQUESTS,
-                )
-            if not check_password(submitted_code, otp_state.arrival_otp_hash):
-                for row in group_assignments:
-                    row.arrival_otp_attempts += 1
-                    if row.arrival_otp_attempts >= 5:
-                        row.arrival_otp_expires_at = now
-                    row.save(update_fields=[
-                        "arrival_otp_attempts", "arrival_otp_expires_at", "updated_at"
-                    ])
-                return Response(
-                    {"detail": "Incorrect arrival code. Check with the customer and try again."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
+        if any(not row.arrived_at for row in group_assignments):
+            return Response(
+                {"detail": "Record worker arrival before starting the service."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if any(
+            not row.start_otp_hash
+            or not row.start_otp_expires_at
+            or row.start_otp_expires_at <= now
+            for row in group_assignments
+        ):
+            return Response(
+                {"start_otp_required": True, "detail": "The customer must refresh the 4-digit OTP on their AIRway home screen."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if any(row.start_otp_attempts >= 5 for row in group_assignments):
+            return Response(
+                {"detail": "Too many incorrect OTP attempts. Ask the customer to issue a fresh OTP."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if len(submitted_code) != 4 or not submitted_code.isdigit() or not check_password(
+            submitted_code, otp_state.start_otp_hash
+        ):
             for row in group_assignments:
-                row.arrival_verified_at = now
-                row.save(update_fields=["arrival_verified_at", "updated_at"])
+                row.start_otp_attempts += 1
+                if row.start_otp_attempts >= 5:
+                    row.start_otp_expires_at = now
+                row.save(update_fields=[
+                    "start_otp_attempts", "start_otp_expires_at", "updated_at"
+                ])
+            return Response(
+                {"detail": "Incorrect 4-digit service-start OTP.", "attempts_remaining": max(0, 5 - group_assignments[0].start_otp_attempts)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        for row in group_assignments:
+            row.start_otp_verified_at = now
+            row.save(update_fields=["start_otp_verified_at", "updated_at"])
 
         first_start = not any(row.started_at for row in group_assignments)
         if first_start:
@@ -1861,7 +1818,7 @@ class WorkerJobStartView(APIView):
                 from_status=old,
                 to_status=Booking.Status.IN_PROGRESS,
                 changed_by=request.user,
-                note="Worker started the appointment after customer arrival OTP verification.",
+                note="Worker started the appointment after customer service-start OTP verification.",
             )
             from apps.bookings.models import RecurringWashVisit
             RecurringWashVisit.objects.filter(
@@ -1870,7 +1827,7 @@ class WorkerJobStartView(APIView):
             ).update(status=RecurringWashVisit.Status.IN_PROGRESS, updated_at=now)
 
         return Response({
-            "detail": "Arrival verified. Appointment started.",
+            "detail": "Service-start OTP verified. Appointment started.",
             "status": Booking.Status.IN_PROGRESS,
             "appointment_group_id": booking.appointment_group_id,
             "booking_ids": [row.pk for row in group_bookings],
