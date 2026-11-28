@@ -726,6 +726,24 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertTrue(response.data["customer_contact_available"])
         self.assertEqual(response.data["customer_phone"], self.customer_user.phone)
 
+        # A later reschedule must immediately re-lock the personal phone.
+        booking.scheduled_at = timezone.now() + timedelta(hours=2)
+        booking.save(update_fields=["scheduled_at", "updated_at"])
+        response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+        self.assertFalse(response.data["customer_contact_available"])
+        self.assertIsNone(response.data["customer_phone"])
+        self.assertGreater(
+            timezone.datetime.fromisoformat(response.data["customer_contact_available_at"]),
+            timezone.now(),
+        )
+
+        booking.status = Booking.Status.COMPLETED
+        booking.save(update_fields=["status", "updated_at"])
+        response = self.client.get(f"/api/v1/workers/jobs/{assignment.pk}/")
+        self.assertFalse(response.data["customer_contact_available"])
+        self.assertIsNone(response.data["customer_phone"])
+        self.assertIsNone(response.data["customer_contact_available_at"])
+
     def test_worker_offer_hides_exact_location_until_accepted(self):
         from apps.bookings.serializers import WorkerOfferSerializer
 
