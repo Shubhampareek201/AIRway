@@ -329,6 +329,8 @@ class WorkerZoneDetailView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
         zone_link = WorkerZone.objects.filter(worker=profile, zone_id=zone_id).select_related("zone").first()
         if zone_link is None:
             return Response({"detail": "Approved zone not found."}, status=status.HTTP_404_NOT_FOUND)
