@@ -284,6 +284,55 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     }
   }
 
+  Future<void> _markJobArrived() async {
+    final job = _jobDetail;
+    if (!mounted || job == null || _isActionInProgress) return;
+    setState(() => _isActionInProgress = true);
+    try {
+      Position? position;
+      try {
+        if (await Geolocator.isLocationServiceEnabled()) {
+          var permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+          }
+          if (permission != LocationPermission.denied &&
+              permission != LocationPermission.deniedForever) {
+            position = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                timeLimit: Duration(seconds: 12),
+              ),
+            );
+          }
+        }
+      } catch (_) {
+        // Arrival must still be recordable when GPS is unavailable.
+      }
+      await WorkerApi.markJobArrived(
+        job.assignmentId,
+        latitude: position?.latitude,
+        longitude: position?.longitude,
+        accuracyMeters: position?.accuracy,
+      );
+      await _loadAssignedJob();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(position == null
+            ? 'Arrival time saved. GPS location was unavailable.'
+            : 'Arrival time and GPS location saved.')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not record arrival: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
   Future<String?> _requestArrivalOtp() async {
     final controller = TextEditingController();
     final code = await showDialog<String>(
@@ -1904,18 +1953,23 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
     final status = job.status;
 
     if (status == BookingStatus.assigned || status == BookingStatus.confirmed) {
+      final hasArrived = job.assignment.arrivedAt != null;
       return SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
-          onPressed: _isActionInProgress ? null : _startJob,
+          onPressed: _isActionInProgress
+              ? null
+              : (hasArrived ? _startJob : _markJobArrived),
           icon: _isActionInProgress
               ? const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(_isActionInProgress ? 'Starting...' : 'Start Job'),
+              : Icon(hasArrived ? Icons.play_arrow_rounded : Icons.location_on_rounded),
+          label: Text(_isActionInProgress
+              ? (hasArrived ? 'Starting...' : 'Saving arrival...')
+              : (hasArrived ? 'Start Service' : "I've Arrived")),
         ),
       );
     }
