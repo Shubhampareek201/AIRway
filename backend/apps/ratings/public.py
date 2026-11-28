@@ -21,4 +21,3 @@ def customer_reputation_summary(customer):
         "customer_rating_count": stats["total"] or 0,
         "customer_rating_comments": comments,
     }
-}
