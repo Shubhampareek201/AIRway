@@ -1761,9 +1761,9 @@ class WorkerJobStartView(APIView):
             group_bookings = [booking]
             group_assignments = [assign]
 
-        if all(
-            row.status == Booking.Status.IN_PROGRESS and row_assignment.started_at
-            for row, row_assignment in zip(group_bookings, group_assignments)
+        if (
+            all(row.status == Booking.Status.IN_PROGRESS for row in group_bookings)
+            and all(row.started_at for row in group_assignments)
         ):
             return Response({
                 "detail": "Service has already started.",
