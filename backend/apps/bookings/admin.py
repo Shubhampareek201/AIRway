@@ -546,7 +546,7 @@ class BookingStartOTPExceptionAdmin(ModelAdmin):
                         assignments = list(
                             BookingAssignment.objects.select_for_update()
                             .filter(booking__in=bookings)
-                            .select_related("booking")
+                            .select_related("booking", "worker")
                             .order_by("booking_id")
                         )
                     else:
@@ -561,6 +561,8 @@ class BookingStartOTPExceptionAdmin(ModelAdmin):
                             or not row.accepted_at
                             or not row.arrived_at
                             or row.started_at
+                            or row.worker_id != exception.assignment.worker_id
+                            or row.worker.status != "approved"
                             for row in assignments
                         )
                     ):
