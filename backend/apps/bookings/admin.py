@@ -308,9 +308,13 @@ class BookingAdmin(ModelAdmin):
 
     @admin.display(description="Customer")
     def customer_name_only(self, obj):
+        if obj is None:
+            return "Available after booking is saved."
         return obj.customer.name or "AIRway Customer"
 
     def _contact_access(self, obj):
+        if obj is None:
+            return {"address_available": False, "phone_available": False, "contact_available_at": None}
         try:
             assignment = obj.assignment
         except BookingAssignment.DoesNotExist:
