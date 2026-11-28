@@ -5744,6 +5744,8 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
         create_pending_recurring_visit_bookings(self.plan)
         visit = self.plan.visits.filter(booking__isnull=False).order_by("visit_number").last()
         booking = visit.booking
+        booking.notes = "Call +919876543210 or email help@example.com."
+        booking.save(update_fields=["notes", "updated_at"])
         worker_user = self._create_user("+919876543391")
         worker = WorkerProfile.objects.create(
             user=worker_user,
@@ -5776,6 +5778,9 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             self.assertNotIn(private_field, notice.data)
         self.assertIn("service_area", notice.data)
         self.assertNotIn(self.address.full_address, notice.body)
+        self.assertIn("[contact hidden]", notice.data["customer_instructions"])
+        self.assertNotIn("+919876543210", notice.data["customer_instructions"])
+        self.assertNotIn("help@example.com", notice.data["customer_instructions"])
         self.assertIn("worker_payout", notice.data)
 
         worker_client = APIClient()
