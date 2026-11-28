@@ -800,12 +800,12 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     service_material_requirements = serializers.JSONField(source="booking.service.material_requirements", read_only=True)
     service_image_url = serializers.SerializerMethodField()
     customer_issue_photo_url = serializers.SerializerMethodField()
-    address_latitude = serializers.DecimalField(source="booking.address.latitude", max_digits=9, decimal_places=6, read_only=True, allow_null=True)
-    address_longitude = serializers.DecimalField(source="booking.address.longitude", max_digits=9, decimal_places=6, read_only=True, allow_null=True)
+    address_latitude = serializers.SerializerMethodField()
+    address_longitude = serializers.SerializerMethodField()
     service_unit_label = serializers.CharField(source="booking.service.unit_label", read_only=True)
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
-    service_address = serializers.CharField(source="booking.address.full_address", read_only=True)
+    service_address = serializers.SerializerMethodField()
     booking_notes = serializers.CharField(source="booking.notes", read_only=True)
     expected_duration_minutes = serializers.SerializerMethodField()
     customer_answers = serializers.SerializerMethodField()
@@ -856,6 +856,28 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def get_service_image_url(self, obj):
         return self._service_image_url(obj.booking.service)
+
+    def _accepted_worker_access(self, obj):
+        from apps.bookings.models import Booking
+        return bool(
+            obj.status == obj.Status.ACCEPTED
+            and obj.accepted_at
+            and obj.booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+        )
+
+    def get_service_address(self, obj):
+        return obj.booking.address.full_address if self._accepted_worker_access(obj) else None
+
+    def get_address_latitude(self, obj):
+        if not self._accepted_worker_access(obj):
+            return None
+        return obj.booking.address.latitude
+
+    def get_address_longitude(self, obj):
+        if not self._accepted_worker_access(obj):
+            return None
+        return obj.booking.address.longitude
+
 
     def get_customer_issue_photo_url(self, obj):
         answers = obj.booking.customer_answers or {}
