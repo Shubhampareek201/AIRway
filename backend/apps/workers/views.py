@@ -1617,6 +1617,13 @@ class WorkerJobArrivalView(APIView):
                     "arrived_at", "arrival_latitude", "arrival_longitude",
                     "arrival_accuracy_m", "updated_at",
                 ])
+                BookingStatusHistory.objects.create(
+                    booking=row.booking,
+                    from_status=row.booking.status,
+                    to_status=row.booking.status,
+                    changed_by=request.user,
+                    note="Worker marked arrival. Service remains not started until customer OTP verification.",
+                )
 
         if first_arrival:
             from django.contrib.auth.hashers import make_password
