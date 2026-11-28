@@ -356,8 +356,23 @@ class WorkerScheduleListView(APIView):
             profile = request.user.worker_profile
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
         serializer = WorkerScheduleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        if values.get("is_active", True):
+            existing = WorkerSchedule.objects.filter(
+                worker=profile, weekday=values["weekday"], is_active=True,
+            )
+            if existing.filter(
+                start_time__lt=values["end_time"],
+                end_time__gt=values["start_time"],
+            ).exists():
+                return Response(
+                    {"detail": "This working-hours window overlaps an existing window."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         obj = serializer.save(worker=profile)
         return Response(WorkerScheduleSerializer(obj).data, status=status.HTTP_201_CREATED)
 
