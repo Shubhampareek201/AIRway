@@ -114,6 +114,20 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
     final workerLongitude = double.tryParse(_tracking['worker_longitude']?.toString() ?? '');
     final locationIsFresh = _tracking['location_is_fresh'] == true &&
         workerLatitude != null && workerLongitude != null;
+    final rawRoute = _tracking['route_coordinates'] as List? ?? const [];
+    final routePoints = rawRoute
+        .whereType<List>()
+        .where((point) => point.length >= 2)
+        .map((point) => LatLng(
+              double.tryParse(point[0].toString()) ?? double.nan,
+              double.tryParse(point[1].toString()) ?? double.nan,
+            ))
+        .where((point) => point.latitude.isFinite && point.longitude.isFinite)
+        .toList(growable: false);
+    final routeEtaSeconds = int.tryParse(_tracking['route_eta_seconds']?.toString() ?? '');
+    final routeEtaMinutes = routeEtaSeconds == null
+        ? null
+        : (routeEtaSeconds / 60).ceil();
     final started = _status == 'in_progress' || _status == 'completed';
     final completed = _status == 'completed';
     final cancelled = _status == 'cancelled';
@@ -307,6 +321,11 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                     style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
                                   ),
                                 ),
+                                if (routeEtaMinutes != null && routePoints.length >= 2)
+                                  Text(
+                                    '~$routeEtaMinutes min',
+                                    style: const TextStyle(color: _green, fontSize: 11, fontWeight: FontWeight.w900),
+                                  ),
                                 const Text('LIVE', style: TextStyle(color: _green, fontSize: 10, fontWeight: FontWeight.w900)),
                               ],
                             ),
@@ -325,6 +344,16 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                   userAgentPackageName: 'com.airwayservices.airway',
                                 ),
+                                if (routePoints.length >= 2)
+                                  PolylineLayer(
+                                    polylines: [
+                                      Polyline(
+                                        points: routePoints,
+                                        strokeWidth: 4,
+                                        color: _green,
+                                      ),
+                                    ],
+                                  ),
                                 MarkerLayer(
                                   markers: [
                                     Marker(
@@ -333,6 +362,17 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                       height: 46,
                                       child: const Icon(Icons.location_on_rounded, color: _green, size: 42),
                                     ),
+                                    if (routePoints.length >= 2)
+                                      Marker(
+                                        point: routePoints.last,
+                                        width: 38,
+                                        height: 38,
+                                        child: const Icon(
+                                          Icons.home_rounded,
+                                          color: Color(0xFFB7791F),
+                                          size: 30,
+                                        ),
+                                      ),
                                   ],
                                 ),
                                 RichAttributionWidget(
