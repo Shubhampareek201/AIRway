@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cross_file/cross_file.dart';
+import 'dart:typed_data';
+import 'dart:convert';
 import 'package:airway/core/localization/airway_text.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
@@ -192,6 +197,8 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
           _successHeader(),
           const SizedBox(height: 24),
           _bookingDetailsCard(booking),
+          const SizedBox(height: 12),
+          _calendarActionCard(booking),
           const SizedBox(height: 16),
           _pricingCard(booking),
           const SizedBox(height: 16),
@@ -481,6 +488,98 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
           ],
         ),
       );
+
+
+  Widget _calendarActionCard(Booking booking) => Card(
+    color: Colors.white,
+    child: ListTile(
+      leading: const Icon(Icons.calendar_month_rounded, color: _Ui.ink, size: 30),
+      title: const Text('Save to calendar', style: TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: const Text('Get a reminder before your service'),
+      trailing: OutlinedButton(onPressed: () => _showCalendarOptions(booking), child: const Text('Add')),
+    ),
+  );
+
+  Future<void> _showCalendarOptions(Booking booking) async {
+    await showModalBottomSheet<void>(
+      context: context, showDragHandle: true,
+      builder: (sheet) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const ListTile(title: Text('Add booking to', style: TextStyle(fontWeight: FontWeight.w800))),
+        ListTile(leading: const Icon(Icons.calendar_today), title: const Text('Google Calendar'),
+          onTap: () { Navigator.pop(sheet); _openCalendar(booking, true); }),
+        ListTile(leading: const Icon(Icons.calendar_month), title: const Text('Outlook Calendar'),
+          onTap: () { Navigator.pop(sheet); _openCalendar(booking, false); }),
+        ListTile(leading: const Icon(Icons.event), title: const Text('Apple Calendar / Other'),
+          subtitle: const Text('Share calendar event file'),
+          onTap: () { Navigator.pop(sheet); _shareCalendar(booking); }),
+      ])),
+    );
+  }
+
+  DateTime _calendarEnd(Booking booking) {
+    final drop = booking.dropScheduledAt;
+    return drop != null && drop.isAfter(booking.scheduledAt)
+        ? drop : booking.scheduledAt.add(const Duration(hours: 1));
+  }
+
+  String _calendarUtc(DateTime value) {
+    final d = value.toUtc();
+    return '${d.year.toString().padLeft(4, '0')}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}T${d.hour.toString().padLeft(2, '0')}${d.minute.toString().padLeft(2, '0')}${d.second.toString().padLeft(2, '0')}Z';
+  }
+
+  String _calendarAddress(Booking booking) =>
+      booking.pricingSnapshot['address_full']?.toString() ??
+      booking.pricingSnapshot['address_label']?.toString() ?? '';
+
+  String _calendarDetails(Booking booking) =>
+      'AIRway booking #${booking.id}\\nService: ${booking.serviceTitle}';
+
+  Future<void> _openCalendar(Booking booking, bool google) async {
+    final start = booking.scheduledAt, end = _calendarEnd(booking);
+    final title = 'AIRway • ${booking.serviceTitle}';
+    final location = _calendarAddress(booking);
+    final uri = google
+      ? Uri.https('calendar.google.com', '/calendar/render', {
+          'action': 'TEMPLATE', 'text': title,
+          'dates': '${_calendarUtc(start)}/${_calendarUtc(end)}',
+          'details': _calendarDetails(booking), if (location.isNotEmpty) 'location': location,
+        })
+      : Uri.https('outlook.live.com', '/calendar/0/deeplink/compose', {
+          'subject': title, 'startdt': start.toUtc().toIso8601String(),
+          'enddt': end.toUtc().toIso8601String(), 'body': _calendarDetails(booking),
+          if (location.isNotEmpty) 'location': location,
+        });
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open calendar.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Calendar error: $error')));
+    }
+  }
+
+  Future<void> _shareCalendar(Booking booking) async {
+    String esc(String s) => s.replaceAll(r'\\', r'\\\\').replaceAll(',', r'\\,').replaceAll(';', r'\\;').replaceAll('\n', r'\\n');
+    final start = booking.scheduledAt, end = _calendarEnd(booking);
+    final address = _calendarAddress(booking);
+    final lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AIRway//Booking//EN',
+      'BEGIN:VEVENT', 'UID:airway-${booking.id}@airway',
+      'DTSTAMP:${_calendarUtc(DateTime.now())}', 'DTSTART:${_calendarUtc(start)}',
+      'DTEND:${_calendarUtc(end)}', 'SUMMARY:${esc('AIRway • ${booking.serviceTitle}')}',
+      'DESCRIPTION:${esc(_calendarDetails(booking))}',
+      if (address.isNotEmpty) 'LOCATION:${esc(address)}',
+      'END:VEVENT', 'END:VCALENDAR',
+    ];
+    final data = Uint8List.fromList(utf8.encode('${lines.join('\r\n')}\r\n'));
+    try {
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile.fromData(data, mimeType: 'text/calendar', name: 'AIRway-booking-${booking.id}.ics')],
+        fileNameOverrides: ['AIRway-booking-${booking.id}.ics'],
+      ));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not share calendar event: $error')));
+    }
+  }
 
   Widget _actionButtons() {
     final isAssigned = _booking!.status == BookingStatus.assigned;
