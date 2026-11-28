@@ -64,6 +64,7 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   final Set<int> _startOtpSubmitting = {};
   final Map<int, TextEditingController> _startOtpControllers = {};
   final Map<int, String> _startOtpErrors = {};
+  final Set<int> _startOtpExceptionPending = {};
   bool _incomingOfferDialogOpen = false;
   StreamSubscription<RemoteMessage>? _pushOpenSubscription;
   StreamSubscription<RemoteMessage>? _pushForegroundSubscription;
@@ -2038,6 +2039,58 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     }
   }
 
+  Future<void> _requestStartOtpException(Map<String, dynamic> job) async {
+    final assignmentId = int.tryParse(job['id']?.toString() ?? '');
+    if (assignmentId == null || _startOtpExceptionPending.contains(assignmentId)) return;
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Request admin OTP verification'),
+        content: TextField(
+          controller: reasonController,
+          minLines: 3,
+          maxLines: 5,
+          maxLength: 1000,
+          decoration: const InputDecoration(
+            labelText: 'Describe the OTP issue',
+            helperText: 'AIRway Admin must review and approve. Service will not start while pending.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = reasonController.text.trim();
+              if (value.length < 20) return;
+              Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Send request'),
+          ),
+        ],
+      ),
+    );
+    reasonController.dispose();
+    if (reason == null || !mounted) return;
+    try {
+      await WorkerApi.requestStartOtpException(assignmentId, reason: reason);
+      if (!mounted) return;
+      setState(() => _startOtpExceptionPending.add(assignmentId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request sent. Wait for AIRway Admin verification.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send admin request: $error')),
+      );
+    }
+  }
+
   Widget _buildJobPreview(Map<String, dynamic> job) {
     final assignmentId = int.tryParse(job['id']?.toString() ?? '');
     final status = job['status']?.toString();
@@ -2060,7 +2113,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
           if (showStartOtp)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: TextField(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
                 controller: controller,
                 keyboardType: TextInputType.number,
                 maxLength: 4,
@@ -2091,6 +2147,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                     setState(() => _startOtpErrors.remove(assignmentId));
                   }
                 },
+                  ),
+                  if (error?.contains('attempts limit reached') == true)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _startOtpExceptionPending.contains(assignmentId)
+                          ? const Text('Admin review pending', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w700))
+                          : TextButton(
+                              onPressed: () => _requestStartOtpException(job),
+                              child: const Text('Request admin verification'),
+                            ),
+                    ),
+                ],
               ),
             ),
         ],
