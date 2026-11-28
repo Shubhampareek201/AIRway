@@ -5730,8 +5730,10 @@ class RecurringWashVisitLedgerTest(BookingAPITestMixin, TestCase):
             user=worker_user,
             data__recurring_visit_id=visit.pk,
         )
-        for private_field in ("customer_total", "advance_received", "remaining_balance"):
+        for private_field in ("customer_total", "advance_received", "remaining_balance", "address", "customer_phone"):
             self.assertNotIn(private_field, notice.data)
+        self.assertIn("service_area", notice.data)
+        self.assertNotIn(self.address.full_address, notice.body)
         self.assertIn("worker_payout", notice.data)
 
         worker_client = APIClient()
