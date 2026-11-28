@@ -2501,6 +2501,93 @@ class WorkerAvailabilityPrerequisiteTests(TestCase):
         ]}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.profile.schedules.count(), 0)
+
+    def test_worker_schedule_api_rejects_end_time_before_start(self):
+        response = self.client.put("/api/v1/workers/schedules/", {"schedules": [
+            {"weekday": 1, "start_time": "18:00", "end_time": "09:00", "is_active": True},
+        ]}, format="json")
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(self.profile.schedules.count(), 0)
+
+    def test_profile_endpoint_returns_saved_working_hours(self):
+        WorkerSchedule.objects.create(
+            worker=self.profile, weekday=2, start_time="09:00",
+            end_time="17:00", is_active=True,
+        )
+        response = self.client.get("/api/v1/workers/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["schedules"]), 1)
+        self.assertEqual(response.data["schedules"][0]["weekday"], 2)
+
+    def test_schedule_update_cannot_exclude_an_accepted_booking(self):
+        customer = User.objects.create_user(phone="+919876543223", name="Schedule Customer")
+        address = Address.objects.create(
+            user=customer, label="home", house_details="House 1",
+            full_address="Rawatbhata, Rajasthan", zone=self.zone,
+        )
+        scheduled_at = _tomorrow_at_noon()
+        local_start = timezone.localtime(scheduled_at)
+        WorkerSchedule.objects.create(
+            worker=self.profile, weekday=local_start.weekday(),
+            start_time="09:00", end_time="18:00", is_active=True,
+        )
+        booking = Booking.objects.create(
+            customer=customer, address=address, service=self.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=scheduled_at, status=Booking.Status.ASSIGNED,
+        )
+        BookingAssignment.objects.create(
+            booking=booking, worker=self.profile, accepted_at=timezone.now(),
+        )
+
+        response = self.client.put("/api/v1/workers/schedules/", {"schedules": [
+            {"weekday": local_start.weekday(), "start_time": "13:00",
+             "end_time": "18:00", "is_active": True},
+        ]}, format="json")
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(self.profile.schedules.get().start_time.isoformat(), "09:00:00")
+
+    def test_offline_withdraws_pending_offers_but_preserves_accepted_jobs(self):
+        customer = User.objects.create_user(phone="+919876543224", name="Offline Customer")
+        address = Address.objects.create(
+            user=customer, label="home", house_details="House 2",
+            full_address="Rawatbhata, Rajasthan", zone=self.zone,
+        )
+        accepted_booking = Booking.objects.create(
+            customer=customer, address=address, service=self.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=_tomorrow_at_noon(), status=Booking.Status.ASSIGNED,
+        )
+        accepted_offer = WorkerOffer.objects.create(
+            booking=accepted_booking, worker=self.profile,
+            status=WorkerOffer.Status.ACCEPTED, expires_at=accepted_booking.scheduled_at,
+            accepted_at=timezone.now(),
+        )
+        assignment = BookingAssignment.objects.create(
+            booking=accepted_booking, worker=self.profile, accepted_at=timezone.now(),
+        )
+        pending_booking = Booking.objects.create(
+            customer=customer, address=address, service=self.service,
+            booking_mode=Booking.BookingMode.SCHEDULED,
+            scheduled_at=_tomorrow_at_noon() + timedelta(hours=2),
+            status=Booking.Status.PENDING,
+        )
+        pending_offer = WorkerOffer.objects.create(
+            booking=pending_booking, worker=self.profile,
+            expires_at=pending_booking.scheduled_at,
+        )
+
+        response = self.client.post(
+            "/api/v1/workers/status/", {"is_online": False}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        accepted_offer.refresh_from_db()
+        pending_offer.refresh_from_db()
+        self.assertEqual(accepted_offer.status, WorkerOffer.Status.ACCEPTED)
+        self.assertEqual(pending_offer.status, WorkerOffer.Status.WITHDRAWN)
+        self.assertTrue(BookingAssignment.objects.filter(pk=assignment.pk).exists())
+        accepted_booking.refresh_from_db()
+        self.assertEqual(accepted_booking.status, Booking.Status.ASSIGNED)
 class WorkerCapabilityEligibilityRegressionTests(TestCase):
     def setUp(self):
         self.city = City.objects.create(name="Capability City", state="Rajasthan")
