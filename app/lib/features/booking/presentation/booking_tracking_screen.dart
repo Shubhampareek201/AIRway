@@ -185,12 +185,12 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                       Text(AirwayText.tr('Booking journey', 'बुकिंग की प्रगति'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink)),
                       const SizedBox(height: 18),
                       _step('Booking placed', true, 'Your service request has been received.'),
+                      _step('Professional assigned', assigned || started || completed,
+                          assigned ? 'A professional has accepted your service.' : 'We are looking for an available professional.'),
                       _step('Professional arrived', _tracking['arrived_at'] != null,
                           _tracking['arrived_at'] != null
                               ? 'Arrival recorded at ${DateTime.parse(_tracking['arrived_at'].toString()).toLocal()}'
                               : 'Waiting for your professional to arrive.'),
-                      _step('Professional assigned', assigned || started || completed,
-                          assigned ? 'A professional has accepted your service.' : 'We are looking for an available professional.'),
                       _step('Service started', started,
                           started
                               ? (_tracking['started_at'] != null
