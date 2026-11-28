@@ -155,52 +155,75 @@ class WorkerCompletionOTPTests(TestCase):
         self.assignment.refresh_from_db()
         self.assertIsNone(self.assignment.arrived_at)
 
-    def test_worker_must_verify_customer_arrival_code_before_starting(self):
+    def test_worker_must_verify_customer_four_digit_service_start_otp(self):
         self.booking.status = Booking.Status.ASSIGNED
         self.booking.save(update_fields=["status", "updated_at"])
         self.assignment.started_at = None
         self.assignment.save(update_fields=["started_at", "updated_at"])
+        arrival_url = f"/api/v1/workers/jobs/{self.assignment.pk}/arrived/"
         start_url = f"/api/v1/workers/jobs/{self.assignment.pk}/start/"
 
-        requested = self.client.post(start_url, {}, format="json")
-        self.assertEqual(requested.status_code, 200, requested.data)
-        self.assertTrue(requested.data["arrival_otp_required"])
+        arrived = self.client.post(
+            arrival_url,
+            {"latitude": 26.9124, "longitude": 75.7873},
+            format="json",
+        )
+        self.assertEqual(arrived.status_code, 200, arrived.data)
         self.booking.refresh_from_db()
+        self.assignment.refresh_from_db()
         self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+        self.assertIsNotNone(self.assignment.arrived_at)
+        self.assertIsNone(self.assignment.started_at)
 
         notification = Notification.objects.get(
             user=self.customer,
-            title="Your professional has arrived",
+            title="Your service start OTP is ready",
         )
-        match = re.search(
-            r"arrival code with your AIRway professional: (\d{6})\.",
-            notification.body,
-        )
-        self.assertIsNotNone(match)
-        code = match.group(1)
-        self.assignment.refresh_from_db()
-        self.assertNotEqual(self.assignment.arrival_otp_hash, code)
-        self.assertTrue(check_password(code, self.assignment.arrival_otp_hash))
+        code = notification.data["service_start_code"]
+        self.assertRegex(code, r"^\\d{4}$")
+        self.assertTrue(check_password(code, self.assignment.start_otp_hash))
+        self.assertNotIn(code, str(self.client.get(
+            f"/api/v1/workers/jobs/{self.assignment.pk}/"
+        ).data))
 
-        invalid_code = "999999" if code != "999999" else "999998"
+        missing = self.client.post(start_url, {}, format="json")
+        self.assertEqual(missing.status_code, 400)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+
+        invalid_code = "9999" if code != "9999" else "9998"
         invalid = self.client.post(
-            start_url, {"arrival_otp": invalid_code}, format="json"
+            start_url, {"start_otp": invalid_code}, format="json"
         )
         self.assertEqual(invalid.status_code, 400)
         self.assignment.refresh_from_db()
-        self.assertEqual(self.assignment.arrival_otp_attempts, 1)
+        self.assertEqual(self.assignment.start_otp_attempts, 1)
         self.booking.refresh_from_db()
         self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
 
         verified = self.client.post(
-            start_url, {"arrival_otp": code}, format="json"
+            start_url, {"start_otp": code}, format="json"
         )
         self.assertEqual(verified.status_code, 200, verified.data)
         self.assertEqual(verified.data["status"], Booking.Status.IN_PROGRESS)
         self.assignment.refresh_from_db()
         self.booking.refresh_from_db()
-        self.assertIsNotNone(self.assignment.arrival_verified_at)
+        self.assertIsNotNone(self.assignment.start_otp_verified_at)
+        self.assertIsNone(self.assignment.arrival_verified_at)
         self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
+
+    def test_only_customer_can_refresh_service_start_otp(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.arrived_at = timezone.now()
+        self.assignment.save(update_fields=["started_at", "arrived_at", "updated_at"])
+        response = self.client.post(
+            f"/api/v1/bookings/{self.booking.pk}/service-start-otp/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
 
     def test_worker_location_requires_explicit_consent_and_30_minute_window(self):
         self.booking.status = Booking.Status.ASSIGNED
