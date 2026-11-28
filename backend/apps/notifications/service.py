@@ -33,7 +33,10 @@ def send_push_notification(user, title, body="", data=None, channel_id="airway_g
                 scheduled = datetime.fromisoformat(str(scheduled_at).replace("Z", "+00:00"))
                 if django_timezone.is_naive(scheduled):
                     scheduled = django_timezone.make_aware(scheduled)
-                push_ttl = max(scheduled - django_timezone.now(), timedelta(seconds=0))
+                push_ttl = min(
+                    max(scheduled - django_timezone.now(), timedelta(seconds=0)),
+                    timedelta(weeks=4),
+                )
             except (TypeError, ValueError):
                 push_ttl = timedelta(minutes=10)
         offer_tag = str(payload.get("offer_id") or "") or None
