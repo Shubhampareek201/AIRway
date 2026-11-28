@@ -260,6 +260,26 @@ class RatingSecurityAndFlowAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(RatingSummary.objects.get(user=self.customer).total_ratings, 1)
 
+    def test_worker_customer_reputation_is_aggregate_and_masks_contact_details(self):
+        from apps.ratings.public import customer_reputation_summary
+
+        BookingRating.objects.create(
+            booking=self.booking, rater=self.worker_user, rated=self.customer,
+            rating_type="worker", rating=4,
+            comment="Reliable customer; call 9876543210 or mail person@example.com",
+        )
+        BookingRating.objects.create(
+            booking=self.booking, rater=self.customer, rated=self.worker_user,
+            rating_type="customer", rating=1,
+            comment="This is feedback about the worker, not the customer",
+        )
+        summary = customer_reputation_summary(self.customer)
+        self.assertEqual(summary["customer_rating_average"], 4.0)
+        self.assertEqual(summary["customer_rating_count"], 1)
+        self.assertEqual(len(summary["customer_rating_comments"]), 1)
+        self.assertNotIn("9876543210", summary["customer_rating_comments"][0])
+        self.assertNotIn("person@example.com", summary["customer_rating_comments"][0])
+
     def test_unrelated_user_cannot_rate_booking(self):
         self.client.force_authenticate(self.other_user)
         response = self.client.post(
