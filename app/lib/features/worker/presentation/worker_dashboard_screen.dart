@@ -227,8 +227,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                 }
               } catch (error) {
                 if (mounted) await _refresh();
-                final latest = _offers.where((item) => item.id == offer.id).firstOrNull;
-                if (latest != null && latest.status != WorkerOffer.pending) {
+                final latestMatches = _offers.where((item) => item.id == offer.id).toList();
+                if (latestMatches.isNotEmpty && latestMatches.first.status != WorkerOffer.pending) {
                   if (dialogContext.mounted) Navigator.of(dialogContext).pop();
                   return;
                 }
