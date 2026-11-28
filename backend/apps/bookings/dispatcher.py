@@ -490,62 +490,12 @@ class DispatcherService:
                 f"New appointment ({len(service_titles)} services): {summary}"
                 if appointment_group else (f"New order ({len(service_titles)} services): {summary}" if order else
                 f"New job request for {summary} at {booking.scheduled_at.strftime('%d %b, %H:%M')}"))
-            from apps.payments.models import Payment
             if recurring_visit:
-                from decimal import Decimal
-                customer_total = str(recurring_visit.prepaid_amount)
-                advance_received = str(recurring_visit.prepaid_amount)
-                remaining_balance = "0.00"
                 address_text = booking.address.full_address
-            elif appointment_group:
-                from decimal import Decimal
+            elif appointment_group or order or payment_order:
                 payment_context = order or payment_order
-                group_bookings = list(
-                    appointment_group.bookings.exclude(status="cancelled").select_related("order_item").all()
-                )
-                customer_total = str(sum(
-                    (item.order_item.line_total for item in group_bookings if hasattr(item, "order_item")),
-                    Decimal("0.00"),
-                ))
-                allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
-                group_item_ids = {
-                    item.order_item.id for item in group_bookings
-                    if hasattr(item, "order_item")
-                }
-                advance_received = str(sum(
-                    (Decimal(str(row.get("amount", "0"))) for row in allocation.get("advance", [])
-                     if row.get("order_item_id") in group_item_ids),
-                    Decimal("0.00"),
-                ))
-                remaining_balance = str(max(
-                    Decimal(customer_total) - Decimal(advance_received), Decimal("0.00")
-                ))
-                address_text = payment_context.address.full_address
-            elif order or payment_order:
-                from decimal import Decimal
-                payment_context = order or payment_order
-                allocation = (payment_context.metadata or {}).get("payment_allocation_v1", {})
-                order_item = getattr(booking, "order_item", None)
-                advance_row = next(
-                    (row for row in allocation.get("advance", [])
-                     if order_item and row.get("order_item_id") == order_item.id),
-                    {},
-                )
-                customer_total = str(order_item.line_total if order_item else payment_context.total_amount)
-                advance_received = str(advance_row.get("amount", "0.00")) if order_item else str(allocation.get("advance_total", "0"))
-                remaining_balance = str(max(
-                    Decimal(customer_total) - Decimal(advance_received), Decimal("0.00")
-                ))
                 address_text = payment_context.address.full_address
             else:
-                from decimal import Decimal
-                snapshot = booking.pricing_snapshot or {}
-                customer_total = str(snapshot.get("total", booking.total_amount))
-                advance_received = str(Payment.objects.filter(
-                    booking=booking, stage=Payment.Stage.ADVANCE,
-                    status=Payment.Status.PAID,
-                ).values_list("amount", flat=True).first() or "0")
-                remaining_balance = str(max(Decimal(customer_total) - Decimal(advance_received), Decimal("0")))
                 address_text = booking.address.full_address
             duration_minutes = (
                 booking.variant.duration_minutes
