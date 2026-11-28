@@ -22,6 +22,7 @@ from .views import (
     WorkerJobEvidenceView,
     WorkerJobAcceptView,
     WorkerJobRejectView,
+    WorkerJobArrivalView,
     WorkerJobStartView,
     WorkerJobLocationUpdateView,
     WorkerJobLocationSharingView,
