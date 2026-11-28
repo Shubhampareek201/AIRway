@@ -405,6 +405,7 @@ class WorkerAssignmentDetail {
 class WorkerAssignmentInfo {
   final DateTime? assignedAt;
   final DateTime? acceptedAt;
+  final DateTime? arrivedAt;
   final DateTime? startedAt;
   final DateTime? completedAt;
   final bool locationSharingEnabled;
@@ -412,6 +413,7 @@ class WorkerAssignmentInfo {
   WorkerAssignmentInfo({
     this.assignedAt,
     this.acceptedAt,
+    this.arrivedAt,
     this.startedAt,
     this.completedAt,
     this.locationSharingEnabled = false,
@@ -421,6 +423,7 @@ class WorkerAssignmentInfo {
     return WorkerAssignmentInfo(
       assignedAt: map['assigned_at'] != null ? DateTime.parse(map['assigned_at']) : null,
       acceptedAt: map['accepted_at'] != null ? DateTime.parse(map['accepted_at']) : null,
+      arrivedAt: map['arrived_at'] != null ? DateTime.parse(map['arrived_at']) : null,
       startedAt: map['started_at'] != null ? DateTime.parse(map['started_at']) : null,
       completedAt: map['completed_at'] != null ? DateTime.parse(map['completed_at']) : null,
       locationSharingEnabled: map['location_sharing_enabled'] == true,
