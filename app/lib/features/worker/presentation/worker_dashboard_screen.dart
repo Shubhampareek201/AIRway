@@ -17,6 +17,7 @@ import 'package:airway/features/worker/presentation/assigned_job_screen.dart';
 import 'package:airway/features/worker/presentation/job_offers_screen.dart';
 import 'package:airway/features/worker/presentation/worker_profile_edit_screen.dart';
 import 'package:airway/features/worker/presentation/worker_leave_screen.dart';
+import 'package:airway/features/worker/presentation/worker_availability_settings_screen.dart';
 import 'package:airway/features/worker/presentation/worker_service_management_screen.dart';
 import 'package:airway/features/notification/data/push_notification_service.dart';
 import 'package:airway/features/notification/presentation/notification_bell_button.dart';
@@ -1410,6 +1411,19 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
       _sectionHeading(hi ? 'खाता' : 'Account'),
       Card(
         child: Column(children: [
+          ListTile(
+            leading: const Icon(Icons.schedule_outlined),
+            title: Text(hi ? 'कार्य समय' : 'Working hours'),
+            subtitle: Text(hi ? 'साप्ताहिक उपलब्धता अपडेट करें' : 'Update your weekly availability'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WorkerAvailabilitySettingsScreen()),
+              );
+              await _refresh();
+            },
+          ),
+          const Divider(height: 1),
           ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: Text(hi ? 'कमाई और भुगतान' : 'Earnings & payouts'), subtitle: Text(hi ? 'कमाई टैब में दर्ज कमाई देखें' : 'View credited job earnings in the Earnings tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => setState(() => _selectedTab = 2)),
           const Divider(height: 1),
           ListTile(leading: const Icon(Icons.notifications_active_outlined), title: Text(hi ? 'जॉब अलर्ट' : 'Job alerts'), subtitle: Text(hi ? 'नई सर्विस ऑफ़र जॉब्स टैब में दिखेंगे' : 'New service offers appear in the Jobs tab'), trailing: const Icon(Icons.chevron_right_rounded), onTap: _openOffers),
