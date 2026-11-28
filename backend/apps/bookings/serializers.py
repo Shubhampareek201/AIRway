@@ -859,9 +859,11 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
 
     def _accepted_worker_access(self, obj):
         from apps.bookings.models import Booking
+        from apps.workers.models import WorkerProfile
         return bool(
             obj.status == obj.Status.ACCEPTED
             and obj.accepted_at
+            and obj.worker.status == WorkerProfile.Status.APPROVED
             and obj.booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
         )
 
@@ -896,9 +898,11 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     def _customer_contact_available(self, obj):
         from datetime import timedelta
         from django.utils import timezone
+        from apps.workers.models import WorkerProfile
         return bool(
             obj.status == obj.Status.ACCEPTED
             and obj.accepted_at
+            and obj.worker.status == WorkerProfile.Status.APPROVED
             and obj.booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
             and obj.booking.scheduled_at
             and timezone.now() >= obj.booking.scheduled_at - timedelta(hours=1)
