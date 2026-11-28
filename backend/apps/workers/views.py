@@ -407,15 +407,39 @@ class WorkerScheduleListView(APIView):
 class WorkerScheduleDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def delete(self, request, schedule_id):
         try:
-            profile = request.user.worker_profile
+            profile = WorkerProfile.objects.select_for_update().get(user=request.user)
         except WorkerProfile.DoesNotExist:
             return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+        if profile.status != WorkerProfile.Status.APPROVED:
+            return Response({"detail": "An approved worker profile is required."}, status=status.HTTP_403_FORBIDDEN)
         try:
-            obj = WorkerSchedule.objects.get(pk=schedule_id, worker=profile)
+            obj = WorkerSchedule.objects.select_for_update().get(pk=schedule_id, worker=profile)
         except WorkerSchedule.DoesNotExist:
             return Response({"detail": "Schedule not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        from apps.bookings.dispatcher import DispatcherService
+        active_statuses = (
+            Booking.Status.CONFIRMED, Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS,
+        )
+        assignments = BookingAssignment.objects.select_for_update(of=("self",)).filter(
+            worker=profile, booking__status__in=active_statuses,
+        ).select_related("booking__service", "booking__variant", "booking__appointment_group")
+        remaining = WorkerSchedule.objects.filter(worker=profile, is_active=True).exclude(pk=obj.pk)
+        for assignment in assignments:
+            for start_at, end_at in DispatcherService._assigned_booking_intervals(assignment.booking):
+                local_start, local_end = timezone.localtime(start_at), timezone.localtime(end_at)
+                if local_start.date() != local_end.date() or not remaining.filter(
+                    weekday=local_start.weekday(),
+                    start_time__lte=local_start.time(),
+                    end_time__gte=local_end.time(),
+                ).exists():
+                    return Response({
+                        "detail": "This working-hours entry is required for an accepted booking and cannot be removed yet.",
+                        "conflicting_booking_id": assignment.booking_id,
+                    }, status=status.HTTP_409_CONFLICT)
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
