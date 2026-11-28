@@ -733,7 +733,7 @@ class WorkerJobLifecycleTest(TestCase):
         self.assertFalse(response.data["customer_contact_available"])
         self.assertIsNone(response.data["customer_phone"])
         self.assertGreater(
-            timezone.datetime.fromisoformat(response.data["customer_contact_available_at"]),
+            datetime.fromisoformat(response.data["customer_contact_available_at"]),
             timezone.now(),
         )
 
