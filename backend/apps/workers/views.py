@@ -1633,22 +1633,23 @@ class WorkerJobArrivalView(APIView):
                     "start_otp_hash", "start_otp_expires_at", "start_otp_attempts",
                     "start_otp_last_sent_at", "start_otp_verified_at", "updated_at",
                 ])
-            Notification.objects.create(
-                user=booking.customer,
-                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-                title="Your service start OTP is ready",
-                body="Your professional has arrived. Enter the 4-digit OTP shown in your AIRway home screen when the professional is ready to start.",
-                channel=Notification.Channel.IN_APP,
-                data={
-                    "purpose": "service_start_otp",
-                    "booking_id": booking.pk,
-                    "booking_ids": [row.pk for row in bookings],
-                    "appointment_group_id": booking.appointment_group_id,
-                    "arrived_at": assignments[0].arrived_at.isoformat(),
-                    "service_start_code": start_code,
-                    "service_start_code_expires_at": start_code_expires_at.isoformat(),
-                },
-            )
+            for active_booking in bookings:
+                Notification.objects.create(
+                    user=active_booking.customer,
+                    type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                    title="Your service start OTP is ready",
+                    body="Your professional has arrived. Enter the 4-digit OTP shown in your AIRway home screen when the professional is ready to start.",
+                    channel=Notification.Channel.IN_APP,
+                    data={
+                        "purpose": "service_start_otp",
+                        "booking_id": active_booking.pk,
+                        "booking_ids": [row.pk for row in bookings],
+                        "appointment_group_id": booking.appointment_group_id,
+                        "arrived_at": assignments[0].arrived_at.isoformat(),
+                        "service_start_code": start_code,
+                        "service_start_code_expires_at": start_code_expires_at.isoformat(),
+                    },
+                )
         assignment = next((row for row in assignments if row.booking_id == booking.pk), assignments[0])
         return Response({
             "detail": "Arrival recorded. The service has not started.",
