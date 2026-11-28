@@ -1786,6 +1786,11 @@ class WorkerJobStartView(APIView):
                 {"detail": "Record worker arrival before starting the service."},
                 status=status.HTTP_409_CONFLICT,
             )
+        if any(row.start_otp_attempts >= 5 for row in group_assignments):
+            return Response(
+                {"detail": "Too many incorrect OTP attempts. Ask the customer to issue a fresh OTP."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         if any(
             not row.start_otp_hash
             or not row.start_otp_expires_at
@@ -1795,11 +1800,6 @@ class WorkerJobStartView(APIView):
             return Response(
                 {"start_otp_required": True, "detail": "The customer must refresh the 4-digit OTP on their AIRway home screen."},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
-        if any(row.start_otp_attempts >= 5 for row in group_assignments):
-            return Response(
-                {"detail": "Too many incorrect OTP attempts. Ask the customer to issue a fresh OTP."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
         if len(submitted_code) != 4 or not submitted_code.isdigit() or not check_password(
             submitted_code, otp_state.start_otp_hash
