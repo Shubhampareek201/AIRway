@@ -118,6 +118,43 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
         self.assertEqual(otp_record.attempts, 1)
 
+    def test_worker_arrival_is_separate_from_service_start_and_saves_gps(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.save(update_fields=["started_at", "updated_at"])
+
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{self.assignment.pk}/arrived/",
+            {"latitude": 26.9124, "longitude": 75.7873, "accuracy_m": 12},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], Booking.Status.ASSIGNED)
+        self.assertIsNotNone(response.data["arrived_at"])
+
+        self.assignment.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.assertIsNotNone(self.assignment.arrived_at)
+        self.assertEqual(float(self.assignment.arrival_latitude), 26.9124)
+        self.assertEqual(float(self.assignment.arrival_longitude), 75.7873)
+        self.assertIsNone(self.assignment.started_at)
+        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+
+    def test_only_assigned_worker_can_record_arrival(self):
+        other_user = User.objects.create_user(
+            phone="+919876543204", password="password123"
+        )
+        self.client.force_authenticate(user=other_user)
+        response = self.client.post(
+            f"/api/v1/workers/jobs/{self.assignment.pk}/arrived/",
+            {"latitude": 26.9124, "longitude": 75.7873},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assignment.refresh_from_db()
+        self.assertIsNone(self.assignment.arrived_at)
+
     def test_worker_must_verify_customer_arrival_code_before_starting(self):
         self.booking.status = Booking.Status.ASSIGNED
         self.booking.save(update_fields=["status", "updated_at"])
