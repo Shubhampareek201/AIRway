@@ -202,6 +202,18 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
+  static Future<Map<String, dynamic>> requestStartOtpException(
+    int assignmentId, {
+    required String reason,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/start-otp-exception/',
+      method: 'POST',
+      data: {'reason': reason},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<Map<String, dynamic>> completeJob(
     int assignmentId, {
     String? otp,
