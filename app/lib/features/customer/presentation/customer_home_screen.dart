@@ -219,7 +219,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           }
           cards.add({
             'booking_id': item['booking_id'],
-            'service_title': (item['service'] as Map?)?['title'] ??
+            'service_title': item['service_title']?.toString() ??
+                (item['service'] as Map?)?['title'] ??
                 (item['service'] as Map?)?['service_title'] ??
                 'Your service',
             'scheduled_at': item['scheduled_at'],
