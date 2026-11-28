@@ -20,7 +20,7 @@ from apps.catalog.pricing import service_booking_ready
 from apps.catalog.form_rules import visible_form_fields
 from apps.catalog.audience import validate_beauty_audience
 from apps.accounts.models import Address
-from apps.workers.eligibility import required_worker_gender_for_booking
+from apps.workers.eligibility import required_worker_gender_for_booking, mask_personal_contact_details
 from apps.notifications.models import Notification
 
  
@@ -806,11 +806,11 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
     variant_title = serializers.CharField(source="booking.variant.title", read_only=True, allow_null=True)
     scheduled_at = serializers.DateTimeField(source="booking.scheduled_at", read_only=True)
     service_address = serializers.SerializerMethodField()
-    booking_notes = serializers.CharField(source="booking.notes", read_only=True)
+    booking_notes = serializers.SerializerMethodField()
     expected_duration_minutes = serializers.SerializerMethodField()
     customer_answers = serializers.SerializerMethodField()
     professional_preference = serializers.SerializerMethodField()
-    form_responses = BookingFormResponseSerializer(many=True, read_only=True, source="booking.form_responses")
+    form_responses = serializers.SerializerMethodField()
     addons = BookingAddOnSerializer(many=True, read_only=True, source="booking.booking_addons")
     quantity = serializers.SerializerMethodField()
     order_services = serializers.SerializerMethodField()
@@ -893,8 +893,28 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         order_item = getattr(obj.booking, "order_item", None)
         return order_item.order_id if order_item else None
 
+    def _customer_contact_available(self, obj):
+        from apps.bookings.models import BookingAssignment
+        try:
+            assignment = obj.booking.assignment
+        except BookingAssignment.DoesNotExist:
+            return False
+        from apps.workers.eligibility import worker_contact_access
+        return worker_contact_access(assignment)["phone_available"]
+
+    def get_booking_notes(self, obj):
+        value = obj.booking.notes or ""
+        return value if self._customer_contact_available(obj) else mask_personal_contact_details(value)
+
     def get_appointment_group_message(self, obj):
-        return obj.appointment_group.customer_message if obj.appointment_group_id else ""
+        value = obj.appointment_group.customer_message if obj.appointment_group_id else ""
+        return value if self._customer_contact_available(obj) else mask_personal_contact_details(value)
+
+    def get_form_responses(self, obj):
+        rows = BookingFormResponseSerializer(
+            obj.booking.form_responses.all(), many=True, context=self.context
+        ).data
+        return rows if self._customer_contact_available(obj) else mask_personal_contact_details(rows)
 
     def get_appointment_group_services(self, obj):
         if not obj.appointment_group_id:
@@ -1042,7 +1062,7 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         answers.pop("_airway_issue_photo", None)
         if obj.booking.service.requires_female_worker:
             answers["professional_preference"] = "female"
-        return answers
+        return answers if self._customer_contact_available(obj) else mask_personal_contact_details(answers)
 
     def get_professional_preference(self, obj):
         if obj.booking.service.requires_female_worker:
