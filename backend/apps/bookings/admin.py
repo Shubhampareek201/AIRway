@@ -291,12 +291,46 @@ class BookingVariableCostInline(TabularInline):
 
 @admin.register(Booking)
 class BookingAdmin(ModelAdmin):
-    list_display = ("id", "customer", "service", "variant", "booking_mode", "status", "actual_contribution_status", "actual_contribution", "scheduled_at", "created_at")
+    list_display = ("id", "customer_name_only", "service", "variant", "booking_mode", "status", "actual_contribution_status", "actual_contribution", "scheduled_at", "created_at")
     list_filter = ("status", "booking_mode", "service")
     search_fields = ("customer__phone", "customer__name", "service__title")
-    readonly_fields = ("created_at", "updated_at", "pricing_snapshot", "actual_finance_details")
+    readonly_fields = (
+        "created_at", "updated_at", "pricing_snapshot", "actual_finance_details",
+        "customer_name_only", "customer_contact_access", "customer_address_access",
+    )
     inlines = [BookingAddOnInline, BookingFormResponseInline, BookingAssignmentInline, BookingStatusHistoryInline, BookingVariableCostInline]
     actions = [mark_unfulfillable_and_refund]
+
+    def get_exclude(self, request, obj=None):
+        # Keep personal contact and the exact service address behind the same
+        # acceptance/one-hour gate used by the worker-facing API.
+        return ("customer", "address") if obj else ()
+
+    @admin.display(description="Customer")
+    def customer_name_only(self, obj):
+        return obj.customer.name or "AIRway Customer"
+
+    def _contact_access(self, obj):
+        try:
+            assignment = obj.assignment
+        except BookingAssignment.DoesNotExist:
+            return {"address_available": False, "phone_available": False, "contact_available_at": None}
+        from apps.workers.eligibility import worker_contact_access
+        return worker_contact_access(assignment)
+
+    @admin.display(description="Customer phone (privacy-gated)")
+    def customer_contact_access(self, obj):
+        access = self._contact_access(obj)
+        if access["phone_available"]:
+            return obj.customer.phone
+        return "Locked until worker accepts and the one-hour contact window opens."
+
+    @admin.display(description="Service address (privacy-gated)")
+    def customer_address_access(self, obj):
+        access = self._contact_access(obj)
+        if access["address_available"]:
+            return obj.address.full_address
+        return "Locked until the worker accepts the assignment."
 
     def _actual_finance_report(self, obj):
         if not hasattr(obj, "_actual_finance_report"):
