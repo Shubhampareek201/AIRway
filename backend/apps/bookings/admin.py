@@ -61,7 +61,33 @@ class BookingAssignmentInline(TabularInline):
     model = BookingAssignment
     extra = 0
     can_delete = False
-    readonly_fields = tuple(field.name for field in BookingAssignment._meta.fields)
+    exclude = ("worker",)
+    readonly_fields = tuple(
+        field.name for field in BookingAssignment._meta.fields if field.name != "worker"
+    ) + ("worker_name_only", "worker_contact_access")
+    fields = ("worker_name_only", "worker_contact_access") + tuple(
+        field.name for field in BookingAssignment._meta.fields
+        if field.name not in ("id", "booking", "worker")
+    )
+
+    @admin.display(description="Worker")
+    def worker_name_only(self, obj):
+        if obj is None:
+            return "Assigned after booking dispatch."
+        return obj.worker.user.name or "AIRway Professional"
+
+    @admin.display(description="Worker phone (privacy-gated)")
+    def worker_contact_access(self, obj):
+        if obj is None:
+            return "Available after assignment."
+        from apps.workers.eligibility import worker_contact_access
+        access = worker_contact_access(obj)
+        return obj.worker.user.phone if access["phone_available"] else (
+            "Locked until one hour before the accepted appointment."
+        )
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 class CartItemInline(TabularInline):
@@ -422,9 +448,32 @@ class BookingQuoteAdmin(ModelAdmin):
 
 @admin.register(BookingAssignment)
 class BookingAssignmentAdmin(ModelAdmin):
-    list_display = ("booking", "worker", "assigned_at", "accepted_at", "started_at", "completed_at")
+    list_display = ("booking", "worker_name_only", "assigned_at", "accepted_at", "started_at", "completed_at")
     search_fields = ("booking__id", "worker__user__phone")
-    readonly_fields = tuple(field.name for field in BookingAssignment._meta.fields)
+    exclude = ("worker",)
+    readonly_fields = tuple(
+        field.name for field in BookingAssignment._meta.fields if field.name != "worker"
+    ) + ("worker_name_only", "worker_contact_access")
+    fields = ("worker_name_only", "worker_contact_access") + tuple(
+        field.name for field in BookingAssignment._meta.fields
+        if field.name not in ("id", "booking", "worker")
+    )
+
+    @admin.display(description="Worker")
+    def worker_name_only(self, obj):
+        if obj is None:
+            return "Assigned after booking dispatch."
+        return obj.worker.user.name or "AIRway Professional"
+
+    @admin.display(description="Worker phone (privacy-gated)")
+    def worker_contact_access(self, obj):
+        if obj is None:
+            return "Available after assignment."
+        from apps.workers.eligibility import worker_contact_access
+        access = worker_contact_access(obj)
+        return obj.worker.user.phone if access["phone_available"] else (
+            "Locked until one hour before the accepted appointment."
+        )
 
     def has_add_permission(self, request):
         return False
