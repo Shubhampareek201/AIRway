@@ -1618,18 +1618,18 @@ class WorkerJobArrivalView(APIView):
 
         if first_arrival:
             Notification.objects.create(
-            user=booking.customer,
-            type=Notification.Type.SYSTEM_ANNOUNCEMENT,
-            title="Your professional has arrived",
-            body="Your AIRway professional has marked arrival. Service will begin only after you share the 4-digit start code.",
-            channel=Notification.Channel.IN_APP,
-            data={
-                "booking_id": booking.pk,
-                "booking_ids": [row.pk for row in bookings],
-                "appointment_group_id": booking.appointment_group_id,
-                "arrived_at": assignments[0].arrived_at.isoformat(),
-            },
-        )
+                user=booking.customer,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Your professional has arrived",
+                body="Your AIRway professional has marked arrival. Service will begin only after you share the 4-digit start code.",
+                channel=Notification.Channel.IN_APP,
+                data={
+                    "booking_id": booking.pk,
+                    "booking_ids": [row.pk for row in bookings],
+                    "appointment_group_id": booking.appointment_group_id,
+                    "arrived_at": assignments[0].arrived_at.isoformat(),
+                },
+            )
         assignment = next((row for row in assignments if row.booking_id == booking.pk), assignments[0])
         return Response({
             "detail": "Arrival recorded. The service has not started.",
