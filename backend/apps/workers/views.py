@@ -1881,10 +1881,13 @@ class WorkerStartOTPExceptionRequestView(APIView):
                 {"detail": "An exception can be requested only by the accepted worker after arrival and before service starts."},
                 status=status.HTTP_409_CONFLICT,
             )
+        if not assignment.start_otp_hash or not assignment.start_otp_expires_at:
+            return Response(
+                {"detail": "The customer must issue the service-start OTP before an exception can be requested."},
+                status=status.HTTP_409_CONFLICT,
+            )
         if (
-            assignment.start_otp_hash
-            and assignment.start_otp_expires_at
-            and assignment.start_otp_expires_at > timezone.now()
+            assignment.start_otp_expires_at > timezone.now()
             and assignment.start_otp_attempts < 5
         ):
             return Response(
