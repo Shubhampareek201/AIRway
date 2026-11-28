@@ -175,21 +175,28 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertIsNotNone(self.assignment.arrived_at)
         self.assertIsNone(self.assignment.started_at)
 
-        notification = Notification.objects.get(
-            user=self.customer,
-            title="Your service start OTP is ready",
+        missing = self.client.post(start_url, {}, format="json")
+        self.assertEqual(missing.status_code, 400)
+        self.assignment.refresh_from_db()
+        self.assertFalse(self.assignment.start_otp_hash)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=self.customer)
+        issued = customer_client.post(
+            f"/api/v1/bookings/{self.booking.pk}/service-start-otp/",
+            {},
+            format="json",
         )
-        code = notification.data["service_start_code"]
+        self.assertEqual(issued.status_code, 200, issued.data)
+        code = issued.data["code"]
         self.assertRegex(code, r"^\d{4}$")
+        self.assignment.refresh_from_db()
         self.assertTrue(check_password(code, self.assignment.start_otp_hash))
         self.assertNotIn(code, str(self.client.get(
             f"/api/v1/workers/jobs/{self.assignment.pk}/"
         ).data))
-
-        missing = self.client.post(start_url, {}, format="json")
-        self.assertEqual(missing.status_code, 400)
-        self.booking.refresh_from_db()
-        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
 
         invalid_code = "9999" if code != "9999" else "9998"
         invalid = self.client.post(
