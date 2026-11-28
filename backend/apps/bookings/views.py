@@ -1938,6 +1938,8 @@ class CustomerServiceStartOTPView(APIView):
 
         if not assignments or len(assignments) != len(bookings):
             return Response({"detail": "The service has not been accepted by a professional yet."}, status=status.HTTP_409_CONFLICT)
+        if any(row.worker.user_id == request.user.pk for row in assignments):
+            return Response({"detail": "The assigned worker cannot access the customer OTP."}, status=status.HTTP_403_FORBIDDEN)
         if any(
             row.booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
             or not row.accepted_at
@@ -2054,6 +2056,7 @@ class CustomerOrderDetailView(APIView):
                 booking.status in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
                 and assignment
                 and assignment.accepted_at
+                and assignment.worker.user_id != request.user.pk
                 and assignment.arrived_at
                 and not assignment.started_at
                 and not assignment.start_otp_verified_at
@@ -2137,6 +2140,8 @@ class CustomerOrderDetailView(APIView):
                 ),
                 "service": service_snapshot,
                 "booking_status": booking.status,
+                "arrived_at": assignment.arrived_at if assignment else None,
+                "service_started_at": assignment.started_at if assignment else None,
                 "booking_mode": booking.booking_mode,
                 "can_cancel": booking.can_cancel,
                 "cancellation_policy": {
