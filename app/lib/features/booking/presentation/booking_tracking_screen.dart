@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:airway/features/booking/data/booking_api.dart';
@@ -51,6 +52,18 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
   void dispose() {
     _poller?.cancel();
     super.dispose();
+  }
+
+  Future<void> _openWorkerContact({required bool message}) async {
+    final phone = _tracking['worker_phone']?.toString();
+    if (_tracking['worker_contact_available'] != true || phone == null || phone.isEmpty) return;
+    final uri = Uri(scheme: message ? 'sms' : 'tel', path: phone);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AirwayText.tr('Could not open the phone app.', 'फोन ऐप नहीं खुल सका।'))),
+      );
+    }
   }
 
   Future<void> _refresh({bool silent = false}) async {
@@ -332,11 +345,36 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                                     style: const TextStyle(color: _muted, fontSize: 12)),
                             ]),
                           ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(AirwayText.tr('Your contact details stay private. Contact AIRway Support if you need help.', 'आपकी संपर्क जानकारी निजी रहती है। मदद के लिए AIRway सपोर्ट से संपर्क करें।'),
-                              style: TextStyle(color: _muted, fontSize: 11, height: 1.4)),
-                        ),
+                        if (_tracking['worker_contact_available'] == true && (_tracking['worker_phone']?.toString().isNotEmpty ?? false))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Wrap(spacing: 10, children: [
+                              OutlinedButton.icon(
+                                onPressed: () => _openWorkerContact(message: false),
+                                icon: const Icon(Icons.call_rounded),
+                                label: Text(AirwayText.tr('Call professional', 'प्रोफ़ेशनल को कॉल करें')),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => _openWorkerContact(message: true),
+                                icon: const Icon(Icons.sms_rounded),
+                                label: Text(AirwayText.tr('SMS', 'SMS')),
+                              ),
+                            ]),
+                          )
+                        else if (_tracking['worker_contact_available_at'] != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              AirwayText.tr('Call and SMS unlock one hour before your appointment: ${_tracking['worker_contact_available_at']}', 'कॉल और SMS अपॉइंटमेंट से एक घंटे पहले उपलब्ध होंगे।'),
+                              style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
+                            ),
+                          )
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(AirwayText.tr('Your contact details stay private. Contact AIRway Support if you need help.', 'आपकी संपर्क जानकारी निजी रहती है। मदद के लिए AIRway सपोर्ट से संपर्क करें।'),
+                                style: TextStyle(color: _muted, fontSize: 11, height: 1.4)),
+                          ),
                       ]),
                     ),
                   const SizedBox(height: 16),
