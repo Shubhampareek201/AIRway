@@ -15,7 +15,7 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 
-def get_live_directions(origin_latitude, origin_longitude, destination_latitude, destination_longitude):
+def get_live_directions(origin_latitude, origin_longitude, destination_latitude, destination_longitude, cache_scope=None):
     token = getattr(settings, "MAPBOX_ACCESS_TOKEN", "")
     if not token:
         return None
@@ -29,10 +29,14 @@ def get_live_directions(origin_latitude, origin_longitude, destination_latitude,
     ):
         return None
 
-    cache_key = "airway:mapbox:directions:" + ":".join(f"{value:.5f}" for value in coordinates)
+    cache_key = (
+        f"airway:mapbox:directions:booking:{cache_scope}"
+        if cache_scope is not None
+        else "airway:mapbox:directions:" + ":".join(f"{value:.5f}" for value in coordinates)
+    )
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached
+        return None if cached.get("unavailable") else cached
 
     params = urlencode({
         "access_token": token,
@@ -50,7 +54,7 @@ def get_live_directions(origin_latitude, origin_longitude, destination_latitude,
             payload = json.loads(response.read(1_000_000).decode("utf-8"))
         routes = payload.get("routes") or []
         if not routes:
-            cache.set(cache_key, None, timeout=15)
+            cache.set(cache_key, {"unavailable": True}, timeout=20)
             return None
         route = routes[0]
         raw_coordinates = (route.get("geometry") or {}).get("coordinates") or []
@@ -68,8 +72,9 @@ def get_live_directions(origin_latitude, origin_longitude, destination_latitude,
             "distance_meters": max(0, int(route.get("distance", 0))),
             "source": "mapbox",
         }
-        cache.set(cache_key, result, timeout=30)
+        cache.set(cache_key, result, timeout=60)
         return result
     except Exception:
+        cache.set(cache_key, {"unavailable": True}, timeout=20)
         logger.warning("Mapbox directions unavailable for live booking tracking", exc_info=True)
         return None
