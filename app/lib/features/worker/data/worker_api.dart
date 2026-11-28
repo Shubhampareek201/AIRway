@@ -170,6 +170,26 @@ class WorkerApi {
     return Map<String, dynamic>.from(result as Map);
   }
 
+  static Future<Map<String, dynamic>> markJobArrived(
+    int assignmentId, {
+    double? latitude,
+    double? longitude,
+    double? accuracyMeters,
+  }) async {
+    final result = await _request(
+      '/api/v1/workers/jobs/$assignmentId/arrived/',
+      method: 'POST',
+      data: {
+        if (latitude != null && longitude != null) ...{
+          'latitude': latitude,
+          'longitude': longitude,
+          if (accuracyMeters != null) 'accuracy_m': accuracyMeters,
+        },
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<Map<String, dynamic>> startJob(
     int assignmentId, {
     String? arrivalOtp,
