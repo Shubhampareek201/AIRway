@@ -802,6 +802,49 @@ class BookingCompletionOTP(TimeStampedModel):
         return f"Completion OTP for booking #{self.booking_id}"
 
 
+class BookingStartOTPException(TimeStampedModel):
+    """Audited worker request for an admin-verified service-start exception."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    booking = models.ForeignKey(
+        Booking, on_delete=models.CASCADE, related_name="start_otp_exceptions"
+    )
+    assignment = models.ForeignKey(
+        BookingAssignment, on_delete=models.CASCADE, related_name="start_otp_exceptions"
+    )
+    requested_by = models.ForeignKey(
+        "workers.WorkerProfile", on_delete=models.PROTECT,
+        related_name="start_otp_exceptions",
+    )
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="reviewed_start_otp_exceptions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment"],
+                condition=Q(status="pending"),
+                name="unique_pending_start_otp_exception",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Start OTP exception #{self.pk} for booking #{self.booking_id}"
+
+
 class RecurringWashPlan(TimeStampedModel):
     """Customer's quoted recurring car-wash agreement, linked to its inspection order."""
 
