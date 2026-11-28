@@ -404,6 +404,17 @@ class BookingAssignment(TimeStampedModel):
     arrival_otp_expires_at = models.DateTimeField(null=True, blank=True)
     arrival_otp_attempts = models.PositiveSmallIntegerField(default=0)
     arrival_otp_last_sent_at = models.DateTimeField(null=True, blank=True)
+    # Arrival is a distinct event; it never changes the booking lifecycle status.
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    arrival_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    arrival_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    arrival_accuracy_m = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    # Service-start OTP is independent from arrival and stored only as a password hash.
+    start_otp_hash = models.CharField(max_length=256, blank=True)
+    start_otp_expires_at = models.DateTimeField(null=True, blank=True)
+    start_otp_attempts = models.PositiveSmallIntegerField(default=0)
+    start_otp_last_sent_at = models.DateTimeField(null=True, blank=True)
+    start_otp_verified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-assigned_at"]
