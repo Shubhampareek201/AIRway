@@ -321,6 +321,34 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.data["results"][0]["id"], offer.id)
         self.assertEqual(response.data["results"][0]["status"], "pending")
 
+    def test_dispatch_requires_worker_to_be_inside_current_working_hours(self):
+        from unittest.mock import patch
+        from apps.bookings.dispatcher import DispatcherService
+
+        current = timezone.localtime()
+        current_weekday = current.weekday()
+        WorkerSchedule.objects.filter(
+            worker=self.worker_profile, weekday=current_weekday,
+        ).delete()
+        WorkerSchedule.objects.create(
+            worker=self.worker_profile, weekday=current_weekday,
+            start_time="11:00", end_time="12:00", is_active=True,
+        )
+        fixed_now = timezone.make_aware(
+            datetime.combine(current.date(), time(10, 0)),
+            timezone.get_current_timezone(),
+        )
+        with patch("django.utils.timezone.now", return_value=fixed_now):
+            self.assertEqual(DispatcherService.dispatch_offers(self.booking), [])
+
+        WorkerSchedule.objects.filter(
+            worker=self.worker_profile, weekday=current_weekday,
+        ).update(start_time="09:00", end_time="11:00")
+        with patch("django.utils.timezone.now", return_value=fixed_now):
+            offers = DispatcherService.dispatch_offers(self.booking)
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].worker, self.worker_profile)
+
     def test_legacy_fully_paid_booking_can_be_dispatched_and_accepted(self):
         from apps.bookings.dispatcher import DispatcherService
         from apps.payments.models import Payment
@@ -2883,6 +2911,18 @@ class WorkerZoneChangeRequestAPITest(TestCase):
         second = self.client.post("/api/v1/workers/zones/", {"zone": self.zone.pk}, format="json")
         self.assertEqual(first.status_code, 202)
         self.assertEqual(second.status_code, 409)
+
+    def test_unapproved_worker_cannot_request_zone_removal(self):
+        self.worker.status = WorkerProfile.Status.PENDING
+        self.worker.save(update_fields=["status", "updated_at"])
+        WorkerZone.objects.create(worker=self.worker, zone=self.zone)
+        response = self.client.delete(f"/api/v1/workers/zones/{self.zone.pk}/")
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            self.worker.zone_change_requests.filter(
+                zone=self.zone, status="pending"
+            ).exists()
+        )
 
     def test_zone_removal_requires_admin_approval(self):
         WorkerZone.objects.create(worker=self.worker, zone=self.zone)
