@@ -82,3 +82,36 @@ def eligible_workers_for_service(service, *, zone=None, city=None, required_task
     # capture may still receive task-neutral service variants. Empty task lists
     # never qualify for a variant that declares required tasks.
     return queryset.distinct().select_related("user")
+
+
+def worker_contact_access(assignment, *, at=None):
+    """Return the server-enforced privacy window for an assigned worker.
+
+    Exact address is available only after the worker accepts the assignment.
+    Customer phone access additionally opens one hour before the current
+    scheduled start. Re-reading the booking time on every request makes
+    reschedules and timezone-aware datetimes apply immediately.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.bookings.models import Booking
+
+    booking = assignment.booking
+    now = at or timezone.now()
+    accepted = bool(assignment.accepted_at)
+    active = booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+    contact_available_at = (
+        booking.scheduled_at - timedelta(hours=1)
+        if accepted and booking.scheduled_at else None
+    )
+    address_available = accepted and active
+    phone_available = bool(
+        address_available
+        and contact_available_at
+        and now >= contact_available_at
+    )
+    return {
+        "address_available": address_available,
+        "contact_available_at": contact_available_at,
+        "phone_available": phone_available,
+    }
