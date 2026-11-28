@@ -1058,6 +1058,17 @@ class BookingViewSet(viewsets.ModelViewSet):
             service__category__is_active=True,
         ).select_related("service", "service__category").order_by("service__title") if worker_is_approved else worker.worker_services.none()
         location_window_open = timezone.now() >= booking.scheduled_at - timedelta(minutes=30)
+        worker_contact_available_at = (
+            booking.scheduled_at - timedelta(hours=1)
+            if assignment.accepted_at and booking.scheduled_at else None
+        )
+        worker_contact_available = bool(
+            worker_is_approved
+            and assignment.accepted_at
+            and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+            and worker_contact_available_at
+            and timezone.now() >= worker_contact_available_at
+        )
         location_is_fresh = bool(
             worker_is_approved
             and assignment.location_sharing_enabled
@@ -1074,6 +1085,9 @@ class BookingViewSet(viewsets.ModelViewSet):
             "is_assigned": True,
             "worker_id": worker.id,
             "worker_name": (worker.user.name or "AIRway Professional") if worker_is_approved else "AIRway Professional",
+            "worker_phone": worker.user.phone if worker_contact_available else None,
+            "worker_contact_available": worker_contact_available,
+            "worker_contact_available_at": worker_contact_available_at.isoformat() if worker_contact_available_at else None,
             "worker_photo": photo_url,
             "worker_bio": worker.bio if worker_is_approved else None,
             "worker_experience_years": worker.experience_years if worker_is_approved else None,
