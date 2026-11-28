@@ -313,7 +313,9 @@ class _AssignedJobScreenState extends State<AssignedJobScreen> with WidgetsBindi
         job.assignmentId,
         latitude: position?.latitude,
         longitude: position?.longitude,
-        accuracyMeters: position?.accuracy,
+        accuracyMeters: position != null && position.accuracy <= 1000
+            ? position.accuracy
+            : null,
       );
       await _loadAssignedJob();
       if (!mounted) return;
