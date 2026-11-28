@@ -894,13 +894,15 @@ class WorkerOfferSerializer(serializers.ModelSerializer):
         return order_item.order_id if order_item else None
 
     def _customer_contact_available(self, obj):
-        from apps.bookings.models import BookingAssignment
-        try:
-            assignment = obj.booking.assignment
-        except BookingAssignment.DoesNotExist:
-            return False
-        from apps.workers.eligibility import worker_contact_access
-        return worker_contact_access(assignment)["phone_available"]
+        from datetime import timedelta
+        from django.utils import timezone
+        return bool(
+            obj.status == obj.Status.ACCEPTED
+            and obj.accepted_at
+            and obj.booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
+            and obj.booking.scheduled_at
+            and timezone.now() >= obj.booking.scheduled_at - timedelta(hours=1)
+        )
 
     def get_booking_notes(self, obj):
         value = obj.booking.notes or ""
