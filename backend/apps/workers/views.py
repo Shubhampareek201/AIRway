@@ -1150,6 +1150,23 @@ class WorkerJobDetailView(APIView):
         form_photo_paths = customer_answers.pop("_airway_form_photos", {})
         if booking.service.requires_female_worker:
             customer_answers["professional_preference"] = "female"
+        if not customer_contact_available:
+            if rework_case_data:
+                rework_case_data["description"] = mask_personal_contact_details(rework_case_data.get("description"))
+                rework_case_data["resolution_note"] = mask_personal_contact_details(rework_case_data.get("resolution_note"))
+                for history_row in rework_case_data.get("status_history", []):
+                    history_row["note"] = mask_personal_contact_details(history_row.get("note"))
+                for evidence_row in rework_case_data.get("evidence_files", []):
+                    evidence_row["note"] = mask_personal_contact_details(evidence_row.get("note"))
+            for proposal_row in extra_work_data:
+                proposal_row["customer_response_note"] = mask_personal_contact_details(
+                    proposal_row.get("customer_response_note")
+                )
+            if quote_data:
+                quote_data["customer_response_note"] = mask_personal_contact_details(
+                    quote_data.get("customer_response_note")
+                )
+
         return Response({
             "id": assign.id,
 "booking_id": booking.id,
