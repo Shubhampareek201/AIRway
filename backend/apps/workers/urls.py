@@ -67,6 +67,7 @@ urlpatterns = [
     path("jobs/<int:job_id>/evidence/", WorkerJobEvidenceView.as_view(), name="worker-job-evidence"),
     path("jobs/<int:job_id>/accept/", WorkerJobAcceptView.as_view(), name="worker-job-accept"),
     path("jobs/<int:job_id>/reject/", WorkerJobRejectView.as_view(), name="worker-job-reject"),
+    path("jobs/<int:job_id>/arrived/", WorkerJobArrivalView.as_view(), name="worker-job-arrived"),
     path("jobs/<int:job_id>/start/", WorkerJobStartView.as_view(), name="worker-job-start"),
     path("jobs/<int:job_id>/location/", WorkerJobLocationUpdateView.as_view(), name="worker-job-location"),
     path("jobs/<int:job_id>/location-sharing/", WorkerJobLocationSharingView.as_view(), name="worker-job-location-sharing"),
