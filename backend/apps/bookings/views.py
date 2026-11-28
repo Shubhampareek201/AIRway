@@ -2049,8 +2049,7 @@ class CustomerOrderDetailView(APIView):
             assignment = getattr(booking, "assignment", None)
             completion_code = None
             completion_expires_at = None
-            service_start_code = None
-            service_start_expires_at = None
+            service_start_otp = None
             if (
                 booking.status in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
                 and assignment
@@ -2059,8 +2058,6 @@ class CustomerOrderDetailView(APIView):
                 and not assignment.started_at
                 and not assignment.start_otp_verified_at
                 and assignment.start_otp_hash
-                and assignment.start_otp_expires_at
-                and assignment.start_otp_expires_at > timezone.now()
             ):
                 from apps.notifications.models import Notification
                 start_notice = Notification.objects.filter(
@@ -2069,8 +2066,15 @@ class CustomerOrderDetailView(APIView):
                     data__purpose="service_start_otp",
                 ).order_by("-created_at").first()
                 if start_notice:
-                    service_start_code = (start_notice.data or {}).get("service_start_code")
-                    service_start_expires_at = assignment.start_otp_expires_at.isoformat()
+                    otp_expired = (
+                        not assignment.start_otp_expires_at
+                        or assignment.start_otp_expires_at <= timezone.now()
+                    )
+                    service_start_otp = {
+                        "code": None if otp_expired else (start_notice.data or {}).get("service_start_code"),
+                        "expires_at": assignment.start_otp_expires_at.isoformat() if assignment.start_otp_expires_at else None,
+                        "expired": otp_expired,
+                    }
             if booking.status == Booking.Status.IN_PROGRESS:
                 from apps.bookings.models import BookingCompletionOTP
                 from apps.notifications.models import Notification
@@ -2244,13 +2248,7 @@ class CustomerOrderDetailView(APIView):
                     }
                     if completion_code else None
                 ),
-                "service_start_otp": (
-                    {
-                        "code": service_start_code,
-                        "expires_at": service_start_expires_at,
-                    }
-                    if service_start_code else None
-                ),
+                "service_start_otp": service_start_otp,
                 "refunds": [
                     {
                         "id": refund.pk,
