@@ -842,21 +842,28 @@ class WorkerJobLifecycleTest(TestCase):
         import re
         from apps.notifications.models import Notification
 
-        response = self.client.post(url, format="json")
-        if response.data.get("arrival_otp_required"):
-            notice = Notification.objects.filter(
-                user=self.customer_user,
-                title="Your professional has arrived",
-            ).latest("created_at")
-            match = re.search(
-                r"arrival code with your AIRway professional: (\d{6})\.",
-                notice.body,
-            )
-            self.assertIsNotNone(match, notice.body)
-            response = self.client.post(
-                url, {"arrival_otp": match.group(1)}, format="json"
-            )
-        return response
+        worker_match = re.search(r"/workers/jobs/(\\d+)/start/", url)
+        if worker_match:
+            assignment = BookingAssignment.objects.get(pk=int(worker_match.group(1)))
+        else:
+            booking_match = re.search(r"/bookings/(\\d+)/start/", url)
+            self.assertIsNotNone(booking_match, url)
+            assignment = BookingAssignment.objects.get(booking_id=int(booking_match.group(1)))
+
+        arrived = self.client.post(
+            f"/api/v1/workers/jobs/{assignment.pk}/arrived/",
+            {},
+            format="json",
+        )
+        if arrived.status_code != 200:
+            return arrived
+        notice = Notification.objects.filter(
+            user=self.customer_user,
+            data__purpose="service_start_otp",
+            data__booking_id=assignment.booking_id,
+        ).latest("created_at")
+        code = notice.data["service_start_code"]
+        return self.client.post(url, {"start_otp": code}, format="json")
 
     def test_worker_can_start_assigned_job(self):
         """Worker can mark a job as in progress after accepting offer."""
