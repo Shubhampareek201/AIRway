@@ -109,9 +109,6 @@ class NearbyWorkersView(APIView):
         seen_worker_ids = set()
         for zone_link in zone_links:
             worker = zone_link.worker
-            from .eligibility import worker_is_within_working_hours
-            if not worker_is_within_working_hours(worker):
-                continue
             if worker.pk in seen_worker_ids:
                 continue
 
