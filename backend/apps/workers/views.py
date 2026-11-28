@@ -20,7 +20,7 @@ from django.utils import timezone
 from apps.accounts.models import Address, Referral, User
 from apps.catalog.models import Service, ServiceInspectionRate
 from apps.core.models import Zone
-from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
+from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, BookingStartOTPException, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
 from apps.bookings.extra_work import WorkerExtraWorkProposalView
 from apps.notifications.models import Notification
 from .eligibility import worker_contact_access, mask_personal_contact_details
@@ -1858,6 +1858,83 @@ class WorkerJobStartView(APIView):
             "appointment_group_id": booking.appointment_group_id,
             "booking_ids": [row.pk for row in group_bookings],
         })
+
+
+class WorkerStartOTPExceptionRequestView(APIView):
+    """Allow the assigned worker to request, but never approve, a start-OTP exception."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, job_id):
+        try:
+            profile = request.user.worker_profile
+        except WorkerProfile.DoesNotExist:
+            return Response({"detail": "No worker profile found."}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, booking = _get_assignment_and_booking(job_id, profile)
+        if booking is None:
+            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        if (
+            profile.status != WorkerProfile.Status.APPROVED
+            or not assignment.accepted_at
+            or not assignment.arrived_at
+            or assignment.started_at
+            or booking.status not in (Booking.Status.ASSIGNED, Booking.Status.CONFIRMED)
+        ):
+            return Response(
+                {"detail": "An exception can be requested only by the accepted worker after arrival and before service starts."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if (
+            assignment.start_otp_hash
+            and assignment.start_otp_expires_at
+            and assignment.start_otp_expires_at > timezone.now()
+            and assignment.start_otp_attempts < 5
+        ):
+            return Response(
+                {"detail": "The current customer OTP is still valid. Use it or wait until it expires before requesting an exception."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        reason = str(request.data.get("reason", "")).strip()
+        if len(reason) < 20 or len(reason) > 1000:
+            return Response(
+                {"reason": ["Explain the OTP issue in 20 to 1000 characters."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        pending = BookingStartOTPException.objects.filter(
+            assignment=assignment, status=BookingStartOTPException.Status.PENDING
+        ).first()
+        if pending:
+            return Response(
+                {"detail": "An OTP exception request is already waiting for admin review.", "request_id": pending.pk},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        exception = BookingStartOTPException.objects.create(
+            booking=booking,
+            assignment=assignment,
+            requested_by=profile,
+            reason=reason,
+        )
+        for admin_user in User.objects.filter(is_staff=True, is_active=True):
+            Notification.objects.create(
+                user=admin_user,
+                type=Notification.Type.SYSTEM_ANNOUNCEMENT,
+                title="Service-start OTP exception needs review",
+                body=f"Worker {profile.user.name or profile.user.phone} requested an OTP exception for booking #{booking.pk}. Review the reason in AIRway Admin.",
+                channel=Notification.Channel.IN_APP,
+                data={
+                    "purpose": "service_start_otp_exception",
+                    "exception_id": exception.pk,
+                    "booking_id": booking.pk,
+                },
+            )
+        return Response({
+            "id": exception.pk,
+            "status": exception.status,
+            "detail": "Request sent to AIRway Admin. Service remains not started until an admin approves it.",
+        }, status=status.HTTP_201_CREATED)
 
 
 class WorkerJobCompleteView(APIView):
