@@ -1111,6 +1111,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             "status": booking.status,
             "assigned_at": assignment.assigned_at,
             "started_at": assignment.started_at,
+            "arrived_at": assignment.arrived_at,
             "worker_latitude": float(assignment.live_latitude) if location_is_fresh else None,
             "worker_longitude": float(assignment.live_longitude) if location_is_fresh else None,
             "worker_location_accuracy_m": float(assignment.live_accuracy_m) if location_is_fresh and assignment.live_accuracy_m is not None else None,
