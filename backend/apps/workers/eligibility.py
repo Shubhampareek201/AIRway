@@ -122,7 +122,7 @@ def worker_contact_access(assignment, *, at=None):
     active = booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
     contact_available_at = (
         booking.scheduled_at - timedelta(hours=1)
-        if accepted and booking.scheduled_at else None
+        if accepted and active and booking.scheduled_at else None
     )
     address_available = accepted and active
     phone_available = bool(
