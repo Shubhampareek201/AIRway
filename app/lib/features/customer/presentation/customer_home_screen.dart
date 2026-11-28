@@ -201,15 +201,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           if (raw is! Map) continue;
           final item = Map<String, dynamic>.from(raw);
           final otp = item['service_start_otp'];
-          if (otp is! Map || otp['code'] == null) continue;
+          if (otp is! Map) continue;
           cards.add({
             'booking_id': item['booking_id'],
             'service_title': (item['service'] as Map?)?['title'] ??
                 (item['service'] as Map?)?['service_title'] ??
                 'Your service',
             'scheduled_at': item['scheduled_at'],
-            'code': otp['code'].toString(),
+            'code': otp['code']?.toString(),
             'expires_at': otp['expires_at'],
+            'expired': otp['expired'] == true,
             'status': item['booking_status'],
           });
         }
@@ -845,6 +846,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     ],
   );
 
+  Future<void> _refreshServiceStartOtp(int bookingId) async {
+    try {
+      await BookingApi.request(
+        '/api/v1/bookings/$bookingId/service-start-otp/',
+        method: 'POST',
+        data: const {},
+      );
+      await _loadActiveServiceStartOtps();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not refresh service OTP: $error')),
+      );
+    }
+  }
+
   Widget _serviceStartOtpSection() {
     if (_serviceStartOtpCards.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -881,9 +898,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(item['code'].toString(),
-                      style: const TextStyle(fontSize: 25, letterSpacing: 4,
-                          fontWeight: FontWeight.w900, color: _Ui.violet)),
+                  if (item['code'] != null)
+                    Text(item['code'].toString(),
+                        style: const TextStyle(fontSize: 25, letterSpacing: 4,
+                            fontWeight: FontWeight.w900, color: _Ui.violet))
+                  else
+                    TextButton(
+                      onPressed: () => _refreshServiceStartOtp(
+                        int.parse(item['booking_id'].toString()),
+                      ),
+                      child: const Text('Refresh OTP'),
+                    ),
                 ],
               ),
             ),
