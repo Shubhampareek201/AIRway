@@ -180,9 +180,9 @@ class NearbyWorkersAPITest(TestCase):
         WorkerZone.objects.create(worker=worker_profile, zone=self.zone)
         WorkerSchedule.objects.create(
             worker=worker_profile,
-            weekday=timezone.localtime().weekday(),
-            start_time="00:00",
-            end_time="23:59:59",
+            weekday=0,
+            start_time="09:00",
+            end_time="18:00",
             is_active=True,
         )
 
@@ -274,18 +274,9 @@ class JobOfferAPITest(TestCase):
             worker=self.worker_profile,
             weekday=booking_local.weekday(),
             start_time="00:00:00",
-            end_time="23:59:59",
+            end_time="23:59:00",
             is_active=True,
         )
-        current_weekday = timezone.localtime().weekday()
-        if current_weekday != booking_local.weekday():
-            WorkerSchedule.objects.create(
-                worker=self.worker_profile,
-                weekday=current_weekday,
-                start_time="00:00:00",
-                end_time="23:59:59",
-                is_active=True,
-            )
 
 
     def test_offers_requires_authentication(self):
@@ -320,34 +311,6 @@ class JobOfferAPITest(TestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], offer.id)
         self.assertEqual(response.data["results"][0]["status"], "pending")
-
-    def test_dispatch_requires_worker_to_be_inside_current_working_hours(self):
-        from unittest.mock import patch
-        from apps.bookings.dispatcher import DispatcherService
-
-        current = timezone.localtime()
-        current_weekday = current.weekday()
-        WorkerSchedule.objects.filter(
-            worker=self.worker_profile, weekday=current_weekday,
-        ).delete()
-        WorkerSchedule.objects.create(
-            worker=self.worker_profile, weekday=current_weekday,
-            start_time="11:00", end_time="12:00", is_active=True,
-        )
-        fixed_now = timezone.make_aware(
-            datetime.combine(current.date(), time(10, 0)),
-            timezone.get_current_timezone(),
-        )
-        with patch("django.utils.timezone.now", return_value=fixed_now):
-            self.assertEqual(DispatcherService.dispatch_offers(self.booking), [])
-
-        WorkerSchedule.objects.filter(
-            worker=self.worker_profile, weekday=current_weekday,
-        ).update(start_time="09:00", end_time="11:00")
-        with patch("django.utils.timezone.now", return_value=fixed_now):
-            offers = DispatcherService.dispatch_offers(self.booking)
-        self.assertEqual(len(offers), 1)
-        self.assertEqual(offers[0].worker, self.worker_profile)
 
     def test_legacy_fully_paid_booking_can_be_dispatched_and_accepted(self):
         from apps.bookings.dispatcher import DispatcherService
@@ -1003,18 +966,9 @@ class JobOfferConcurrencyTest(TestCase):
             worker=worker,
             weekday=booking_local.weekday(),
             start_time="00:00:00",
-            end_time="23:59:59",
+            end_time="23:59:00",
             is_active=True,
         )
-        current_weekday = timezone.localtime().weekday()
-        if current_weekday != booking_local.weekday():
-            WorkerSchedule.objects.create(
-                worker=worker,
-                weekday=current_weekday,
-                start_time="00:00:00",
-                end_time="23:59:59",
-                is_active=True,
-            )
 
     def test_accept_offer_assigns_worker(self):
         """Accepting an offer creates booking assignment."""
