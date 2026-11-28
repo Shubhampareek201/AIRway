@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Address, User
-from apps.bookings.models import Booking, BookingAssignment, BookingCompletionOTP
+from apps.bookings.models import Booking, BookingAssignment, BookingCompletionOTP, BookingStartOTPException, BookingStatusHistory
 from apps.catalog.models import Category, Service
 from apps.core.models import City, Zone
 from apps.notifications.models import Notification
@@ -280,6 +280,85 @@ class WorkerCompletionOTPTests(TestCase):
             format="json",
         )
         self.assertEqual(locked.status_code, 429)
+
+    def test_worker_can_request_admin_exception_for_expired_start_otp(self):
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.arrived_at = timezone.now()
+        self.assignment.start_otp_hash = "expired-hash"
+        self.assignment.start_otp_expires_at = timezone.now() - timedelta(minutes=1)
+        self.assignment.start_otp_attempts = 5
+        self.assignment.save(update_fields=[
+            "started_at", "arrived_at", "start_otp_hash",
+            "start_otp_expires_at", "start_otp_attempts", "updated_at",
+        ])
+        url = f"/api/v1/workers/jobs/{self.assignment.pk}/start-otp-exception/"
+        response = self.client.post(
+            url,
+            {"reason": "Customer app OTP refresh is failing after repeated retries."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        exception = BookingStartOTPException.objects.get(assignment=self.assignment)
+        self.assertEqual(exception.status, BookingStartOTPException.Status.PENDING)
+        self.assertEqual(exception.requested_by, self.worker)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ASSIGNED)
+        self.assertIsNone(self.assignment.started_at)
+
+        duplicate = self.client.post(
+            url,
+            {"reason": "Duplicate request while admin review is pending."},
+            format="json",
+        )
+        self.assertEqual(duplicate.status_code, 409)
+
+    def test_admin_approval_of_start_otp_exception_starts_and_audits_booking(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from apps.bookings.admin import BookingStartOTPExceptionAdmin
+
+        self.booking.status = Booking.Status.ASSIGNED
+        self.booking.save(update_fields=["status", "updated_at"])
+        self.assignment.started_at = None
+        self.assignment.arrived_at = timezone.now()
+        self.assignment.save(update_fields=["started_at", "arrived_at", "updated_at"])
+        exception = BookingStartOTPException.objects.create(
+            booking=self.booking,
+            assignment=self.assignment,
+            requested_by=self.worker,
+            reason="Customer cannot retrieve the active service OTP.",
+        )
+        admin_user = User.objects.create_superuser(
+            phone="+919876543299", password="admin-password"
+        )
+        request = RequestFactory().post("/admin/")
+        request.user = admin_user
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        model_admin = BookingStartOTPExceptionAdmin(
+            BookingStartOTPException, AdminSite()
+        )
+        model_admin.approve_service_start_exception(
+            request, BookingStartOTPException.objects.filter(pk=exception.pk)
+        )
+
+        exception.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.assignment.refresh_from_db()
+        self.assertEqual(exception.status, BookingStartOTPException.Status.APPROVED)
+        self.assertEqual(exception.reviewed_by, admin_user)
+        self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
+        self.assertIsNotNone(self.assignment.started_at)
+        self.assertTrue(
+            BookingStatusHistory.objects.filter(
+                booking=self.booking,
+                changed_by=admin_user,
+                note__contains=f"exception #{exception.pk}",
+            ).exists()
+        )
 
     def test_worker_location_requires_explicit_consent_and_30_minute_window(self):
         self.booking.status = Booking.Status.ASSIGNED
