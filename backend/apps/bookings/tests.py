@@ -44,13 +44,15 @@ class BookingAPITestMixin:
         )
         if arrived.status_code != 200:
             return arrived
-        notification = Notification.objects.filter(
-            user=customer,
-            data__purpose="service_start_otp",
-            data__booking_id=booking_id,
-        ).latest("created_at")
-        code = notification.data["service_start_code"]
-        self.assertIsNotNone(code)
+        customer_client = APIClient()
+        customer_client.force_authenticate(user=customer)
+        issued = customer_client.post(
+            f"/api/v1/bookings/{booking_id}/service-start-otp/",
+            {},
+            format="json",
+        )
+        self.assertEqual(issued.status_code, 200, issued.data)
+        code = issued.data["code"]
         return worker_client.post(
             f"/api/v1/bookings/{booking_id}/start/",
             {"start_otp": code},
