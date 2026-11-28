@@ -273,6 +273,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
                         if (offer.variantTitle?.isNotEmpty == true) Text(offer.variantTitle!),
                         if (offer.customerName?.trim().isNotEmpty == true)
                           Text(AirwayText.tr('Customer: ${offer.customerName}', 'ग्राहक: ${offer.customerName}')),
+                        if ((offer.customerReputation['customer_rating_count'] as num? ?? 0) > 0) ...[
+                          Text('Customer rating: ${offer.customerReputation['customer_rating_average']}/5 (${offer.customerReputation['customer_rating_count']} reviews)'),
+                          ...((offer.customerReputation['customer_rating_comments'] as List? ?? []).take(2).map((comment) => Text('“${comment.toString()}”', style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)))),
+                        ],
                         if (offer.serviceDescription?.trim().isNotEmpty == true)
                           Padding(padding: const EdgeInsets.only(top: 8), child: Text(offer.serviceDescription!, style: const TextStyle(fontSize: 12, height: 1.4))),
                         if (offer.customerIssuePhotoUrl?.isNotEmpty == true) ...[
@@ -1763,6 +1767,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
             if (offer.customerName?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 7),
               _offerInfoLine(Icons.person_outline_rounded, 'Customer: ${offer.customerName}'),
+              if ((offer.customerReputation['customer_rating_count'] as num? ?? 0) > 0) ...[
+                _offerInfoLine(Icons.star_outline_rounded, 'Customer rating: ${offer.customerReputation['customer_rating_average']}/5 (${offer.customerReputation['customer_rating_count']} reviews)'),
+                ...((offer.customerReputation['customer_rating_comments'] as List? ?? []).take(2).map((comment) => _offerInfoLine(Icons.comment_outlined, comment.toString(), maxLines: 2))),
+              ],
             ],
             if (offer.serviceDescription?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 7),
