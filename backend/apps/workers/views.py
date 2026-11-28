@@ -784,6 +784,7 @@ class WorkerJobListView(APIView):
                 else _worker_payment_label(booking)
             )
             contact_access = worker_contact_access(assign)
+            latest_start_exception = assign.start_otp_exceptions.order_by("-created_at").first()
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
@@ -811,6 +812,7 @@ class WorkerJobListView(APIView):
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
                 "arrived_at": assign.arrived_at.isoformat() if assign.arrived_at else None,
                 "started_at": assign.started_at.isoformat() if assign.started_at else None,
+                "start_otp_exception_status": latest_start_exception.status if latest_start_exception else None,
                 "contact_available_at": contact_access["contact_available_at"].isoformat() if contact_access["contact_available_at"] else None,
                 "customer_contact_available": contact_access["phone_available"],
             })
