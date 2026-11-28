@@ -25,6 +25,7 @@ from apps.bookings.extra_work import WorkerExtraWorkProposalView
 from apps.notifications.models import Notification
 from .eligibility import worker_contact_access, mask_personal_contact_details
 from apps.wallet.models import WalletTransaction
+from apps.ratings.public import customer_reputation_summary
 
 logger = logging.getLogger(__name__)
 
@@ -789,6 +790,7 @@ class WorkerJobListView(APIView):
                 "status": booking.status,
                 "service_title": booking.service.title,
                 "customer_name": booking.customer.name or "AIRway Customer",
+            "customer_reputation": customer_reputation_summary(booking.customer),
                 "address": booking.address.full_address if contact_access["address_available"] else None,
                 "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
