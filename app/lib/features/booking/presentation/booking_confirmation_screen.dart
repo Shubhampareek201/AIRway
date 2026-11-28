@@ -532,7 +532,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
       booking.pricingSnapshot['address_label']?.toString() ?? '';
 
   String _calendarDetails(Booking booking) =>
-      'AIRway booking #${booking.id}\\nService: ${booking.serviceTitle}';
+      'AIRway booking #${booking.id}\nService: ${booking.serviceTitle}';
 
   Future<void> _openCalendar(Booking booking, bool google) async {
     final start = booking.scheduledAt, end = _calendarEnd(booking);
@@ -558,7 +558,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
   }
 
   Future<void> _shareCalendar(Booking booking) async {
-    String esc(String s) => s.replaceAll(r'\\', r'\\\\').replaceAll(',', r'\\,').replaceAll(';', r'\\;').replaceAll('\n', r'\\n');
+    String esc(String s) => s.replaceAll(r'\', r'\\').replaceAll(',', r'\,').replaceAll(';', r'\;').replaceAll('\n', r'\n');
     final start = booking.scheduledAt, end = _calendarEnd(booking);
     final address = _calendarAddress(booking);
     final lines = [
