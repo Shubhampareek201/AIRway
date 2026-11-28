@@ -64,7 +64,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
   final Set<int> _startOtpSubmitting = {};
   final Map<int, TextEditingController> _startOtpControllers = {};
   final Map<int, String> _startOtpErrors = {};
-  final Set<int> _startOtpExceptionPending = {};
   bool _incomingOfferDialogOpen = false;
   StreamSubscription<RemoteMessage>? _pushOpenSubscription;
   StreamSubscription<RemoteMessage>? _pushForegroundSubscription;
@@ -2081,10 +2080,10 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
     try {
       await WorkerApi.requestStartOtpException(assignmentId, reason: reason);
       if (!mounted) return;
-      setState(() => _startOtpExceptionPending.add(assignmentId));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Request sent. Wait for AIRway Admin verification.')),
       );
+      await _refresh();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2102,9 +2101,8 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> with Widg
         ? _startOtpControllers.putIfAbsent(assignmentId!, () => TextEditingController())
         : null;
     final error = assignmentId == null ? null : _startOtpErrors[assignmentId];
-    final adminReviewPending = assignmentId != null &&
-        (_startOtpExceptionPending.contains(assignmentId) ||
-         job['start_otp_exception_status']?.toString() == 'pending');
+    final adminReviewPending =
+        job['start_otp_exception_status']?.toString() == 'pending';
     return Card(
       child: Column(
         children: [
