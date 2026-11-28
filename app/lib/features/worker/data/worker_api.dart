@@ -404,6 +404,30 @@ class WorkerApi {
     await _request('/api/v1/workers/leaves/$leaveId/', method: 'DELETE');
   }
 
+  static Future<List<Map<String, dynamic>>> getWorkerSchedules() async {
+    final result = await _request('/api/v1/workers/schedules/');
+    if (result is! List) {
+      throw const FormatException('Unexpected working-hours response.');
+    }
+    return result.whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> updateWorkerSchedules(
+    List<Map<String, dynamic>> schedules,
+  ) async {
+    final result = await _request(
+      '/api/v1/workers/schedules/',
+      method: 'PUT',
+      data: {'schedules': schedules},
+    );
+    if (result is! List) {
+      throw const FormatException('Unexpected working-hours response.');
+    }
+    return result.whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
   static Future<bool> updateOnlineStatus(bool isOnline) async {
     final result = await _request(
       '/api/v1/workers/status/',
