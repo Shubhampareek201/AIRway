@@ -138,6 +138,83 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                 padding: const EdgeInsets.all(20),
                 children: [
                   Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF1EA),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFD6E3D8)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            completed
+                                ? Icons.check_circle_rounded
+                                : started
+                                    ? Icons.handyman_rounded
+                                    : _tracking['arrived_at'] != null
+                                        ? Icons.location_on_rounded
+                                        : locationIsFresh
+                                            ? Icons.my_location_rounded
+                                            : Icons.event_available_rounded,
+                            color: _green,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                completed
+                                    ? AirwayText.tr('Service completed', 'सेवा पूरी हो गई')
+                                    : started
+                                        ? AirwayText.tr('Service in progress', 'सेवा जारी है')
+                                        : _tracking['arrived_at'] != null
+                                            ? AirwayText.tr('Professional has arrived', 'प्रोफ़ेशनल पहुँच गया है')
+                                            : locationIsFresh
+                                                ? AirwayText.tr('Professional location is live', 'प्रोफ़ेशनल की लाइव लोकेशन उपलब्ध है')
+                                                : assigned
+                                                    ? AirwayText.tr('Professional assigned', 'प्रोफ़ेशनल असाइन हो गया')
+                                                    : _statusText,
+                                style: const TextStyle(
+                                  color: _ink,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                completed
+                                    ? AirwayText.tr('Thank you for choosing AIRway.', 'AIRway चुनने के लिए धन्यवाद।')
+                                    : started
+                                        ? AirwayText.tr('Your service is underway.', 'आपकी सेवा चल रही है।')
+                                        : _tracking['arrived_at'] != null
+                                            ? AirwayText.tr('Your professional is at the service location.', 'आपका प्रोफ़ेशनल सेवा के स्थान पर है।')
+                                            : locationIsFresh
+                                                ? AirwayText.tr('Live updates are available on the map below.', 'नीचे दिए गए मैप पर लाइव अपडेट उपलब्ध हैं।')
+                                                : AirwayText.tr('We will keep you updated as your booking progresses.', 'बुकिंग की प्रगति के साथ आपको अपडेट मिलता रहेगा।'),
+                                style: const TextStyle(
+                                  color: _muted,
+                                  fontSize: 12,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -322,6 +399,25 @@ class _BookingTrackingScreenState extends State<BookingTrackingScreen> {
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(_tracking['worker_name']?.toString() ?? AirwayText.tr('Assigned professional', 'असाइन किया गया प्रोफ़ेशनल'),
                                 style: const TextStyle(fontWeight: FontWeight.w800, color: _ink)),
+                            if (_tracking['worker_unavailable'] != true)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.verified_rounded, color: _green, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      AirwayText.tr('AIRway verified professional', 'AIRway वेरिफ़ाइड प्रोफ़ेशनल'),
+                                      style: const TextStyle(
+                                        color: _green,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             if (_tracking['worker_rating'] != null)
                               Text(AirwayText.tr('★ ${_tracking['worker_rating']} (${_tracking['worker_rating_count'] ?? 0} ratings)', '★ ${_tracking['worker_rating']} (${_tracking['worker_rating_count'] ?? 0} रेटिंग)'),
                                   style: const TextStyle(color: _muted, fontSize: 12)),
