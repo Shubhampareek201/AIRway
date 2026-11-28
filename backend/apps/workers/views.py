@@ -23,6 +23,7 @@ from apps.core.models import Zone
 from apps.bookings.models import Booking, BookingStatusHistory, BookingAssignment, WorkerOffer, BookingQuote, BookingWorkEvidence, Order, OrderItem, AppointmentGroup
 from apps.bookings.extra_work import WorkerExtraWorkProposalView
 from apps.notifications.models import Notification
+from .eligibility import worker_contact_access
 from apps.wallet.models import WalletTransaction
 
 logger = logging.getLogger(__name__)
@@ -781,13 +782,14 @@ class WorkerJobListView(APIView):
                 if getattr(booking, "rework_source", None) is not None
                 else _worker_payment_label(booking)
             )
+            contact_access = worker_contact_access(assign)
             results.append({
                 "id": assign.id,
                 "booking_id": booking.id,
                 "status": booking.status,
                 "service_title": booking.service.title,
                 "customer_name": booking.customer.name or "AIRway Customer",
-                "address": booking.address.full_address,
+                "address": booking.address.full_address if contact_access["address_available"] else None,
                 "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
                 "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
                 "amount": float(worker_payout or 0),
@@ -805,6 +807,8 @@ class WorkerJobListView(APIView):
                 ),
                 "worker_notes": booking.worker_notes or None,
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
+                "contact_available_at": contact_access["contact_available_at"].isoformat() if contact_access["contact_available_at"] else None,
+                "customer_contact_available": contact_access["phone_available"],
             })
         return Response(results)
 
@@ -1037,15 +1041,10 @@ class WorkerJobDetailView(APIView):
             worker=profile, extra_work__isnull=True
         ).first()
         worker_payout = earning.net_amount if earning and earning.net_amount is not None else None
-        contact_available_at = (
-            booking.scheduled_at - timedelta(hours=1)
-            if booking.scheduled_at else None
-        )
-        customer_contact_available = bool(
-            contact_available_at
-            and timezone.now() >= contact_available_at
-            and booking.status in (Booking.Status.ASSIGNED, Booking.Status.IN_PROGRESS)
-        )
+        contact_access = worker_contact_access(assign)
+        contact_available_at = contact_access["contact_available_at"]
+        customer_contact_available = contact_access["phone_available"]
+        address_available = contact_access["address_available"]
         payment_label = (
             "No-charge service recovery"
             if getattr(booking, "rework_source", None) is not None
@@ -1175,9 +1174,9 @@ class WorkerJobDetailView(APIView):
             "customer_contact_available": customer_contact_available,
             "customer_contact_available_at": contact_available_at.isoformat() if contact_available_at else None,
             "customer_phone": booking.customer.phone if customer_contact_available else None,
-            "address": booking.address.full_address,
-            "address_latitude": str(booking.address.latitude) if booking.address.latitude is not None else None,
-            "address_longitude": str(booking.address.longitude) if booking.address.longitude is not None else None,
+            "address": booking.address.full_address if address_available else None,
+            "address_latitude": str(booking.address.latitude) if address_available and booking.address.latitude is not None else None,
+            "address_longitude": str(booking.address.longitude) if address_available and booking.address.longitude is not None else None,
             "scheduled_at": booking.scheduled_at.isoformat() if booking.scheduled_at else "",
             "drop_scheduled_at": booking.drop_scheduled_at.isoformat() if booking.drop_scheduled_at else None,
             "amount": float(worker_payout or 0),
