@@ -4496,20 +4496,8 @@ class MultiServiceCheckoutAPITest(BookingAPITestMixin, TestCase):
         self.assertEqual(order.status, Order.Status.AWAITING_PAYMENT)
 
         first_assignment = assignments.order_by("pk").first()
-        start_url = f"/api/v1/workers/jobs/{first_assignment.pk}/start/"
-        arrival_requested = worker_client.post(start_url, {}, format="json")
-        self.assertEqual(arrival_requested.status_code, 200, arrival_requested.data)
-        self.assertTrue(arrival_requested.data["arrival_otp_required"])
-        arrival_notice = Notification.objects.get(
-            user=self.customer,
-            title="Your professional has arrived",
-        )
-        arrival_code = re.search(
-            r"arrival code with your AIRway professional: (\d{6})\.",
-            arrival_notice.body,
-        ).group(1)
-        started = worker_client.post(
-            start_url, {"arrival_otp": arrival_code}, format="json"
+        started = self._start_job_with_arrival_otp(
+            worker_client, first_assignment.booking_id, self.customer
         )
         self.assertEqual(started.status_code, 200, started.data)
         self.assertEqual(
