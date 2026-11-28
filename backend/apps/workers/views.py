@@ -1263,6 +1263,7 @@ class WorkerJobDetailView(APIView):
                 "assigned_at": assign.assigned_at.isoformat() if assign.assigned_at else None,
                 "accepted_at": assign.accepted_at.isoformat() if assign.accepted_at else None,
                 "started_at": assign.started_at.isoformat() if assign.started_at else None,
+                "arrived_at": assign.arrived_at.isoformat() if assign.arrived_at else None,
                 "completed_at": assign.completed_at.isoformat() if assign.completed_at else None,
                 "location_sharing_enabled": bool(assign.location_sharing_enabled),
             },
