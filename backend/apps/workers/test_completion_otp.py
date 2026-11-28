@@ -219,6 +219,12 @@ class WorkerCompletionOTPTests(TestCase):
         self.assertIsNone(self.assignment.arrival_verified_at)
         self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
 
+        retried = self.client.post(
+            start_url, {"start_otp": code}, format="json"
+        )
+        self.assertEqual(retried.status_code, 200, retried.data)
+        self.assertTrue(retried.data["already_started"])
+
     def test_only_customer_can_refresh_service_start_otp(self):
         self.booking.status = Booking.Status.ASSIGNED
         self.booking.save(update_fields=["status", "updated_at"])
